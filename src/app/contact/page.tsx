@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'Contact Secure Cleaning Aus',
@@ -7,7 +8,13 @@ export const metadata: Metadata = {
     'Get in touch with Secure Cleaning Aus. We service Melbourne and Sydney businesses.',
 }
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const content = await getPublicContentMap()
+  const email = getContentValue(content, 'contact.email', 'info@securecleaning.au')
+  const phone = getContentValue(content, 'contact.phone', '1300 000 000')
+  const serviceAreas = getContentValue(content, 'contact.service_areas', 'Melbourne & Sydney, Australia')
+  const phoneHref = `tel:${phone.replace(/[^+\d]/g, '')}`
+
   return (
     <div className="min-h-screen bg-gray-50 py-16">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
@@ -19,7 +26,6 @@ export default function ContactPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* Contact info */}
           <div className="space-y-6">
             <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
               <h2 className="text-xl font-bold mb-6" style={{ color: '#1a2744' }}>Get in Touch</h2>
@@ -28,18 +34,28 @@ export default function ContactPage() {
                   <span className="text-2xl">📧</span>
                   <div>
                     <p className="font-semibold text-gray-900">Email</p>
-                    <a href="mailto:info@securecleaning.au"
+                    <a href={`mailto:${email}`}
                       className="text-green-600 hover:underline text-sm">
-                      info@securecleaning.au
+                      {email}
                     </a>
                     <p className="text-gray-500 text-xs mt-0.5">We aim to respond within 1 business day</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <span className="text-2xl">📞</span>
+                  <div>
+                    <p className="font-semibold text-gray-900">Phone</p>
+                    <a href={phoneHref} className="text-green-600 hover:underline text-sm">
+                      {phone}
+                    </a>
+                    <p className="text-gray-500 text-xs mt-0.5">For urgent enquiries during business hours</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
                   <span className="text-2xl">📍</span>
                   <div>
                     <p className="font-semibold text-gray-900">Service Areas</p>
-                    <p className="text-gray-600 text-sm">Melbourne & Sydney, Australia</p>
+                    <p className="text-gray-600 text-sm">{serviceAreas}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
@@ -71,7 +87,6 @@ export default function ContactPage() {
             </div>
           </div>
 
-          {/* Simple contact form (static — to be wired up) */}
           <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
             <h2 className="text-xl font-bold mb-6" style={{ color: '#1a2744' }}>Send a Message</h2>
             <form className="space-y-4">
@@ -107,7 +122,6 @@ export default function ContactPage() {
           </div>
         </div>
 
-        {/* Chat CTA */}
         <div className="mt-8 p-6 rounded-2xl text-center" style={{ backgroundColor: '#1a2744' }}>
           <p className="text-white font-semibold mb-1">Need an answer right now? 🤖</p>
           <p className="text-gray-400 text-sm">

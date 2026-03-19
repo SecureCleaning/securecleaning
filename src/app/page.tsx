@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
+import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'Professional Commercial Cleaning in Melbourne & Sydney | Secure Cleaning Aus',
@@ -96,7 +97,22 @@ const steps = [
   },
 ]
 
-export default function HomePage() {
+export default async function HomePage() {
+  const content = await getPublicContentMap()
+  const heroTitle = getContentValue(
+    content,
+    'home.hero_title',
+    'Professional Commercial Cleaning for Melbourne & Sydney Businesses'
+  )
+  const heroSubtitle = getContentValue(
+    content,
+    'home.hero_subtitle',
+    'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and book your first clean today.'
+  )
+  const primaryCtaLabel = getContentValue(content, 'home.cta_primary_label', 'Get an Instant Quote →')
+  const secondaryCtaLabel = getContentValue(content, 'home.cta_secondary_label', 'View Services')
+  const whyTitle = getContentValue(content, 'home.why_title', 'Why Secure Cleaning Aus?')
+
   return (
     <>
       {/* ── HERO ──────────────────────────────────────────────────────────── */}
@@ -122,13 +138,11 @@ export default function HomePage() {
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
-              Professional Commercial Cleaning for{' '}
-              <span style={{ color: '#22c55e' }}>Melbourne &amp; Sydney</span> Businesses
+              {heroTitle}
             </h1>
 
             <p className="text-xl text-gray-300 mb-10 max-w-2xl leading-relaxed">
-              Verified Owner-Operators. Transparent pricing. No lock-in contracts.
-              Get an instant online quote and book your first clean today.
+              {heroSubtitle}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4">
@@ -137,13 +151,13 @@ export default function HomePage() {
                 className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold text-lg text-white transition-all duration-200 hover:opacity-90 hover:-translate-y-0.5"
                 style={{ backgroundColor: '#22c55e' }}
               >
-                Get an Instant Quote →
+                {primaryCtaLabel}
               </Link>
               <Link
                 href="/services"
                 className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold text-lg border-2 border-white/30 text-white hover:bg-white/10 transition-all duration-200"
               >
-                View Services
+                {secondaryCtaLabel}
               </Link>
             </div>
 
@@ -211,7 +225,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Why Secure Cleaning Aus?
+              {whyTitle}
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
               The Owner-Operator model is fundamentally different — and better.

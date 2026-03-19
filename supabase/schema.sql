@@ -271,6 +271,17 @@ CREATE TRIGGER trg_contract_sales_updated_at
 CREATE TRIGGER trg_chat_sessions_updated_at
   BEFORE UPDATE ON ai_chat_sessions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE site_content (
+  key         TEXT PRIMARY KEY,
+  title       TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  group_name  TEXT NOT NULL DEFAULT 'general',
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TRIGGER trg_site_content_updated_at
+  BEFORE UPDATE ON site_content FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY POLICIES
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -286,6 +297,7 @@ ALTER TABLE owner_operators       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE contract_sales        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE owner_operator_ratings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_chat_sessions      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE site_content          ENABLE ROW LEVEL SECURITY;
 
 -- ── CLIENTS ──────────────────────────────────────────────────────────────────
 -- Service role can do anything; anon/authenticated cannot read other clients
@@ -450,3 +462,33 @@ CREATE POLICY "Users access own chat by token"
   ON ai_chat_sessions FOR SELECT
   TO anon, authenticated
   USING (true);  -- token-based access controlled at app layer
+
+-- ── SITE CONTENT ────────────────────────────────────────────────────────────
+
+CREATE POLICY "Service role full access — site_content"
+  ON site_content FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Public can read site_content"
+  ON site_content FOR SELECT
+  TO anon, authenticated
+  USING (true);
+
+INSERT INTO site_content (key, title, content, group_name)
+VALUES
+  ('home.hero_title', 'Homepage hero title', 'Professional Commercial Cleaning for Melbourne & Sydney Businesses', 'home'),
+  ('home.hero_subtitle', 'Homepage hero subtitle', 'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and book your first clean today.', 'home'),
+  ('home.cta_primary_label', 'Homepage primary CTA label', 'Get an Instant Quote →', 'home'),
+  ('home.cta_secondary_label', 'Homepage secondary CTA label', 'View Services', 'home'),
+  ('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning Aus?', 'home'),
+  ('contact.email', 'Contact email address', 'info@securecleaning.au', 'contact'),
+  ('contact.phone', 'Contact phone number', '1300 000 000', 'contact'),
+  ('contact.service_areas', 'Contact service areas', 'Melbourne & Sydney, Australia', 'contact'),
+  ('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus is a trading name of Secure Contracts Pty Ltd, an Australian company focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our Owner-Operator network.', 'about'),
+  ('faq.heading', 'FAQ page heading', 'Frequently Asked Questions', 'faq')
+ON CONFLICT (key) DO UPDATE SET
+  title = EXCLUDED.title,
+  content = EXCLUDED.content,
+  group_name = EXCLUDED.group_name;

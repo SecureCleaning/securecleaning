@@ -61,6 +61,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the site.
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public anon key (safe for browser) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only — keep secret) |
+| `CONTENT_ADMIN_PASSWORD` | Simple internal password for the `/admin/content` editor |
 | `RESEND_API_KEY` | Resend API key for transactional emails |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude (AI chat) |
 | `NEXT_PUBLIC_SITE_URL` | Public URL of the deployed site |
@@ -119,6 +120,25 @@ The quote engine (`src/lib/quoteEngine.ts`) implements the full pricing formula:
 - Returns a low–high price range (±10%), or spring clean pricing if selected
 
 ---
+
+## Content Editor
+
+A small internal content editor is available at `/admin/content`.
+
+### How it works
+
+- Set `CONTENT_ADMIN_PASSWORD` in `.env.local`
+- Open `/admin/content`
+- Enter the password to unlock the editor
+- Update copy for the homepage, contact page, about page, and FAQ page
+- Click **Save Changes** to write updates to Supabase
+
+### Notes
+
+- This is an MVP editor, not a full CMS
+- Public pages read content from the `site_content` table
+- If Supabase is unavailable, the site falls back to hardcoded default copy
+- The admin API checks the password via the `x-admin-password` header on both `GET` and `POST`
 
 ## Deployment
 

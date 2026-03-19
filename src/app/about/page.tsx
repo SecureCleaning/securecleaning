@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'About Secure Cleaning Aus — Secure Contracts Pty Ltd',
@@ -7,10 +8,16 @@ export const metadata: Metadata = {
     'Learn about Secure Contracts Pty Ltd and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
 }
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const content = await getPublicContentMap()
+  const intro = getContentValue(
+    content,
+    'about.intro',
+    'Secure Cleaning Aus is a trading name of Secure Contracts Pty Ltd, an Australian company focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our Owner-Operator network.'
+  )
+
   return (
     <div className="min-h-screen">
-      {/* Hero */}
       <section className="py-16 text-white" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">About Secure Cleaning Aus</h1>
@@ -23,11 +30,7 @@ export default function AboutPage() {
       <section className="py-16 bg-white">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 prose prose-gray max-w-none">
           <h2 style={{ color: '#1a2744' }}>Who We Are</h2>
-          <p>
-            Secure Cleaning Aus is a trading name of <strong>Secure Contracts Pty Ltd</strong>, an
-            Australian company focused on delivering professional commercial cleaning services to
-            businesses in Melbourne and Sydney through our Owner-Operator network.
-          </p>
+          <p>{intro}</p>
           <p>
             We started with a simple observation: the commercial cleaning industry was dominated
             by large franchise operators who hired casual, low-paid workers with minimal investment
@@ -80,7 +83,6 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-12 bg-gray-50">
         <div className="max-w-2xl mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>Ready to experience the difference?</h2>

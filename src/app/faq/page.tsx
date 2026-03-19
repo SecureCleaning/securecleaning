@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions',
@@ -65,13 +66,16 @@ const faqs = [
   },
 ]
 
-export default function FAQPage() {
+export default async function FAQPage() {
+  const content = await getPublicContentMap()
+  const heading = getContentValue(content, 'faq.heading', 'Frequently Asked Questions')
+
   return (
     <div className="min-h-screen bg-gray-50 py-16">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-            Frequently Asked Questions
+            {heading}
           </h1>
           <p className="text-lg text-gray-600">
             Can&apos;t find your answer here? Chat with Max or{' '}
