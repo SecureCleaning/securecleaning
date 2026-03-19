@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions',
-  description: 'Answers to common questions about Secure Cleaning services, pricing, Owner-Operators, and how the booking process works.',
+  description: 'Answers to common questions about Secure Cleaning Aus services, pricing, Owner-Operators, and how the booking process works.',
 }
 
 const faqs = [
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: 'What does the verification process involve?',
-    a: 'Every Secure Cleaning operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.',
+    a: 'Every Secure Cleaning Aus operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.',
   },
   {
     q: 'How quickly can a clean be arranged?',
@@ -53,11 +53,11 @@ const faqs = [
   },
   {
     q: 'Are your cleaners insured?',
-    a: 'All Secure Cleaning Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.',
+    a: 'All Secure Cleaning Aus Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.',
   },
   {
     q: 'Do you clean residential properties?',
-    a: 'No. Secure Cleaning focuses exclusively on commercial and business premises. We do not offer residential cleaning services.',
+    a: 'No. Secure Cleaning Aus focuses exclusively on commercial and business premises. We do not offer residential cleaning services.',
   },
   {
     q: 'Can you clean at night or on weekends?',

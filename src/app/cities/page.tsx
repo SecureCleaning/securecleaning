@@ -3,7 +3,7 @@ import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Cities We Service — Melbourne & Sydney',
-  description: 'Secure Cleaning operates in Melbourne and Sydney. Find your local Owner-Operator.',
+  description: 'Secure Cleaning Aus operates in Melbourne and Sydney. Find your local Owner-Operator.',
 }
 
 export default function CitiesPage() {

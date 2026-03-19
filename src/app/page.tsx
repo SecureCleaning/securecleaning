@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Professional Commercial Cleaning in Melbourne & Sydney | Secure Cleaning',
+  title: 'Professional Commercial Cleaning in Melbourne & Sydney | Secure Cleaning Aus',
   description:
     'Get an instant quote for professional commercial cleaning. Verified Owner-Operators serving Melbourne and Sydney businesses. No lock-in contracts.',
 }
@@ -211,7 +211,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              Why Secure Cleaning?
+              Why Secure Cleaning Aus?
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
               The Owner-Operator model is fundamentally different — and better.

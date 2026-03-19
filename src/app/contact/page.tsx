@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Contact Secure Cleaning',
+  title: 'Contact Secure Cleaning Aus',
   description:
-    'Get in touch with Secure Cleaning. We service Melbourne and Sydney businesses.',
+    'Get in touch with Secure Cleaning Aus. We service Melbourne and Sydney businesses.',
 }
 
 export default function ContactPage() {

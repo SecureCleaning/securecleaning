@@ -1,4 +1,4 @@
-# Secure Cleaning — Commercial Cleaning Portal
+# Secure Cleaning Aus — Commercial Cleaning Portal
 
 A Next.js 14 web portal for **Secure Contracts Pty Ltd**, providing online quoting, booking, and AI-assisted enquiries for commercial cleaning services in Melbourne and Sydney.
 

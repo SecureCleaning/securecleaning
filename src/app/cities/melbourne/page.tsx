@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Commercial Cleaning Melbourne — Secure Cleaning',
+  title: 'Commercial Cleaning Melbourne — Secure Cleaning Aus',
   description:
     'Professional commercial cleaning services across Melbourne CBD, inner suburbs, and greater metro area. Verified Owner-Operators. Get an instant quote.',
 }
@@ -29,7 +29,7 @@ export default function MelbournePage() {
                 Commercial Cleaning Melbourne
               </h1>
               <p className="text-xl text-gray-300 max-w-2xl">
-                Secure Cleaning operates across all of Melbourne — from the CBD and inner
+                Secure Cleaning Aus operates across all of Melbourne — from the CBD and inner
                 suburbs to the outer metro area. Our verified Owner-Operators are local
                 business owners who know Melbourne inside out.
               </p>
@@ -45,7 +45,7 @@ export default function MelbournePage() {
             <div className="lg:col-span-2 space-y-8">
               <div className="bg-white rounded-2xl border border-gray-100 p-8">
                 <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>
-                  Why Melbourne Businesses Choose Secure Cleaning
+                  Why Melbourne Businesses Choose Secure Cleaning Aus
                 </h2>
                 <p className="text-gray-600 leading-relaxed mb-4">
                   Melbourne&apos;s commercial property market is dense and competitive.

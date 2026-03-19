@@ -1,7 +1,7 @@
-# Google Calendar Setup — Secure Cleaning
+# Google Calendar Setup — Secure Cleaning Aus
 
 ## Goal
-Write booking follow-up events into the Secure Cleaning Google Calendar.
+Write booking follow-up events into the Secure Cleaning Aus Google Calendar.
 
 ## Current state
 The codebase now includes a Google Calendar helper, but it still needs OAuth completion:

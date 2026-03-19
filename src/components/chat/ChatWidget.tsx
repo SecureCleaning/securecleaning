@@ -14,7 +14,7 @@ interface Message {
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Hi! I'm **Max**, your Secure Cleaning assistant. I can help answer questions about our commercial cleaning services in Melbourne and Sydney.\n\nWhat can I help you with today?",
+  content: "Hi! I'm **Max**, your Secure Cleaning Aus assistant. I can help answer questions about our commercial cleaning services in Melbourne and Sydney.\n\nWhat can I help you with today?",
   timestamp: new Date(),
 }
 
@@ -217,7 +217,7 @@ export default function ChatWidget() {
             </div>
             <div>
               <p className="text-white font-semibold text-sm">Max</p>
-              <p className="text-gray-400 text-xs">Secure Cleaning Assistant</p>
+              <p className="text-gray-400 text-xs">Secure Cleaning Aus Assistant</p>
             </div>
             <div className="ml-auto flex items-center gap-1.5">
               <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />

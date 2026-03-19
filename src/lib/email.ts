@@ -37,16 +37,16 @@ export async function sendQuoteEmail(
   await resend.emails.send({
     from: FROM_EMAIL,
     to: inputs.email,
-    subject: `Your Secure Cleaning Quote — ${quoteRef}`,
+    subject: `Your Secure Cleaning Aus Quote — ${quoteRef}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
+          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning Aus</h1>
           <p style="color: #22c55e; margin: 4px 0 0;">Professional Commercial Cleaning</p>
         </div>
         <div style="padding: 32px 24px;">
           <p>Hi ${inputs.contactName},</p>
-          <p>Thank you for requesting a quote from Secure Cleaning. Here's your estimate for <strong>${inputs.businessName}</strong> in ${cityLabel}.</p>
+          <p>Thank you for requesting a quote from Secure Cleaning Aus. Here's your estimate for <strong>${inputs.businessName}</strong> in ${cityLabel}.</p>
           
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 16px;">Quote Reference: ${quoteRef}</h2>
@@ -122,7 +122,7 @@ export async function sendBookingConfirmationEmail(
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0;">Secure Cleaning</h1>
+          <h1 style="color: white; margin: 0;">Secure Cleaning Aus</h1>
           <p style="color: #22c55e; margin: 4px 0 0;">Booking Confirmed ✓</p>
         </div>
         <div style="padding: 32px 24px;">

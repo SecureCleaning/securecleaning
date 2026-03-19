@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Commercial Cleaning Sydney — Secure Cleaning',
+  title: 'Commercial Cleaning Sydney — Secure Cleaning Aus',
   description:
     'Professional commercial cleaning services across Sydney CBD, North Shore, Eastern Suburbs, Western Sydney, and surrounds. Verified Owner-Operators. Get an instant quote.',
 }
@@ -29,7 +29,7 @@ export default function SydneyPage() {
                 Commercial Cleaning Sydney
               </h1>
               <p className="text-xl text-gray-300 max-w-2xl">
-                Secure Cleaning operates across greater Sydney — CBD, North Shore,
+                Secure Cleaning Aus operates across greater Sydney — CBD, North Shore,
                 Eastern Suburbs, Western Sydney, and the broader metro area.
                 Verified Owner-Operators who take pride in your premises.
               </p>
@@ -45,7 +45,7 @@ export default function SydneyPage() {
             <div className="lg:col-span-2 space-y-8">
               <div className="bg-white rounded-2xl border border-gray-100 p-8">
                 <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>
-                  Why Sydney Businesses Choose Secure Cleaning
+                  Why Sydney Businesses Choose Secure Cleaning Aus
                 </h2>
                 <p className="text-gray-600 leading-relaxed mb-4">
                   Sydney&apos;s commercial sector spans everything from glass-tower CBD offices

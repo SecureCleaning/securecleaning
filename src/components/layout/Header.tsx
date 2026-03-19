@@ -21,7 +21,7 @@ export default function Header() {
             </div>
             <div>
               <span className="font-bold text-lg leading-none" style={{ color: '#1a2744' }}>
-                Secure Cleaning
+                Secure Cleaning Aus
               </span>
               <span className="block text-xs text-gray-500 leading-none">
                 by Secure Contracts

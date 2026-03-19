@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'About Secure Cleaning — Secure Contracts Pty Ltd',
+  title: 'About Secure Cleaning Aus — Secure Contracts Pty Ltd',
   description:
     'Learn about Secure Contracts Pty Ltd and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
 }
@@ -13,7 +13,7 @@ export default function AboutPage() {
       {/* Hero */}
       <section className="py-16 text-white" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">About Secure Cleaning</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">About Secure Cleaning Aus</h1>
           <p className="text-xl text-gray-300">
             A better way to clean your business. Built on the Owner-Operator model.
           </p>
@@ -24,7 +24,7 @@ export default function AboutPage() {
         <div className="max-w-3xl mx-auto px-4 sm:px-6 prose prose-gray max-w-none">
           <h2 style={{ color: '#1a2744' }}>Who We Are</h2>
           <p>
-            Secure Cleaning is a trading name of <strong>Secure Contracts Pty Ltd</strong>, an
+            Secure Cleaning Aus is a trading name of <strong>Secure Contracts Pty Ltd</strong>, an
             Australian company focused on delivering professional commercial cleaning services to
             businesses in Melbourne and Sydney through our Owner-Operator network.
           </p>
@@ -40,7 +40,7 @@ export default function AboutPage() {
 
           <h2 style={{ color: '#1a2744' }}>The Owner-Operator Model</h2>
           <p>
-            Every Secure Cleaning operator is an independent business owner who has purchased a
+            Every Secure Cleaning Aus operator is an independent business owner who has purchased a
             territory and invested in their own business. This creates fundamentally different
             incentives:
           </p>
@@ -53,7 +53,7 @@ export default function AboutPage() {
 
           <h2 style={{ color: '#1a2744' }}>Verification & Standards</h2>
           <p>
-            Every Secure Cleaning operator must pass our verification process before taking on clients:
+            Every Secure Cleaning Aus operator must pass our verification process before taking on clients:
           </p>
           <ul>
             <li>National police check</li>

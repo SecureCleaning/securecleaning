@@ -35,7 +35,7 @@ export default function Footer() {
               <div className="w-9 h-9 rounded-lg flex items-center justify-center text-navy-800 font-black bg-white text-sm">
                 SC
               </div>
-              <span className="font-bold text-lg">Secure Cleaning</span>
+              <span className="font-bold text-lg">Secure Cleaning Aus</span>
             </div>
             <p className="text-gray-400 text-sm leading-relaxed mb-6">
               Professional commercial cleaning in Melbourne and Sydney.
