@@ -28,9 +28,9 @@ export default function ContactPage() {
                   <span className="text-2xl">📧</span>
                   <div>
                     <p className="font-semibold text-gray-900">Email</p>
-                    <a href="mailto:hello@securecleaning.com.au"
+                    <a href="mailto:info@securecleaning.au"
                       className="text-green-600 hover:underline text-sm">
-                      hello@securecleaning.com.au
+                      info@securecleaning.au
                     </a>
                     <p className="text-gray-500 text-xs mt-0.5">We aim to respond within 1 business day</p>
                   </div>

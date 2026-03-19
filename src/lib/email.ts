@@ -15,8 +15,8 @@ function getResend() {
   return new Resend(process.env.RESEND_API_KEY)
 }
 
-const FROM_EMAIL = process.env.FROM_EMAIL ?? 'hello@securecleaning.com.au'
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'admin@securecleaning.com.au'
+const FROM_EMAIL = process.env.FROM_EMAIL ?? 'info@securecleaning.au'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@securecleaning.au'
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://securecleaning.com.au'
 
 // ─── Quote Email ──────────────────────────────────────────────────────────────

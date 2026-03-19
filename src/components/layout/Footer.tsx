@@ -42,7 +42,7 @@ export default function Footer() {
               Verified Owner-Operators. Flexible frequencies. No lock-in contracts.
             </p>
             <div className="text-sm text-gray-400 space-y-1">
-              <p>📧 <a href="mailto:hello@securecleaning.com.au" className="hover:text-white transition-colors">hello@securecleaning.com.au</a></p>
+              <p>📧 <a href="mailto:info@securecleaning.au" className="hover:text-white transition-colors">info@securecleaning.au</a></p>
               <p>📍 Melbourne &amp; Sydney, Australia</p>
               <p className="text-xs mt-3 text-gray-500">ABN: TBC</p>
             </div>
