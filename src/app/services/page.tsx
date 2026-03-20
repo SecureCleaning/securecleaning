@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
+import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'Commercial Cleaning Services',
@@ -7,7 +8,7 @@ export const metadata: Metadata = {
     'Professional commercial cleaning for offices, medical centres, childcare, industrial, retail, gyms, and warehouses in Melbourne and Sydney.',
 }
 
-const services = [
+const serviceDefaults = [
   {
     id: 'office',
     icon: '🏢',
@@ -76,32 +77,40 @@ const services = [
     icon: '🔧',
     title: 'Other Commercial Premises',
     description:
-      "Have a unique or specialised commercial space? We work with a range of premises not covered by the categories above. Contact us to discuss your requirements.",
+      'Have a unique or specialised commercial space? We work with a range of premises not covered by the categories above. Contact us to discuss your requirements.',
     features: ['Schools and education facilities', 'Places of worship', 'Event venues', 'Body corporate common areas', 'Government offices', 'And more…'],
     multiplier: 'Standard rate',
   },
 ]
 
-export default function ServicesPage() {
+export default async function ServicesPage() {
+  const content = await getPublicContentMap()
+  const services = serviceDefaults.map((service, index) => {
+    const item = index + 1
+    return {
+      ...service,
+      title: getContentValue(content, `services.item_${item}_title`, service.title),
+      description: getContentValue(content, `services.item_${item}_description`, service.description),
+      multiplier: getContentValue(content, `services.item_${item}_multiplier`, service.multiplier),
+    }
+  })
+
   return (
     <div className="min-h-screen">
-      {/* Hero */}
       <section className="py-16 text-white text-center" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-3xl mx-auto px-4">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">Our Services</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">{getContentValue(content, 'services.hero_title', 'Our Services')}</h1>
           <p className="text-xl text-gray-300 mb-8">
-            Specialised commercial cleaning for every type of premises.
-            Melbourne and Sydney only. Owner-Operators who know your industry.
+            {getContentValue(content, 'services.hero_subtitle', 'Specialised commercial cleaning for every type of premises. Melbourne and Sydney only. Owner-Operators who know your industry.')}
           </p>
           <Link href="/quote"
             className="inline-flex items-center px-8 py-4 rounded-lg font-bold text-white text-lg transition-all hover:opacity-90"
             style={{ backgroundColor: '#22c55e' }}>
-            Get an Instant Quote
+            {getContentValue(content, 'services.hero_cta_label', 'Get an Instant Quote')}
           </Link>
         </div>
       </section>
 
-      {/* Services list */}
       <section className="py-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-10">
           {services.map((service) => (
@@ -137,22 +146,21 @@ export default function ServicesPage() {
         </div>
       </section>
 
-      {/* CTA */}
       <section className="py-16 text-white text-center" style={{ backgroundColor: '#22c55e' }}>
         <div className="max-w-2xl mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-4">Not sure which service you need?</h2>
+          <h2 className="text-3xl font-bold mb-4">{getContentValue(content, 'services.bottom_cta_title', 'Not sure which service you need?')}</h2>
           <p className="text-green-50 mb-8">
-            Chat with Max, our AI assistant, or get in touch — we&apos;ll help you figure out the right solution.
+            {getContentValue(content, 'services.bottom_cta_body', "Chat with Max, our AI assistant, or get in touch — we'll help you figure out the right solution.")}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/quote"
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold text-white text-lg transition-all"
               style={{ backgroundColor: '#1a2744' }}>
-              Get a Quote
+              {getContentValue(content, 'services.bottom_cta_primary_label', 'Get a Quote')}
             </Link>
             <Link href="/contact"
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold text-lg border-2 border-white text-white hover:bg-white hover:text-green-600 transition-all">
-              Contact Us
+              {getContentValue(content, 'services.bottom_cta_secondary_label', 'Contact Us')}
             </Link>
           </div>
         </div>

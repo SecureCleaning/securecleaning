@@ -19,86 +19,11 @@ const premisesTypes = [
   { name: 'Other', icon: '🔧', desc: 'Bespoke commercial premises' },
 ]
 
-const ownerOperatorBenefits = [
-  {
-    icon: '🔓',
-    title: 'No Lock-In Contracts',
-    desc: 'Stay because you love the service — not because you\'re trapped. Cancel any time with reasonable notice.',
-  },
-  {
-    icon: '👔',
-    title: 'Real Professionals',
-    desc: 'Every cleaner is a trained, experienced professional — not a day-hire casual.',
-  },
-  {
-    icon: '💼',
-    title: 'Financially Committed',
-    desc: 'Owner-Operators have purchased their territory. They have skin in the game and a business to protect.',
-  },
-  {
-    icon: '✅',
-    title: 'Fully Verified',
-    desc: 'Police checked, insured, and reference verified. We don\'t send strangers to your premises.',
-  },
-  {
-    icon: '🏗️',
-    title: 'Site Inducted',
-    desc: 'Your operator learns your site\'s specific requirements, hazards, and preferences before they start.',
-  },
-  {
-    icon: '📱',
-    title: 'Direct Contact',
-    desc: 'You get your operator\'s direct number. No call centres, no middlemen, no runaround.',
-  },
-]
-
-const testimonials = [
-  {
-    name: 'Sarah M.',
-    business: 'Parkville Medical Centre',
-    city: 'Melbourne',
-    quote:
-      'Switched from a national franchise 18 months ago. The difference is night and day — our operator treats our clinic like it\'s their own business. Because it is.',
-    rating: 5,
-  },
-  {
-    name: 'James T.',
-    business: 'East Sydney Co-Working',
-    city: 'Sydney',
-    quote:
-      'Loved that I could get an instant quote online and book without playing phone tag. Our space has been spotless since day one.',
-    rating: 5,
-  },
-  {
-    name: 'Priya K.',
-    business: 'Little Stars Childcare',
-    city: 'Melbourne',
-    quote:
-      'As a childcare centre, we need someone we can trust completely. Our operator came in for a site induction before starting and hasn\'t missed a clean in 8 months.',
-    rating: 5,
-  },
-]
-
-const steps = [
-  {
-    step: '01',
-    title: 'Get an Instant Quote',
-    desc: 'Answer a few questions about your premises and schedule. Our pricing engine gives you a transparent estimate in under 2 minutes — no waiting for a callback.',
-  },
-  {
-    step: '02',
-    title: 'We Match Your Operator',
-    desc: 'We pair you with a verified, insured Owner-Operator in your area who specialises in your type of premises. Site inspection arranged within 48 hours.',
-  },
-  {
-    step: '03',
-    title: 'Your Space, Professionally Cleaned',
-    desc: 'Your operator starts on your schedule. You have their direct number. If anything ever isn\'t right, you tell them — and it gets fixed.',
-  },
-]
+const benefitIcons = ['🔓', '👔', '💼', '✅', '🏗️', '📱']
 
 export default async function HomePage() {
   const content = await getPublicContentMap()
+
   const heroTitle = getContentValue(
     content,
     'home.hero_title',
@@ -109,18 +34,74 @@ export default async function HomePage() {
     'home.hero_subtitle',
     'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and book your first clean today.'
   )
+  const heroBadge = getContentValue(
+    content,
+    'home.hero_badge',
+    "Melbourne & Sydney's Owner-Operator Cleaning Network"
+  )
   const primaryCtaLabel = getContentValue(content, 'home.cta_primary_label', 'Get an Instant Quote →')
   const secondaryCtaLabel = getContentValue(content, 'home.cta_secondary_label', 'View Services')
-  const whyTitle = getContentValue(content, 'home.why_title', 'Why Secure Cleaning Aus?')
+  const trustItems = [1, 2, 3, 4].map((item) =>
+    getContentValue(content, `home.trust_${item}`, [
+      'No lock-in contracts',
+      'Fully insured & verified',
+      'Instant online pricing',
+      'Direct operator contact',
+    ][item - 1])
+  )
+  const steps = [1, 2, 3].map((step) => ({
+    step: `0${step}`,
+    title: getContentValue(content, `home.step_${step}_title`, [
+      'Get an Instant Quote',
+      'We Match Your Operator',
+      'Your Space, Professionally Cleaned',
+    ][step - 1]),
+    desc: getContentValue(content, `home.step_${step}_desc`, [
+      'Answer a few questions about your premises and schedule. Our pricing engine gives you a transparent estimate in under 2 minutes — no waiting for a callback.',
+      'We pair you with a verified, insured Owner-Operator in your area who specialises in your type of premises. Site inspection arranged within 48 hours.',
+      "Your operator starts on your schedule. You have their direct number. If anything ever isn't right, you tell them — and it gets fixed.",
+    ][step - 1]),
+  }))
+  const benefits = benefitIcons.map((icon, index) => {
+    const item = index + 1
+    return {
+      icon,
+      title: getContentValue(content, `home.benefit_${item}_title`, [
+        'No Lock-In Contracts',
+        'Real Professionals',
+        'Financially Committed',
+        'Fully Verified',
+        'Site Inducted',
+        'Direct Contact',
+      ][index]),
+      desc: getContentValue(content, `home.benefit_${item}_desc`, [
+        "Stay because you love the service — not because you're trapped. Cancel any time with reasonable notice.",
+        'Every cleaner is a trained, experienced professional — not a day-hire casual.',
+        'Owner-Operators have purchased their territory. They have skin in the game and a business to protect.',
+        "Police checked, insured, and reference verified. We don't send strangers to your premises.",
+        "Your operator learns your site's specific requirements, hazards, and preferences before they start.",
+        "You get your operator's direct number. No call centres, no middlemen, no runaround.",
+      ][index]),
+    }
+  })
+  const testimonials = [1, 2, 3].map((item) => ({
+    name: getContentValue(content, `home.testimonial_${item}_name`, ['Sarah M.', 'James T.', 'Priya K.'][item - 1]),
+    business: getContentValue(content, `home.testimonial_${item}_business`, ['Parkville Medical Centre', 'East Sydney Co-Working', 'Little Stars Childcare'][item - 1]),
+    city: getContentValue(content, `home.testimonial_${item}_city`, ['Melbourne', 'Sydney', 'Melbourne'][item - 1]),
+    quote: getContentValue(content, `home.testimonial_${item}_quote`, [
+      "Switched from a national franchise 18 months ago. The difference is night and day — our operator treats our clinic like it's their own business. Because it is.",
+      'Loved that I could get an instant quote online and book without playing phone tag. Our space has been spotless since day one.',
+      "As a childcare centre, we need someone we can trust completely. Our operator came in for a site induction before starting and hasn't missed a clean in 8 months.",
+    ][item - 1]),
+    rating: 5,
+  }))
 
   return (
     <>
-      {/* ── HERO ──────────────────────────────────────────────────────────── */}
       <section
         className="relative overflow-hidden text-white py-24 md:py-32"
         style={{ backgroundColor: '#1a2744' }}
       >
-        {/* Background gradient overlay */}
         <div
           className="absolute inset-0 opacity-30"
           style={{
@@ -134,7 +115,7 @@ export default async function HomePage() {
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-6"
               style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
               <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              Melbourne &amp; Sydney&apos;s Owner-Operator Cleaning Network
+              {heroBadge}
             </div>
 
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
@@ -162,32 +143,24 @@ export default async function HomePage() {
             </div>
 
             <div className="flex flex-wrap gap-6 mt-10 text-sm text-gray-400">
-              <span className="flex items-center gap-2">
-                <span className="text-green-400">✓</span> No lock-in contracts
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="text-green-400">✓</span> Fully insured &amp; verified
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="text-green-400">✓</span> Instant online pricing
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="text-green-400">✓</span> Direct operator contact
-              </span>
+              {trustItems.map((item) => (
+                <span key={item} className="flex items-center gap-2">
+                  <span className="text-green-400">✓</span> {item}
+                </span>
+              ))}
             </div>
           </div>
         </div>
       </section>
 
-      {/* ── HOW IT WORKS ──────────────────────────────────────────────────── */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-              How It Works
+              {getContentValue(content, 'home.how_title', 'How It Works')}
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              From quote to clean in three simple steps. No phone tag, no waiting.
+              {getContentValue(content, 'home.how_subtitle', 'From quote to clean in three simple steps. No phone tag, no waiting.')}
             </p>
           </div>
 
@@ -214,27 +187,25 @@ export default async function HomePage() {
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold text-white transition-all duration-200 hover:opacity-90"
               style={{ backgroundColor: '#1a2744' }}
             >
-              Start Your Quote
+              {getContentValue(content, 'home.how_cta_label', 'Start Your Quote')}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* ── WHY SECURE CLEANING ───────────────────────────────────────────── */}
       <section className="py-20 text-white" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
-              {whyTitle}
+              {getContentValue(content, 'home.why_title', 'Why Secure Cleaning Aus?')}
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              The Owner-Operator model is fundamentally different — and better.
-              Here&apos;s why businesses across Melbourne and Sydney choose us.
+              {getContentValue(content, 'home.why_subtitle', "The Owner-Operator model is fundamentally different — and better. Here's why businesses across Melbourne and Sydney choose us.")}
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {ownerOperatorBenefits.map((benefit) => (
+            {benefits.map((benefit) => (
               <div
                 key={benefit.title}
                 className="rounded-xl p-6 border transition-all duration-200 hover:border-green-500/50"
@@ -249,16 +220,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── PREMISES TYPES ────────────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-              Premises We Clean
+              {getContentValue(content, 'home.premises_title', 'Premises We Clean')}
             </h2>
             <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-              From boutique offices to large industrial facilities — we have
-              Owner-Operators specialised in every type of commercial premises.
+              {getContentValue(content, 'home.premises_subtitle', 'From boutique offices to large industrial facilities — we have Owner-Operators specialised in every type of commercial premises.')}
             </p>
           </div>
 
@@ -280,15 +249,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── CITIES ────────────────────────────────────────────────────────── */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-              Where We Operate
+              {getContentValue(content, 'home.cities_title', 'Where We Operate')}
             </h2>
             <p className="text-lg text-gray-600">
-              Melbourne and Sydney — with more cities coming soon.
+              {getContentValue(content, 'home.cities_subtitle', 'Melbourne and Sydney — with more cities coming soon.')}
             </p>
           </div>
 
@@ -306,10 +274,10 @@ export default async function HomePage() {
                 <div className="text-5xl mb-4">🏙️</div>
                 <h3 className="text-2xl font-bold mb-2">Melbourne</h3>
                 <p className="text-gray-300 text-sm mb-4">
-                  CBD, inner suburbs, and greater metro area. Owner-Operators across all Melbourne zones.
+                  {getContentValue(content, 'home.city_melbourne_desc', 'CBD, inner suburbs, and greater metro area. Owner-Operators across all Melbourne zones.')}
                 </p>
                 <span className="text-green-400 font-semibold text-sm">
-                  View Melbourne →
+                  {getContentValue(content, 'home.city_melbourne_label', 'View Melbourne →')}
                 </span>
               </div>
             </Link>
@@ -327,10 +295,10 @@ export default async function HomePage() {
                 <div className="text-5xl mb-4">🌉</div>
                 <h3 className="text-2xl font-bold mb-2">Sydney</h3>
                 <p className="text-gray-300 text-sm mb-4">
-                  CBD, North Shore, Western Sydney, and surrounding areas. Fully covered.
+                  {getContentValue(content, 'home.city_sydney_desc', 'CBD, North Shore, Western Sydney, and surrounding areas. Fully covered.')}
                 </p>
                 <span className="text-green-400 font-semibold text-sm">
-                  View Sydney →
+                  {getContentValue(content, 'home.city_sydney_label', 'View Sydney →')}
                 </span>
               </div>
             </Link>
@@ -338,15 +306,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── TESTIMONIALS ──────────────────────────────────────────────────── */}
       <section className="py-20 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-14">
             <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-              What Our Clients Say
+              {getContentValue(content, 'home.testimonials_title', 'What Our Clients Say')}
             </h2>
             <p className="text-lg text-gray-600">
-              Don&apos;t take our word for it.
+              {getContentValue(content, 'home.testimonials_subtitle', "Don't take our word for it.")}
             </p>
           </div>
 
@@ -373,17 +340,16 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA BANNER ────────────────────────────────────────────────────── */}
       <section
         className="py-20 text-white text-center"
         style={{ backgroundColor: '#22c55e' }}
       >
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
-            Ready for a cleaner, better workplace?
+            {getContentValue(content, 'home.bottom_cta_title', 'Ready for a cleaner, better workplace?')}
           </h2>
           <p className="text-xl mb-10 text-green-50">
-            Get your instant quote in under 2 minutes. No commitment required.
+            {getContentValue(content, 'home.bottom_cta_body', 'Get your instant quote in under 2 minutes. No commitment required.')}
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link
@@ -391,13 +357,13 @@ export default async function HomePage() {
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold text-lg text-white bg-navy-800 hover:bg-navy-900 transition-all duration-200"
               style={{ backgroundColor: '#1a2744' }}
             >
-              Get an Instant Quote
+              {getContentValue(content, 'home.bottom_cta_primary_label', 'Get an Instant Quote')}
             </Link>
             <Link
               href="/contact"
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold text-lg border-2 border-white text-white hover:bg-white hover:text-green-600 transition-all duration-200"
             >
-              Contact Us
+              {getContentValue(content, 'home.bottom_cta_secondary_label', 'Contact Us')}
             </Link>
           </div>
         </div>

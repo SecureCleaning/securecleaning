@@ -54,6 +54,7 @@ function BookingConfirmContent() {
 
   const { bookingRef, inputs } = stored
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const nextStep2 = `We match you with a verified Owner-Operator in ${cityLabel}`
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
@@ -110,7 +111,7 @@ function BookingConfirmContent() {
           <ol className="space-y-3">
             {[
               { step: '1', text: 'Our team reviews your booking (usually within 1 business day)' },
-              { step: '2', text: `We match you with a verified Owner-Operator in ${cityLabel}` },
+              { step: '2', text: nextStep2 },
               { step: '3', text: 'A site inspection is arranged — typically within 48 hours' },
               { step: '4', text: 'You receive your operator\'s direct contact details' },
               { step: '5', text: 'Your first clean is scheduled to your preferred date' },
