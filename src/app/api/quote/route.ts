@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { calculateQuote, generateQuoteRef } from '@/lib/quoteEngine'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendQuoteEmail } from '@/lib/email'
+import { getQuotePricingConfig } from '@/lib/pricing'
 import type { QuoteInputs } from '@/lib/types'
 
 export async function POST(request: NextRequest) {
@@ -9,7 +10,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const inputs = body as QuoteInputs
 
-    // ── Validate required fields ──────────────────────────────────────────
     if (!inputs.email || !inputs.businessName || !inputs.city || !inputs.premisesType || !inputs.floorArea) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields.' },
@@ -31,14 +31,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Calculate quote ───────────────────────────────────────────────────
-    const result = calculateQuote(inputs)
+    const pricingConfig = await getQuotePricingConfig()
+    const result = calculateQuote(inputs, pricingConfig)
     const quoteRef = generateQuoteRef()
 
-    // ── Save to Supabase ──────────────────────────────────────────────────
     const db = getAdminSupabase()
 
-    // Upsert client record
     const { data: clientData } = await db
       .from('clients')
       .upsert(
@@ -57,7 +55,6 @@ export async function POST(request: NextRequest) {
 
     const clientId = clientData?.id
 
-    // Insert quote record
     const validUntil = new Date()
     validUntil.setDate(validUntil.getDate() + 30)
 
@@ -72,10 +69,8 @@ export async function POST(request: NextRequest) {
 
     if (quoteError) {
       console.error('[quote] Supabase insert error:', quoteError)
-      // Don't fail the request — still return the quote
     }
 
-    // ── Send emails (non-blocking) ────────────────────────────────────────
     sendQuoteEmail(quoteRef, inputs, result).catch((err) => {
       console.error('[quote] Email send failed:', err)
     })
