@@ -125,6 +125,11 @@ export interface BookingInputs {
   frequency: CleaningFrequency
   timePreference: TimePreference
   preferredStartDate: string  // ISO date string
+  preferredInspectionSlotId?: string
+  preferredInspectionSlotLabel?: string
+  preferredInspectionDay?: string
+  preferredInspectionStartTime?: string
+  preferredInspectionEndTime?: string
   addOns: QuoteAddOns
   notes?: string
   agreedPrice?: number        // per-visit agreed price

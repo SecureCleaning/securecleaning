@@ -3,6 +3,7 @@ import Link from 'next/link'
 const tabs = [
   { href: '/admin/content', label: 'Content' },
   { href: '/admin/pricing', label: 'Pricing' },
+  { href: '/admin/availability', label: 'Availability' },
 ]
 
 export default function AdminNav({ currentPath }: { currentPath: string }) {

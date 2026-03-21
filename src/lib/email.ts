@@ -1,5 +1,6 @@
 import type { QuoteInputs, QuoteResult, BookingInputs } from './types'
 import { formatCurrency } from './quoteEngine'
+import { buildBookingInviteIcs } from './calendarInvite'
 
 /**
  * Email helper module using Resend.
@@ -114,11 +115,23 @@ export async function sendBookingConfirmationEmail(
   if (!resend) return
 
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const bookingInvite = buildBookingInviteIcs(bookingRef, inputs)
+
+  const selectedInspectionWindow = inputs.preferredInspectionSlotLabel
+    ? `${inputs.preferredInspectionSlotLabel}`
+    : null
 
   await resend.emails.send({
     from: FROM_EMAIL,
     to: inputs.email,
     subject: `Booking Confirmed — ${bookingRef}`,
+    attachments: [
+      {
+        filename: `${bookingRef}.ics`,
+        content: bookingInvite,
+        content_type: 'text/calendar; charset=utf-8; method=REQUEST',
+      },
+    ],
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
@@ -127,7 +140,7 @@ export async function sendBookingConfirmationEmail(
         </div>
         <div style="padding: 32px 24px;">
           <p>Hi ${inputs.contactName},</p>
-          <p>Your cleaning service has been booked! We'll be in touch shortly to confirm your assigned Owner-Operator and first clean date.</p>
+          <p>Your cleaning service has been booked. We'll be in touch shortly to confirm your assigned Owner-Operator and first clean date.</p>
           
           <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 8px;">Booking Reference: ${bookingRef}</h2>
@@ -135,9 +148,13 @@ export async function sendBookingConfirmationEmail(
               ${inputs.businessName}<br>
               ${inputs.address}, ${cityLabel}<br>
               Frequency: ${inputs.frequency.replace(/_/g, ' ')}<br>
-              Preferred start: ${inputs.preferredStartDate}
+              Preferred start: ${inputs.preferredStartDate}${selectedInspectionWindow ? `<br>Inspection window: ${selectedInspectionWindow}` : ''}
             </p>
           </div>
+
+          <p style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: 8px; padding: 14px 16px; margin: 24px 0;">
+            We've attached a calendar invite you can save now. It acts as a provisional inspection / follow-up hold until the final appointment time is confirmed.
+          </p>
 
           <h3 style="color: #1a2744;">What happens next?</h3>
           <ol style="color: #334155; line-height: 2;">
@@ -169,7 +186,7 @@ export async function sendBookingConfirmationEmail(
       Phone: ${inputs.phone}<br>
       Address: ${inputs.address}, ${cityLabel}<br>
       Frequency: ${inputs.frequency}<br>
-      Start date: ${inputs.preferredStartDate}</p>
+      Start date: ${inputs.preferredStartDate}${selectedInspectionWindow ? `<br>Inspection window: ${selectedInspectionWindow}` : ''}</p>
     `,
   })
 }

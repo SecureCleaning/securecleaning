@@ -1,5 +1,6 @@
 import { google } from 'googleapis'
 import type { BookingInputs } from './types'
+import { getBookingEventWindow } from './calendarInvite'
 
 function getCalendarClient() {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID
@@ -40,12 +41,7 @@ export async function createBookingFollowUpEvent(
 
   const calendar = google.calendar({ version: 'v3', auth })
 
-  const startDate = new Date(inputs.preferredStartDate)
-  const startHour = inputs.timePreference === 'after_hours' ? 18 : inputs.timePreference === 'weekend' ? 10 : 9
-  startDate.setHours(startHour, 0, 0, 0)
-
-  const endDate = new Date(startDate)
-  endDate.setHours(startDate.getHours() + 1)
+  const { start: startDate, end: endDate } = getBookingEventWindow(inputs)
 
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
 
@@ -62,6 +58,7 @@ export async function createBookingFollowUpEvent(
         `City: ${cityLabel}`,
         `Frequency: ${inputs.frequency}`,
         `Time preference: ${inputs.timePreference}`,
+        `Inspection window: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
         `Notes: ${inputs.notes || 'None'}`,
       ].join('\n'),
       start: {

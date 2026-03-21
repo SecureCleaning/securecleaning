@@ -74,6 +74,9 @@ function BookingConfirmContent() {
           <p className="text-gray-500 text-sm mt-1">
             Confirmation sent to <strong>{inputs.email}</strong>
           </p>
+          <p className="text-blue-700 text-sm mt-2">
+            A provisional calendar invite is attached in your email so you can save the booking now.
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-8">
@@ -103,6 +106,12 @@ function BookingConfirmContent() {
               <dt className="text-gray-500">Time Preference</dt>
               <dd className="font-semibold mt-0.5 capitalize">{inputs.timePreference.replace(/_/g, ' ')}</dd>
             </div>
+            {inputs.preferredInspectionSlotLabel ? (
+              <div className="col-span-2">
+                <dt className="text-gray-500">Inspection Window</dt>
+                <dd className="font-semibold mt-0.5">{inputs.preferredInspectionSlotLabel}</dd>
+              </div>
+            ) : null}
           </dl>
         </div>
 

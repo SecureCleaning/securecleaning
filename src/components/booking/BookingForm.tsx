@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
@@ -63,7 +63,16 @@ function getTomorrowStr(): string {
 
 type FormErrors = Partial<Record<keyof BookingInputs, string>>
 
-function validate(data: Partial<BookingInputs>): FormErrors {
+type AvailabilitySuggestion = {
+  slotId: string
+  label: string
+  day: string
+  startTime: string
+  endTime: string
+  zoneNames: string[]
+}
+
+function validate(data: Partial<BookingInputs>, hasAvailabilityOptions: boolean): FormErrors {
   const errors: FormErrors = {}
   if (!data.businessName?.trim()) errors.businessName = 'Required'
   if (!data.contactName?.trim()) errors.contactName = 'Required'
@@ -77,6 +86,9 @@ function validate(data: Partial<BookingInputs>): FormErrors {
   if (!data.frequency) errors.frequency = 'Required'
   if (!data.timePreference) errors.timePreference = 'Required'
   if (!data.preferredStartDate) errors.preferredStartDate = 'Please select a start date'
+  if (hasAvailabilityOptions && !data.preferredInspectionSlotId) {
+    errors.preferredInspectionSlotId = 'Please choose an inspection window'
+  }
   return errors
 }
 
@@ -94,6 +106,8 @@ export default function BookingForm() {
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [availabilitySuggestions, setAvailabilitySuggestions] = useState<AvailabilitySuggestion[]>([])
+  const [availabilityMessage, setAvailabilityMessage] = useState<string>('')
 
   const update = (updates: Partial<BookingInputs>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -102,9 +116,84 @@ export default function BookingForm() {
     setErrors(cleared)
   }
 
+  useEffect(() => {
+    const address = formData.address?.trim()
+    const city = formData.city
+
+    if (!address || !city) {
+      setAvailabilitySuggestions([])
+      setAvailabilityMessage('')
+      return
+    }
+
+    const controller = new AbortController()
+    const timeout = window.setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `/api/availability?city=${encodeURIComponent(city)}&address=${encodeURIComponent(address)}`,
+          { signal: controller.signal }
+        )
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result.error || 'Unable to load availability.')
+        }
+
+        const suggestions = Array.isArray(result.suggestions)
+          ? (result.suggestions as AvailabilitySuggestion[])
+          : []
+
+        setAvailabilitySuggestions(suggestions)
+        setAvailabilityMessage(
+          suggestions.length > 0
+            ? 'Available inspection windows for this area:'
+            : 'No zone match yet for this address. You can still submit, and we will confirm manually.'
+        )
+
+        setFormData((current) => {
+          const existingSelectionStillValid = suggestions.some(
+            (suggestion) => suggestion.slotId === current.preferredInspectionSlotId
+          )
+
+          if (existingSelectionStillValid || suggestions.length === 0) {
+            return suggestions.length === 0
+              ? {
+                  ...current,
+                  preferredInspectionSlotId: undefined,
+                  preferredInspectionSlotLabel: undefined,
+                  preferredInspectionDay: undefined,
+                  preferredInspectionStartTime: undefined,
+                  preferredInspectionEndTime: undefined,
+                }
+              : current
+          }
+
+          const first = suggestions[0]
+          return {
+            ...current,
+            preferredInspectionSlotId: first.slotId,
+            preferredInspectionSlotLabel: first.label,
+            preferredInspectionDay: first.day,
+            preferredInspectionStartTime: first.startTime,
+            preferredInspectionEndTime: first.endTime,
+          }
+        })
+      } catch (error) {
+        if (controller.signal.aborted) return
+        setAvailabilitySuggestions([])
+        setAvailabilityMessage('Unable to check availability right now. You can still submit your booking request.')
+      }
+    }, 350)
+
+    return () => {
+      controller.abort()
+      window.clearTimeout(timeout)
+    }
+  }, [formData.address, formData.city])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const errs = validate(formData)
+    const errs = validate(formData, availabilitySuggestions.length > 0)
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -171,6 +260,55 @@ export default function BookingForm() {
             value={formData.floorArea || ''} onChange={(e) => update({ floorArea: Number(e.target.value) })} error={errors.floorArea} />
         </div>
       </section>
+
+      {formData.address?.trim() && formData.city && availabilityMessage ? (
+        <section className="bg-blue-50 rounded-2xl border border-blue-100 p-6">
+          <h2 className="text-base font-bold mb-2 text-blue-900">Area-based inspection availability</h2>
+          <p className="text-sm text-blue-800 mb-3">{availabilityMessage}</p>
+          {availabilitySuggestions.length > 0 ? (
+            <div className="space-y-2 text-sm text-blue-900">
+              {availabilitySuggestions.map((suggestion) => {
+                const checked = formData.preferredInspectionSlotId === suggestion.slotId
+                return (
+                  <label
+                    key={suggestion.slotId}
+                    className={`block rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                      checked ? 'bg-white border-blue-500 ring-2 ring-blue-200' : 'bg-white/80 border-blue-100'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="preferredInspectionSlot"
+                        className="mt-1"
+                        checked={checked}
+                        onChange={() =>
+                          update({
+                            preferredInspectionSlotId: suggestion.slotId,
+                            preferredInspectionSlotLabel: suggestion.label,
+                            preferredInspectionDay: suggestion.day,
+                            preferredInspectionStartTime: suggestion.startTime,
+                            preferredInspectionEndTime: suggestion.endTime,
+                          })
+                        }
+                      />
+                      <div>
+                        <div className="font-semibold">{suggestion.label}</div>
+                        <div className="text-blue-700 text-xs mt-1">
+                          Matched zone{suggestion.zoneNames.length > 1 ? 's' : ''}: {suggestion.zoneNames.join(', ')}
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          ) : null}
+          {errors.preferredInspectionSlotId ? (
+            <p className="text-sm text-red-600 mt-3">{errors.preferredInspectionSlotId}</p>
+          ) : null}
+        </section>
+      ) : null}
 
       {/* Schedule */}
       <section className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
