@@ -19,10 +19,10 @@ const frequencyOptions: { value: CleaningFrequency; label: string; subtext: stri
   { value: 'once_off', label: 'Once-Off', subtext: 'Single clean' },
 ]
 
-const timeOptions: { value: TimePreference; label: string; subtext: string; surcharge?: string }[] = [
-  { value: 'business_hours', label: 'Business Hours', subtext: '6am – 6pm weekdays', },
-  { value: 'after_hours', label: 'After Hours', subtext: 'After 6pm weekdays', surcharge: '+25%' },
-  { value: 'weekend', label: 'Weekend', subtext: 'Sat or Sun', surcharge: '+50%' },
+const timeOptions: { value: TimePreference; label: string; subtext: string }[] = [
+  { value: 'business_hours', label: 'Business Hours', subtext: '6am – 6pm weekdays' },
+  { value: 'after_hours', label: 'After Hours', subtext: 'After 6pm weekdays' },
+  { value: 'weekend', label: 'Weekend', subtext: 'Sat or Sun' },
 ]
 
 const defaultAddOns: QuoteAddOns = {
@@ -109,11 +109,6 @@ export default function StepThree({ data, onChange, errors }: StepThreeProps) {
                     style={selected ? { color: '#1a2744' } : undefined}>
                     {opt.label}
                   </span>
-                  {opt.surcharge && (
-                    <span className="text-xs font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
-                      {opt.surcharge}
-                    </span>
-                  )}
                 </div>
                 <span className="text-xs text-gray-500 mt-0.5">{opt.subtext}</span>
               </button>
@@ -127,12 +122,6 @@ export default function StepThree({ data, onChange, errors }: StepThreeProps) {
       <div>
         <p className="text-sm font-medium text-gray-700 mb-4">Optional Add-ons</p>
         <div className="space-y-4 p-5 bg-gray-50 rounded-xl border border-gray-200">
-          <Checkbox
-            label="Consumables Supply"
-            description="Toilet paper, hand soap, paper towels supplied and restocked each visit. (+$25/visit)"
-            checked={addOns.consumables}
-            onChange={() => toggleAddOn('consumables')}
-          />
           <Checkbox
             label="High-Touch Point Disinfection"
             description="Enhanced disinfection of door handles, light switches, lift buttons, and shared touch surfaces. (Priced by floor area)"

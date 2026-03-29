@@ -2,49 +2,17 @@
 
 import { useState } from 'react'
 import type { QuotePricingConfig, PricingItem, PricingItemUnit } from '@/lib/pricing'
+import AdminGate from './AdminGate'
 
 const UNIT_OPTIONS: PricingItemUnit[] = ['fixed', 'count', 'sqm', 'flag']
 
 export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePricingConfig }) {
-  const [password, setPassword] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [config, setConfig] = useState<QuotePricingConfig>(initialConfig)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
     message: '',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-
-  async function handleUnlock(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setIsLoading(true)
-    setStatus({ type: 'idle', message: '' })
-
-    try {
-      const response = await fetch('/api/admin/pricing', {
-        method: 'GET',
-        headers: { 'x-admin-password': password },
-        cache: 'no-store',
-      })
-
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Invalid password.')
-      }
-
-      setConfig(result.config as QuotePricingConfig)
-      setIsAuthenticated(true)
-      setStatus({ type: 'success', message: 'Unlocked pricing editor.' })
-    } catch (error) {
-      setStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to unlock pricing editor.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -56,7 +24,6 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
         },
         body: JSON.stringify({ config }),
       })
@@ -108,9 +75,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
   function updateItem(itemId: string, updates: Partial<PricingItem>) {
     setConfig((current) => ({
       ...current,
-      items: current.items.map((item) =>
-        item.id === itemId ? { ...item, ...updates } : item
-      ),
+      items: current.items.map((item) => (item.id === itemId ? { ...item, ...updates } : item)),
     }))
   }
 
@@ -154,43 +119,10 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
           </p>
         </div>
 
-        {!isAuthenticated ? (
-          <div className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-            <h2 className="text-xl font-bold mb-3" style={{ color: '#1a2744' }}>
-              Unlock editor
-            </h2>
-            <p className="text-sm text-gray-600 mb-5">
-              Enter the internal content password to load editable pricing settings.
-            </p>
-            <form onSubmit={handleUnlock} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Enter CONTENT_ADMIN_PASSWORD"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full rounded-lg px-4 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-                style={{ backgroundColor: '#1fb56c' }}
-              >
-                {isLoading ? 'Checking…' : 'Unlock Pricing Editor'}
-              </button>
-            </form>
-
-            {status.message ? (
-              <p className={`mt-4 text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                {status.message}
-              </p>
-            ) : null}
-          </div>
-        ) : (
+        <AdminGate
+          title="Unlock pricing editor"
+          description="Enter the internal content password to manage pricing configuration."
+        >
           <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
@@ -266,41 +198,61 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
               <div className="space-y-4">
                 {config.items.map((item) => (
                   <div key={item.id} className="rounded-xl border border-gray-200 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                        <input value={item.name} onChange={(event) => updateItem(item.id, { name: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Code</label>
-                        <input value={item.code} onChange={(event) => updateItem(item.id, { code: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Unit type</label>
-                        <select value={item.unitType} onChange={(event) => updateItem(item.id, { unitType: event.target.value as PricingItemUnit })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-                          {UNIT_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Rate</label>
-                        <input type="number" step="0.01" value={item.rate} onChange={(event) => updateItem(item.id, { rate: Number(event.target.value) })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                      </div>
-                      <div className="flex items-end gap-3">
-                        <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                          <input type="checkbox" checked={item.active} onChange={(event) => updateItem(item.id, { active: event.target.checked })} />
-                          Active
-                        </label>
-                        <button type="button" onClick={() => removeItem(item.id)} className="text-sm font-semibold text-red-600 hover:text-red-700">
-                          Delete
-                        </button>
-                      </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
+                      <input
+                        type="text"
+                        value={item.code}
+                        onChange={(event) => updateItem(item.id, { code: event.target.value })}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Code"
+                      />
+                      <input
+                        type="text"
+                        value={item.name}
+                        onChange={(event) => updateItem(item.id, { name: event.target.value })}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Name"
+                      />
+                      <select
+                        value={item.unitType}
+                        onChange={(event) => updateItem(item.id, { unitType: event.target.value as PricingItemUnit })}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        {UNIT_OPTIONS.map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.rate}
+                        onChange={(event) => updateItem(item.id, { rate: Number(event.target.value) })}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        placeholder="Rate"
+                      />
+                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={item.active}
+                          onChange={(event) => updateItem(item.id, { active: event.target.checked })}
+                        />
+                        Active
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
                     </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                      <input value={item.notes ?? ''} onChange={(event) => updateItem(item.id, { notes: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                    </div>
+                    <textarea
+                      value={item.notes ?? ''}
+                      onChange={(event) => updateItem(item.id, { notes: event.target.value })}
+                      className="mt-3 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      rows={2}
+                      placeholder="Internal notes"
+                    />
                   </div>
                 ))}
               </div>
@@ -312,7 +264,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
               </p>
             ) : null}
           </form>
-        )}
+        </AdminGate>
       </div>
     </div>
   )

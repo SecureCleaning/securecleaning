@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import ProgressBar from '@/components/ui/ProgressBar'
 import Button from '@/components/ui/Button'
@@ -9,6 +9,7 @@ import StepTwo from './StepTwo'
 import StepThree from './StepThree'
 import StepFour from './StepFour'
 import type { QuoteInputs, QuoteAddOns } from '@/lib/types'
+import { getQuoteDraft, saveQuoteDraft, saveQuoteResult } from '@/lib/quoteSession'
 
 const TOTAL_STEPS = 4
 
@@ -25,6 +26,7 @@ const defaultAddOns: QuoteAddOns = {
 
 const initialData: Partial<QuoteInputs> = {
   floors: 1,
+  floorArea: 150,
   addOns: defaultAddOns,
   isSpringClean: false,
 }
@@ -65,6 +67,17 @@ export default function QuoteForm() {
   const [errors, setErrors] = useState<StepErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const draft = getQuoteDraft()
+    if (draft) {
+      setFormData((prev) => ({ ...prev, ...draft }))
+    }
+  }, [])
+
+  useEffect(() => {
+    saveQuoteDraft(formData)
+  }, [formData])
 
   const updateData = (updates: Partial<QuoteInputs>) => {
     setFormData((prev) => ({ ...prev, ...updates }))
@@ -117,11 +130,15 @@ export default function QuoteForm() {
         throw new Error(data.error ?? 'Failed to submit quote')
       }
 
-      // Store result in sessionStorage for the result page
-      sessionStorage.setItem(
-        'quoteResult',
-        JSON.stringify({ quoteRef: data.quoteRef, result: data.result, inputs: formData })
-      )
+      saveQuoteResult({
+        quoteRef: data.quoteRef,
+        result: data.result,
+        inputs: formData as QuoteInputs,
+      })
+
+      if (data.emailSent === false) {
+        setSubmitError(data.emailError ?? 'Your quote was created, but the email could not be sent.')
+      }
 
       router.push(`/quote/result?ref=${data.quoteRef}`)
     } catch (err) {

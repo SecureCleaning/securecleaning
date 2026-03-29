@@ -18,10 +18,11 @@ const flooringOptions = [
 ]
 
 const SLIDER_MIN = 50
-const SLIDER_MAX = 5000
+const SLIDER_MAX = 400
+const DEFAULT_FLOOR_AREA = 150
 
 export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
-  const [sliderValue, setSliderValue] = useState(data.floorArea ?? 300)
+  const [sliderValue, setSliderValue] = useState(data.floorArea ?? DEFAULT_FLOOR_AREA)
 
   const handleSliderChange = (value: number) => {
     setSliderValue(value)
@@ -31,8 +32,9 @@ export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
   const handleNumberChange = (raw: string) => {
     const num = parseInt(raw, 10)
     if (!isNaN(num) && num >= 0) {
-      setSliderValue(Math.min(num, SLIDER_MAX))
-      onChange({ floorArea: num })
+      const bounded = Math.max(SLIDER_MIN, Math.min(num, SLIDER_MAX))
+      setSliderValue(bounded)
+      onChange({ floorArea: bounded })
     }
   }
 
@@ -71,8 +73,8 @@ export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
           <div className="w-28 shrink-0">
             <input
               type="number"
-              min={1}
-              max={100000}
+              min={SLIDER_MIN}
+              max={SLIDER_MAX}
               value={data.floorArea ?? ''}
               onChange={(e) => handleNumberChange(e.target.value)}
               className="block w-full px-3 py-2 text-center rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent font-semibold"
@@ -110,7 +112,7 @@ export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
           onChange={(e) =>
             onChange({ addOns: { ...(data.addOns ?? { bathrooms: 0, kitchens: 0, windows: 0, consumables: false, highTouchDisinfection: false, carpetSteam: false }), bathrooms: parseInt(e.target.value) || 0 } })
           }
-          hint="+$30 per bathroom"
+          hint="Count only — pricing confirmed after site review"
         />
         <Input
           label="Kitchens / Kitchenettes"
@@ -122,7 +124,7 @@ export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
           onChange={(e) =>
             onChange({ addOns: { ...(data.addOns ?? { bathrooms: 0, kitchens: 0, windows: 0, consumables: false, highTouchDisinfection: false, carpetSteam: false }), kitchens: parseInt(e.target.value) || 0 } })
           }
-          hint="+$50 per kitchen"
+          hint="Count only — pricing confirmed after site review"
         />
       </div>
 
@@ -147,7 +149,7 @@ export default function StepTwo({ data, onChange, errors }: StepTwoProps) {
           onChange={(e) =>
             onChange({ addOns: { ...(data.addOns ?? { bathrooms: 0, kitchens: 0, windows: 0, consumables: false, highTouchDisinfection: false, carpetSteam: false }), windows: parseInt(e.target.value) || 0 } })
           }
-          hint="+$15 per window per clean"
+          hint="Count only — pricing confirmed after site review"
         />
       </div>
 

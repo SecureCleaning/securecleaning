@@ -3,14 +3,8 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import QuoteResultComponent from '@/components/quote/QuoteResult'
-import type { QuoteResult, QuoteInputs } from '@/lib/types'
 import Link from 'next/link'
-
-interface StoredQuoteResult {
-  quoteRef: string
-  result: QuoteResult
-  inputs: QuoteInputs
-}
+import { getQuoteResult, type StoredQuoteResult } from '@/lib/quoteSession'
 
 function QuoteResultContent() {
   const searchParams = useSearchParams()
@@ -19,16 +13,12 @@ function QuoteResultContent() {
   const [notFound, setNotFound] = useState(false)
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('quoteResult')
-    if (raw) {
-      try {
-        const parsed: StoredQuoteResult = JSON.parse(raw)
-        if (!ref || parsed.quoteRef === ref) {
-          setStored(parsed)
-          return
-        }
-      } catch {}
+    const storedResult = getQuoteResult()
+    if (storedResult && (!ref || storedResult.quoteRef === ref)) {
+      setStored(storedResult)
+      return
     }
+
     setNotFound(true)
   }, [ref])
 

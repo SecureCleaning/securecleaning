@@ -77,7 +77,7 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
     { id: 'bathrooms', code: 'bathrooms', name: 'Bathrooms', unitType: 'count', rate: 30, active: true, notes: 'Per bathroom per visit' },
     { id: 'kitchens', code: 'kitchens', name: 'Kitchens / kitchenettes', unitType: 'count', rate: 50, active: true, notes: 'Per kitchen per visit' },
     { id: 'windows', code: 'windows', name: 'External windows', unitType: 'count', rate: 15, active: true, notes: 'Per window per visit' },
-    { id: 'consumables', code: 'consumables', name: 'Consumables supply', unitType: 'fixed', rate: 25, active: true, notes: 'Flat rate per visit when selected' },
+    { id: 'consumables', code: 'consumables', name: 'Consumables supply', unitType: 'fixed', rate: 25, active: false, notes: 'Handled separately outside public quote flow' },
     { id: 'highTouchDisinfection', code: 'highTouchDisinfection', name: 'High-touch disinfection', unitType: 'sqm', rate: 0.04, active: true, notes: 'Per sqm per visit when selected' },
     { id: 'carpetSteam', code: 'carpetSteam', name: 'Carpet steam cleaning', unitType: 'flag', rate: 0, active: true, notes: 'Quoted separately — informational only' },
   ],

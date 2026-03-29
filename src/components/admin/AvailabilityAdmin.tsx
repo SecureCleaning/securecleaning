@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { AvailabilityConfig, ServiceZone, WeeklyAvailabilitySlot, Weekday } from '@/lib/availability'
+import AdminGate from './AdminGate'
 
 const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -17,45 +18,12 @@ function fromCsv(value: string): string[] {
 }
 
 export default function AvailabilityAdmin({ initialConfig }: { initialConfig: AvailabilityConfig }) {
-  const [password, setPassword] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [config, setConfig] = useState<AvailabilityConfig>(initialConfig)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
     message: '',
   })
-  const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  async function handleUnlock(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setIsLoading(true)
-    setStatus({ type: 'idle', message: '' })
-
-    try {
-      const response = await fetch('/api/admin/availability', {
-        method: 'GET',
-        headers: { 'x-admin-password': password },
-        cache: 'no-store',
-      })
-
-      const result = await response.json()
-      if (!response.ok) {
-        throw new Error(result.error || 'Invalid password.')
-      }
-
-      setConfig(result.config as AvailabilityConfig)
-      setIsAuthenticated(true)
-      setStatus({ type: 'success', message: 'Unlocked availability editor.' })
-    } catch (error) {
-      setStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to unlock availability editor.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -67,7 +35,6 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
         },
         body: JSON.stringify({ config }),
       })
@@ -167,36 +134,10 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
           </p>
         </div>
 
-        {!isAuthenticated ? (
-          <div className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-            <h2 className="text-xl font-bold mb-3" style={{ color: '#1a2744' }}>Unlock editor</h2>
-            <p className="text-sm text-gray-600 mb-5">
-              Enter the internal content password to load editable availability settings.
-            </p>
-            <form onSubmit={handleUnlock} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Enter CONTENT_ADMIN_PASSWORD"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full rounded-lg px-4 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-                style={{ backgroundColor: '#1fb56c' }}
-              >
-                {isLoading ? 'Checking…' : 'Unlock Availability Editor'}
-              </button>
-            </form>
-            {status.message ? <p className={`mt-4 text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{status.message}</p> : null}
-          </div>
-        ) : (
+        <AdminGate
+          title="Unlock availability editor"
+          description="Enter the internal content password to manage service zones and availability settings."
+        >
           <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
@@ -259,8 +200,8 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
             <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
-                  <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Weekly inspection windows</h3>
-                  <p className="text-sm text-gray-600">Each slot can apply to one or more service zones.</p>
+                  <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Weekly inspection slots</h3>
+                  <p className="text-sm text-gray-600">Attach one or more service zones to each weekly slot.</p>
                 </div>
                 <button type="button" onClick={addSlot} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#1a2744' }}>
                   Add Slot
@@ -285,7 +226,9 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
                         <select value={slot.day} onChange={(event) => updateSlot(slot.id, { day: event.target.value as Weekday })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-                          {DAY_OPTIONS.map((day) => <option key={day} value={day}>{day}</option>)}
+                          {DAY_OPTIONS.map((day) => (
+                            <option key={day} value={day}>{day}</option>
+                          ))}
                         </select>
                       </div>
                       <div>
@@ -297,38 +240,45 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
                         <input type="time" value={slot.endTime} onChange={(event) => updateSlot(slot.id, { endTime: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
                       </div>
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Apply to zones</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Matched zones</label>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-gray-200 p-4">
                         {zoneOptions.map((zone) => {
                           const checked = slot.zoneIds.includes(zone.id)
                           return (
-                            <label key={zone.id} className="inline-flex items-center gap-2 text-sm text-gray-700">
+                            <label key={zone.id} className="flex items-start gap-2 text-sm text-gray-700">
                               <input
                                 type="checkbox"
                                 checked={checked}
-                                onChange={(event) => updateSlot(slot.id, {
-                                  zoneIds: event.target.checked
+                                onChange={(event) => {
+                                  const nextZoneIds = event.target.checked
                                     ? [...slot.zoneIds, zone.id]
-                                    : slot.zoneIds.filter((id) => id !== zone.id),
-                                })}
+                                    : slot.zoneIds.filter((id) => id !== zone.id)
+                                  updateSlot(slot.id, { zoneIds: nextZoneIds })
+                                }}
                               />
-                              {zone.label}
+                              <span>{zone.label}</span>
                             </label>
                           )
                         })}
                       </div>
                     </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                        <input type="checkbox" checked={slot.active} onChange={(event) => updateSlot(slot.id, { active: event.target.checked })} />
-                        Active
-                      </label>
-                      <button type="button" onClick={() => removeSlot(slot.id)} className="text-sm font-semibold text-red-600 hover:text-red-700">Delete</button>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                      <input value={slot.notes ?? ''} onChange={(event) => updateSlot(slot.id, { notes: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                        <textarea rows={2} value={slot.notes ?? ''} onChange={(event) => updateSlot(slot.id, { notes: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                      </div>
+                      <div className="flex items-center justify-between gap-4 md:justify-end">
+                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 mt-7 md:mt-0">
+                          <input type="checkbox" checked={slot.active} onChange={(event) => updateSlot(slot.id, { active: event.target.checked })} />
+                          Active slot
+                        </label>
+                        <button type="button" onClick={() => removeSlot(slot.id)} className="text-sm font-semibold text-red-600 hover:text-red-700 mt-7 md:mt-0">
+                          Delete slot
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -337,7 +287,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
 
             {status.message ? <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{status.message}</p> : null}
           </form>
-        )}
+        </AdminGate>
       </div>
     </div>
   )

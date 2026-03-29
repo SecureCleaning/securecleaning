@@ -1,6 +1,8 @@
 import Link from 'next/link'
 
 const tabs = [
+  { href: '/admin', label: 'Overview' },
+  { href: '/admin/sites', label: 'Sites' },
   { href: '/admin/content', label: 'Content' },
   { href: '/admin/pricing', label: 'Pricing' },
   { href: '/admin/availability', label: 'Availability' },

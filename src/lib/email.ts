@@ -8,34 +8,49 @@ import { buildBookingInviteIcs } from './calendarInvite'
  */
 
 function getResend() {
-  const { Resend } = require('resend')
   if (!process.env.RESEND_API_KEY) {
     console.warn('[email] RESEND_API_KEY not set — emails will not be sent.')
     return null
   }
-  return new Resend(process.env.RESEND_API_KEY)
+
+  try {
+    const { Resend } = require('resend')
+    return new Resend(process.env.RESEND_API_KEY)
+  } catch (error) {
+    console.error('[email] Failed to load resend package:', error)
+    return null
+  }
 }
 
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'info@securecleaning.au'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@securecleaning.au'
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://securecleaning.com.au'
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://securecleaning.au'
 
 // ─── Quote Email ──────────────────────────────────────────────────────────────
+
+export async function sendEmailOrThrow(payload: Record<string, unknown>) {
+  const resend = getResend()
+  if (!resend) {
+    throw new Error('Email service is not configured. Check RESEND_API_KEY.')
+  }
+
+  const response = await resend.emails.send(payload)
+  if (response?.error) {
+    throw new Error(response.error.message || 'Email send failed')
+  }
+}
 
 export async function sendQuoteEmail(
   quoteRef: string,
   inputs: QuoteInputs,
   result: QuoteResult
 ): Promise<void> {
-  const resend = getResend()
-  if (!resend) return
-
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const lowFmt = formatCurrency(result.totalLow)
   const highFmt = formatCurrency(result.totalHigh)
 
   // Email to client
-  await resend.emails.send({
+  await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     subject: `Your Secure Cleaning Aus Quote — ${quoteRef}`,
@@ -64,15 +79,18 @@ export async function sendQuoteEmail(
             <li>Frequency: ${inputs.frequency.replace(/_/g, ' ')}</li>
             <li>Time preference: ${inputs.timePreference.replace(/_/g, ' ')}</li>
             <li>City: ${cityLabel}</li>
-            <li>Estimated hours per visit: ${result.estimatedHours}h</li>
           </ul>
 
           <p style="margin-top: 32px;">
             Ready to proceed? Book your first clean:
           </p>
           <a href="${SITE_URL}/booking?quoteRef=${quoteRef}" 
-             style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+             style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 12px;">
             Book Now
+          </a>
+          <a href="${SITE_URL}/quote/${quoteRef}" 
+             style="display: inline-block; background: #1a2744; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">
+            View Quote Online
           </a>
 
           <p style="color: #64748b; font-size: 13px; margin-top: 32px;">
@@ -87,7 +105,7 @@ export async function sendQuoteEmail(
   })
 
   // Notification to admin
-  await resend.emails.send({
+  await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: ADMIN_EMAIL,
     subject: `[New Quote] ${quoteRef} — ${inputs.businessName} (${cityLabel})`,
@@ -111,9 +129,6 @@ export async function sendBookingConfirmationEmail(
   bookingRef: string,
   inputs: BookingInputs
 ): Promise<void> {
-  const resend = getResend()
-  if (!resend) return
-
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const bookingInvite = buildBookingInviteIcs(bookingRef, inputs)
 
@@ -121,7 +136,7 @@ export async function sendBookingConfirmationEmail(
     ? `${inputs.preferredInspectionSlotLabel}`
     : null
 
-  await resend.emails.send({
+  await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     subject: `Booking Confirmed — ${bookingRef}`,
@@ -174,7 +189,7 @@ export async function sendBookingConfirmationEmail(
   })
 
   // Admin notification
-  await resend.emails.send({
+  await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: ADMIN_EMAIL,
     subject: `[New Booking] ${bookingRef} — ${inputs.businessName} (${cityLabel})`,

@@ -3,6 +3,8 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
 import type { BookingInputs } from '@/lib/types'
+import { createSiteFromBooking, findMatchingSiteForBooking } from '@/lib/siteMatching'
+import { createAdminNotification } from '@/lib/adminNotifications'
 
 function generateBookingRef(): string {
   const date = new Date()
@@ -90,6 +92,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ── Match or create site ──────────────────────────────────────────────
+    let matchedSite = await findMatchingSiteForBooking(inputs, clientData.id)
+    if (!matchedSite) {
+      try {
+        matchedSite = await createSiteFromBooking(inputs, clientData.id)
+      } catch (siteError) {
+        console.error('[booking] Site auto-create failed:', siteError)
+      }
+    }
+
     // ── Insert booking ────────────────────────────────────────────────────
     const bookingRef = generateBookingRef()
 
@@ -97,6 +109,7 @@ export async function POST(request: NextRequest) {
       booking_ref: bookingRef,
       quote_id: quoteId,
       client_id: clientData.id,
+      site_id: matchedSite?.id ?? null,
       inputs: inputs,
       status: 'pending',
       first_clean_date: inputs.preferredStartDate,
@@ -129,10 +142,12 @@ export async function POST(request: NextRequest) {
       console.error('[booking] Non-critical lead insert failed:', leadInsertError)
     }
 
-    // ── Send confirmation emails (non-blocking) ───────────────────────────
-    sendBookingConfirmationEmail(bookingRef, inputs).catch((err) => {
+    // ── Send confirmation emails ──────────────────────────────────────────
+    try {
+      await sendBookingConfirmationEmail(bookingRef, inputs)
+    } catch (err) {
       console.error('[booking] Email send failed:', err)
-    })
+    }
 
     // ── Create Google Calendar follow-up event (non-blocking) ─────────────
     createBookingFollowUpEvent(bookingRef, inputs)
@@ -144,6 +159,12 @@ export async function POST(request: NextRequest) {
       .catch((err) => {
         console.error('[booking] Calendar event failed:', err)
       })
+
+    await createAdminNotification(
+      'new_booking',
+      `New booking ${bookingRef}`,
+      `${inputs.businessName} in ${inputs.city} submitted a booking request.`
+    )
 
     return NextResponse.json({
       success: true,

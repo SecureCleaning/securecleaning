@@ -6,7 +6,9 @@ import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import Button from '@/components/ui/Button'
 import CalendarPicker from './CalendarPicker'
+import AddressAutocomplete from './AddressAutocomplete'
 import type { BookingInputs, City, PremisesType, CleaningFrequency, TimePreference, QuoteAddOns } from '@/lib/types'
+import { getBookingPrefillFromQuote } from '@/lib/quoteSession'
 
 const defaultAddOns: QuoteAddOns = {
   bathrooms: 0,
@@ -83,6 +85,7 @@ function validate(data: Partial<BookingInputs>, hasAvailabilityOptions: boolean)
   if (!data.city) errors.city = 'Required'
   if (!data.premisesType) errors.premisesType = 'Required'
   if (!data.floorArea || data.floorArea <= 0) errors.floorArea = 'Required'
+  else if (data.floorArea < 50 || data.floorArea > 400) errors.floorArea = 'Enter a floor area between 50 and 400 sqm'
   if (!data.frequency) errors.frequency = 'Required'
   if (!data.timePreference) errors.timePreference = 'Required'
   if (!data.preferredStartDate) errors.preferredStartDate = 'Please select a start date'
@@ -103,6 +106,7 @@ export default function BookingForm() {
     addOns: defaultAddOns,
     floorArea: 0,
   })
+  const [prefilledFromQuote, setPrefilledFromQuote] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -115,6 +119,24 @@ export default function BookingForm() {
     Object.keys(updates).forEach((k) => delete cleared[k as keyof BookingInputs])
     setErrors(cleared)
   }
+
+  useEffect(() => {
+    if (prefilledFromQuote) return
+
+    const quotePrefill = getBookingPrefillFromQuote(quoteRef)
+    if (!quotePrefill) return
+
+    setFormData((current) => ({
+      ...current,
+      ...quotePrefill,
+      quoteRef: quotePrefill.quoteRef ?? quoteRef,
+      preferredStartDate:
+        quotePrefill.preferredStartDate ?? current.preferredStartDate ?? getDefaultStart(),
+      addOns: quotePrefill.addOns ?? current.addOns ?? defaultAddOns,
+      floorArea: quotePrefill.floorArea ?? current.floorArea,
+    }))
+    setPrefilledFromQuote(true)
+  }, [quoteRef, prefilledFromQuote])
 
   useEffect(() => {
     const address = formData.address?.trim()
@@ -223,9 +245,14 @@ export default function BookingForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8 max-w-2xl mx-auto">
-      {quoteRef && (
+      {quoteRef ? (
         <div className="p-4 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
           <strong>Quote Reference: {quoteRef}</strong> — Completing your booking based on your quote.
+          {prefilledFromQuote ? ' Your quote details have been carried through.' : ' If anything is missing, you can still complete it here.'}
+        </div>
+      ) : (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+          <strong>Prefer a tailored recommendation?</strong> Use this form to book a free onsite quote with a cleaning specialist.
         </div>
       )}
 
@@ -249,14 +276,19 @@ export default function BookingForm() {
         <h2 className="text-lg font-bold mb-5" style={{ color: '#1a2744' }}>Premises Details</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
-            <Input label="Street Address" required placeholder="123 Collins St, Melbourne VIC 3000"
-              value={formData.address ?? ''} onChange={(e) => update({ address: e.target.value })} error={errors.address} />
+            <AddressAutocomplete
+              required
+              city={formData.city}
+              value={formData.address ?? ''}
+              onChange={(value) => update({ address: value })}
+              error={errors.address}
+            />
           </div>
           <Select label="City" options={cityOptions} placeholder="Select city…" required
             value={formData.city ?? ''} onChange={(e) => update({ city: e.target.value as City })} error={errors.city} />
           <Select label="Premises Type" options={premisesOptions} placeholder="Select type…" required
             value={formData.premisesType ?? ''} onChange={(e) => update({ premisesType: e.target.value as PremisesType })} error={errors.premisesType} />
-          <Input label="Floor Area (sqm)" type="number" min={1} required
+          <Input label="Floor Area (sqm)" type="number" min={50} max={400} required
             value={formData.floorArea || ''} onChange={(e) => update({ floorArea: Number(e.target.value) })} error={errors.floorArea} />
         </div>
       </section>
@@ -302,6 +334,35 @@ export default function BookingForm() {
                   </label>
                 )
               })}
+              <label className={`block rounded-lg border px-4 py-3 cursor-pointer transition-colors ${
+                formData.preferredInspectionSlotId === 'contact_me'
+                  ? 'bg-white border-blue-500 ring-2 ring-blue-200'
+                  : 'bg-white/80 border-blue-100'
+              }`}>
+                <div className="flex items-start gap-3">
+                  <input
+                    type="radio"
+                    name="preferredInspectionSlot"
+                    className="mt-1"
+                    checked={formData.preferredInspectionSlotId === 'contact_me'}
+                    onChange={() =>
+                      update({
+                        preferredInspectionSlotId: 'contact_me',
+                        preferredInspectionSlotLabel: 'Please contact me to arrange a suitable inspection time',
+                        preferredInspectionDay: undefined,
+                        preferredInspectionStartTime: undefined,
+                        preferredInspectionEndTime: undefined,
+                      })
+                    }
+                  />
+                  <div>
+                    <div className="font-semibold">Please contact me to arrange a suitable inspection time</div>
+                    <div className="text-blue-700 text-xs mt-1">
+                      Use this if the suggested inspection windows don&apos;t suit.
+                    </div>
+                  </div>
+                </div>
+              </label>
             </div>
           ) : null}
           {errors.preferredInspectionSlotId ? (

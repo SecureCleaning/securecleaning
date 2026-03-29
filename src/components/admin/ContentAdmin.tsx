@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import type { SiteContentRow } from '@/lib/content'
+import AdminGate from './AdminGate'
 
 export default function ContentAdmin({ initialEntries }: { initialEntries: SiteContentRow[] }) {
-  const [password, setPassword] = useState('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [entries, setEntries] = useState<SiteContentRow[]>(initialEntries)
   const [values, setValues] = useState<Record<string, string>>(
     Object.fromEntries(initialEntries.map((entry) => [entry.key, entry.content]))
@@ -15,7 +14,6 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
     message: '',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
 
   const groupedEntries = useMemo(() => {
     return entries.reduce<Record<string, SiteContentRow[]>>((acc, entry) => {
@@ -26,41 +24,6 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
       return acc
     }, {})
   }, [entries])
-
-  async function handleUnlock(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setIsLoading(true)
-    setStatus({ type: 'idle', message: '' })
-
-    try {
-      const response = await fetch('/api/admin/content', {
-        method: 'GET',
-        headers: {
-          'x-admin-password': password,
-        },
-        cache: 'no-store',
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Invalid password.')
-      }
-
-      const nextEntries = result.entries as SiteContentRow[]
-      setEntries(nextEntries)
-      setValues(Object.fromEntries(nextEntries.map((entry) => [entry.key, entry.content])))
-      setIsAuthenticated(true)
-      setStatus({ type: 'success', message: 'Unlocked content editor.' })
-    } catch (error) {
-      setStatus({
-        type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to unlock content editor.',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -79,7 +42,6 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-admin-password': password,
         },
         body: JSON.stringify({ entries: payload }),
       })
@@ -116,43 +78,10 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
           </p>
         </div>
 
-        {!isAuthenticated ? (
-          <div className="max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-            <h2 className="text-xl font-bold mb-3" style={{ color: '#1a2744' }}>
-              Unlock editor
-            </h2>
-            <p className="text-sm text-gray-600 mb-5">
-              Enter the internal content password to load editable site copy.
-            </p>
-            <form onSubmit={handleUnlock} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="Enter CONTENT_ADMIN_PASSWORD"
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full rounded-lg px-4 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-                style={{ backgroundColor: '#1fb56c' }}
-              >
-                {isLoading ? 'Checking…' : 'Unlock Content Editor'}
-              </button>
-            </form>
-
-            {status.message ? (
-              <p className={`mt-4 text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                {status.message}
-              </p>
-            ) : null}
-          </div>
-        ) : (
+        <AdminGate
+          title="Unlock editor"
+          description="Enter the internal content password to manage editable site copy."
+        >
           <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
@@ -207,7 +136,7 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
               </p>
             ) : null}
           </form>
-        )}
+        </AdminGate>
       </div>
     </div>
   )

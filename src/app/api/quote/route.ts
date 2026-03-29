@@ -4,6 +4,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { sendQuoteEmail } from '@/lib/email'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import type { QuoteInputs } from '@/lib/types'
+import { createAdminNotification } from '@/lib/adminNotifications'
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,9 +25,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (inputs.floorArea <= 0 || inputs.floorArea > 100000) {
+    if (inputs.floorArea < 50 || inputs.floorArea > 400) {
       return NextResponse.json(
-        { success: false, error: 'Floor area must be between 1 and 100,000 sqm.' },
+        { success: false, error: 'Floor area must be between 50 and 400 sqm.' },
         { status: 400 }
       )
     }
@@ -71,14 +72,29 @@ export async function POST(request: NextRequest) {
       console.error('[quote] Supabase insert error:', quoteError)
     }
 
-    sendQuoteEmail(quoteRef, inputs, result).catch((err) => {
+    let emailSent = false
+    let emailError: string | null = null
+
+    try {
+      await sendQuoteEmail(quoteRef, inputs, result)
+      emailSent = true
+    } catch (err) {
       console.error('[quote] Email send failed:', err)
-    })
+      emailError = err instanceof Error ? err.message : 'Unable to send quote email.'
+    }
+
+    await createAdminNotification(
+      'new_quote',
+      `New quote ${quoteRef}`,
+      `${inputs.businessName} in ${inputs.city} requested a quote.`
+    )
 
     return NextResponse.json({
       success: true,
       quoteRef,
       result,
+      emailSent,
+      emailError,
     })
   } catch (error) {
     console.error('[api/quote] Unhandled error:', error)

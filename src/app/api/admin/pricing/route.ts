@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getQuotePricingConfig, saveQuotePricingConfig } from '@/lib/pricing'
-
-function isAuthorized(request: NextRequest) {
-  const password = request.headers.get('x-admin-password')
-  const expectedPassword = process.env.CONTENT_ADMIN_PASSWORD
-
-  return Boolean(expectedPassword && password && password === expectedPassword)
-}
+import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -18,7 +12,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
