@@ -1,7 +1,3 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-
 type AdminAlert = {
   id: string
   kind: string
@@ -16,31 +12,7 @@ const severityStyles: Record<AdminAlert['severity'], string> = {
   critical: 'border-red-200 bg-red-50 text-red-900',
 }
 
-export default function AlertsPanel() {
-  const [alerts, setAlerts] = useState<AdminAlert[]>([])
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await fetch('/api/admin/alerts')
-        const result = await response.json()
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Failed to load alerts.')
-        }
-        setAlerts(result.alerts as AdminAlert[])
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load alerts.')
-      }
-    }
-
-    load()
-  }, [])
-
-  if (error) {
-    return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">{error}</div>
-  }
-
+export default function AlertsPanel({ alerts }: { alerts: AdminAlert[] }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-100">

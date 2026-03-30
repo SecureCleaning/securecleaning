@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import type { AvailabilityConfig, ServiceZone, WeeklyAvailabilitySlot, Weekday } from '@/lib/availability'
-import AdminGate from './AdminGate'
 
 const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -134,11 +133,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
           </p>
         </div>
 
-        <AdminGate
-          title="Unlock availability editor"
-          description="Enter the internal content password to manage service zones and availability settings."
-        >
-          <form onSubmit={handleSave} className="space-y-8">
+        <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
                 <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Inspection availability configuration</h2>
@@ -286,8 +281,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
             </section>
 
             {status.message ? <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{status.message}</p> : null}
-          </form>
-        </AdminGate>
+        </form>
       </div>
     </div>
   )

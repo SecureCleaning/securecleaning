@@ -4,7 +4,7 @@ import { CONTENT_DEFAULTS } from '@/lib/content'
 
 export const dynamic = 'force-dynamic'
 
-export default function AdminContentPage() {
+export default async function AdminContentPage() {
   const initialEntries = CONTENT_DEFAULTS.map((entry) => ({ ...entry, updated_at: null }))
 
   return (

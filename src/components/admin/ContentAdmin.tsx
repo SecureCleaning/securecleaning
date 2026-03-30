@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react'
 import type { SiteContentRow } from '@/lib/content'
-import AdminGate from './AdminGate'
 
 export default function ContentAdmin({ initialEntries }: { initialEntries: SiteContentRow[] }) {
   const [entries, setEntries] = useState<SiteContentRow[]>(initialEntries)
@@ -78,11 +77,7 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
           </p>
         </div>
 
-        <AdminGate
-          title="Unlock editor"
-          description="Enter the internal content password to manage editable site copy."
-        >
-          <form onSubmit={handleSave} className="space-y-8">
+        <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
                 <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Editable website copy</h2>
@@ -135,8 +130,7 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
                 {status.message}
               </p>
             ) : null}
-          </form>
-        </AdminGate>
+        </form>
       </div>
     </div>
   )

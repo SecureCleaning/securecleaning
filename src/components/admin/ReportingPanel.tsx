@@ -1,6 +1,3 @@
-'use client'
-
-import { useEffect, useState } from 'react'
 import ReportingTrendNotes from './ReportingTrendNotes'
 
 type ReportingSnapshot = {
@@ -15,35 +12,7 @@ type ReportingSnapshot = {
   leadFollowUpBreakdown: Record<string, number>
 }
 
-export default function ReportingPanel() {
-  const [snapshot, setSnapshot] = useState<ReportingSnapshot | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const response = await fetch('/api/admin/reporting')
-        const result = await response.json()
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Failed to load reporting snapshot.')
-        }
-        setSnapshot(result.snapshot as ReportingSnapshot)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load reporting snapshot.')
-      }
-    }
-
-    load()
-  }, [])
-
-  if (error) {
-    return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">{error}</div>
-  }
-
-  if (!snapshot) {
-    return <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading reporting snapshot…</div>
-  }
-
+export default function ReportingPanel({ snapshot }: { snapshot: ReportingSnapshot }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">

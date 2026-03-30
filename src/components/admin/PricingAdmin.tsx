@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import type { QuotePricingConfig, PricingItem, PricingItemUnit } from '@/lib/pricing'
-import AdminGate from './AdminGate'
 
 const UNIT_OPTIONS: PricingItemUnit[] = ['fixed', 'count', 'sqm', 'flag']
 
@@ -119,11 +118,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
           </p>
         </div>
 
-        <AdminGate
-          title="Unlock pricing editor"
-          description="Enter the internal content password to manage pricing configuration."
-        >
-          <form onSubmit={handleSave} className="space-y-8">
+        <form onSubmit={handleSave} className="space-y-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div>
                 <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote pricing configuration</h2>
@@ -263,8 +258,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
                 {status.message}
               </p>
             ) : null}
-          </form>
-        </AdminGate>
+        </form>
       </div>
     </div>
   )

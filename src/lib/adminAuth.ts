@@ -4,12 +4,17 @@ import { NextRequest } from 'next/server'
 export const ADMIN_SESSION_COOKIE = 'securecleaning_admin_session'
 
 function getExpectedPassword() {
-  return process.env.CONTENT_ADMIN_PASSWORD ?? ''
+  return (process.env.CONTENT_ADMIN_PASSWORD ?? '').trim()
+}
+
+function normalize(value: string | null | undefined) {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 export function isValidAdminPassword(password: string | null | undefined) {
   const expectedPassword = getExpectedPassword()
-  return Boolean(expectedPassword && password && password === expectedPassword)
+  const candidate = normalize(password)
+  return Boolean(expectedPassword && candidate && candidate === expectedPassword)
 }
 
 export function isAuthorizedAdminRequest(request: NextRequest) {
@@ -21,6 +26,11 @@ export function isAuthorizedAdminRequest(request: NextRequest) {
 
 export async function hasAdminSession() {
   const cookieStore = await cookies()
-  const cookiePassword = cookieStore.get(ADMIN_SESSION_COOKIE)?.value
-  return isValidAdminPassword(cookiePassword)
+  const cookieValue = cookieStore.get(ADMIN_SESSION_COOKIE)
+
+  if (!cookieValue?.value) {
+    return false
+  }
+
+  return isValidAdminPassword(cookieValue.value)
 }

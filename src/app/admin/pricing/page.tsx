@@ -4,7 +4,7 @@ import { DEFAULT_QUOTE_PRICING_CONFIG } from '@/lib/pricing'
 
 export const dynamic = 'force-dynamic'
 
-export default function AdminPricingPage() {
+export default async function AdminPricingPage() {
   return (
     <>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">

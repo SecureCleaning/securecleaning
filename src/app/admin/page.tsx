@@ -2,9 +2,9 @@ import AdminNav from '@/components/admin/AdminNav'
 import AdminDashboard from '@/components/admin/AdminDashboard'
 import { getAdminDashboardData } from '@/lib/adminDashboard'
 
-export default async function AdminHomePage() {
-  const dashboardData = await getAdminDashboardData()
+export const dynamic = 'force-dynamic'
 
+export default async function AdminHomePage() {
   return (
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -16,7 +16,7 @@ export default async function AdminHomePage() {
         </p>
 
         <AdminNav currentPath="/admin" />
-        <AdminDashboard initialData={dashboardData} />
+        <AdminDashboard initialData={await getAdminDashboardData()} />
       </div>
     </div>
   )

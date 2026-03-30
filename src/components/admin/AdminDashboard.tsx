@@ -109,6 +109,35 @@ type SiteRow = {
   is_active: boolean
 }
 
+type ReportingSnapshot = {
+  quoteCount: number
+  bookingCount: number
+  pendingBookings: number
+  completedBookings: number
+  activeOperators: number
+  unassignedBookings: number
+  scheduledInspections: number
+  quoteFollowUpBreakdown: Record<string, number>
+  leadFollowUpBreakdown: Record<string, number>
+}
+
+type AdminAlertRow = {
+  id: string
+  kind: string
+  title: string
+  description: string
+  severity: 'info' | 'warning' | 'critical'
+}
+
+type AuditLogRow = {
+  id: string
+  entity_type: string
+  entity_ref: string
+  action: string
+  details: Record<string, unknown>
+  created_at: string
+}
+
 export interface AdminDashboardData {
   stats: DashboardStats
   quotes: QuoteRow[]
@@ -117,6 +146,11 @@ export interface AdminDashboardData {
   leads: LeadRow[]
   operators: OperatorRow[]
   sites: SiteRow[]
+  overview: {
+    reporting: ReportingSnapshot
+    alerts: AdminAlertRow[]
+    auditLog: AuditLogRow[]
+  }
 }
 
 interface Props {
@@ -247,8 +281,8 @@ export default function AdminDashboard({ initialData }: Props) {
   return (
     <div className="space-y-8">
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
-        <ReportingPanel />
-        <AlertsPanel />
+        <ReportingPanel snapshot={initialData.overview.reporting} />
+        <AlertsPanel alerts={initialData.overview.alerts} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -631,7 +665,7 @@ export default function AdminDashboard({ initialData }: Props) {
               </div>
             </div>
           </div>
-          <AuditLogPanel />
+          <AuditLogPanel logs={initialData.overview.auditLog} />
         </div>
       )}
     </div>
