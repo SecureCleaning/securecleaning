@@ -30,6 +30,10 @@ export default function AdminLogin({
         throw new Error(result.error || 'Invalid password.')
       }
 
+      try {
+        sessionStorage.setItem('admin_password', password)
+      } catch {}
+
       window.location.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to unlock admin area.')

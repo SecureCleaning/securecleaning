@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { QuotePricingConfig, PricingItem, PricingItemUnit } from '@/lib/pricing'
+import { getAdminHeaders } from '@/lib/useAdminHeaders'
 
 const UNIT_OPTIONS: PricingItemUnit[] = ['fixed', 'count', 'sqm', 'flag']
 
@@ -23,6 +24,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAdminHeaders(),
         },
         body: JSON.stringify({ config }),
       })

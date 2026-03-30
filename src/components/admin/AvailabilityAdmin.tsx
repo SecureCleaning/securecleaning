@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { AvailabilityConfig, ServiceZone, WeeklyAvailabilitySlot, Weekday } from '@/lib/availability'
+import { getAdminHeaders } from '@/lib/useAdminHeaders'
 
 const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -34,6 +35,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAdminHeaders(),
         },
         body: JSON.stringify({ config }),
       })

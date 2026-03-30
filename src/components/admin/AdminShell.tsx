@@ -10,6 +10,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     setIsLocking(true)
     try {
       await fetch('/api/admin/session', { method: 'DELETE' })
+      try {
+        sessionStorage.removeItem('admin_password')
+      } catch {}
       window.location.reload()
     } finally {
       setIsLocking(false)

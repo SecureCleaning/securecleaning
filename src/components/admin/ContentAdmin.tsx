@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { SiteContentRow } from '@/lib/content'
+import { getAdminHeaders } from '@/lib/useAdminHeaders'
 
 export default function ContentAdmin({ initialEntries }: { initialEntries: SiteContentRow[] }) {
   const [entries, setEntries] = useState<SiteContentRow[]>(initialEntries)
@@ -41,6 +42,7 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAdminHeaders(),
         },
         body: JSON.stringify({ entries: payload }),
       })
