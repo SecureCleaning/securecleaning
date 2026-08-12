@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { sendCleanerEmail } from '@/lib/cleaners'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'email')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
@@ -18,7 +19,7 @@ export async function POST(
       templateName: typeof body?.templateName === 'string' ? body.templateName : null,
       subject: body?.subject,
       body: body?.body,
-      sentBy: body?.sentBy,
+      actor: authorization.identity,
     })
 
     return NextResponse.json({ success: true, email })

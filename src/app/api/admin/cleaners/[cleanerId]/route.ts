@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { getCleanerDetail, updateCleaner } from '@/lib/cleaners'
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'detail')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
@@ -23,13 +24,14 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'mutate')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
     const payload = await request.json()
-    const cleaner = await updateCleaner(params.cleanerId, payload)
+    const cleaner = await updateCleaner(params.cleanerId, payload, authorization.identity)
     return NextResponse.json({ success: true, cleaner })
   } catch (error) {
     console.error('[api/admin/cleaners/:id] Failed to update cleaner:', error)

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { createCleaner, deleteSampleCleaners, searchCleanerPage } from '@/lib/cleaners'
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'list')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   const { searchParams } = request.nextUrl
@@ -27,13 +28,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'mutate')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
     const payload = await request.json()
-    const cleaner = await createCleaner(payload)
+    const cleaner = await createCleaner(payload, authorization.identity)
     return NextResponse.json({ success: true, cleaner })
   } catch (error) {
     console.error('[api/admin/cleaners] Failed to create cleaner:', error)
@@ -45,8 +47,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'sampleDelete')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   if (request.nextUrl.searchParams.get('mode') !== 'sample-cleaners') {
@@ -54,7 +57,7 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const deletedCount = await deleteSampleCleaners()
+    const deletedCount = await deleteSampleCleaners(authorization.identity)
     return NextResponse.json({ success: true, deletedCount })
   } catch (error) {
     console.error('[api/admin/cleaners] Failed to delete sample cleaners:', error)
