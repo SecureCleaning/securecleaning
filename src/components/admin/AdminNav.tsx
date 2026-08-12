@@ -10,6 +10,7 @@ const tabs = [
   { href: '/admin/calendar', label: 'Calendar' },
   { href: '/admin/cleaners', label: 'Cleaners' },
   { href: '/admin/chat', label: 'Chat' },
+  { href: '/admin/staff', label: 'Staff Access' },
 ]
 
 export default function AdminNav({ currentPath }: { currentPath: string }) {

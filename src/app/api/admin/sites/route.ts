@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 

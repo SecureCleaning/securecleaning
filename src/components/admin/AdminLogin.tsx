@@ -4,12 +4,13 @@ import { useState } from 'react'
 
 export default function AdminLogin({
   title = 'Unlock admin',
-  description = 'Enter the internal admin password to continue.',
+  description = 'Sign in with your Secure Cleaning staff account to continue.',
 }: {
   title?: string
   description?: string
 }) {
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('owner')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -22,7 +23,7 @@ export default function AdminLogin({
       const response = await fetch('/api/admin/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       })
 
       const result = await response.json()
@@ -48,13 +49,24 @@ export default function AdminLogin({
           <p className="text-sm text-gray-600 mb-5">{description}</p>
           <form onSubmit={handleUnlock} className="space-y-4">
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+                autoComplete="username"
+                required
+              />
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
               <input
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Enter CONTENT_ADMIN_PASSWORD"
+                autoComplete="current-password"
                 required
               />
             </div>

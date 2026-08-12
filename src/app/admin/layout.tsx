@@ -11,8 +11,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   if (!authenticated) {
     return (
       <AdminLogin
-        title="Unlock admin"
-        description="Enter the internal admin password to access the Secure Cleaning control panel."
+        title="Secure Cleaning staff login"
+        description="Sign in with your individual staff account to access the control panel."
       />
     )
   }

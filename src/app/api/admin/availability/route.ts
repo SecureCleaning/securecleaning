@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

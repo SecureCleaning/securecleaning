@@ -9,6 +9,7 @@ interface AdminGateProps {
 }
 
 export default function AdminGate({ title, description, children }: AdminGateProps) {
+  const [username, setUsername] = useState('owner')
   const [password, setPassword] = useState('')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -23,7 +24,7 @@ export default function AdminGate({ title, description, children }: AdminGatePro
       const response = await fetch('/api/admin/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       })
 
       const result = await response.json()
@@ -54,13 +55,24 @@ export default function AdminGate({ title, description, children }: AdminGatePro
         <p className="text-sm text-gray-600 mb-5">{description}</p>
         <form onSubmit={handleUnlock} className="space-y-4">
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
+              autoComplete="username"
+              required
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="Enter CONTENT_ADMIN_PASSWORD"
+              autoComplete="current-password"
               required
             />
           </div>

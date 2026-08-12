@@ -61,7 +61,8 @@ Open [http://localhost:3000](http://localhost:3000) to view the site.
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public anon key (safe for browser) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only — keep secret) |
-| `CONTENT_ADMIN_PASSWORD` | Simple internal password for the `/admin/content` editor |
+| `CONTENT_ADMIN_PASSWORD` | Optional one-time bootstrap password used to create the first owner account |
+| `ADMIN_SESSION_SECRET` | Random server-only secret used to sign staff sessions |
 | `RESEND_API_KEY` | Resend API key for transactional emails |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude (AI chat) |
 | `NEXT_PUBLIC_SITE_URL` | Public URL of the deployed site |
@@ -127,9 +128,9 @@ A small internal content editor is available at `/admin/content`.
 
 ### How it works
 
-- Set `CONTENT_ADMIN_PASSWORD` in `.env.local`
+- Set `CONTENT_ADMIN_PASSWORD` and a random `ADMIN_SESSION_SECRET` in `.env.local`
 - Open `/admin/content`
-- Enter the password to unlock the editor
+- On first login, use username `owner` and the bootstrap password. Then create individual staff accounts from **Staff access**.
 - Update copy for the homepage, contact page, about page, and FAQ page
 - Click **Save Changes** to write updates to Supabase
 
@@ -138,7 +139,16 @@ A small internal content editor is available at `/admin/content`.
 - This is an MVP editor, not a full CMS
 - Public pages read content from the `site_content` table
 - If Supabase is unavailable, the site falls back to hardcoded default copy
-- The admin API checks the password via the `x-admin-password` header on both `GET` and `POST`
+- The admin API requires the signed session cookie created after a successful staff login
+- After the first owner account exists, `CONTENT_ADMIN_PASSWORD` is no longer accepted for login
+- Remove `CONTENT_ADMIN_PASSWORD` from the deployment environment after the first owner account is created
+
+### Staff roles
+
+- `owner`: full admin access, including staff account management
+- `manager`: operational access plus pricing, content, room type, availability, and site configuration
+- `staff`: quotes, bookings, cleaners, and calendar operations
+- `viewer`: read-only admin access
 
 ## Deployment
 

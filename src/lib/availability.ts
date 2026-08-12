@@ -452,36 +452,46 @@ function appointmentOverlapsReservation(
   return start.getTime() < reservation.end.getTime() + bufferMs && end.getTime() + bufferMs > reservation.start.getTime()
 }
 
+export function getInspectionAppointmentWindows(
+  startTime: string,
+  endTime: string,
+): Array<{ startTime: string; endTime: string }> {
+  const slotStart = minutesFromTime(startTime)
+  const slotEnd = minutesFromTime(endTime)
+  const appointments: Array<{ startTime: string; endTime: string }> = []
+
+  for (
+    let startMinutes = slotStart;
+    startMinutes <= slotEnd;
+    startMinutes += INSPECTION_DURATION_MINUTES + INSPECTION_BUFFER_MINUTES
+  ) {
+    appointments.push({
+      startTime: timeFromMinutes(startMinutes),
+      endTime: timeFromMinutes(startMinutes + INSPECTION_DURATION_MINUTES),
+    })
+  }
+
+  return appointments
+}
+
 function getAvailableAppointments(
   slot: WeeklyAvailabilitySlot,
   dateString: string,
   city: City,
   reservations: ReservedInspection[],
 ): Array<{ startTime: string; endTime: string }> {
-  const slotStart = minutesFromTime(slot.startTime)
-  const slotEnd = minutesFromTime(slot.endTime)
-  const appointments: Array<{ startTime: string; endTime: string }> = []
-
-  for (
-    let startMinutes = slotStart;
-    startMinutes + INSPECTION_DURATION_MINUTES <= slotEnd;
-    startMinutes += INSPECTION_DURATION_MINUTES + INSPECTION_BUFFER_MINUTES
-  ) {
-    const startTime = timeFromMinutes(startMinutes)
-    const endTime = timeFromMinutes(startMinutes + INSPECTION_DURATION_MINUTES)
-    const start = getDateTimeInTimeZone(dateString, startTime, getCityTimeZone(city))
-    const end = getDateTimeInTimeZone(dateString, endTime, getCityTimeZone(city))
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue
+  return getInspectionAppointmentWindows(slot.startTime, slot.endTime).filter((appointment) => {
+    const start = getDateTimeInTimeZone(dateString, appointment.startTime, getCityTimeZone(city))
+    const end = getDateTimeInTimeZone(dateString, appointment.endTime, getCityTimeZone(city))
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
 
     const blocked = reservations.some(
       (reservation) =>
         (reservation.assigneeId === '' || reservation.assigneeId === slot.assigneeId) &&
         appointmentOverlapsReservation(start, end, reservation),
     )
-    if (!blocked) appointments.push({ startTime, endTime })
-  }
-
-  return appointments
+    return !blocked
+  })
 }
 
 async function getReservedInspections(city: City, startDate: string, daysToShow: number): Promise<ReservedInspection[]> {

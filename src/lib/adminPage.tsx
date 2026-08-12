@@ -4,7 +4,7 @@ import { hasAdminSession } from '@/lib/adminAuth'
 export async function withAdminPage(
   renderPage: () => React.ReactNode | Promise<React.ReactNode>,
   title?: string,
-  description?: string
+  description = 'Sign in with your individual staff account to continue.'
 ) {
   const authenticated = await hasAdminSession()
 
