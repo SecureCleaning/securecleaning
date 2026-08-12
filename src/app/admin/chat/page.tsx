@@ -1,4 +1,5 @@
 import AdminNav from '@/components/admin/AdminNav'
+import { getAdminSessionIdentityFromCookies, hasAdminRole } from '@/lib/adminAuth'
 import { getRobofyInboxSessions } from '@/lib/robofyInbox'
 import { withAdminPage } from '@/lib/adminPage'
 
@@ -16,6 +17,18 @@ function formatDate(value: string | null) {
 
 export default async function AdminChatPage() {
   return withAdminPage(async () => {
+    const identity = await getAdminSessionIdentityFromCookies()
+    if (!identity || !hasAdminRole(identity.role, 'viewer')) {
+      return (
+        <div className="min-h-screen bg-gray-50 py-16">
+          <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h1 className="text-3xl font-bold mb-3" style={{ color: '#1a2744' }}>Chat Inbox</h1>
+            <p className="text-gray-600">Chat inbox access requires an active admin role.</p>
+          </div>
+        </div>
+      )
+    }
+
     const inbox = await getRobofyInboxSessions()
 
     return (
@@ -67,7 +80,7 @@ export default async function AdminChatPage() {
                             {session.visitorName ?? 'Website visitor'}
                           </h3>
                           <p className="mt-1 text-xs text-gray-500">
-                            {formatDate(session.lastMessageTime)} · Session {session.sessionId}
+                            {formatDate(session.lastMessageTime)}
                           </p>
                         </div>
                         <span className="shrink-0 rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
@@ -77,9 +90,6 @@ export default async function AdminChatPage() {
                       <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-gray-700">
                         {session.lastMessage ?? 'No message preview available.'}
                       </p>
-                      {session.websiteUrl ? (
-                        <p className="mt-3 truncate text-xs text-gray-500">Source: {session.websiteUrl}</p>
-                      ) : null}
                     </article>
                   ))}
                 </div>
