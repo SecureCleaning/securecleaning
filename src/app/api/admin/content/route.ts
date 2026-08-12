@@ -13,6 +13,10 @@ type ContentPayloadEntry = {
   group_name: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export async function GET(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -27,49 +31,62 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  let body: unknown
+
   try {
-    const body = await request.json()
-    const entries = Array.isArray(body?.entries) ? body.entries : null
+    body = await request.json()
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+  }
 
-    if (!entries) {
-      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
-    }
+  const entries = isRecord(body) && Array.isArray(body.entries) ? body.entries : null
 
-    const allowedKeys = new Set(CONTENT_DEFAULTS.map((entry) => entry.key))
+  if (!entries) {
+    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+  }
 
-    const sanitizedEntries = entries
-      .filter(
-        (
-          entry: unknown
-        ): entry is ContentPayloadEntry => {
-          if (!entry || typeof entry !== 'object') {
-            return false
-          }
+  if (entries.length !== CONTENT_DEFAULTS.length) {
+    return NextResponse.json({ error: 'Entries payload is incomplete or invalid.' }, { status: 400 })
+  }
 
-          const candidate = entry as Record<string, unknown>
+  const allowedKeys = new Set(CONTENT_DEFAULTS.map((entry) => entry.key))
+  const submittedKeys = new Set<string>()
+  const sanitizedEntries: ContentPayloadEntry[] = []
 
-          return (
-            typeof candidate.key === 'string' &&
-            typeof candidate.title === 'string' &&
-            typeof candidate.content === 'string' &&
-            typeof candidate.group_name === 'string' &&
-            allowedKeys.has(candidate.key)
-          )
-        }
-      )
-      .map((entry: ContentPayloadEntry) => ({
-        key: entry.key,
-        title: entry.title.trim(),
-        content: entry.content.trim(),
-        group_name: entry.group_name.trim() || 'general',
-      }))
-
-    if (sanitizedEntries.length !== CONTENT_DEFAULTS.length) {
+  for (const entry of entries) {
+    if (!isRecord(entry)) {
       return NextResponse.json({ error: 'Entries payload is incomplete or invalid.' }, { status: 400 })
     }
 
+    const { key, title, content, group_name } = entry
+
+    if (
+      typeof key !== 'string' ||
+      typeof title !== 'string' ||
+      typeof content !== 'string' ||
+      typeof group_name !== 'string' ||
+      !allowedKeys.has(key) ||
+      submittedKeys.has(key)
+    ) {
+      return NextResponse.json({ error: 'Entries payload is incomplete or invalid.' }, { status: 400 })
+    }
+
+    submittedKeys.add(key)
+    sanitizedEntries.push({
+      key,
+      title: title.trim(),
+      content: content.trim(),
+      group_name: group_name.trim() || 'general',
+    })
+  }
+
+  if (submittedKeys.size !== allowedKeys.size) {
+    return NextResponse.json({ error: 'Entries payload is incomplete or invalid.' }, { status: 400 })
+  }
+
+  try {
     const entriesByKey = new Map<string, ContentPayloadEntry>(
-      sanitizedEntries.map((entry: ContentPayloadEntry) => [entry.key, entry] as const)
+      sanitizedEntries.map((entry) => [entry.key, entry] as const)
     )
     const orderedEntries = CONTENT_DEFAULTS.map((entry) => {
       const submittedEntry = entriesByKey.get(entry.key)
