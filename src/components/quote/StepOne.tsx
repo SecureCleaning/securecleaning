@@ -2,6 +2,7 @@
 
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
+import LocalityAutocomplete from '@/components/shared/LocalityAutocomplete'
 import type { QuoteInputs, City, PremisesType } from '@/lib/types'
 
 interface StepOneProps {
@@ -19,10 +20,10 @@ const premisesOptions = [
   { value: 'office', label: 'Office / Workplace' },
   { value: 'medical', label: 'Medical / Healthcare' },
   { value: 'childcare', label: 'Childcare Centre' },
-  { value: 'industrial', label: 'Industrial / Manufacturing' },
   { value: 'retail', label: 'Retail / Showroom' },
   { value: 'gym', label: 'Gym / Fitness Studio' },
-  { value: 'warehouse', label: 'Warehouse / Distribution' },
+  { value: 'function_centre', label: 'Function Centre / Venue' },
+  { value: 'sports_facility', label: 'Sports Facility / Recreation Centre' },
   { value: 'other', label: 'Other' },
 ]
 
@@ -40,12 +41,11 @@ export default function StepOne({ data, onChange, errors }: StepOneProps) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
-          label="Business Name"
+          label="Business Name (optional)"
           placeholder="e.g. Acme Pty Ltd"
           value={data.businessName ?? ''}
           onChange={(e) => onChange({ businessName: e.target.value })}
           error={errors.businessName}
-          required
         />
         <Input
           label="Contact Name"
@@ -98,6 +98,16 @@ export default function StepOne({ data, onChange, errors }: StepOneProps) {
           required
         />
       </div>
+
+      <LocalityAutocomplete
+        city={data.city}
+        suburb={data.suburb ?? ''}
+        postcode={data.postcode ?? ''}
+        suburbError={errors.suburb}
+        postcodeError={errors.postcode}
+        required
+        onChange={({ suburb, postcode }) => onChange({ suburb, postcode })}
+      />
     </div>
   )
 }

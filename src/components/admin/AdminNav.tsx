@@ -5,14 +5,18 @@ const tabs = [
   { href: '/admin/sites', label: 'Sites' },
   { href: '/admin/content', label: 'Content' },
   { href: '/admin/pricing', label: 'Pricing' },
+  { href: '/admin/room-types', label: 'Room Types' },
   { href: '/admin/availability', label: 'Availability' },
+  { href: '/admin/calendar', label: 'Calendar' },
+  { href: '/admin/cleaners', label: 'Cleaners' },
+  { href: '/admin/chat', label: 'Chat' },
 ]
 
 export default function AdminNav({ currentPath }: { currentPath: string }) {
   return (
     <div className="flex flex-wrap gap-3 mb-8">
       {tabs.map((tab) => {
-        const isActive = currentPath === tab.href
+        const isActive = currentPath === tab.href || currentPath.startsWith(`${tab.href}/`)
         return (
           <Link
             key={tab.href}

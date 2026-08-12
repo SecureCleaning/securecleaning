@@ -3,6 +3,7 @@ import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import {
   resendBookingEmailByRef,
   resendQuoteEmailByRef,
+  resendScopeOfWorksEmailByRef,
   updateBookingStatus,
   updateQuoteStatus,
 } from '@/lib/adminOperations'
@@ -37,6 +38,12 @@ export async function POST(request: NextRequest) {
       case 'quote.resend': {
         const quoteRef = typeof body?.quoteRef === 'string' ? body.quoteRef : ''
         const result = await resendQuoteEmailByRef(quoteRef)
+        return NextResponse.json({ success: true, result })
+      }
+
+      case 'quote.scopeResend': {
+        const quoteRef = typeof body?.quoteRef === 'string' ? body.quoteRef : ''
+        const result = await resendScopeOfWorksEmailByRef(quoteRef)
         return NextResponse.json({ success: true, result })
       }
 

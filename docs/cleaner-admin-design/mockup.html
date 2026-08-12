@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cleaner Database Admin Mockups</title>
+  <style>
+    :root {
+      --ink: #1a2744;
+      --muted: #667085;
+      --line: #e5e7eb;
+      --panel: #ffffff;
+      --page: #f8fafc;
+      --green: #22c55e;
+      --green-dark: #16a34a;
+      --amber: #b45309;
+      --blue: #2563eb;
+      --red: #dc2626;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: #111827;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    .screen {
+      min-height: 900px;
+      padding: 38px 44px 56px;
+      border-bottom: 1px solid #d1d5db;
+    }
+
+    .wrap {
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 36px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 21px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 2px;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    p { margin: 0; color: var(--muted); }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 28px;
+    }
+
+    .nav span {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #374151;
+      border-radius: 999px;
+      padding: 9px 16px;
+      font-weight: 700;
+    }
+
+    .nav .active {
+      background: var(--green-dark);
+      border-color: var(--green-dark);
+      color: #fff;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #374151;
+      padding: 10px 14px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: var(--ink);
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .btn.green {
+      border-color: var(--green);
+      background: var(--green);
+      color: #fff;
+    }
+
+    .grid4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .stat {
+      background: var(--panel);
+      border: 1px solid #edf0f3;
+      border-radius: 16px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+      padding: 18px;
+    }
+
+    .stat .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+
+    .stat .value {
+      color: var(--ink);
+      font-size: 31px;
+      font-weight: 900;
+      margin-top: 6px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid #edf0f3;
+      border-radius: 16px;
+      box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+      overflow: hidden;
+    }
+
+    .panel-pad { padding: 18px; }
+
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1.4fr repeat(4, minmax(140px, .6fr)) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 16px;
+      border-bottom: 1px solid #f0f2f5;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      padding: 10px 12px;
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 126px;
+      resize: none;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: 13px 16px;
+      border-bottom: 1px solid #f0f2f5;
+      background: #fbfcfd;
+    }
+
+    td {
+      padding: 15px 16px;
+      border-bottom: 1px solid #f2f4f7;
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .name {
+      color: #111827;
+      font-weight: 900;
+      margin-bottom: 2px;
+    }
+
+    .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #f3f4f6;
+      color: #374151;
+    }
+
+    .badge.green { background: #dcfce7; color: #166534; }
+    .badge.amber { background: #fef3c7; color: #92400e; }
+    .badge.blue { background: #dbeafe; color: #1d4ed8; }
+    .badge.red { background: #fee2e2; color: #991b1b; }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 18px;
+    }
+
+    .detail-head {
+      display: grid;
+      grid-template-columns: 76px minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      padding: 20px;
+      border-bottom: 1px solid #f0f2f5;
+    }
+
+    .avatar {
+      width: 76px;
+      height: 76px;
+      border-radius: 18px;
+      background: #e0f2fe;
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 900;
+    }
+
+    .fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .field {
+      border: 1px solid #eef0f3;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fbfcfd;
+    }
+
+    .field .k {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 4px;
+    }
+
+    .field .v {
+      color: #111827;
+      font-weight: 800;
+    }
+
+    .timeline {
+      padding: 16px 18px 18px;
+    }
+
+    .note {
+      border-left: 3px solid var(--green);
+      padding: 0 0 0 12px;
+      margin: 16px 0 0;
+    }
+
+    .note:first-child { margin-top: 0; }
+
+    .note .meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 3px;
+    }
+
+    .compose {
+      display: grid;
+      grid-template-columns: 330px minmax(0, 1fr);
+      gap: 18px;
+    }
+
+    .templates {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    .template {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .template.active {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+
+    .email-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .activity-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 120px 110px;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      border-bottom: 1px solid #f2f4f7;
+    }
+
+    .activity-row:last-child { border-bottom: 0; }
+
+    .caption {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .screen { padding: 24px 16px; }
+      .topbar, .split, .compose { grid-template-columns: 1fr; display: grid; }
+      .grid4, .fields, .email-grid { grid-template-columns: 1fr; }
+      .toolbar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <section class="screen" id="list">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Cleaner Database</h1>
+          <p>Search, qualify and contact owner-operators, subcontractors and approved cleaners from one admin area.</p>
+        </div>
+        <div class="actions">
+          <span class="btn">Export CSV</span>
+          <span class="btn green">Add Cleaner</span>
+        </div>
+      </div>
+
+      <div class="nav">
+        <span>Overview</span><span>Sites</span><span>Content</span><span>Pricing</span><span>Room Types</span><span>Availability</span><span class="active">Cleaners</span>
+      </div>
+
+      <div class="grid4">
+        <div class="stat"><div class="label">Total cleaners</div><div class="value">3,842</div></div>
+        <div class="stat"><div class="label">Active and approved</div><div class="value">2,918</div></div>
+        <div class="stat"><div class="label">Docs expiring soon</div><div class="value">47</div></div>
+        <div class="stat"><div class="label">Emails sent this month</div><div class="value">612</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="toolbar">
+          <input value="Search name, suburb, phone, ABN, skill..." />
+          <select><option>All cities</option></select>
+          <select><option>All statuses</option></select>
+          <select><option>All services</option></select>
+          <select><option>Docs status</option></select>
+          <span class="btn primary">Search</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Cleaner</th><th>Contact</th><th>Coverage</th><th>Skills</th><th>Status</th><th>Last contact</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="name">Maya Chen</div><div class="sub">SparkCare Cleaning Pty Ltd<br />ABN 12 345 678 910</div></td>
+              <td><div>maya@sparkcare.au</div><div class="sub">0412 333 771</div></td>
+              <td><div>Melbourne</div><div class="sub">CBD, Richmond, Southbank</div></td>
+              <td><div class="badges"><span class="badge blue">Medical</span><span class="badge">Office</span><span class="badge">After hours</span></div></td>
+              <td><span class="badge green">Approved</span></td>
+              <td><div>24 Jun 2026</div><div class="sub">Template: Availability check</div></td>
+            </tr>
+            <tr>
+              <td><div class="name">Jordan Patel</div><div class="sub">Patel Facilities Group<br />ABN 98 777 111 223</div></td>
+              <td><div>ops@patelfg.com.au</div><div class="sub">0409 112 880</div></td>
+              <td><div>Sydney</div><div class="sub">Parramatta, Ryde, Blacktown</div></td>
+              <td><div class="badges"><span class="badge">Industrial</span><span class="badge">Warehouse</span></div></td>
+              <td><span class="badge amber">Docs due</span></td>
+              <td><div>18 Jun 2026</div><div class="sub">Manual note added</div></td>
+            </tr>
+            <tr>
+              <td><div class="name">Amelia Ross</div><div class="sub">AR Commercial Cleaning<br />ABN 44 222 883 900</div></td>
+              <td><div>amelia@arcleaning.au</div><div class="sub">0431 882 014</div></td>
+              <td><div>Melbourne</div><div class="sub">Dandenong, Clayton, Keysborough</div></td>
+              <td><div class="badges"><span class="badge">Office</span><span class="badge">Retail</span><span class="badge">Weekend</span></div></td>
+              <td><span class="badge green">Approved</span></td>
+              <td><div>12 Jun 2026</div><div class="sub">Template: New site request</div></td>
+            </tr>
+            <tr>
+              <td><div class="name">Samir Haddad</div><div class="sub">Haddad Hygiene Services<br />ABN 31 554 221 099</div></td>
+              <td><div>samir@hhs.au</div><div class="sub">0422 900 672</div></td>
+              <td><div>Sydney</div><div class="sub">CBD, Mascot, Alexandria</div></td>
+              <td><div class="badges"><span class="badge blue">Medical</span><span class="badge">Childcare</span></div></td>
+              <td><span class="badge red">Paused</span></td>
+              <td><div>02 Jun 2026</div><div class="sub">Reason: holiday cover</div></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="caption">Designed for up to 4,000 records: fast filters first, detailed editing only after opening a cleaner.</p>
+    </div>
+  </section>
+
+  <section class="screen" id="detail">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Cleaner Record</h1>
+          <p>Everything staff need before assigning work or contacting the cleaner.</p>
+        </div>
+        <div class="actions">
+          <span class="btn">Deactivate</span>
+          <span class="btn primary">Save Changes</span>
+          <span class="btn green">Email Cleaner</span>
+        </div>
+      </div>
+
+      <div class="split">
+        <main class="panel">
+          <div class="detail-head">
+            <div class="avatar">MC</div>
+            <div>
+              <h2>Maya Chen</h2>
+              <p>SparkCare Cleaning Pty Ltd · Melbourne · Approved</p>
+              <div class="badges" style="margin-top: 10px;">
+                <span class="badge green">Police check current</span>
+                <span class="badge green">Insurance current</span>
+                <span class="badge blue">Medical capable</span>
+              </div>
+            </div>
+            <span class="btn">View audit log</span>
+          </div>
+
+          <div class="fields">
+            <div class="field"><div class="k">Primary email</div><div class="v">maya@sparkcare.au</div></div>
+            <div class="field"><div class="k">Mobile</div><div class="v">0412 333 771</div></div>
+            <div class="field"><div class="k">Address</div><div class="v">42 Market Street, Richmond VIC 3121</div></div>
+            <div class="field"><div class="k">ABN</div><div class="v">12 345 678 910</div></div>
+            <div class="field"><div class="k">Coverage</div><div class="v">CBD, Southbank, Richmond, Docklands</div></div>
+            <div class="field"><div class="k">Preferred work</div><div class="v">Medical, office, after-hours sites</div></div>
+            <div class="field"><div class="k">Compliance</div><div class="v">Insurance expires 14 Sep 2026</div></div>
+            <div class="field"><div class="k">Internal owner</div><div class="v">Lyle / Operations</div></div>
+          </div>
+        </main>
+
+        <aside class="panel">
+          <div class="panel-pad" style="border-bottom: 1px solid #f0f2f5;">
+            <h2>Comments</h2>
+            <p class="caption">Staff notes are private and searchable.</p>
+          </div>
+          <div class="timeline">
+            <textarea>Called Maya about a medical centre inspection in Richmond. Available next Tuesday after 4pm.</textarea>
+            <div style="display:flex; justify-content:flex-end; margin-top:10px;"><span class="btn green">Add Comment</span></div>
+            <div class="note"><div class="meta">Lyle · 25 Jun 2026</div><div>Strong candidate for healthcare work. Prefers clear scope and access instructions before first visit.</div></div>
+            <div class="note"><div class="meta">Admin · 19 Jun 2026</div><div>Uploaded renewed public liability certificate. Verified expiry date.</div></div>
+            <div class="note"><div class="meta">Ops · 03 Jun 2026</div><div>No weekend availability this month.</div></div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="email">
+    <div class="wrap">
+      <div class="topbar">
+        <div>
+          <h1>Email Cleaner</h1>
+          <p>Select a preset template, adjust the message, send via the system, and keep the history on the cleaner record.</p>
+        </div>
+        <div class="actions">
+          <span class="btn">Save Draft</span>
+          <span class="btn green">Send Email</span>
+        </div>
+      </div>
+
+      <div class="compose">
+        <aside class="panel">
+          <div class="panel-pad" style="border-bottom: 1px solid #f0f2f5;">
+            <h2>Templates</h2>
+            <p class="caption">Admin can manage these later.</p>
+          </div>
+          <div class="templates">
+            <div class="template active"><h3>Availability check</h3><p>Ask cleaner if they can quote or inspect a new site.</p></div>
+            <div class="template"><h3>Document renewal</h3><p>Request updated insurance, police check or induction documents.</p></div>
+            <div class="template"><h3>New site introduction</h3><p>Send site details and expectations after assignment.</p></div>
+            <div class="template"><h3>Performance follow-up</h3><p>Record a quality conversation without losing context.</p></div>
+          </div>
+        </aside>
+
+        <main class="panel">
+          <div class="panel-pad" style="border-bottom: 1px solid #f0f2f5;">
+            <div class="email-grid">
+              <div><label>To</label><input value="Maya Chen <maya@sparkcare.au>" /></div>
+              <div><label>Related record</label><input value="Cleaner: SparkCare Cleaning Pty Ltd" /></div>
+            </div>
+            <div style="margin-top:12px;"><label>Subject</label><input value="Availability request for Richmond medical centre inspection" /></div>
+            <div style="margin-top:12px;"><label>Message</label><textarea style="min-height:250px;">Hi Maya,
+
+We have a potential medical centre site in Richmond that may suit your coverage area.
+
+Could you please confirm whether you are available for an inspection next week, and whether after-hours cleaning would be suitable for your team?
+
+Site summary:
+- Suburb: Richmond
+- Premises type: Medical / Healthcare
+- Estimated floor area: 260 sqm
+- Preferred inspection: Tuesday after 4pm
+
+Thanks,
+Secure Cleaning Operations</textarea></div>
+          </div>
+          <div>
+            <div class="activity-row">
+              <strong>Date</strong><strong>Email history</strong><strong>Status</strong><strong>Opened</strong>
+            </div>
+            <div class="activity-row">
+              <div>24 Jun 2026</div><div><strong>Availability check</strong><br /><span class="sub">Sent by Lyle about Southbank office lead</span></div><span class="badge green">Delivered</span><div>Yes</div>
+            </div>
+            <div class="activity-row">
+              <div>19 Jun 2026</div><div><strong>Document renewal</strong><br /><span class="sub">Public liability certificate reminder</span></div><span class="badge blue">Opened</span><div>Yes</div>
+            </div>
+            <div class="activity-row">
+              <div>03 Jun 2026</div><div><strong>New site introduction</strong><br /><span class="sub">Richmond office onboarding details</span></div><span class="badge green">Delivered</span><div>No</div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

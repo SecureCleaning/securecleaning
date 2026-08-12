@@ -1,32 +1,41 @@
 'use client'
 
+import Image from 'next/image'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import Navigation from './Navigation'
 
 export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const pathname = usePathname()
+
+  function handleLogoClick() {
+    if (pathname === '/') {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+  }
 
   return (
-    <header className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
+    <header className="site-header sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-20 md:h-24">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-black text-sm"
-              style={{ backgroundColor: '#1a2744' }}
-            >
-              SC
-            </div>
-            <div>
-              <span className="font-bold text-lg leading-none" style={{ color: '#1a2744' }}>
-                Secure Cleaning Aus
-              </span>
-              <span className="block text-xs text-gray-500 leading-none">
-                by Secure Contracts
-              </span>
-            </div>
+          <Link
+            href="/"
+            aria-label="Secure Cleaning Aus home"
+            title="Go to homepage"
+            onClick={handleLogoClick}
+            className="relative z-10 inline-flex items-center shrink-0"
+          >
+            <Image
+              src="/secure-cleaning-logo-aug26.png"
+              alt="Secure Cleaning Aus"
+              width={993}
+              height={662}
+              className="h-16 w-auto md:h-20"
+              priority
+            />
           </Link>
 
           {/* Desktop Navigation */}
@@ -36,8 +45,8 @@ export default function Header() {
           <div className="flex items-center gap-3">
             <Link
               href="/quote"
-              className="hidden md:inline-flex items-center px-5 py-2.5 rounded-lg font-semibold text-sm text-white transition-all hover:opacity-90"
-              style={{ backgroundColor: '#22c55e' }}
+              className="hidden md:inline-flex items-center px-6 py-3 rounded-xl font-semibold text-base transition-all hover:opacity-90"
+              style={{ backgroundColor: 'var(--brand-gold)', color: 'var(--brand-ink)' }}
             >
               Get a Quote
             </Link>

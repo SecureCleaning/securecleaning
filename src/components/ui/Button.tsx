@@ -29,7 +29,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const variants = {
       primary:
-        'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500 active:bg-green-700',
+        'text-white focus:ring-navy-600',
       secondary:
         'bg-navy-800 text-white hover:bg-navy-900 focus:ring-navy-800 active:bg-navy-950',
       outline:
@@ -53,10 +53,12 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={clsx(
           base,
           variants[variant],
+          variant === 'primary' && 'shadow-[0_10px_24px_rgba(11,95,116,0.18)] hover:shadow-[0_14px_30px_rgba(11,95,116,0.24)]',
           sizes[size],
           fullWidth && 'w-full',
           className
         )}
+        style={variant === 'primary' ? { backgroundColor: 'var(--brand-teal)', ...props.style } : props.style}
         {...props}
       >
         {loading ? (

@@ -1,71 +1,96 @@
 import { getAdminSupabase } from '@/lib/supabase'
+import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
 
 export interface AdminAlert {
   id: string
+  entity_ref: string
   kind: 'new_quote' | 'new_booking' | 'overdue_inspection' | 'unassigned_booking'
   title: string
   description: string
   severity: 'info' | 'warning' | 'critical'
 }
 
+type TimedAlert = AdminAlert & {
+  happenedAt: number
+}
+
 export async function getAdminAlerts(): Promise<AdminAlert[]> {
   const db = getAdminSupabase()
+  const nowIso = new Date().toISOString()
 
-  const [quotesRes, bookingsRes] = await Promise.all([
-    db.from('quotes').select('quote_ref, created_at, status').order('created_at', { ascending: false }).limit(10),
-    db.from('bookings').select('booking_ref, created_at, status, inspection_status, inspection_scheduled_for, assigned_operator_id, site_id, inputs').order('created_at', { ascending: false }).limit(20),
+  const [quotesRes, pendingBookingsRes, overdueBookingsRes, unassignedBookingsRes] = await Promise.all([
+    db.from('quotes').select('quote_ref, created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('bookings').select('booking_ref, created_at, status').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('bookings')
+      .select('booking_ref, created_at, inspection_status, inspection_scheduled_for')
+      .eq('inspection_status', 'scheduled')
+      .not('inspection_scheduled_for', 'is', null)
+      .lt('inspection_scheduled_for', nowIso)
+      .order('inspection_scheduled_for', { ascending: true })
+      .limit(100),
+    db.from('bookings')
+      .select('booking_ref, created_at, status, assigned_operator_id, site_id')
+      .or('assigned_operator_id.is.null,site_id.is.null')
+      .neq('status', 'completed')
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: true })
+      .limit(100),
   ])
 
-  const alerts: AdminAlert[] = []
+  const alertsById = new Map<string, TimedAlert>()
 
   for (const quote of quotesRes.data ?? []) {
-    if (quote.status === 'pending') {
-      alerts.push({
+    const happenedAt = new Date(quote.created_at ?? '').getTime()
+      alertsById.set(`quote-${quote.quote_ref}`, {
         id: `quote-${quote.quote_ref}`,
+        entity_ref: quote.quote_ref,
         kind: 'new_quote',
         title: `New/pending quote ${quote.quote_ref}`,
         description: 'Quote still pending review or follow-up.',
         severity: 'info',
+        happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
       })
-    }
   }
 
-  const now = Date.now()
-
-  for (const booking of bookingsRes.data ?? []) {
-    if (booking.status === 'pending') {
-      alerts.push({
-        id: `booking-${booking.booking_ref}`,
-        kind: 'new_booking',
+  for (const booking of pendingBookingsRes.data ?? []) {
+    const happenedAt = new Date(booking.created_at ?? '').getTime()
+    alertsById.set(`booking-${booking.booking_ref}`, {
+      id: `booking-${booking.booking_ref}`,
+      entity_ref: booking.booking_ref,
+      kind: 'new_booking',
         title: `New/pending booking ${booking.booking_ref}`,
         description: 'Booking requires review or triage.',
         severity: 'info',
+        happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
       })
-    }
-
-    if (!booking.assigned_operator_id || !booking.site_id) {
-      alerts.push({
-        id: `booking-unassigned-${booking.booking_ref}`,
-        kind: 'unassigned_booking',
-        title: `Booking ${booking.booking_ref} still needs assignment`,
-        description: 'Missing site and/or operator assignment.',
-        severity: 'warning',
-      })
-    }
-
-    if (booking.inspection_status === 'scheduled' && booking.inspection_scheduled_for) {
-      const scheduledTime = new Date(booking.inspection_scheduled_for).getTime()
-      if (Number.isFinite(scheduledTime) && scheduledTime < now) {
-        alerts.push({
-          id: `booking-overdue-${booking.booking_ref}`,
-          kind: 'overdue_inspection',
-          title: `Inspection overdue for ${booking.booking_ref}`,
-          description: 'Scheduled inspection time has already passed.',
-          severity: 'critical',
-        })
-      }
-    }
   }
 
-  return alerts.slice(0, 20)
+  for (const booking of unassignedBookingsRes.data ?? []) {
+    const happenedAt = new Date(booking.created_at ?? '').getTime()
+    alertsById.set(`booking-unassigned-${booking.booking_ref}`, {
+      id: `booking-unassigned-${booking.booking_ref}`,
+      entity_ref: booking.booking_ref,
+      kind: 'unassigned_booking',
+      title: `Booking ${booking.booking_ref} still needs assignment`,
+      description: 'Missing site and/or operator assignment.',
+      severity: 'warning',
+      happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
+    })
+  }
+
+  for (const booking of overdueBookingsRes.data ?? []) {
+    const happenedAt = new Date(booking.inspection_scheduled_for ?? booking.created_at ?? '').getTime()
+    alertsById.set(`booking-overdue-${booking.booking_ref}`, {
+      id: `booking-overdue-${booking.booking_ref}`,
+      entity_ref: booking.booking_ref,
+      kind: 'overdue_inspection',
+      title: `Inspection overdue for ${booking.booking_ref}`,
+      description: 'Scheduled inspection time has already passed.',
+      severity: 'critical',
+      happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
+    })
+  }
+
+  return rankAdminAlerts([...alertsById.values()])
+    .map(({ happenedAt: _happenedAt, ...alert }) => alert)
 }

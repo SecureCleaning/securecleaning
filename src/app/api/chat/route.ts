@@ -1,7 +1,13 @@
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
+import {
+  limitString,
+  rateLimit,
+  rejectCrossOriginMutation,
+  rejectLargePayload,
+} from '@/lib/abuseProtection'
 
-const SYSTEM_PROMPT = `You are Max, the professional AI assistant for Secure Cleaning Aus — a commercial cleaning service operating in Melbourne and Sydney, Australia.
+const SYSTEM_PROMPT = `You are Secure Bot, the professional AI assistant for Secure Cleaning Aus — a commercial cleaning service operating in Melbourne and Sydney, Australia.
 
 ## About Secure Cleaning Aus
 - Operates exclusively in Melbourne and Sydney (no other cities)
@@ -18,15 +24,15 @@ const SYSTEM_PROMPT = `You are Max, the professional AI assistant for Secure Cle
 - Keep responses focused on helping the user get the information they need
 
 ## What You Know
-- Services: Office cleaning, medical/healthcare cleaning, industrial cleaning, childcare centre cleaning, retail cleaning, gym cleaning, warehouse cleaning
-- Frequencies available: Daily, 3x per week, 2x per week, Weekly, Fortnightly, Once-off
+- Services: Office cleaning, medical/healthcare cleaning, childcare centre cleaning, function centre cleaning, retail cleaning, gym cleaning, sports facilities cleaning
+- Frequencies available: Daily, 3x per week, 2x per week, Weekly, or Fortnightly
 - Add-ons: Bathroom servicing, kitchen cleaning, window cleaning, consumables supply, high-touch disinfection
-- Special services: Spring cleans, carpet steam cleaning (quoted separately)
+- Special services: Carpet steam cleaning (quoted separately)
 - Both Melbourne and Sydney covered — owner-operators are local to each area
 
 ## Key Rules
 1. NEVER give exact prices — say something like "pricing depends on your specific needs; our online calculator gives you an instant estimate"
-2. ALWAYS offer two CTAs: get a quote at /quote, or book directly at /booking
+2. ALWAYS offer two CTAs: get a remote quote at /quote, or book a site inspection at /booking
 3. If asked about other cities (Brisbane, Perth, Adelaide, etc.) — politely explain we currently only service Melbourne and Sydney
 4. If asked about residential cleaning — explain we focus exclusively on commercial/business premises
 5. Keep responses warm but professional
@@ -34,14 +40,36 @@ const SYSTEM_PROMPT = `You are Max, the professional AI assistant for Secure Cle
 
 ## Response Format
 - Use short paragraphs or bullet points for readability
-- End most responses with a relevant CTA (quote or booking)`
+- End most responses with a relevant CTA (remote quote or site inspection request)`
 
 export async function POST(request: NextRequest) {
   try {
+    const blocked =
+      rejectCrossOriginMutation(request) ??
+      rejectLargePayload(request, 32 * 1024) ??
+      rateLimit(request, { key: 'chat:minute', limit: 6, windowMs: 60 * 1000 }) ??
+      rateLimit(request, { key: 'chat:day', limit: 40, windowMs: 24 * 60 * 60 * 1000 })
+
+    if (blocked) return blocked
+
     const { messages, sessionToken } = await request.json()
 
     if (!Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'messages array required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (messages.length > 12) {
+      return new Response(JSON.stringify({ error: 'Please start a new chat before continuing.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (messages.some((msg: { content?: unknown }) => limitString(msg.content, 1200))) {
+      return new Response(JSON.stringify({ error: 'Message is too long.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -63,37 +91,25 @@ export async function POST(request: NextRequest) {
       content: msg.content,
     }))
 
-    // Create a streaming response
-    const stream = await client.messages.stream({
-      model: 'claude-3-5-haiku-20241022',
+    const message = await client.messages.create({
+      model: process.env.ANTHROPIC_MODEL || 'claude-3-5-haiku-latest',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: anthropicMessages,
     })
 
-    // Return a streaming text response
+    const text = message.content
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text)
+      .join('')
+
     const encoder = new TextEncoder()
 
     const readableStream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of stream) {
-            if (
-              chunk.type === 'content_block_delta' &&
-              chunk.delta.type === 'text_delta'
-            ) {
-              const text = chunk.delta.text
-              // Server-sent event format
-              controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
-              )
-            }
-          }
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          controller.close()
-        } catch (err) {
-          controller.error(err)
-        }
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
       },
     })
 

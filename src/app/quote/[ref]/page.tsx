@@ -1,9 +1,9 @@
 import Link from 'next/link'
 import QuoteResultView from '@/components/quote/QuoteResultView'
-import { getQuoteByRef } from '@/lib/quoteData'
+import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 
 export default async function QuoteByRefPage({ params }: { params: { ref: string } }) {
-  const quote = await getQuoteByRef(params.ref)
+  const quote = await getPublicQuoteWorkflowByRef(params.ref)
 
   if (!quote) {
     return (

@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Secure Cleaning Site Inspection Worksheet</title>
+    <style>
+      :root {
+        --ink: #1f3157;
+        --muted: #667085;
+        --grid: #c8d2e1;
+        --panel: #edf4fb;
+        --accent: #28c45b;
+        --paper: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 32px;
+        background: #eef2f7;
+        color: #1f2937;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      .sheet {
+        width: 1180px;
+        margin: 0 auto;
+        background: var(--paper);
+        border: 1px solid var(--grid);
+        box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+      }
+
+      .sheet-inner {
+        padding: 28px 28px 36px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 20px;
+      }
+
+      .brand img {
+        width: 380px;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .title-block {
+        text-align: right;
+      }
+
+      .title-block h1 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 44px;
+        line-height: 1;
+      }
+
+      .title-block p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: 1.4fr 1.4fr 1fr 1fr;
+        gap: 12px 20px;
+        margin-bottom: 16px;
+      }
+
+      .field {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+        align-items: end;
+      }
+
+      .field label {
+        color: var(--ink);
+        font-weight: 700;
+        font-size: 13px;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+      }
+
+      .line {
+        min-height: 26px;
+        border-bottom: 2px solid #cfd7e3;
+      }
+
+      .compact-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .legend {
+        display: flex;
+        justify-content: flex-end;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 12px;
+        margin-bottom: 14px;
+      }
+
+      .section {
+        margin-top: 18px;
+      }
+
+      .section-header {
+        display: grid;
+        grid-template-columns: 3.2fr 0.85fr 0.9fr repeat(6, 0.72fr);
+        background: #9fc1e5;
+        color: #243041;
+        font-weight: 700;
+        border: 1px solid var(--grid);
+        border-bottom: none;
+      }
+
+      .section-header.kitchen {
+        grid-template-columns: 3.2fr 0.85fr 0.9fr repeat(6, 0.82fr);
+      }
+
+      .section-header.other {
+        grid-template-columns: 3.2fr 0.85fr 0.9fr 1fr 1fr 1fr 1fr 1fr 1fr;
+      }
+
+      .section-header div,
+      .row div {
+        padding: 8px 8px;
+        border-right: 1px solid var(--grid);
+      }
+
+      .section-header div:last-child,
+      .row div:last-child {
+        border-right: none;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: inherit;
+        min-height: 34px;
+        border: 1px solid var(--grid);
+        border-top: none;
+      }
+
+      .section-note {
+        border: 1px solid var(--grid);
+        border-top: none;
+        padding: 10px 12px 16px;
+      }
+
+      .note-line {
+        height: 22px;
+        border-bottom: 1px solid #d9e1ec;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 24px;
+      }
+
+      .summary-card {
+        border: 1px solid var(--grid);
+      }
+
+      .summary-card h3 {
+        margin: 0;
+        padding: 10px 12px;
+        background: var(--ink);
+        color: white;
+        font-size: 15px;
+      }
+
+      .summary-card .body {
+        padding: 12px;
+      }
+
+      .summary-card .body .note-line {
+        margin-bottom: 8px;
+      }
+
+      .footer-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        margin-top: 18px;
+      }
+
+      .footer-card {
+        border: 1px solid var(--grid);
+        padding: 12px;
+      }
+
+      .footer-card h4 {
+        margin: 0 0 10px;
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .tiny {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      @media print {
+        body {
+          background: white;
+          padding: 0;
+        }
+
+        .sheet {
+          width: auto;
+          border: none;
+          box-shadow: none;
+        }
+
+        .sheet-inner {
+          padding: 16mm 14mm 14mm;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <div class="sheet-inner">
+        <div class="brand">
+          <img src="../../public/secure-cleaning-logo-brand.png" alt="Secure Cleaning" />
+          <div class="title-block">
+            <h1>Inspection Pad</h1>
+            <p>Printable worksheet for manual site inspection notes and later quote transcription</p>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="field"><label>Customer</label><div class="line"></div></div>
+          <div class="field"><label>Contact</label><div class="line"></div></div>
+          <div class="field"><label>Date</label><div class="line"></div></div>
+          <div class="field"><label>Frequency</label><div class="line"></div></div>
+          <div class="field"><label>Address</label><div class="line"></div></div>
+          <div class="field"><label>Email</label><div class="line"></div></div>
+          <div class="field"><label>Suburb</label><div class="line"></div></div>
+          <div class="field"><label>Postcode</label><div class="line"></div></div>
+        </div>
+
+        <div class="compact-grid">
+          <div class="field"><label>Days</label><div class="line"></div></div>
+          <div class="field"><label>Preferred Time</label><div class="line"></div></div>
+          <div class="field"><label>Inspector</label><div class="line"></div></div>
+          <div class="field"><label>Quote Ref</label><div class="line"></div></div>
+          <div class="field"><label>Remote Estimate</label><div class="line"></div></div>
+        </div>
+
+        <div class="legend">
+          <span>Use Y / N / Maybe in task cells</span>
+          <span>Circle or note anything that needs confirmation</span>
+          <span>Glass cleaning to be priced separately if required</span>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div>Reception / Waiting Areas</div>
+            <div>Size</div>
+            <div>Floor</div>
+            <div>Glass</div>
+            <div>Bins</div>
+            <div>Desks</div>
+            <div>Vents / Fans</div>
+            <div>Chairs</div>
+            <div>Tables</div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="section-note">
+            <div class="tiny">Commentary / access notes</div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div>Offices / Boardrooms / Hallways</div>
+            <div>Size</div>
+            <div>Floor</div>
+            <div>Glass</div>
+            <div>Bins</div>
+            <div>Desks</div>
+            <div>Vents / Fans</div>
+            <div>Chairs</div>
+            <div>Tables</div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="section-note">
+            <div class="tiny">Commentary / exclusions / desk density notes</div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div>Stairs</div>
+            <div>Flights</div>
+            <div>Floor</div>
+            <div>Edges</div>
+            <div>Rails</div>
+            <div>Landings</div>
+            <div>Dusting</div>
+            <div></div>
+            <div></div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+        </div>
+
+        <div class="section">
+          <div class="section-header">
+            <div>Toilets / Bathrooms / Changerooms</div>
+            <div>Size</div>
+            <div>Floor</div>
+            <div>Mirrors</div>
+            <div>Basins</div>
+            <div>Cubicles</div>
+            <div>Urinals</div>
+            <div>Bins</div>
+            <div>Showers</div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="section-note">
+            <div class="tiny">Consumables / odour / deep-clean commentary</div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header kitchen">
+            <div>Kitchens / Breakout Areas</div>
+            <div>Size</div>
+            <div>Floor</div>
+            <div>Bins</div>
+            <div>Tables</div>
+            <div>Benches</div>
+            <div>Microwave</div>
+            <div>Dishwasher</div>
+            <div>Ovens</div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="section-note">
+            <div class="tiny">Kitchen service scope commentary</div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-header other">
+            <div>Other Areas</div>
+            <div>Size</div>
+            <div>Floor</div>
+            <div>Task 1</div>
+            <div>Task 2</div>
+            <div>Task 3</div>
+            <div>Task 4</div>
+            <div>Task 5</div>
+            <div>Task 6</div>
+          </div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+          <div class="row"><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div><div></div></div>
+        </div>
+
+        <div class="summary-grid">
+          <div class="summary-card">
+            <h3>Inspection Summary</h3>
+            <div class="body">
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+            </div>
+          </div>
+          <div class="summary-card">
+            <h3>Quote Adjustments</h3>
+            <div class="body">
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+              <div class="note-line"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="footer-grid">
+          <div class="footer-card">
+            <h4>Access / Security</h4>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+          <div class="footer-card">
+            <h4>Exclusions / Special Risks</h4>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+          <div class="footer-card">
+            <h4>Recommended Next Step</h4>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+            <div class="note-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

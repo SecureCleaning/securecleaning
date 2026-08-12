@@ -54,7 +54,6 @@ function BookingConfirmContent() {
 
   const { bookingRef, inputs } = stored
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
-  const nextStep2 = `We match you with a verified Owner-Operator in ${cityLabel}`
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
@@ -66,7 +65,7 @@ function BookingConfirmContent() {
             </svg>
           </div>
           <h1 className="text-4xl font-bold mb-2" style={{ color: '#1a2744' }}>
-            Booking Submitted!
+            Site Inspection Requested!
           </h1>
           <p className="text-gray-500">
             Reference: <span className="font-mono font-semibold text-gray-700">{bookingRef}</span>
@@ -75,16 +74,16 @@ function BookingConfirmContent() {
             Confirmation sent to <strong>{inputs.email}</strong>
           </p>
           <p className="text-blue-700 text-sm mt-2">
-            A provisional calendar invite is attached in your email so you can save the booking now.
+            We will confirm the exact inspection time from the selected appointment window as soon as possible. A provisional calendar invite is attached in your email so you can save the request now.
           </p>
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 mb-8">
-          <h2 className="text-lg font-bold mb-5" style={{ color: '#1a2744' }}>Booking Summary</h2>
+          <h2 className="text-lg font-bold mb-5" style={{ color: '#1a2744' }}>Inspection Request Summary</h2>
           <dl className="grid grid-cols-2 gap-y-4 text-sm">
             <div>
               <dt className="text-gray-500">Business</dt>
-              <dd className="font-semibold mt-0.5">{inputs.businessName}</dd>
+              <dd className="font-semibold mt-0.5">{inputs.businessName || 'Not provided'}</dd>
             </div>
             <div>
               <dt className="text-gray-500">Contact</dt>
@@ -92,23 +91,23 @@ function BookingConfirmContent() {
             </div>
             <div>
               <dt className="text-gray-500">Address</dt>
-              <dd className="font-semibold mt-0.5">{inputs.address}, {cityLabel}</dd>
+              <dd className="font-semibold mt-0.5">{inputs.address}, {inputs.suburb} {inputs.postcode}, {cityLabel}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Frequency</dt>
+              <dt className="text-gray-500">Cleaning frequency</dt>
               <dd className="font-semibold mt-0.5 capitalize">{inputs.frequency.replace(/_/g, ' ')}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Preferred Start</dt>
+              <dt className="text-gray-500">Preferred inspection date</dt>
               <dd className="font-semibold mt-0.5">{inputs.preferredStartDate}</dd>
             </div>
             <div>
-              <dt className="text-gray-500">Time Preference</dt>
+              <dt className="text-gray-500">Cleaning time preference</dt>
               <dd className="font-semibold mt-0.5 capitalize">{inputs.timePreference.replace(/_/g, ' ')}</dd>
             </div>
             {inputs.preferredInspectionSlotLabel ? (
               <div className="col-span-2">
-                <dt className="text-gray-500">Inspection Window</dt>
+                <dt className="text-gray-500">Provisional inspection time</dt>
                 <dd className="font-semibold mt-0.5">{inputs.preferredInspectionSlotLabel}</dd>
               </div>
             ) : null}
@@ -119,11 +118,10 @@ function BookingConfirmContent() {
           <h2 className="text-lg font-bold mb-4 text-green-800">What Happens Next?</h2>
           <ol className="space-y-3">
             {[
-              { step: '1', text: 'Our team reviews your booking (usually within 1 business day)' },
-              { step: '2', text: nextStep2 },
-              { step: '3', text: 'A site inspection is arranged — typically within 48 hours' },
-              { step: '4', text: 'You receive your operator\'s direct contact details' },
-              { step: '5', text: 'Your first clean is scheduled to your preferred date' },
+              { step: '1', text: 'Our team reviews your inspection request' },
+              { step: '2', text: 'A site inspection is arranged' },
+              { step: '3', text: 'We confirm the final scope, requirements, and pricing after inspection' },
+              { step: '4', text: 'If you would like to proceed, we schedule commencement around your preferred date' },
             ].map((item) => (
               <li key={item.step} className="flex gap-3 text-sm text-green-800">
                 <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">

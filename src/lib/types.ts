@@ -10,6 +10,8 @@ export type PremisesType =
   | 'retail'
   | 'gym'
   | 'warehouse'
+  | 'function_centre'
+  | 'sports_facility'
   | 'other'
 
 export type CleaningFrequency =
@@ -23,6 +25,28 @@ export type CleaningFrequency =
 export type TimePreference = 'business_hours' | 'after_hours' | 'weekend'
 
 export type FlooringType = 'carpet' | 'hard_floor' | 'mixed'
+
+export type PublicRoomScopeType =
+  | 'bathroom'
+  | 'female_bathroom'
+  | 'male_bathroom'
+  | 'accessible_bathroom'
+  | 'kitchen'
+  | 'meeting_room'
+  | 'reception'
+  | 'hallway'
+  | 'breakout'
+  | 'warehouse'
+  | 'other'
+
+export interface PublicRoomScopeItem {
+  id: string
+  type: PublicRoomScopeType
+  label: string
+  quantity: number
+  moppingRequired?: boolean
+  isCustom?: boolean
+}
 
 export type QuoteStatus = 'pending' | 'sent' | 'accepted' | 'expired' | 'declined'
 
@@ -39,12 +63,18 @@ export interface QuoteAddOns {
   bathrooms: number        // count
   kitchens: number         // count
   windows: number          // count of external windows
+  glassCleaningRequired?: boolean // quoted separately after inspection
   consumables: boolean     // +$25 flat per visit
   highTouchDisinfection: boolean  // floor area * 0.08 per visit
   carpetSteam: boolean     // flag only — quoted separately
 }
 
 export interface QuoteInputs {
+  acceptableUseAccepted?: boolean
+  formStartedAt?: number
+  website?: string
+  companyWebsiteUrl?: string
+
   // Contact
   businessName: string
   contactName: string
@@ -54,6 +84,8 @@ export interface QuoteInputs {
   // Location
   city: City
   address?: string
+  suburb: string
+  postcode: string
 
   // Premises
   premisesType: PremisesType
@@ -61,6 +93,7 @@ export interface QuoteInputs {
   floors: number             // total number of floors
   flooringType: FlooringType
   meetingRooms?: number
+  roomScope?: PublicRoomScopeItem[]
 
   // Schedule
   frequency: CleaningFrequency
@@ -113,6 +146,11 @@ export interface AddOnsDetail {
 // ─── Booking ──────────────────────────────────────────────────────────────────
 
 export interface BookingInputs {
+  acceptableUseAccepted?: boolean
+  formStartedAt?: number
+  website?: string
+  companyWebsiteUrl?: string
+
   quoteRef?: string
   businessName: string
   contactName: string
@@ -120,6 +158,8 @@ export interface BookingInputs {
   phone: string
   address: string
   city: City
+  suburb: string
+  postcode: string
   premisesType: PremisesType
   floorArea: number
   frequency: CleaningFrequency
@@ -130,6 +170,9 @@ export interface BookingInputs {
   preferredInspectionDay?: string
   preferredInspectionStartTime?: string
   preferredInspectionEndTime?: string
+  preferredInspectionAssigneeId?: string
+  preferredInspectionAssigneeName?: string
+  preferredInspectionCalendarId?: string
   addOns: QuoteAddOns
   notes?: string
   agreedPrice?: number        // per-visit agreed price

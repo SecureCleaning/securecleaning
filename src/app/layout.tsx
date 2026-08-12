@@ -3,8 +3,13 @@ import './globals.css'
 import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import ChatWidget from '@/components/chat/ChatWidget'
+import RobofyWidget from '@/components/chat/RobofyWidget'
+import { getCanonicalSiteUrl } from '@/lib/siteUrl'
+
+const siteUrl = getCanonicalSiteUrl()
 
 export const metadata: Metadata = {
+  metadataBase: siteUrl,
   title: {
     default: 'Secure Cleaning Aus — Professional Commercial Cleaning in Melbourne & Sydney',
     template: '%s | Secure Cleaning Aus',
@@ -15,17 +20,34 @@ export const metadata: Metadata = {
     'commercial cleaning Melbourne',
     'commercial cleaning Sydney',
     'office cleaning',
-    'industrial cleaning',
     'medical cleaning',
     'childcare cleaning',
+    'function centre cleaning',
+    'sports facilities cleaning',
     'Owner-Operator cleaning',
   ],
-  authors: [{ name: 'Secure Contracts Pty Ltd' }],
+  authors: [{ name: 'Secure Cleaning Aus' }],
+  icons: {
+    icon: '/secure-cleaning-logo-aug26.png',
+    shortcut: '/secure-cleaning-logo-aug26.png',
+    apple: '/secure-cleaning-logo-aug26.png',
+  },
+  alternates: {
+    canonical: '/',
+  },
   openGraph: {
     title: 'Secure Cleaning Aus — Professional Commercial Cleaning',
     description: 'Verified Owner-Operators. Flexible frequencies. No lock-in. Melbourne & Sydney.',
-    url: 'https://securecleaning.com.au',
+    url: siteUrl,
     siteName: 'Secure Cleaning Aus',
+    images: [
+      {
+        url: '/secure-cleaning-logo-aug26.png',
+        width: 993,
+        height: 662,
+        alt: 'Secure Cleaning Aus',
+      },
+    ],
     locale: 'en_AU',
     type: 'website',
   },
@@ -46,7 +68,7 @@ export default function RootLayout({
         <Header />
         <main className="flex-1">{children}</main>
         <Footer />
-        <ChatWidget />
+        {process.env.NEXT_PUBLIC_ROBOFY_PID && process.env.NEXT_PUBLIC_ROBOFY_CID ? <RobofyWidget /> : <ChatWidget />}
       </body>
     </html>
   )

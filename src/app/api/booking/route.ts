@@ -2,9 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
+import { getAvailabilityCalendar } from '@/lib/availability'
+import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { BookingInputs } from '@/lib/types'
 import { createSiteFromBooking, findMatchingSiteForBooking } from '@/lib/siteMatching'
-import { createAdminNotification } from '@/lib/adminNotifications'
+import {
+  limitString,
+  rateLimit,
+  rateLimitValue,
+  rejectCrossOriginMutation,
+  rejectLargePayload,
+  validatePublicSubmission,
+} from '@/lib/abuseProtection'
 
 function generateBookingRef(): string {
   const date = new Date()
@@ -15,17 +24,53 @@ function generateBookingRef(): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const blocked =
+      rejectCrossOriginMutation(request) ??
+      rejectLargePayload(request, 64 * 1024) ??
+      rateLimit(request, { key: 'booking:minute', limit: 2, windowMs: 60 * 1000 }) ??
+      rateLimit(request, { key: 'booking:hour', limit: 4, windowMs: 60 * 60 * 1000 }) ??
+      rateLimit(request, { key: 'booking:day', limit: 12, windowMs: 24 * 60 * 60 * 1000 })
+
+    if (blocked) return blocked
+
     const body = await request.json()
+    const bodyRecord = body as Record<string, unknown>
+    const invalidSubmission = validatePublicSubmission(bodyRecord, {
+      requireAcceptableUse: true,
+      minElapsedMs: 3000,
+    })
+    if (invalidSubmission) return invalidSubmission
+
+    if (
+      limitString(bodyRecord.businessName, 120) ||
+      limitString(bodyRecord.contactName, 120) ||
+      limitString(bodyRecord.email, 254) ||
+      limitString(bodyRecord.phone, 40) ||
+      limitString(bodyRecord.address, 180) ||
+      limitString(bodyRecord.suburb, 80) ||
+      limitString(bodyRecord.postcode, 12) ||
+      limitString(bodyRecord.notes, 1500)
+    ) {
+      return NextResponse.json({ success: false, error: 'One or more fields are too long.' }, { status: 400 })
+    }
+
     const inputs = body as BookingInputs
+    const businessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
+    const identityLimit =
+      rateLimitValue(inputs.email, { key: 'booking:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      rateLimitValue(inputs.phone, { key: 'booking:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      rateLimitValue(inputs.businessName, { key: 'booking:business:day', limit: 5, windowMs: 24 * 60 * 60 * 1000 })
+    if (identityLimit) return identityLimit
 
     // ── Validate required fields ──────────────────────────────────────────
     const required: (keyof BookingInputs)[] = [
-      'businessName',
       'contactName',
       'email',
       'phone',
       'address',
       'city',
+      'suburb',
+      'postcode',
       'premisesType',
       'floorArea',
       'frequency',
@@ -41,11 +86,65 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (inputs.frequency === 'once_off') {
+      return NextResponse.json(
+        { success: false, error: 'Secure Cleaning Aus provides recurring cleaning services only.' },
+        { status: 400 }
+      )
+    }
+
     if (!['melbourne', 'sydney'].includes(inputs.city)) {
       return NextResponse.json(
         { success: false, error: 'City must be melbourne or sydney.' },
         { status: 400 }
       )
+    }
+
+    if (!/^\d{4}$/.test(inputs.postcode)) {
+      return NextResponse.json(
+        { success: false, error: 'Postcode must be a valid 4-digit Australian postcode.' },
+        { status: 400 }
+      )
+    }
+
+    // Re-check the selected inspection time immediately before saving.
+    // The browser's availability response can become stale while the form is open.
+    let bookingInputs: BookingInputs = { ...inputs }
+    let inspectionStatus = 'pending'
+    let inspectionScheduledFor: string | null = null
+    if (inputs.preferredInspectionSlotId && inputs.preferredInspectionSlotId !== 'contact_me') {
+      const availability = await getAvailabilityCalendar(
+        { address: inputs.address, suburb: inputs.suburb, postcode: inputs.postcode },
+        inputs.city,
+        inputs.preferredStartDate,
+      )
+      const selectedSuggestion = availability.suggestions.find(
+        (suggestion) => suggestion.slotId === inputs.preferredInspectionSlotId,
+      )
+
+      if (!selectedSuggestion) {
+        return NextResponse.json(
+          { success: false, error: 'That inspection time is no longer available. Please choose the next available appointment.' },
+          { status: 409 },
+        )
+      }
+
+      bookingInputs = {
+        ...inputs,
+        preferredInspectionSlotLabel: selectedSuggestion.label,
+        preferredInspectionDay: selectedSuggestion.day,
+        preferredInspectionStartTime: selectedSuggestion.startTime,
+        preferredInspectionEndTime: selectedSuggestion.endTime,
+        preferredInspectionAssigneeId: selectedSuggestion.assigneeId,
+        preferredInspectionAssigneeName: selectedSuggestion.assigneeName,
+        preferredInspectionCalendarId: selectedSuggestion.calendarId,
+      }
+      inspectionStatus = 'scheduled'
+      inspectionScheduledFor = getDateTimeInTimeZone(
+        inputs.preferredStartDate,
+        selectedSuggestion.startTime,
+        getCityTimeZone(inputs.city),
+      ).toISOString()
     }
 
     // ── Resolve client ────────────────────────────────────────────────────
@@ -55,7 +154,7 @@ export async function POST(request: NextRequest) {
       .from('clients')
       .upsert(
         {
-          business_name: inputs.businessName,
+          business_name: businessLabel,
           contact_name: inputs.contactName,
           email: inputs.email,
           phone: inputs.phone,
@@ -93,10 +192,10 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Match or create site ──────────────────────────────────────────────
-    let matchedSite = await findMatchingSiteForBooking(inputs, clientData.id)
+    let matchedSite = await findMatchingSiteForBooking(bookingInputs, clientData.id)
     if (!matchedSite) {
       try {
-        matchedSite = await createSiteFromBooking(inputs, clientData.id)
+        matchedSite = await createSiteFromBooking(bookingInputs, clientData.id)
       } catch (siteError) {
         console.error('[booking] Site auto-create failed:', siteError)
       }
@@ -110,8 +209,10 @@ export async function POST(request: NextRequest) {
       quote_id: quoteId,
       client_id: clientData.id,
       site_id: matchedSite?.id ?? null,
-      inputs: inputs,
+      inputs: bookingInputs,
       status: 'pending',
+      inspection_status: inspectionStatus,
+      inspection_scheduled_for: inspectionScheduledFor,
       first_clean_date: inputs.preferredStartDate,
       recurring_schedule: {
         frequency: inputs.frequency,
@@ -130,7 +231,7 @@ export async function POST(request: NextRequest) {
     // ── Create lead record for CRM ────────────────────────────────────────
     const { error: leadInsertError } = await db.from('leads').insert({
       email: inputs.email,
-      business_name: inputs.businessName,
+      business_name: businessLabel,
       contact_name: inputs.contactName,
       phone: inputs.phone,
       city: inputs.city,
@@ -144,13 +245,13 @@ export async function POST(request: NextRequest) {
 
     // ── Send confirmation emails ──────────────────────────────────────────
     try {
-      await sendBookingConfirmationEmail(bookingRef, inputs)
+      await sendBookingConfirmationEmail(bookingRef, bookingInputs)
     } catch (err) {
       console.error('[booking] Email send failed:', err)
     }
 
     // ── Create Google Calendar follow-up event (non-blocking) ─────────────
-    createBookingFollowUpEvent(bookingRef, inputs)
+    createBookingFollowUpEvent(bookingRef, bookingInputs)
       .then((result) => {
         if (!result.created && result.reason) {
           console.warn('[booking] Calendar event not created:', result.reason)
@@ -160,15 +261,10 @@ export async function POST(request: NextRequest) {
         console.error('[booking] Calendar event failed:', err)
       })
 
-    await createAdminNotification(
-      'new_booking',
-      `New booking ${bookingRef}`,
-      `${inputs.businessName} in ${inputs.city} submitted a booking request.`
-    )
-
     return NextResponse.json({
       success: true,
       bookingRef,
+      inputs: bookingInputs,
     })
   } catch (error) {
     console.error('[api/booking] Unhandled error:', error)

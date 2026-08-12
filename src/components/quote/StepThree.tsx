@@ -16,19 +16,19 @@ const frequencyOptions: { value: CleaningFrequency; label: string; subtext: stri
   { value: '2x_week', label: '2x per Week', subtext: 'Flexible days' },
   { value: 'weekly', label: 'Weekly', subtext: 'Once a week' },
   { value: 'fortnightly', label: 'Fortnightly', subtext: 'Every 2 weeks' },
-  { value: 'once_off', label: 'Once-Off', subtext: 'Single clean' },
 ]
 
 const timeOptions: { value: TimePreference; label: string; subtext: string }[] = [
   { value: 'business_hours', label: 'Business Hours', subtext: '6am – 6pm weekdays' },
-  { value: 'after_hours', label: 'After Hours', subtext: 'After 6pm weekdays' },
-  { value: 'weekend', label: 'Weekend', subtext: 'Sat or Sun' },
+  { value: 'after_hours', label: 'After Hours (sometimes cheaper!)', subtext: 'After 6pm weekdays' },
+  { value: 'weekend', label: 'Weekend (sometimes cheaper!)', subtext: 'Sat or Sun' },
 ]
 
 const defaultAddOns: QuoteAddOns = {
   bathrooms: 0,
   kitchens: 0,
   windows: 0,
+  glassCleaningRequired: false,
   consumables: false,
   highTouchDisinfection: false,
   carpetSteam: false,
@@ -137,15 +137,6 @@ export default function StepThree({ data, onChange, errors }: StepThreeProps) {
         </div>
       </div>
 
-      {/* Spring clean */}
-      <div className="p-4 rounded-xl border-2 border-dashed border-green-300 bg-green-50">
-        <Checkbox
-          label="This is a once-off spring clean / deep clean"
-          description="Spring cleans are priced at 2–3x the regular clean rate, reflecting the additional time and effort required to restore your premises to a high standard."
-          checked={data.isSpringClean ?? false}
-          onChange={() => onChange({ isSpringClean: !data.isSpringClean })}
-        />
-      </div>
     </div>
   )
 }

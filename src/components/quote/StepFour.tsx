@@ -40,13 +40,13 @@ export default function StepFour({ data, onChange, errors }: StepFourProps) {
       </div>
 
       <Input
-        label="Preferred Start Date"
+        label="Preferred Inspection / Start Window"
         type="date"
         min={today}
         value={data.preferredStartDate ?? defaultStartStr}
         onChange={(e) => onChange({ preferredStartDate: e.target.value })}
         error={errors.preferredStartDate}
-        hint="When would you like your first clean? We'll confirm this after your site inspection."
+        hint="When would you like us to inspect the site or aim for commencement? We'll confirm the final schedule after inspection."
       />
 
       <Select
@@ -70,14 +70,42 @@ export default function StepFour({ data, onChange, errors }: StepFourProps) {
         />
       </div>
 
+      <input
+        type="text"
+        tabIndex={-1}
+        autoComplete="off"
+        aria-hidden="true"
+        value={data.website ?? ''}
+        onChange={(e) => onChange({ website: e.target.value })}
+        className="hidden"
+      />
+
+      <label className="flex items-start gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={data.acceptableUseAccepted ?? false}
+          onChange={(e) => onChange({ acceptableUseAccepted: e.target.checked })}
+          className="mt-1 h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+        />
+        <span>
+          I confirm this is a genuine enquiry for my business, or a business I am authorised to represent,
+          and I will not use this quote tool for scraping, resale, automated testing, spam, or competitor data collection.
+        </span>
+      </label>
+
+      {errors.acceptableUseAccepted ? (
+        <p className="text-sm text-red-600">{errors.acceptableUseAccepted}</p>
+      ) : null}
+
       {/* Summary reminder */}
       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-800">
         <p className="font-semibold mb-1">📋 What happens after you submit?</p>
         <ul className="space-y-1 text-blue-700">
-          <li>✓ You&apos;ll receive your instant price estimate by email</li>
+          <li>✓ You&apos;ll receive your remote quote estimate by email</li>
           <li>✓ Our team will review your details within 1 business day</li>
           <li>✓ We&apos;ll match you with a verified Owner-Operator in your area</li>
           <li>✓ A site inspection is arranged — usually within 48 hours</li>
+          <li>✓ We confirm scope, requirements, and final pricing after inspection</li>
           <li>✓ No obligation to proceed</li>
         </ul>
       </div>

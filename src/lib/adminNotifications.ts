@@ -1,9 +1,10 @@
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailOrThrow } from '@/lib/email'
 
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com'
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'info@securecleaning.com.au'
+const FROM_EMAIL = process.env.FROM_EMAIL || 'quotes@securecleaning.com.au'
 
-export async function createAdminNotification(type: string, subject: string, message: string) {
+export async function createAdminNotification(type: string, subject: string, message: string, html?: string) {
   try {
     const db = getAdminSupabase()
     await db.from('admin_audit_log').insert({
@@ -18,10 +19,11 @@ export async function createAdminNotification(type: string, subject: string, mes
 
   try {
     await sendEmailOrThrow({
-      from: process.env.FROM_EMAIL || 'Secure Cleaning <noreply@example.com>',
+      from: FROM_EMAIL,
       to: ADMIN_EMAIL,
+      replyTo: ADMIN_EMAIL,
       subject,
-      html: `<div style="font-family: Arial, sans-serif; line-height: 1.5;"><h2>${subject}</h2><p>${message}</p></div>`,
+      html: html ?? `<div style="font-family: Arial, sans-serif; line-height: 1.5;"><h2>${subject}</h2><p>${message}</p></div>`,
     })
   } catch (error) {
     console.error('[adminNotifications] Failed to send notification email:', error)

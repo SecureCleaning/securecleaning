@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 
 interface CalendarPickerProps {
@@ -9,6 +9,7 @@ interface CalendarPickerProps {
   minDate?: string     // ISO date string
   label?: string
   error?: string
+  availableDates?: string[]
 }
 
 function getDaysInMonth(year: number, month: number): number {
@@ -26,7 +27,7 @@ const MONTH_NAMES = [
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
-export default function CalendarPicker({ value, onChange, minDate, label, error }: CalendarPickerProps) {
+export default function CalendarPicker({ value, onChange, minDate, label, error, availableDates = [] }: CalendarPickerProps) {
   const today = new Date()
   const min = minDate ? new Date(minDate) : today
 
@@ -34,6 +35,13 @@ export default function CalendarPicker({ value, onChange, minDate, label, error 
   const [viewMonth, setViewMonth] = useState(today.getMonth())
 
   const selectedDate = value ? new Date(value + 'T00:00:00') : null
+
+  useEffect(() => {
+    const nextSelectedDate = value ? new Date(value + 'T00:00:00') : null
+    if (!nextSelectedDate || Number.isNaN(nextSelectedDate.getTime())) return
+    setViewYear(nextSelectedDate.getFullYear())
+    setViewMonth(nextSelectedDate.getMonth())
+  }, [value])
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth)
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth)
@@ -66,7 +74,9 @@ export default function CalendarPicker({ value, onChange, minDate, label, error 
 
   const isDisabled = (day: number) => {
     const date = new Date(viewYear, viewMonth, day)
-    return date < min
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    const restrictedToAvailableDates = availableDates.length > 0 && !availableDates.includes(dateStr)
+    return date < min || restrictedToAvailableDates
   }
 
   const isSelected = (day: number) => {
@@ -134,6 +144,8 @@ export default function CalendarPicker({ value, onChange, minDate, label, error 
             if (!day) return <div key={`empty-${idx}`} />
 
             const disabled = isDisabled(day)
+            const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+            const available = availableDates.includes(dateStr)
             const selected = isSelected(day)
             const todayCell = isToday(day)
 
@@ -147,6 +159,7 @@ export default function CalendarPicker({ value, onChange, minDate, label, error 
                   'rounded-lg text-sm py-2 transition-all duration-150 font-medium',
                   disabled && 'text-gray-300 cursor-not-allowed',
                   !disabled && !selected && !todayCell && 'text-gray-700 hover:bg-green-50 hover:text-green-700',
+                  available && !selected && 'bg-blue-50 text-blue-800 ring-1 ring-inset ring-blue-200',
                   selected && 'text-white font-bold',
                   todayCell && !selected && 'ring-2 ring-inset ring-[#1a2744] text-gray-900',
                 )}
@@ -161,6 +174,12 @@ export default function CalendarPicker({ value, onChange, minDate, label, error 
             )
           })}
         </div>
+
+        {availableDates.length > 0 && (
+          <div className="px-4 py-2 border-t border-gray-100 bg-blue-50 text-xs text-blue-800 text-center">
+            Highlighted dates have an available inspection window for this address.
+          </div>
+        )}
 
         {/* Selected date */}
         {selectedDate && (

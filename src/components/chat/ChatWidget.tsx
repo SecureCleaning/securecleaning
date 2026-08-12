@@ -14,7 +14,7 @@ interface Message {
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
   role: 'assistant',
-  content: "Hi! I'm **Max**, your Secure Cleaning Aus assistant. I can help answer questions about our commercial cleaning services in Melbourne and Sydney.\n\nWhat can I help you with today?",
+  content: "Hi! I'm **Secure Bot**, your Secure Cleaning Aus assistant. I can help answer questions about our commercial cleaning services in Melbourne and Sydney.\n\nWhat can I help you with today?",
   timestamp: new Date(),
 }
 
@@ -44,7 +44,7 @@ function MessageBubble({ message }: { message: Message }) {
       {!isUser && (
         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 mr-2 mt-1"
           style={{ backgroundColor: '#1a2744' }}>
-          M
+          S
         </div>
       )}
       <div
@@ -188,7 +188,7 @@ export default function ChatWidget() {
         onClick={() => setIsOpen(!isOpen)}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center transition-all duration-200 hover:scale-105 hover:shadow-xl"
         style={{ backgroundColor: isOpen ? '#374151' : '#1a2744' }}
-        aria-label="Chat with Max"
+        aria-label="Chat with Secure Bot"
       >
         {isOpen ? (
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -213,10 +213,10 @@ export default function ChatWidget() {
           {/* Header */}
           <div className="px-5 py-4 flex items-center gap-3 border-b border-gray-100" style={{ backgroundColor: '#1a2744' }}>
             <div className="w-9 h-9 rounded-full bg-green-500 flex items-center justify-center text-white font-bold text-sm">
-              M
+              S
             </div>
             <div>
-              <p className="text-white font-semibold text-sm">Max</p>
+              <p className="text-white font-semibold text-sm">Secure Bot</p>
               <p className="text-gray-400 text-xs">Secure Cleaning Aus Assistant</p>
             </div>
             <div className="ml-auto flex items-center gap-1.5">
@@ -268,7 +268,7 @@ export default function ChatWidget() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Max anything…"
+              placeholder="Ask Secure Bot anything…"
               disabled={isStreaming}
               className="flex-1 text-sm px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent placeholder-gray-400 disabled:bg-gray-50"
             />
@@ -286,7 +286,7 @@ export default function ChatWidget() {
 
           {/* Footer */}
           <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-center text-xs text-gray-400">
-            Powered by AI · <Link href="/quote" className="text-green-600 hover:underline">Get a quote</Link> · <Link href="/booking" className="text-green-600 hover:underline">Book now</Link>
+            Powered by AI · <Link href="/quote" className="text-green-600 hover:underline">Get a remote quote</Link> · <Link href="/booking" className="text-green-600 hover:underline">Book a site inspection</Link>
           </div>
         </div>
       )}

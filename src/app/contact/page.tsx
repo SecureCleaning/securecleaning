@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default async function ContactPage() {
   const content = await getPublicContentMap()
-  const email = getContentValue(content, 'contact.email', 'info@securecleaning.au')
+  const email = getContentValue(content, 'contact.email', 'info@securecleaning.com.au')
   const phone = getContentValue(content, 'contact.phone', '1300 000 000')
   const serviceAreas = getContentValue(content, 'contact.service_areas', 'Melbourne & Sydney, Australia')
   const phoneHref = `tel:${phone.replace(/[^+\d]/g, '')}`
@@ -21,7 +21,7 @@ export default async function ContactPage() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.hero_title', 'Contact Us')}</h1>
           <p className="text-lg text-gray-600">
-            {getContentValue(content, 'contact.hero_subtitle', "Prefer to talk? We're here to help. Or skip the wait and get an instant quote online.")}
+            {getContentValue(content, 'contact.hero_subtitle', "Prefer to talk? We're here to help. Or start with a remote quote or site inspection request online.")}
           </p>
         </div>
 
@@ -73,8 +73,8 @@ export default async function ContactPage() {
               <h2 className="text-xl font-bold mb-3" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.quick_links_title', 'Quick Links')}</h2>
               <div className="space-y-2">
                 {[
-                  { href: '/quote', label: getContentValue(content, 'contact.quick_link_1', '⚡ Get an instant quote online') },
-                  { href: '/booking', label: getContentValue(content, 'contact.quick_link_2', '📅 Book a cleaning service') },
+                  { href: '/quote', label: getContentValue(content, 'contact.quick_link_1', '⚡ Get a remote quote online') },
+                  { href: '/booking', label: getContentValue(content, 'contact.quick_link_2', '📅 Book a site inspection') },
                   { href: '/faq', label: getContentValue(content, 'contact.quick_link_3', '❓ View frequently asked questions') },
                   { href: '/services', label: getContentValue(content, 'contact.quick_link_4', '🧹 Browse our services') },
                 ].map((l) => (
@@ -125,7 +125,7 @@ export default async function ContactPage() {
         <div className="mt-8 p-6 rounded-2xl text-center" style={{ backgroundColor: '#1a2744' }}>
           <p className="text-white font-semibold mb-1">{getContentValue(content, 'contact.bottom_banner_title', 'Need an answer right now? 🤖')}</p>
           <p className="text-gray-400 text-sm">
-            <strong className="text-green-400">Max</strong>, {getContentValue(content, 'contact.bottom_banner_body', 'Chat with Max, our AI assistant, for instant answers about services, pricing, and more — available 24/7.')}
+            {getContentValue(content, 'contact.bottom_banner_body', 'Chat with Secure Bot, our AI assistant, for instant answers about services, pricing, and more — available 24/7.')}
           </p>
         </div>
       </div>

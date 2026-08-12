@@ -19,7 +19,7 @@ const suburbs = [
 
 export default async function SydneyPage() {
   const content = await getPublicContentMap()
-  const serviceLabels = ['Office Cleaning', 'Medical Cleaning', 'Childcare Cleaning', 'Retail Cleaning', 'Industrial Cleaning', 'Gym Cleaning', 'Warehouse Cleaning']
+  const serviceLabels = ['Office Cleaning', 'Medical Cleaning', 'Childcare Cleaning', 'Function Centre Cleaning', 'Retail Cleaning', 'Gym Cleaning', 'Sports Facilities Cleaning']
 
   return (
     <div className="min-h-screen">
@@ -98,10 +98,10 @@ export default async function SydneyPage() {
 
               <div className="rounded-2xl border p-6" style={{ borderColor: '#1a2744', backgroundColor: 'rgba(26,39,68,0.04)' }}>
                 <p className="text-sm font-semibold mb-2" style={{ color: '#1a2744' }}>
-                  {getContentValue(content, 'sydney.chat_title', '🤖 Chat with Max')}
+                  {getContentValue(content, 'sydney.chat_title', '🤖 Chat with Secure Bot')}
                 </p>
                 <p className="text-xs text-gray-600">
-                  {getContentValue(content, 'sydney.chat_body', 'Questions about Sydney services? Max can help 24/7.')}
+                  {getContentValue(content, 'sydney.chat_body', 'Questions about Sydney services? Secure Bot can help 24/7.')}
                 </p>
               </div>
             </div>
@@ -120,7 +120,7 @@ export default async function SydneyPage() {
             </Link>
             <Link href="/booking"
               className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold border-2 border-white text-white hover:bg-white hover:text-green-600 transition-all">
-              {getContentValue(content, 'sydney.bottom_cta_secondary_label', 'Book a Clean')}
+              {getContentValue(content, 'sydney.bottom_cta_secondary_label', 'Book Site Inspection')}
             </Link>
           </div>
         </div>

@@ -3,9 +3,9 @@ import Link from 'next/link'
 import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
-  title: 'About Secure Cleaning Aus — Secure Contracts Pty Ltd',
+  title: 'About Secure Cleaning Aus',
   description:
-    'Learn about Secure Contracts Pty Ltd and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
+    'Learn about Secure Cleaning Aus and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
 }
 
 export default async function AboutPage() {
@@ -33,60 +33,97 @@ export default async function AboutPage() {
 
   return (
     <div className="min-h-screen">
-      <section className="py-16 text-white" style={{ backgroundColor: '#1a2744' }}>
+      <section className="py-18 md:py-20 text-white" style={{ backgroundColor: 'var(--brand-ink)' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">{getContentValue(content, 'about.hero_title', 'About Secure Cleaning Aus')}</h1>
-          <p className="text-xl text-gray-300">
+          <h1 className="text-4xl md:text-5xl font-bold mb-5">{getContentValue(content, 'about.hero_title', 'About Secure Cleaning Aus')}</h1>
+          <p className="text-xl text-gray-200 leading-relaxed">
             {getContentValue(content, 'about.hero_subtitle', 'A better way to clean your business. Built on the Owner-Operator model.')}
           </p>
         </div>
       </section>
 
-      <section className="py-16 bg-white">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 prose prose-gray max-w-none">
-          <h2 style={{ color: '#1a2744' }}>{getContentValue(content, 'about.section_1_title', 'Who We Are')}</h2>
-          <p>{getContentValue(content, 'about.intro', 'Secure Cleaning Aus is a trading name of Secure Contracts Pty Ltd, an Australian company focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our Owner-Operator network.')}</p>
-          <p>{getContentValue(content, 'about.section_1_paragraph_2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.')}</p>
-          <p>{getContentValue(content, 'about.section_1_paragraph_3', 'We believed there was a better way.')}</p>
+      <section className="py-16 md:py-20 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-10 md:space-y-12">
+          <section className="space-y-5">
+            <h2 className="text-3xl font-bold" style={{ color: 'var(--brand-ink)' }}>
+              {getContentValue(content, 'about.section_1_title', 'Who We Are')}
+            </h2>
+            <div className="space-y-5 text-lg leading-8 text-gray-700">
+              <p>{getContentValue(content, 'about.intro', 'Secure Cleaning Aus is focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.')}</p>
+              <p>{getContentValue(content, 'about.section_1_paragraph_2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.')}</p>
+              <p>{getContentValue(content, 'about.section_1_paragraph_3', 'We believed there was a better way.')}</p>
+            </div>
+          </section>
 
-          <h2 style={{ color: '#1a2744' }}>{getContentValue(content, 'about.section_2_title', 'The Owner-Operator Model')}</h2>
-          <p>{getContentValue(content, 'about.section_2_intro', 'Every Secure Cleaning Aus operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:')}</p>
-          <ul>
-            {modelPoints.map((point) => {
-              const [lead, ...rest] = point.split(': ')
-              return (
-                <li key={point}><strong>{lead}:</strong> {rest.join(': ')}</li>
-              )
-            })}
-          </ul>
+          <section className="space-y-5 rounded-3xl border border-gray-100 bg-gray-50 p-8 md:p-10">
+            <h2 className="text-3xl font-bold" style={{ color: 'var(--brand-ink)' }}>
+              {getContentValue(content, 'about.section_2_title', 'The Owner-Operator Model')}
+            </h2>
+            <p className="text-lg leading-8 text-gray-700">
+              {getContentValue(content, 'about.section_2_intro', 'Every Secure Cleaning Aus operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:')}
+            </p>
+            <ul className="space-y-4">
+              {modelPoints.map((point) => {
+                const [lead, ...rest] = point.split(': ')
+                return (
+                  <li key={point} className="rounded-2xl bg-white px-5 py-4 text-gray-700 leading-7 shadow-sm">
+                    <strong style={{ color: 'var(--brand-ink)' }}>{lead}:</strong> {rest.join(': ')}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
 
-          <h2 style={{ color: '#1a2744' }}>{getContentValue(content, 'about.section_3_title', 'Verification & Standards')}</h2>
-          <p>{getContentValue(content, 'about.section_3_intro', 'Every Secure Cleaning Aus operator must pass our verification process before taking on clients:')}</p>
-          <ul>
-            {standards.map((standard) => (
-              <li key={standard}>{standard}</li>
-            ))}
-          </ul>
+          <section className="space-y-5">
+            <h2 className="text-3xl font-bold" style={{ color: 'var(--brand-ink)' }}>
+              {getContentValue(content, 'about.section_3_title', 'Verification & Standards')}
+            </h2>
+            <p className="text-lg leading-8 text-gray-700">
+              {getContentValue(content, 'about.section_3_intro', 'Every Secure Cleaning Aus operator must pass our verification process before taking on clients:')}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {standards.map((standard) => (
+                <div key={standard} className="rounded-2xl border border-gray-200 bg-white px-5 py-4 text-gray-700 shadow-sm">
+                  {standard}
+                </div>
+              ))}
+            </div>
+          </section>
 
-          <h2 style={{ color: '#1a2744' }}>{getContentValue(content, 'about.section_4_title', 'Our Coverage')}</h2>
-          <p>{getContentValue(content, 'about.section_4_body', 'We currently operate in Melbourne and Sydney, with plans to expand to other major Australian cities. Our operators cover metro and surrounding areas in both cities.')}</p>
+          <section className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-3xl border border-gray-100 bg-white p-8 shadow-sm">
+              <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--brand-ink)' }}>
+                {getContentValue(content, 'about.section_4_title', 'Our Coverage')}
+              </h2>
+              <p className="text-lg leading-8 text-gray-700">
+                {getContentValue(content, 'about.section_4_body', 'We currently operate in Melbourne and Sydney, with plans to expand to other major Australian cities. Our operators cover metro and surrounding areas in both cities.')}
+              </p>
+            </div>
 
-          <h2 style={{ color: '#1a2744' }}>{getContentValue(content, 'about.section_5_title', 'No Lock-In Contracts')}</h2>
-          <p>{getContentValue(content, 'about.section_5_body', "We don't believe in trapping clients. If the service isn't working for you, you can cancel with reasonable notice. We believe the only valid reason to stay is that the service is genuinely excellent — and that's what we're here to deliver.")}</p>
+            <div className="rounded-3xl border border-gray-100 bg-white p-8 shadow-sm">
+              <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--brand-ink)' }}>
+                {getContentValue(content, 'about.section_5_title', 'No Lock-In Contracts')}
+              </h2>
+              <p className="text-lg leading-8 text-gray-700">
+                {getContentValue(content, 'about.section_5_body', "We don't believe in trapping clients. If the service isn't working for you, you can cancel with reasonable notice. We believe the only valid reason to stay is that the service is genuinely excellent — and that's what we're here to deliver.")}
+              </p>
+            </div>
+          </section>
         </div>
       </section>
 
       <section className="py-12 bg-gray-50">
         <div className="max-w-2xl mx-auto px-4 text-center">
-          <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'about.bottom_cta_title', 'Ready to experience the difference?')}</h2>
+          <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--brand-ink)' }}>{getContentValue(content, 'about.bottom_cta_title', 'Ready to experience the difference?')}</h2>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/quote"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold text-white transition-all"
-              style={{ backgroundColor: '#22c55e' }}>
+              className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-bold transition-all"
+              style={{ backgroundColor: 'var(--brand-gold)', color: 'var(--brand-ink)' }}>
               {getContentValue(content, 'about.bottom_cta_primary_label', 'Get an Instant Quote')}
             </Link>
             <Link href="/contact"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold border-2 border-gray-300 text-gray-700 hover:border-gray-400 transition-all">
+              className="inline-flex items-center justify-center px-8 py-4 rounded-lg font-semibold border-2 transition-all"
+              style={{ borderColor: 'var(--brand-teal)', color: 'var(--brand-teal)' }}>
               {getContentValue(content, 'about.bottom_cta_secondary_label', 'Contact Us')}
             </Link>
           </div>

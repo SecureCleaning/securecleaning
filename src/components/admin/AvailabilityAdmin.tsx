@@ -1,10 +1,14 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
-import type { AvailabilityConfig, ServiceZone, WeeklyAvailabilitySlot, Weekday } from '@/lib/availability'
+import type {
+  AvailabilityAssignee,
+  AvailabilityConfig,
+  ServiceZone,
+} from '@/lib/availability'
+import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
-
-const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
 function toCsv(values: string[]): string {
   return values.join(', ')
@@ -17,8 +21,21 @@ function fromCsv(value: string): string[] {
     .filter(Boolean)
 }
 
+function slugifyUsername(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+}
+
+function buildAgentLoginPath(assigneeId: string) {
+  return `/availability/quoters/${assigneeId}`
+}
+
 export default function AvailabilityAdmin({ initialConfig }: { initialConfig: AvailabilityConfig }) {
   const [config, setConfig] = useState<AvailabilityConfig>(initialConfig)
+  const [draftAccessCodes, setDraftAccessCodes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
     message: '',
@@ -37,7 +54,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
           'Content-Type': 'application/json',
           ...getAdminHeaders(),
         },
-        body: JSON.stringify({ config }),
+        body: JSON.stringify({ config, draftAccessCodes }),
       })
 
       const result = await response.json()
@@ -46,11 +63,12 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
       }
 
       setConfig(result.config as AvailabilityConfig)
-      setStatus({ type: 'success', message: 'Availability saved successfully.' })
+      setDraftAccessCodes({})
+      setStatus({ type: 'success', message: 'Agent access and availability settings saved.' })
     } catch (error) {
       setStatus({
         type: 'error',
-        message: error instanceof Error ? error.message : 'Unable to save availability.',
+        message: error instanceof Error ? error.message : 'Unable to save availability settings.',
       })
     } finally {
       setIsSubmitting(false)
@@ -64,10 +82,12 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
     }))
   }
 
-  function updateSlot(slotId: string, updates: Partial<WeeklyAvailabilitySlot>) {
+  function updateAssignee(assigneeId: string, updates: Partial<AvailabilityAssignee>) {
     setConfig((current) => ({
       ...current,
-      weeklySlots: current.weeklySlots.map((slot) => (slot.id === slotId ? { ...slot, ...updates } : slot)),
+      assignees: current.assignees.map((assignee) =>
+        assignee.id === assigneeId ? { ...assignee, ...updates } : assignee
+      ),
     }))
   }
 
@@ -82,20 +102,20 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
     }))
   }
 
-  function addSlot() {
-    const id = `slot-${Date.now()}`
+  function addAssignee() {
+    const id = `assignee-${Date.now()}`
+    const defaultName = 'New Agent'
     setConfig((current) => ({
       ...current,
-      weeklySlots: [
-        ...current.weeklySlots,
+      assignees: [
+        ...current.assignees,
         {
           id,
+          name: defaultName,
+          username: `${slugifyUsername(defaultName) || 'agent'}.${current.assignees.length + 1}`,
           city: 'melbourne',
-          label: 'New Slot',
-          day: 'monday',
-          startTime: '09:00',
-          endTime: '10:00',
-          zoneIds: [],
+          email: '',
+          calendarId: '',
           active: true,
           notes: '',
         },
@@ -114,175 +134,427 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
     }))
   }
 
-  function removeSlot(slotId: string) {
+  function removeAssignee(assigneeId: string) {
     setConfig((current) => ({
       ...current,
-      weeklySlots: current.weeklySlots.filter((slot) => slot.id !== slotId),
+      assignees: current.assignees.filter((assignee) => assignee.id !== assigneeId),
+      weeklySlots: current.weeklySlots.filter((slot) => slot.assigneeId !== assigneeId),
+      oneOffBlocks: current.oneOffBlocks.filter((block) => block.assigneeId !== assigneeId),
     }))
-  }
 
-  const zoneOptions = config.zones.map((zone) => ({ id: zone.id, label: `${zone.name} (${zone.city})` }))
+    setDraftAccessCodes((current) => {
+      const next = { ...current }
+      delete next[assigneeId]
+      return next
+    })
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-10">
           <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Availability Editor
+            Availability Admin
           </h1>
           <p className="text-gray-600 max-w-3xl">
-            Match suburb/postcode terms to service zones, then assign weekly inspection windows to those zones.
+            Admin creates the agent accounts here, provides each agent with a username and password,
+            and assigns the calendar they should use. Agents then sign in to their own page and only
+            adjust their own availability.
           </p>
         </div>
 
         <form onSubmit={handleSave} className="space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <div>
-                <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Inspection availability configuration</h2>
-                <p className="text-sm text-gray-600">Save once you&apos;ve finished updating service zones and weekly windows.</p>
+          <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>
+                Agent access setup
+              </h2>
+              <p className="text-sm text-gray-600">
+                Save after creating new agents, changing usernames or passwords, or updating calendar assignments.
+              </p>
+            </div>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
+              style={{ backgroundColor: '#22c55e' }}
+            >
+              {isSubmitting ? 'Saving…' : 'Save Agent Settings'}
+            </button>
+          </div>
+
+          <section className="grid gap-4 md:grid-cols-4">
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active agents</div>
+              <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
+                {config.assignees.filter((assignee) => assignee.active).length}
               </div>
-              <button type="submit" disabled={isSubmitting} className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>
-                {isSubmitting ? 'Saving…' : 'Save Availability'}
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recurring slots</div>
+              <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
+                {config.weeklySlots.length}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">One-off block-outs</div>
+              <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
+                {config.oneOffBlocks.length}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Service zones</div>
+              <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
+                {config.zones.length}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>
+                  Agents
+                </h3>
+                <p className="text-sm text-gray-600">
+                  This is the only place new agents should be created. Each agent gets their own login and schedule page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addAssignee}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ backgroundColor: '#1a2744' }}
+              >
+                Add Agent
               </button>
             </div>
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <div className="flex items-center justify-between gap-4 mb-5">
-                <div>
-                  <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Service zones</h3>
-                  <p className="text-sm text-gray-600">Address matching checks suburb/area terms first, then explicit postcodes.</p>
-                </div>
-                <button type="button" onClick={addZone} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#1a2744' }}>
-                  Add Zone
-                </button>
-              </div>
+            <div className="space-y-4">
+              {config.assignees.map((assignee) => {
+                const loginPath = buildAgentLoginPath(assignee.id)
+                const slotCount = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id).length
+                const blockCount = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id).length
+                const calendarViewUrl = getCalendarViewUrl(assignee)
+                const calendarSubscriptionUrl = getCalendarSubscriptionUrl(assignee)
 
-              <div className="space-y-4">
-                {config.zones.map((zone) => (
-                  <div key={zone.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                return (
+                  <div key={assignee.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Zone name</label>
-                        <input value={zone.name} onChange={(event) => updateZone(zone.id, { name: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Agent name</label>
+                        <input
+                          value={assignee.name}
+                          onChange={(event) =>
+                            updateAssignee(assignee.id, {
+                              name: event.target.value,
+                              username:
+                                assignee.username && assignee.username.trim().length > 0
+                                  ? assignee.username
+                                  : slugifyUsername(event.target.value),
+                            })
+                          }
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                        <select value={zone.city} onChange={(event) => updateZone(zone.id, { city: event.target.value as ServiceZone['city'] })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>
+                        <input
+                          value={assignee.username ?? ''}
+                          onChange={(event) =>
+                            updateAssignee(assignee.id, { username: slugifyUsername(event.target.value) })
+                          }
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">This is what the agent signs in with.</p>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">City</label>
+                        <select
+                          value={assignee.city}
+                          onChange={(event) =>
+                            updateAssignee(assignee.id, { city: event.target.value as AvailabilityAssignee['city'] })
+                          }
+                          className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
+                        >
                           <option value="melbourne">Melbourne</option>
                           <option value="sydney">Sydney</option>
                         </select>
                       </div>
-                      <div className="flex items-end justify-between gap-3">
-                        <div className="text-xs text-gray-500 break-all">ID: {zone.id}</div>
-                        <button type="button" onClick={() => removeZone(zone.id)} className="text-sm font-semibold text-red-600 hover:text-red-700">Delete</button>
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+                        <input
+                          value={assignee.email ?? ''}
+                          onChange={(event) => updateAssignee(assignee.id, { email: event.target.value })}
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
                       </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Suburb / area terms (comma separated)</label>
-                      <textarea rows={3} value={toCsv(zone.matchTerms)} onChange={(event) => updateZone(zone.id, { matchTerms: fromCsv(event.target.value) })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Postcodes (comma separated)</label>
-                      <input value={toCsv(zone.postcodes)} onChange={(event) => updateZone(zone.id, { postcodes: fromCsv(event.target.value) })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                      <input value={zone.notes ?? ''} onChange={(event) => updateZone(zone.id, { notes: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <div className="flex items-center justify-between gap-4 mb-5">
-                <div>
-                  <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Weekly inspection slots</h3>
-                  <p className="text-sm text-gray-600">Attach one or more service zones to each weekly slot.</p>
-                </div>
-                <button type="button" onClick={addSlot} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#1a2744' }}>
-                  Add Slot
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {config.weeklySlots.map((slot) => (
-                  <div key={slot.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div className="lg:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
-                        <input value={slot.label} onChange={(event) => updateSlot(slot.id, { label: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Calendar ID</label>
+                        <input
+                          value={assignee.calendarId ?? ''}
+                          onChange={(event) => updateAssignee(assignee.id, { calendarId: event.target.value })}
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Calendar view URL</label>
+                        <input
+                          value={assignee.calendarViewUrl ?? ''}
+                          onChange={(event) => updateAssignee(assignee.id, { calendarViewUrl: event.target.value })}
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                          placeholder="Optional override. Leave blank to derive from Google Calendar ID."
+                        />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Calendar subscription / feed URL</label>
+                        <input
+                          value={assignee.calendarSubscriptionUrl ?? ''}
+                          onChange={(event) =>
+                            updateAssignee(assignee.id, { calendarSubscriptionUrl: event.target.value })
+                          }
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                          placeholder="Optional ICS / webcal / external subscription link"
+                        />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                        <select value={slot.city} onChange={(event) => updateSlot(slot.id, { city: event.target.value as WeeklyAvailabilitySlot['city'] })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-                          <option value="melbourne">Melbourne</option>
-                          <option value="sydney">Sydney</option>
-                        </select>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Set / reset password</label>
+                        <input
+                          type="password"
+                          value={draftAccessCodes[assignee.id] ?? ''}
+                          onChange={(event) =>
+                            setDraftAccessCodes((current) => ({
+                              ...current,
+                              [assignee.id]: event.target.value,
+                            }))
+                          }
+                          placeholder={assignee.accessCodeHash ? 'Leave blank to keep current password' : 'Create password'}
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          {assignee.accessCodeHash ? 'Password already set.' : 'No password set yet.'}
+                        </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
-                        <select value={slot.day} onChange={(event) => updateSlot(slot.id, { day: event.target.value as Weekday })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-                          {DAY_OPTIONS.map((day) => (
-                            <option key={day} value={day}>{day}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
-                        <input type="time" value={slot.startTime} onChange={(event) => updateSlot(slot.id, { startTime: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
-                        <input type="time" value={slot.endTime} onChange={(event) => updateSlot(slot.id, { endTime: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
+                        <input
+                          value={assignee.notes ?? ''}
+                          onChange={(event) => updateAssignee(assignee.id, { notes: event.target.value })}
+                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        />
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Matched zones</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-gray-200 p-4">
-                        {zoneOptions.map((zone) => {
-                          const checked = slot.zoneIds.includes(zone.id)
-                          return (
-                            <label key={zone.id} className="flex items-start gap-2 text-sm text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(event) => {
-                                  const nextZoneIds = event.target.checked
-                                    ? [...slot.zoneIds, zone.id]
-                                    : slot.zoneIds.filter((id) => id !== zone.id)
-                                  updateSlot(slot.id, { zoneIds: nextZoneIds })
-                                }}
-                              />
-                              <span>{zone.label}</span>
-                            </label>
-                          )
-                        })}
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                      <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                          Agent login details
+                        </div>
+                        <div className="mt-3 space-y-2 text-sm text-gray-700">
+                          <div>
+                            <span className="font-semibold text-gray-900">Username:</span>{' '}
+                            {assignee.username || 'Set a username before saving'}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-900">Login page:</span>{' '}
+                            <span className="break-all">{loginPath}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-900">Availability:</span>{' '}
+                            {slotCount} recurring slot{slotCount === 1 ? '' : 's'} and {blockCount} block-out
+                            {blockCount === 1 ? '' : 's'}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-900">Calendar view:</span>{' '}
+                            {calendarViewUrl ? (
+                              <a
+                                href={calendarViewUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="break-all text-blue-700 underline underline-offset-2"
+                              >
+                                Open calendar
+                              </a>
+                            ) : (
+                              'Not set yet'
+                            )}
+                          </div>
+                          <div>
+                            <span className="font-semibold text-gray-900">External feed:</span>{' '}
+                            {calendarSubscriptionUrl ? (
+                              <span className="break-all">{calendarSubscriptionUrl}</span>
+                            ) : (
+                              'Not set yet'
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                        <textarea rows={2} value={slot.notes ?? ''} onChange={(event) => updateSlot(slot.id, { notes: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                      </div>
-                      <div className="flex items-center justify-between gap-4 md:justify-end">
-                        <label className="inline-flex items-center gap-2 text-sm text-gray-700 mt-7 md:mt-0">
-                          <input type="checkbox" checked={slot.active} onChange={(event) => updateSlot(slot.id, { active: event.target.checked })} />
-                          Active slot
+                      <div className="flex flex-col gap-2">
+                        <Link
+                          href={`/admin/availability/quoters/${assignee.id}`}
+                          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                        >
+                          Open admin detail page
+                        </Link>
+                        <Link
+                          href={loginPath}
+                          className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                        >
+                          Open agent login page
+                        </Link>
+                        {calendarViewUrl ? (
+                          <a
+                            href={calendarViewUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                          >
+                            Open calendar view
+                          </a>
+                        ) : null}
+                        <label className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={assignee.active}
+                            onChange={(event) => updateAssignee(assignee.id, { active: event.target.checked })}
+                          />
+                          Active agent
                         </label>
-                        <button type="button" onClick={() => removeSlot(slot.id)} className="text-sm font-semibold text-red-600 hover:text-red-700 mt-7 md:mt-0">
-                          Delete slot
+                        <button
+                          type="button"
+                          onClick={() => removeAssignee(assignee.id)}
+                          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:border-red-300"
+                        >
+                          Delete agent
                         </button>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
+                )
+              })}
+            </div>
+          </section>
 
-            {status.message ? <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>{status.message}</p> : null}
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>
+                  Service zones
+                </h3>
+                <p className="text-sm text-gray-600">
+                  These zones are used to match suburb/postcode requests to the right inspection agent.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addZone}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+                style={{ backgroundColor: '#1a2744' }}
+              >
+                Add Zone
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {config.zones.map((zone) => (
+                <div key={zone.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">Zone name</label>
+                      <input
+                        value={zone.name}
+                        onChange={(event) => updateZone(zone.id, { name: event.target.value })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">City</label>
+                      <select
+                        value={zone.city}
+                        onChange={(event) => updateZone(zone.id, { city: event.target.value as ServiceZone['city'] })}
+                        className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
+                      >
+                        <option value="melbourne">Melbourne</option>
+                        <option value="sydney">Sydney</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end justify-between gap-3">
+                      <div className="break-all text-xs text-gray-500">ID: {zone.id}</div>
+                      <button
+                        type="button"
+                        onClick={() => removeZone(zone.id)}
+                        className="text-sm font-semibold text-red-600 hover:text-red-700"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Suburb / area terms (comma separated)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={toCsv(zone.matchTerms)}
+                      onChange={(event) => updateZone(zone.id, { matchTerms: fromCsv(event.target.value) })}
+                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Postcodes (comma separated)
+                    </label>
+                    <input
+                      value={toCsv(zone.postcodes)}
+                      onChange={(event) => updateZone(zone.id, { postcodes: fromCsv(event.target.value) })}
+                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
+                    <input
+                      value={zone.notes ?? ''}
+                      onChange={(event) => updateZone(zone.id, { notes: event.target.value })}
+                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>
+              How this works now
+            </h3>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="font-semibold text-gray-900">1. Admin creates agent</div>
+                <p className="mt-2 text-sm text-gray-600">
+                  Set the name, username, password, city, email, and calendar ID here.
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="font-semibold text-gray-900">2. Agent signs in</div>
+                <p className="mt-2 text-sm text-gray-600">
+                  Give them their username plus their personal login page so they can open their own schedule.
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 p-4">
+                <div className="font-semibold text-gray-900">3. Agent edits only their own times</div>
+                <p className="mt-2 text-sm text-gray-600">
+                  Weekly inspection windows and date-specific block-outs are managed on their dedicated page, while admin keeps full oversight.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {status.message ? (
+            <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
+              {status.message}
+            </p>
+          ) : null}
         </form>
       </div>
     </div>

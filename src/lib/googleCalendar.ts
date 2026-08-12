@@ -1,6 +1,6 @@
 import { google } from 'googleapis'
 import type { BookingInputs } from './types'
-import { getBookingEventWindow } from './calendarInvite'
+import { getBookingEventWindow, getCityTimeZone } from './calendarInvite'
 
 function getCalendarClient() {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID
@@ -23,7 +23,10 @@ export async function createBookingFollowUpEvent(
   inputs: BookingInputs
 ): Promise<{ created: boolean; reason?: string }> {
   const auth = getCalendarClient()
-  const calendarId = process.env.GOOGLE_CALENDAR_ID || process.env.ADMIN_EMAIL
+  const calendarId =
+    inputs.preferredInspectionCalendarId ||
+    process.env.GOOGLE_CALENDAR_ID ||
+    process.env.ADMIN_EMAIL
 
   if (!auth || !calendarId) {
     return { created: false, reason: 'Missing Google Calendar credentials or calendar id' }
@@ -44,30 +47,32 @@ export async function createBookingFollowUpEvent(
   const { start: startDate, end: endDate } = getBookingEventWindow(inputs)
 
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const timeZone = getCityTimeZone(inputs.city)
 
   await calendar.events.insert({
     calendarId,
     requestBody: {
-      summary: `Secure Cleaning Aus follow-up — ${inputs.businessName} (${bookingRef})`,
+      summary: `Secure Cleaning Aus site inspection — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'} (${bookingRef})`,
       description: [
         `Booking ref: ${bookingRef}`,
         `Contact: ${inputs.contactName}`,
         `Email: ${inputs.email}`,
         `Phone: ${inputs.phone}`,
-        `Address: ${inputs.address}`,
+        `Address: ${inputs.address}, ${inputs.suburb} ${inputs.postcode}`,
         `City: ${cityLabel}`,
         `Frequency: ${inputs.frequency}`,
         `Time preference: ${inputs.timePreference}`,
         `Inspection window: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
+        `Assigned quoter: ${inputs.preferredInspectionAssigneeName || 'To be confirmed'}`,
         `Notes: ${inputs.notes || 'None'}`,
       ].join('\n'),
       start: {
         dateTime: startDate.toISOString(),
-        timeZone: 'Australia/Melbourne',
+        timeZone,
       },
       end: {
         dateTime: endDate.toISOString(),
-        timeZone: 'Australia/Melbourne',
+        timeZone,
       },
     },
   })

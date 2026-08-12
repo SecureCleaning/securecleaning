@@ -19,6 +19,7 @@ const defaultAddOns: QuoteAddOns = {
   bathrooms: 0,
   kitchens: 0,
   windows: 0,
+  glassCleaningRequired: false,
   consumables: false,
   highTouchDisinfection: false,
   carpetSteam: false,
@@ -29,6 +30,7 @@ const initialData: Partial<QuoteInputs> = {
   floorArea: 150,
   addOns: defaultAddOns,
   isSpringClean: false,
+  roomScope: [],
 }
 
 type StepErrors = Partial<Record<keyof QuoteInputs, string>>
@@ -37,24 +39,31 @@ function validateStep(step: number, data: Partial<QuoteInputs>): StepErrors {
   const errors: StepErrors = {}
 
   if (step === 1) {
-    if (!data.businessName?.trim()) errors.businessName = 'Business name is required'
     if (!data.contactName?.trim()) errors.contactName = 'Contact name is required'
     if (!data.email?.trim()) errors.email = 'Email is required'
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) errors.email = 'Please enter a valid email'
     if (!data.phone?.trim()) errors.phone = 'Phone number is required'
     if (!data.city) errors.city = 'Please select a city'
+    if (!data.suburb?.trim()) errors.suburb = 'Suburb is required'
+    if (!data.postcode?.trim()) errors.postcode = 'Postcode is required'
+    else if (!/^\d{4}$/.test(data.postcode)) errors.postcode = 'Enter a valid 4-digit postcode'
     if (!data.premisesType) errors.premisesType = 'Please select a premises type'
   }
 
   if (step === 2) {
     if (!data.floorArea || data.floorArea <= 0) errors.floorArea = 'Please enter your floor area'
-    if (data.floorArea && data.floorArea > 100000) errors.floorArea = 'Floor area seems too large — please check'
     if (!data.floors || data.floors < 1) errors.floors = 'Please enter number of floors'
   }
 
   if (step === 3) {
     if (!data.frequency) errors.frequency = 'Please select a frequency'
     if (!data.timePreference) errors.timePreference = 'Please select a time preference'
+  }
+
+  if (step === 4) {
+    if (!data.acceptableUseAccepted) {
+      errors.acceptableUseAccepted = 'Please confirm this is a genuine authorised enquiry'
+    }
   }
 
   return errors
@@ -71,8 +80,10 @@ export default function QuoteForm() {
   useEffect(() => {
     const draft = getQuoteDraft()
     if (draft) {
-      setFormData((prev) => ({ ...prev, ...draft }))
+      setFormData((prev) => ({ ...prev, ...draft, formStartedAt: draft.formStartedAt ?? Date.now() }))
+      return
     }
+    setFormData((prev) => ({ ...prev, formStartedAt: Date.now() }))
   }, [])
 
   useEffect(() => {
@@ -134,11 +145,9 @@ export default function QuoteForm() {
         quoteRef: data.quoteRef,
         result: data.result,
         inputs: formData as QuoteInputs,
+        emailSent: data.emailSent,
+        emailError: data.emailError,
       })
-
-      if (data.emailSent === false) {
-        setSubmitError(data.emailError ?? 'Your quote was created, but the email could not be sent.')
-      }
 
       router.push(`/quote/result?ref=${data.quoteRef}`)
     } catch (err) {

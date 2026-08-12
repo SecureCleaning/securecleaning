@@ -5,8 +5,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --navy: #1a2744;
+  --navy: #0b4d5f;
   --green: #22c55e;
+  --brand-ink: #083d4c;
+  --brand-teal: #0b5f74;
+  --brand-teal-strong: #0a6f88;
+  --brand-gold: #c99b34;
+  --brand-gold-strong: #b88622;
+  --brand-gold-soft: #f3e3b6;
+  --brand-mist: #eef7f8;
   --white: #ffffff;
 }
 
@@ -26,15 +33,39 @@
 
 @layer components {
   .btn-primary {
-    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-white bg-green-500 hover:bg-green-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2;
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    background-color: var(--brand-teal);
+    box-shadow: 0 10px 24px rgba(11, 95, 116, 0.18);
+  }
+
+  .btn-primary:hover {
+    background-color: var(--brand-teal-strong);
+  }
+
+  .btn-primary:focus {
+    --tw-ring-color: rgba(11, 111, 136, 0.35);
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-white border-2 border-white hover:bg-white hover:text-navy-800 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2;
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    border-color: var(--brand-gold);
+    color: var(--brand-gold);
+  }
+
+  .btn-secondary:hover {
+    background: var(--brand-gold);
+    color: var(--brand-ink);
   }
 
   .btn-outline {
-    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border-2 border-navy-800 text-navy-800 hover:bg-navy-800 hover:text-white transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-navy-800 focus:ring-offset-2;
+    @apply inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold border-2 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    border-color: var(--brand-teal);
+    color: var(--brand-teal);
+  }
+
+  .btn-outline:hover {
+    background: var(--brand-teal);
+    color: white;
   }
 
   .form-label {
@@ -74,4 +105,82 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-gray-500;
+}
+
+.scope-report-shell {
+  position: relative;
+}
+
+.scope-report-shell::before {
+  content: 'SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU';
+  position: absolute;
+  z-index: 0;
+  top: 24%;
+  left: -30%;
+  width: 160%;
+  color: rgba(11, 95, 116, 0.1);
+  font-size: clamp(1.05rem, 2.6vw, 1.7rem);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  line-height: 5;
+  pointer-events: none;
+  text-align: center;
+  transform: rotate(-24deg);
+  white-space: pre;
+}
+
+.scope-report-content {
+  position: relative;
+  z-index: 1;
+}
+
+.scope-label {
+  @apply text-xs font-semibold uppercase tracking-wider text-slate-500;
+}
+
+.scope-value {
+  @apply mt-1 text-sm font-semibold text-slate-900;
+}
+
+.scope-heading {
+  @apply text-xl font-bold text-slate-950;
+}
+
+.scope-task {
+  position: relative;
+  padding-left: 1.25rem;
+}
+
+.scope-task::before {
+  content: '';
+  position: absolute;
+  top: 0.55rem;
+  left: 0.15rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: var(--brand-teal-strong);
+}
+
+@media print {
+  .scope-report-shell {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .scope-report-shell::before {
+    color: rgba(11, 95, 116, 0.12);
+  }
+
+  .site-header,
+  .site-footer {
+    display: none !important;
+  }
+
+  .scope-report-shell {
+    max-width: none;
+    margin: 0;
+    border: 0;
+    box-shadow: none;
+  }
 }

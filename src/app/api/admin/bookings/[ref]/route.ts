@@ -29,10 +29,15 @@ export async function PATCH(
         status: updates.status,
       })
       .eq('booking_ref', params.ref)
-      .select('id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id')
+      .select(
+        'id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id, inspection_status, inspection_scheduled_for, inspection_completed_at, dispatch_notes'
+      )
       .maybeSingle()
 
     if (error) throw error
+    if (!data) {
+      return NextResponse.json({ success: false, error: 'Booking not found.' }, { status: 404 })
+    }
 
     await writeAuditLog('booking', params.ref, 'booking_updated', {
       first_clean_date: updates.first_clean_date,

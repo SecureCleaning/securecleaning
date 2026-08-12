@@ -1,0 +1,10 @@
+<svg width="880" height="180" viewBox="0 0 880 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="880" height="180" rx="28" fill="#F4F8FB"/>
+  <rect x="28" y="28" width="124" height="124" rx="24" fill="#1F3157"/>
+  <path d="M72 92C72 74.3269 86.3269 60 104 60H112C129.673 60 144 74.3269 144 92V96C144 113.673 129.673 128 112 128H104C86.3269 128 72 113.673 72 96V92Z" fill="#28C45B"/>
+  <path d="M84 92C84 80.9543 92.9543 72 104 72H112C123.046 72 132 80.9543 132 92V96C132 107.046 123.046 116 112 116H104C92.9543 116 84 107.046 84 96V92Z" fill="#F4F8FB"/>
+  <path d="M94 94H122" stroke="#1F3157" stroke-width="10" stroke-linecap="round"/>
+  <path d="M94 110H116" stroke="#1F3157" stroke-width="10" stroke-linecap="round"/>
+  <text x="184" y="82" fill="#1F3157" font-family="Arial, Helvetica, sans-serif" font-size="54" font-weight="700">Secure Cleaning</text>
+  <text x="184" y="126" fill="#5B6473" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="600">Site Inspection Worksheet</text>
+</svg>

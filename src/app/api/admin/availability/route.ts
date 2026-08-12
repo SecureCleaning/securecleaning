@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAvailabilityConfig, saveAvailabilityConfig } from '@/lib/availability'
+import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 
 export async function GET(request: NextRequest) {
@@ -19,12 +20,48 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const config = body?.config
+    const draftAccessCodes = body?.draftAccessCodes
 
     if (!config || typeof config !== 'object') {
       return NextResponse.json({ error: 'Invalid availability config.' }, { status: 400 })
     }
 
-    const savedConfig = await saveAvailabilityConfig(config)
+    if (Array.isArray(config.assignees)) {
+      const usernames: string[] = config.assignees.map((assignee: { username?: string }) =>
+        String(assignee.username ?? '').trim().toLowerCase()
+      )
+      if (usernames.some((username: string) => !username)) {
+        return NextResponse.json({ error: 'Every agent must have a username.' }, { status: 400 })
+      }
+
+      const uniqueUsernames = new Set(usernames)
+      if (uniqueUsernames.size !== usernames.length) {
+        return NextResponse.json({ error: 'Agent usernames must be unique.' }, { status: 400 })
+      }
+    }
+
+    const nextConfig =
+      draftAccessCodes && typeof draftAccessCodes === 'object'
+        ? {
+            ...config,
+            assignees: Array.isArray(config.assignees)
+              ? config.assignees.map((assignee: { id?: string; accessCodeHash?: string }) => {
+                  const nextAccessCode = typeof draftAccessCodes[assignee.id ?? ''] === 'string'
+                    ? draftAccessCodes[assignee.id ?? ''].trim()
+                    : ''
+
+                  return {
+                    ...assignee,
+                    accessCodeHash: nextAccessCode
+                      ? hashAvailabilityAccessCode(nextAccessCode)
+                      : assignee.accessCodeHash,
+                  }
+                })
+              : config.assignees,
+          }
+        : config
+
+    const savedConfig = await saveAvailabilityConfig(nextConfig)
     return NextResponse.json({ config: savedConfig })
   } catch (error) {
     console.error('[api/admin/availability] Failed to save availability config:', error)

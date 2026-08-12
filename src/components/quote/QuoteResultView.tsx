@@ -1,11 +1,16 @@
+'use client'
+
 import Link from 'next/link'
 import type { QuoteResult as QuoteResultType, QuoteInputs } from '@/lib/types'
-import { formatCurrency } from '@/lib/quoteEngine'
+import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from '@/lib/publicRoomScope'
+import { formatPriceRange } from '@/lib/quoteEngine'
 
 interface QuoteResultViewProps {
   quoteRef: string
   result: QuoteResultType
   inputs: QuoteInputs
+  emailSent?: boolean
+  emailError?: string | null
 }
 
 const frequencyLabels: Record<string, string> = {
@@ -14,7 +19,7 @@ const frequencyLabels: Record<string, string> = {
   '2x_week': '2x per Week',
   weekly: 'Weekly',
   fortnightly: 'Fortnightly',
-  once_off: 'Once-Off',
+  once_off: 'Recurring service',
 }
 
 const premisesLabels: Record<string, string> = {
@@ -25,11 +30,26 @@ const premisesLabels: Record<string, string> = {
   retail: 'Retail',
   gym: 'Gym / Fitness',
   warehouse: 'Warehouse',
+  function_centre: 'Function Centre / Venue',
+  sports_facility: 'Sports Facility / Recreation Centre',
   other: 'Other',
 }
 
-export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResultViewProps) {
+const timeLabels: Record<string, string> = {
+  business_hours: 'Business hours',
+  after_hours: 'After hours (sometimes cheaper!)',
+  weekend: 'Weekend (sometimes cheaper!)',
+}
+
+export default function QuoteResultView({ quoteRef, result, inputs, emailSent }: QuoteResultViewProps) {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const hasEmailIssue = emailSent === false
+  const roomScopeSummary = summarizePublicRoomScope(
+    sanitizePublicRoomScope(inputs.roomScope).filter((room) => !isBathroomRoomScopeType(room.type) && room.type !== 'kitchen')
+  )
+  const bathroomScopeSummary = summarizePublicRoomScope(
+    sanitizePublicRoomScope(inputs.roomScope).filter((room) => isBathroomRoomScopeType(room.type))
+  )
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -49,21 +69,33 @@ export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResul
           Quote Reference: <span className="font-mono font-semibold text-gray-700">{quoteRef}</span>
         </p>
         <p className="text-gray-500 text-sm mt-1">
-          A copy has been prepared for <strong>{inputs.email}</strong>
+          {hasEmailIssue ? (
+            <>
+              We could not email your copy just yet, but your quote is ready here for <strong>{inputs.email}</strong>
+            </>
+          ) : (
+            <>
+              A copy has been prepared for <strong>{inputs.email}</strong>
+            </>
+          )}
         </p>
       </div>
 
+      {hasEmailIssue && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
+          <p className="font-semibold mb-1">Email delivery is temporarily unavailable</p>
+          <p>
+            Your quote was created successfully. Please use the quote reference above or this page while we restore
+            automated email delivery.
+          </p>
+        </div>
+      )}
+
       <div className="rounded-2xl p-8 text-white mb-6 text-center" style={{ backgroundColor: '#1a2744' }}>
         <p className="text-gray-400 text-sm mb-2">
-          {result.isSpringClean
-            ? 'Spring Clean — One-Off Price'
-            : `Per Visit Estimate (${frequencyLabels[inputs.frequency] ?? inputs.frequency})`}
+          {`Per Visit Estimate (${frequencyLabels[inputs.frequency] ?? 'Recurring service'})`}
         </p>
-        <p className="text-5xl font-black mb-1">
-          {formatCurrency(result.totalLow)}
-          <span className="text-3xl text-gray-400 font-normal mx-2">–</span>
-          {formatCurrency(result.totalHigh)}
-        </p>
+        <p className="text-5xl font-black mb-1">{formatPriceRange(result.totalLow, result.totalHigh)}</p>
         <p className="text-gray-400 text-sm">Price range per visit · Excl. GST</p>
         {result.carpetSteamSeparate && (
           <p className="mt-3 text-amber-300 text-sm">* Carpet steam cleaning quoted separately</p>
@@ -90,20 +122,24 @@ export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResul
           </div>
           <div className="flex justify-between">
             <span className="text-gray-600">Time preference</span>
-            <span className="font-medium capitalize">{inputs.timePreference.replace(/_/g, ' ')}</span>
+            <span className="font-medium">{timeLabels[inputs.timePreference] ?? inputs.timePreference.replace(/_/g, ' ')}</span>
           </div>
           {(inputs.addOns.bathrooms > 0 ||
+            bathroomScopeSummary.length > 0 ||
             inputs.addOns.kitchens > 0 ||
-            inputs.addOns.windows > 0 ||
+            roomScopeSummary.length > 0 ||
+            inputs.addOns.glassCleaningRequired ||
             inputs.addOns.highTouchDisinfection) && (
             <div className="border-t border-gray-100 pt-3 mt-3">
               <p className="text-gray-500 text-xs font-medium mb-2 uppercase tracking-wide">
                 Included requirements
               </p>
               <div className="text-right text-gray-700 space-y-1">
-                {inputs.addOns.bathrooms > 0 && <div>Bathrooms / toilets: {inputs.addOns.bathrooms}</div>}
+                {bathroomScopeSummary.map((item) => <div key={item}>{item}</div>)}
+                {bathroomScopeSummary.length === 0 && inputs.addOns.bathrooms > 0 && <div>Bathrooms / toilets: {inputs.addOns.bathrooms}</div>}
                 {inputs.addOns.kitchens > 0 && <div>Kitchens / kitchenettes: {inputs.addOns.kitchens}</div>}
-                {inputs.addOns.windows > 0 && <div>External windows: {inputs.addOns.windows}</div>}
+                {roomScopeSummary.map((item) => <div key={item}>{item}</div>)}
+                {inputs.addOns.glassCleaningRequired && <div>Glass cleaning requested — priced separately on inspection</div>}
                 {inputs.addOns.highTouchDisinfection && <div>High-touch disinfection requested</div>}
               </div>
             </div>
@@ -112,7 +148,7 @@ export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResul
           <div className="border-t border-gray-200 pt-3 mt-3 flex justify-between font-bold text-base">
             <span>Indicative total per visit</span>
             <span style={{ color: '#1a2744' }}>
-              {formatCurrency(result.totalLow)} – {formatCurrency(result.totalHigh)}
+              {formatPriceRange(result.totalLow, result.totalHigh)}
             </span>
           </div>
         </div>
@@ -125,26 +161,30 @@ export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResul
           and the requirements selected. Consumables are charged separately only where required and based on
           actual usage.
         </p>
+        {inputs.addOns.glassCleaningRequired ? (
+          <p className="mt-2">
+            Glass cleaning is not included in this remote estimate. We can estimate the cost of internal / external glass cleaning during your inspection.
+          </p>
+        ) : null}
       </div>
 
       <p className="text-xs text-gray-500 text-center mb-8">
         Final pricing is confirmed after your free site inspection. Valid for 30 days. All prices exclude GST.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Link
           href={`/booking?quoteRef=${quoteRef}`}
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-bold text-white text-lg transition-all hover:opacity-90"
           style={{ backgroundColor: '#22c55e' }}
         >
-          Book Now
+          Book Site Inspection
         </Link>
         <Link
-          href="/booking"
-          className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-semibold text-white text-lg transition-all hover:opacity-90"
-          style={{ backgroundColor: '#1a2744' }}
+          href={`/scope/${quoteRef}`}
+          className="inline-flex items-center justify-center rounded-xl border-2 border-teal-700 px-8 py-4 text-lg font-bold text-teal-800 transition-all hover:bg-teal-50"
         >
-          Book Onsite Quote
+          View Scope of Works
         </Link>
         <Link
           href="/quote"
@@ -162,7 +202,7 @@ export default function QuoteResultView({ quoteRef, result, inputs }: QuoteResul
             document.dispatchEvent(new CustomEvent('open-chat'))
           }}
         >
-          chat with Max
+          chat with Secure Bot
         </button>
       </p>
     </div>

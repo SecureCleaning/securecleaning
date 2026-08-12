@@ -11,7 +11,7 @@ const FAQ_DEFAULTS = [
   {
     question: 'What is an Owner-Operator?',
     answer:
-      'An Owner-Operator is an independent business owner who has purchased a cleaning territory from Secure Contracts. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.',
+      'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning Aus. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.',
   },
   {
     question: 'Which cities do you service?',
@@ -36,7 +36,7 @@ const FAQ_DEFAULTS = [
   {
     question: 'How quickly can a clean be arranged?',
     answer:
-      'For new clients, we aim to arrange a site inspection within 48 hours of your booking. From there, your first clean can typically be scheduled within 1–2 weeks, depending on your preferred start date and operator availability.',
+      'For new clients, we aim to arrange a site inspection within 48 hours of your request. From there, final scope and pricing are confirmed, and commencement can typically be scheduled within 1–2 weeks depending on your preferred start date and operator availability.',
   },
   {
     question: 'Will I always have the same cleaner?',
@@ -59,9 +59,9 @@ const FAQ_DEFAULTS = [
       'Available add-ons include: bathroom/toilet servicing, kitchen and kitchenette cleaning, external window cleaning, consumables supply (toilet paper, soap, paper towels), and high-touch point disinfection. Carpet steam cleaning is quoted separately.',
   },
   {
-    question: 'Can I get a spring clean or one-off deep clean?',
+    question: 'What recurring cleaning schedules are available?',
     answer:
-      'Yes. Select "Once-Off" as your frequency, and check the Spring Clean option in our quote form. Spring cleans are priced higher than regular cleans (typically 2–3x the regular rate) to reflect the additional time and effort required.',
+      'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, or fortnightly schedules. Request a quote and we will confirm the right service plan for your premises.',
   },
   {
     question: 'Are your cleaners insured?',
@@ -83,21 +83,22 @@ const FAQ_DEFAULTS = [
 export default async function FAQPage() {
   const content = await getPublicContentMap()
   const heading = getContentValue(content, 'faq.heading', 'Frequently Asked Questions')
-  const intro = getContentValue(content, 'faq.intro', "Can't find your answer here? Chat with Max or")
+  const intro = getContentValue(content, 'faq.intro', "Can't find your answer here? Chat with Secure Bot or")
   const ctaHeading = getContentValue(content, 'faq.cta_heading', 'Still have questions?')
   const ctaBody = getContentValue(
     content,
     'faq.cta_body',
-    'Get an instant estimate with our quote calculator, chat with Max 24/7, or reach out directly.'
+    'Get an instant estimate with our quote calculator, chat with Secure Bot 24/7, or reach out directly.'
   )
   const ctaPrimaryLabel = getContentValue(content, 'faq.cta_primary_label', 'Get a Quote')
   const ctaSecondaryLabel = getContentValue(content, 'faq.cta_secondary_label', 'Contact Us')
 
   const faqs = FAQ_DEFAULTS.map((faq, index) => {
     const itemNumber = index + 1
+    const contentPrefix = itemNumber === 11 ? 'recurring_cleaning' : `item_${itemNumber}`
     return {
-      q: getContentValue(content, `faq.item_${itemNumber}_question`, faq.question),
-      a: getContentValue(content, `faq.item_${itemNumber}_answer`, faq.answer),
+      q: getContentValue(content, `faq.${contentPrefix}_question`, faq.question),
+      a: getContentValue(content, `faq.${contentPrefix}_answer`, faq.answer),
     }
   })
 

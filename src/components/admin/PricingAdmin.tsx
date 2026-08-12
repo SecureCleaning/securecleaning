@@ -196,60 +196,84 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
                 {config.items.map((item) => (
                   <div key={item.id} className="rounded-xl border border-gray-200 p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-                      <input
-                        type="text"
-                        value={item.code}
-                        onChange={(event) => updateItem(item.id, { code: event.target.value })}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="Code"
-                      />
-                      <input
-                        type="text"
-                        value={item.name}
-                        onChange={(event) => updateItem(item.id, { name: event.target.value })}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="Name"
-                      />
-                      <select
-                        value={item.unitType}
-                        onChange={(event) => updateItem(item.id, { unitType: event.target.value as PricingItemUnit })}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      >
-                        {UNIT_OPTIONS.map((unit) => (
-                          <option key={unit} value={unit}>{unit}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={item.rate}
-                        onChange={(event) => updateItem(item.id, { rate: Number(event.target.value) })}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        placeholder="Rate"
-                      />
-                      <label className="flex items-center gap-2 text-sm text-gray-700">
+                      <div>
+                        <label htmlFor={`${item.id}-code`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Calculator code</label>
                         <input
-                          type="checkbox"
-                          checked={item.active}
-                          onChange={(event) => updateItem(item.id, { active: event.target.checked })}
+                          id={`${item.id}-code`}
+                          type="text"
+                          value={item.code}
+                          onChange={(event) => updateItem(item.id, { code: event.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="e.g. bathrooms"
                         />
-                        Active
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                      >
-                        Remove
-                      </button>
+                      </div>
+                      <div>
+                        <label htmlFor={`${item.id}-name`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Display name</label>
+                        <input
+                          id={`${item.id}-name`}
+                          type="text"
+                          value={item.name}
+                          onChange={(event) => updateItem(item.id, { name: event.target.value })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="e.g. Bathrooms"
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor={`${item.id}-unit`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Unit charged</label>
+                        <select
+                          id={`${item.id}-unit`}
+                          value={item.unitType}
+                          onChange={(event) => updateItem(item.id, { unitType: event.target.value as PricingItemUnit })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        >
+                          {UNIT_OPTIONS.map((unit) => (
+                            <option key={unit} value={unit}>{unit}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`${item.id}-rate`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Rate ($)</label>
+                        <input
+                          id={`${item.id}-rate`}
+                          type="number"
+                          step="0.01"
+                          value={item.rate}
+                          onChange={(event) => updateItem(item.id, { rate: Number(event.target.value) })}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          placeholder="e.g. 10.00"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <label className="flex min-h-10 items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={item.active}
+                            onChange={(event) => updateItem(item.id, { active: event.target.checked })}
+                          />
+                          Active item
+                        </label>
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                        >
+                          Remove item
+                        </button>
+                      </div>
                     </div>
-                    <textarea
-                      value={item.notes ?? ''}
-                      onChange={(event) => updateItem(item.id, { notes: event.target.value })}
-                      className="mt-3 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      rows={2}
-                      placeholder="Internal notes"
-                    />
+                    <div className="mt-3">
+                      <label htmlFor={`${item.id}-notes`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Internal notes</label>
+                      <textarea
+                        id={`${item.id}-notes`}
+                        value={item.notes ?? ''}
+                        onChange={(event) => updateItem(item.id, { notes: event.target.value })}
+                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                        rows={2}
+                        placeholder="Explain what this price covers"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>

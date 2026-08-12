@@ -7,8 +7,10 @@ interface QuoteResultProps {
   quoteRef: string
   result: QuoteResultType
   inputs: QuoteInputs
+  emailSent?: boolean
+  emailError?: string | null
 }
 
-export default function QuoteResultComponent({ quoteRef, result, inputs }: QuoteResultProps) {
-  return <QuoteResultView quoteRef={quoteRef} result={result} inputs={inputs} />
+export default function QuoteResultComponent({ quoteRef, result, inputs, emailSent, emailError }: QuoteResultProps) {
+  return <QuoteResultView quoteRef={quoteRef} result={result} inputs={inputs} emailSent={emailSent} emailError={emailError} />
 }

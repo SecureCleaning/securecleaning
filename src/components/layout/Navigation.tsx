@@ -33,9 +33,10 @@ export default function Navigation({ mobile = false, onClose }: NavigationProps)
               className={clsx(
                 'px-4 py-3 rounded-lg text-base font-medium transition-colors',
                 active
-                  ? 'bg-green-50 text-green-700'
+                  ? 'text-white'
                   : 'text-gray-700 hover:bg-gray-100'
               )}
+              style={active ? { backgroundColor: 'var(--brand-teal)' } : undefined}
             >
               {link.label}
             </Link>
@@ -44,8 +45,8 @@ export default function Navigation({ mobile = false, onClose }: NavigationProps)
         <Link
           href="/quote"
           onClick={onClose}
-          className="mt-2 mx-4 px-6 py-3 rounded-lg font-bold text-white text-center transition-all"
-          style={{ backgroundColor: '#22c55e' }}
+          className="mt-2 mx-4 px-6 py-3 rounded-lg font-bold text-center transition-all"
+          style={{ backgroundColor: 'var(--brand-gold)', color: 'var(--brand-ink)' }}
         >
           Get a Quote
         </Link>
@@ -54,7 +55,7 @@ export default function Navigation({ mobile = false, onClose }: NavigationProps)
   }
 
   return (
-    <nav className="hidden md:flex items-center gap-1">
+    <nav className="hidden md:flex items-center gap-2">
       {navLinks.map((link) => {
         const active = pathname === link.href || pathname.startsWith(link.href + '/')
         return (
@@ -62,11 +63,12 @@ export default function Navigation({ mobile = false, onClose }: NavigationProps)
             key={link.href}
             href={link.href}
             className={clsx(
-              'px-4 py-2 rounded-lg text-sm font-medium transition-colors',
+              'px-4 py-2.5 rounded-xl text-[15px] font-semibold transition-colors',
               active
-                ? 'text-green-600 bg-green-50'
+                ? 'text-white'
                 : 'text-gray-700 hover:text-navy-800 hover:bg-gray-100'
             )}
+            style={active ? { backgroundColor: 'var(--brand-teal)' } : undefined}
           >
             {link.label}
           </Link>

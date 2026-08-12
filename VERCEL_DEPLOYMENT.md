@@ -10,7 +10,9 @@
 - [ ] Create / log into Vercel account
 - [ ] Import the project repository or upload the code
 - [ ] Add all environment variables from `.env.local`
-- [ ] Set Production Domain to `securecleaning.au` or `www.securecleaning.au`
+- [ ] Add `securecleaning.com.au` and set it as the Production / primary domain
+- [ ] Add `www.securecleaning.com.au` and redirect it to `securecleaning.com.au`
+- [ ] Add `securecleaning.au` and `www.securecleaning.au` and redirect both to `https://securecleaning.com.au`
 - [ ] Add DNS records at your domain registrar
 
 ## Required environment variables
@@ -28,7 +30,7 @@
 - `ADMIN_EMAIL`
 
 ## Recommended production values
-- `NEXT_PUBLIC_SITE_URL=https://securecleaning.au`
+- `NEXT_PUBLIC_SITE_URL=https://securecleaning.com.au`
 - `FROM_EMAIL=info@securecleaning.au`
 - `ADMIN_EMAIL=info@securecleaning.au`
 - `GOOGLE_CALENDAR_ID=info@securecleaning.au`

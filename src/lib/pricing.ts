@@ -53,6 +53,8 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
       retail: 1.15,
       gym: 1.15,
       warehouse: 1.2,
+      function_centre: 1.15,
+      sports_facility: 1.2,
       other: 1,
     },
     frequency: {
@@ -74,7 +76,7 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
     },
   },
   items: [
-    { id: 'bathrooms', code: 'bathrooms', name: 'Bathrooms', unitType: 'count', rate: 30, active: true, notes: 'Per bathroom per visit' },
+    { id: 'bathrooms', code: 'bathrooms', name: 'Bathrooms', unitType: 'count', rate: 8, active: true, notes: 'Standard bathroom charge includes one toilet, one basin and one mirror' },
     { id: 'kitchens', code: 'kitchens', name: 'Kitchens / kitchenettes', unitType: 'count', rate: 50, active: true, notes: 'Per kitchen per visit' },
     { id: 'windows', code: 'windows', name: 'External windows', unitType: 'count', rate: 15, active: true, notes: 'Per window per visit' },
     { id: 'consumables', code: 'consumables', name: 'Consumables supply', unitType: 'fixed', rate: 25, active: false, notes: 'Handled separately outside public quote flow' },

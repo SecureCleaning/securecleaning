@@ -1,12 +1,14 @@
+import Image from 'next/image'
 import Link from 'next/link'
 
 const serviceLinks = [
   { href: '/services#office', label: 'Office Cleaning' },
   { href: '/services#medical', label: 'Medical Cleaning' },
   { href: '/services#childcare', label: 'Childcare Cleaning' },
-  { href: '/services#industrial', label: 'Industrial Cleaning' },
+  { href: '/services#function_centre', label: 'Function Centre Cleaning' },
   { href: '/services#retail', label: 'Retail Cleaning' },
   { href: '/services#gym', label: 'Gym Cleaning' },
+  { href: '/services#sports_facility', label: 'Sports Facilities Cleaning' },
 ]
 
 const cityLinks = [
@@ -18,33 +20,46 @@ const companyLinks = [
   { href: '/about', label: 'About Us' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' },
-  { href: '/quote', label: 'Get a Quote' },
-  { href: '/booking', label: 'Book a Clean' },
+  { href: '/quote', label: 'Get Remote Quote' },
+  { href: '/booking', label: 'Book Site Inspection' },
 ]
 
 export default function Footer() {
   const year = new Date().getFullYear()
 
   return (
-    <footer style={{ backgroundColor: '#1a2744' }} className="text-white">
+    <footer style={{ backgroundColor: 'var(--brand-ink)' }} className="site-footer text-white">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
           {/* Brand column */}
           <div className="lg:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-navy-800 font-black bg-white text-sm">
-                SC
-              </div>
-              <span className="font-bold text-lg">Secure Cleaning Aus</span>
+            <div className="mb-4">
+              <Image
+                src="/secure-cleaning-logo-aug26.png"
+                alt="Secure Cleaning Aus"
+                width={993}
+                height={662}
+                className="h-20 w-auto"
+              />
             </div>
             <p className="text-gray-400 text-sm leading-relaxed mb-6">
               Professional commercial cleaning in Melbourne and Sydney.
               Verified Owner-Operators. Flexible frequencies. No lock-in contracts.
             </p>
             <div className="text-sm text-gray-400 space-y-1">
-              <p>📧 <a href="mailto:info@securecleaning.au" className="hover:text-white transition-colors">info@securecleaning.au</a></p>
+              <p>📧 <a href="mailto:info@securecleaning.com.au" className="hover:text-white transition-colors">info@securecleaning.com.au</a></p>
               <p>📍 Melbourne &amp; Sydney, Australia</p>
-              <p className="text-xs mt-3 text-gray-500">ABN: TBC</p>
+              <p className="text-xs mt-3 text-gray-500">
+                ABN:{' '}
+                <a
+                  href="https://abr.business.gov.au/ABN/View?abn=81674121825"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-white transition-colors"
+                >
+                  81 674 121 825
+                </a>
+              </p>
             </div>
           </div>
 
@@ -100,18 +115,18 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold text-white mb-4">Get Started</h3>
             <p className="text-gray-400 text-sm mb-4">
-              Ready for a cleaner workplace? Get an instant quote in under 2 minutes.
+              Start with a remote quote, or book a site inspection.
             </p>
             <Link
               href="/quote"
               className="inline-flex items-center px-5 py-2.5 rounded-lg font-semibold text-sm text-white transition-all hover:opacity-90"
-              style={{ backgroundColor: '#22c55e' }}
+              style={{ backgroundColor: 'var(--brand-gold)', color: 'var(--brand-ink)' }}
             >
               Get a Quote →
             </Link>
 
             <div className="mt-8 p-4 rounded-lg border border-gray-700 text-sm">
-              <p className="text-gray-300 font-medium mb-1">🤖 Chat with Max</p>
+              <p className="text-gray-300 font-medium mb-1">🤖 Chat with Secure Bot</p>
               <p className="text-gray-500 text-xs">
                 Our AI assistant can answer questions about services, pricing, and more — 24/7.
               </p>
@@ -123,7 +138,7 @@ export default function Footer() {
       {/* Bottom bar */}
       <div className="border-t border-gray-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-          <p>© {year} Secure Contracts Pty Ltd. All rights reserved.</p>
+          <p>© {year} Secure Cleaning Aus. All rights reserved.</p>
           <div className="flex gap-6">
             <Link href="/privacy" className="hover:text-gray-300 transition-colors">Privacy Policy</Link>
             <Link href="/terms" className="hover:text-gray-300 transition-colors">Terms of Service</Link>

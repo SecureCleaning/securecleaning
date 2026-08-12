@@ -1,7 +1,8 @@
 import { getAdminSupabase } from '@/lib/supabase'
-import { sendBookingConfirmationEmail, sendQuoteEmail } from '@/lib/email'
-import type { BookingInputs, QuoteInputs, QuoteResult } from '@/lib/types'
+import { sendBookingConfirmationEmail, sendQuoteEmail, sendScopeOfWorksEmail } from '@/lib/email'
+import type { BookingInputs, QuoteInputs } from '@/lib/types'
 import { writeAuditLog } from '@/lib/auditLog'
+import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 
 export async function updateQuoteStatus(quoteRef: string, status: string) {
   const db = getAdminSupabase()
@@ -34,19 +35,28 @@ export async function updateBookingStatus(bookingRef: string, status: string) {
 }
 
 export async function resendQuoteEmailByRef(quoteRef: string) {
+  const quote = await getPublicQuoteWorkflowByRef(quoteRef)
+  if (!quote) throw new Error('Quote not found.')
+
+  await sendQuoteEmail(quote.quoteRef, quote.inputs, quote.result, quote.displayPrice)
+  await writeAuditLog('quote', quoteRef, 'email_resent')
+  return { success: true }
+}
+
+export async function resendScopeOfWorksEmailByRef(quoteRef: string) {
   const db = getAdminSupabase()
 
   const { data, error } = await db
     .from('quotes')
-    .select('quote_ref, inputs, result')
+    .select('quote_ref, inputs')
     .eq('quote_ref', quoteRef)
     .maybeSingle()
 
   if (error) throw error
   if (!data) throw new Error('Quote not found.')
 
-  await sendQuoteEmail(data.quote_ref, data.inputs as QuoteInputs, data.result as QuoteResult)
-  await writeAuditLog('quote', quoteRef, 'email_resent')
+  await sendScopeOfWorksEmail(data.quote_ref, data.inputs as QuoteInputs)
+  await writeAuditLog('quote', quoteRef, 'scope_email_resent')
   return { success: true }
 }
 

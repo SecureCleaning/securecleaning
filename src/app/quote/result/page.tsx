@@ -61,6 +61,8 @@ function QuoteResultContent() {
           quoteRef={stored.quoteRef}
           result={stored.result}
           inputs={stored.inputs}
+          emailSent={stored.emailSent}
+          emailError={stored.emailError}
         />
       </div>
     </div>

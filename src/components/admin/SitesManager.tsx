@@ -5,7 +5,7 @@ import type { City, PremisesType } from '@/lib/types'
 import type { SiteRecord } from '@/lib/sites'
 
 const cityOptions: City[] = ['melbourne', 'sydney']
-const premisesOptions: PremisesType[] = ['office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse', 'other']
+const premisesOptions: PremisesType[] = ['office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse', 'function_centre', 'sports_facility', 'other']
 
 type SiteFormState = {
   siteName: string
@@ -161,27 +161,63 @@ export default function SitesManager({ initialSites }: { initialSites: SiteRecor
         </h2>
 
         <form onSubmit={handleSave} className="space-y-4">
-          <input value={form.siteName} onChange={(e) => setForm({ ...form, siteName: e.target.value })} placeholder="Site name" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-          <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Address" required className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Site name</span>
+            <input value={form.siteName} onChange={(e) => setForm({ ...form, siteName: e.target.value })} placeholder="e.g. Richmond medical centre" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Street address</span>
+            <input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Street address" required className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
           <div className="grid grid-cols-2 gap-3">
-            <input value={form.suburb} onChange={(e) => setForm({ ...form, suburb: e.target.value })} placeholder="Suburb" className="rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-            <input value={form.postcode} onChange={(e) => setForm({ ...form, postcode: e.target.value })} placeholder="Postcode" className="rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">Suburb</span>
+              <input value={form.suburb} onChange={(e) => setForm({ ...form, suburb: e.target.value })} placeholder="Suburb" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">Postcode</span>
+              <input value={form.postcode} onChange={(e) => setForm({ ...form, postcode: e.target.value })} placeholder="Postcode" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            </label>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <select value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value as City })} className="rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-              {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
-            </select>
-            <select value={form.premisesType} onChange={(e) => setForm({ ...form, premisesType: e.target.value as PremisesType })} className="rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white">
-              {premisesOptions.map((type) => <option key={type} value={type}>{type}</option>)}
-            </select>
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">City</span>
+              <select value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value as City })} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm">
+                {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">Premises type</span>
+              <select value={form.premisesType} onChange={(e) => setForm({ ...form, premisesType: e.target.value as PremisesType })} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm">
+                {premisesOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+              </select>
+            </label>
           </div>
-          <input value={form.floorArea} onChange={(e) => setForm({ ...form, floorArea: e.target.value })} placeholder="Floor area" type="number" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-          <textarea value={form.accessNotes} onChange={(e) => setForm({ ...form, accessNotes: e.target.value })} placeholder="Access notes" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-          <textarea value={form.alarmNotes} onChange={(e) => setForm({ ...form, alarmNotes: e.target.value })} placeholder="Alarm notes" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-          <textarea value={form.inductionNotes} onChange={(e) => setForm({ ...form, inductionNotes: e.target.value })} placeholder="Induction notes" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Floor area (sqm)</span>
+            <input value={form.floorArea} onChange={(e) => setForm({ ...form, floorArea: e.target.value })} placeholder="e.g. 420" type="number" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Access notes</span>
+            <textarea value={form.accessNotes} onChange={(e) => setForm({ ...form, accessNotes: e.target.value })} placeholder="Keys, access hours, entry instructions" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Alarm notes</span>
+            <textarea value={form.alarmNotes} onChange={(e) => setForm({ ...form, alarmNotes: e.target.value })} placeholder="Alarm instructions, if applicable" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            <span className="mb-1 block">Induction notes</span>
+            <textarea value={form.inductionNotes} onChange={(e) => setForm({ ...form, inductionNotes: e.target.value })} placeholder="Induction requirements" rows={2} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+          </label>
           <div className="grid grid-cols-2 gap-3">
-            <input value={form.keyholderName} onChange={(e) => setForm({ ...form, keyholderName: e.target.value })} placeholder="Keyholder name" className="rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-            <input value={form.keyholderPhone} onChange={(e) => setForm({ ...form, keyholderPhone: e.target.value })} placeholder="Keyholder phone" className="rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">Keyholder name</span>
+              <input value={form.keyholderName} onChange={(e) => setForm({ ...form, keyholderName: e.target.value })} placeholder="Full name" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-gray-700">
+              <span className="mb-1 block">Keyholder phone</span>
+              <input value={form.keyholderPhone} onChange={(e) => setForm({ ...form, keyholderPhone: e.target.value })} placeholder="Phone number" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+            </label>
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} />

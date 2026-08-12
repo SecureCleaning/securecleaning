@@ -12,17 +12,25 @@ type ReportingSnapshot = {
   leadFollowUpBreakdown: Record<string, number>
 }
 
-export default function ReportingPanel({ snapshot }: { snapshot: ReportingSnapshot }) {
+type ReportingDestination = 'quotes' | 'bookings' | 'operators'
+
+export default function ReportingPanel({
+  snapshot,
+  onMetricClick,
+}: {
+  snapshot: ReportingSnapshot
+  onMetricClick: (destination: ReportingDestination) => void
+}) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-7">
-        <MetricCard label="Quotes" value={snapshot.quoteCount} />
-        <MetricCard label="Bookings" value={snapshot.bookingCount} />
-        <MetricCard label="Pending bookings" value={snapshot.pendingBookings} />
-        <MetricCard label="Completed bookings" value={snapshot.completedBookings} />
-        <MetricCard label="Active operators" value={snapshot.activeOperators} />
-        <MetricCard label="Unassigned bookings" value={snapshot.unassignedBookings} />
-        <MetricCard label="Scheduled inspections" value={snapshot.scheduledInspections} />
+        <MetricCard label="Quotes" value={snapshot.quoteCount} onClick={() => onMetricClick('quotes')} />
+        <MetricCard label="Bookings" value={snapshot.bookingCount} onClick={() => onMetricClick('bookings')} />
+        <MetricCard label="Pending bookings" value={snapshot.pendingBookings} onClick={() => onMetricClick('bookings')} />
+        <MetricCard label="Completed bookings" value={snapshot.completedBookings} onClick={() => onMetricClick('bookings')} />
+        <MetricCard label="Active operators" value={snapshot.activeOperators} onClick={() => onMetricClick('operators')} />
+        <MetricCard label="Unassigned bookings" value={snapshot.unassignedBookings} onClick={() => onMetricClick('bookings')} />
+        <MetricCard label="Scheduled inspections" value={snapshot.scheduledInspections} onClick={() => onMetricClick('bookings')} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -34,12 +42,17 @@ export default function ReportingPanel({ snapshot }: { snapshot: ReportingSnapsh
   )
 }
 
-function MetricCard({ label, value }: { label: string; value: number }) {
+function MetricCard({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Open ${label}`}
+      className="rounded-2xl border border-gray-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-green-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+    >
       <div className="text-sm text-gray-500">{label}</div>
       <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>{value}</div>
-    </div>
+    </button>
   )
 }
 

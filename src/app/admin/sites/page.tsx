@@ -1,11 +1,12 @@
 import AdminNav from '@/components/admin/AdminNav'
 import SitesManager from '@/components/admin/SitesManager'
+import { withAdminPage } from '@/lib/adminPage'
 import { getSites } from '@/lib/sites'
 
 export const dynamic = 'force-dynamic'
 
 export default async function AdminSitesPage() {
-  return (
+  return withAdminPage(async () => (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <AdminNav currentPath="/admin/sites" />
@@ -16,5 +17,5 @@ export default async function AdminSitesPage() {
         <SitesManager initialSites={await getSites()} />
       </div>
     </div>
-  )
+  ))
 }

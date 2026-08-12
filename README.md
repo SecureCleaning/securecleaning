@@ -10,7 +10,7 @@ A Next.js 14 web portal for **Secure Contracts Pty Ltd**, providing online quoti
 - **Tailwind CSS** — Styling
 - **Supabase** — Database + Auth + Row-Level Security
 - **Resend** — Transactional email
-- **Anthropic Claude** — AI chat assistant ("Max")
+- **Anthropic Claude** — AI chat assistant ("Secure Bot")
 - **Google Calendar API** — booking follow-up / scheduling prep
 
 ---
@@ -68,7 +68,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the site.
 | `GOOGLE_CALENDAR_CLIENT_ID` | Google OAuth client ID |
 | `GOOGLE_CALENDAR_CLIENT_SECRET` | Google OAuth client secret |
 | `GOOGLE_CALENDAR_REFRESH_TOKEN` | Refresh token used to write calendar events |
-| `GOOGLE_CALENDAR_ID` | Target calendar ID (recommended: info@securecleaning.au) |
+| `GOOGLE_CALENDAR_ID` | Target calendar ID (recommended: info@securecleaning.com.au) |
 | `FROM_EMAIL` | Sender address for outbound emails |
 | `ADMIN_EMAIL` | Admin notification email address |
 
@@ -95,7 +95,7 @@ src/
 │   ├── layout/             # Header, Footer, Navigation
 │   ├── quote/              # Multi-step quote form
 │   ├── booking/            # Booking form + calendar
-│   ├── chat/               # Chat widget (Max AI)
+│   ├── chat/               # Chat widget (Secure Bot AI)
 │   └── ui/                 # Reusable UI primitives
 └── lib/
     ├── quoteEngine.ts      # Pricing calculation logic

@@ -9,6 +9,8 @@ export interface StoredQuoteResult {
   quoteRef: string
   result: QuoteResult
   inputs: QuoteInputs
+  emailSent?: boolean
+  emailError?: string | null
 }
 
 export function saveQuoteDraft(inputs: Partial<QuoteInputs>) {
@@ -48,6 +50,27 @@ export function getQuoteResult(): StoredQuoteResult | null {
   }
 }
 
+export function buildBookingPrefillFromQuoteInputs(quoteRef: string | undefined, quoteInputs: Partial<QuoteInputs>): Partial<BookingInputs> {
+  return {
+    quoteRef,
+    businessName: quoteInputs.businessName,
+    contactName: quoteInputs.contactName,
+    email: quoteInputs.email,
+    phone: quoteInputs.phone,
+    address: quoteInputs.address,
+    city: quoteInputs.city,
+    suburb: quoteInputs.suburb,
+    postcode: quoteInputs.postcode,
+    premisesType: quoteInputs.premisesType,
+    floorArea: quoteInputs.floorArea,
+    frequency: quoteInputs.frequency,
+    timePreference: quoteInputs.timePreference,
+    addOns: quoteInputs.addOns,
+    notes: quoteInputs.notes,
+    preferredStartDate: quoteInputs.preferredStartDate,
+  }
+}
+
 export function getBookingPrefillFromQuote(quoteRef?: string): Partial<BookingInputs> | null {
   const storedResult = getQuoteResult()
   const storedDraft = getQuoteDraft()
@@ -59,20 +82,5 @@ export function getBookingPrefillFromQuote(quoteRef?: string): Partial<BookingIn
     return null
   }
 
-  return {
-    quoteRef: quoteRef ?? storedResult?.quoteRef,
-    businessName: quoteInputs.businessName,
-    contactName: quoteInputs.contactName,
-    email: quoteInputs.email,
-    phone: quoteInputs.phone,
-    address: quoteInputs.address,
-    city: quoteInputs.city,
-    premisesType: quoteInputs.premisesType,
-    floorArea: quoteInputs.floorArea,
-    frequency: quoteInputs.frequency,
-    timePreference: quoteInputs.timePreference,
-    addOns: quoteInputs.addOns,
-    notes: quoteInputs.notes,
-    preferredStartDate: quoteInputs.preferredStartDate,
-  }
+  return buildBookingPrefillFromQuoteInputs(quoteRef ?? storedResult?.quoteRef, quoteInputs)
 }

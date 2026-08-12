@@ -49,7 +49,7 @@ export function calculateQuote(
 
   const bathroomsTotal = (addOns.bathrooms ?? 0) * getPricingItemRate(pricingConfig, 'bathrooms')
   const kitchensTotal = (addOns.kitchens ?? 0) * getPricingItemRate(pricingConfig, 'kitchens')
-  const windowsTotal = (addOns.windows ?? 0) * getPricingItemRate(pricingConfig, 'windows')
+  const windowsTotal = 0
   const consumablesTotal = addOns.consumables ? getPricingItemRate(pricingConfig, 'consumables') : 0
   const highTouchRate = getPricingItemRate(pricingConfig, 'highTouchDisinfection')
   const highTouchTotal = addOns.highTouchDisinfection ? floorArea * highTouchRate : 0
@@ -123,6 +123,14 @@ export function formatCurrency(amount: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount)
+}
+
+export function formatPriceRange(low: number, high: number): string {
+  const lowRounded = Math.round(low * 100)
+  const highRounded = Math.round(high * 100)
+  const lowLabel = formatCurrency(low)
+
+  return lowRounded === highRounded ? lowLabel : `${lowLabel} – ${formatCurrency(high)}`
 }
 
 export function generateQuoteRef(): string {

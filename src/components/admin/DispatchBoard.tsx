@@ -22,16 +22,27 @@ export default function DispatchBoard({ bookings }: { bookings: BookingItem[] })
   return (
     <div className="grid gap-4 lg:grid-cols-4">
       {columns.map((column) => {
-        const items = bookings.filter((booking) => (booking.inspection_status ?? 'pending') === column.key)
+        const items = bookings
+          .filter((booking) => (booking.inspection_status ?? 'pending') === column.key)
+          .sort((a, b) => (a.inspection_scheduled_for ?? '').localeCompare(b.inspection_scheduled_for ?? ''))
         return (
           <div key={column.key} className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
               <h3 className="font-bold" style={{ color: '#1a2744' }}>{column.label}</h3>
+              <div className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                {items.length}
+              </div>
             </div>
             <div className="p-3 space-y-3 min-h-[220px]">
               {items.map((booking) => (
                 <div key={booking.booking_ref} className="rounded-xl border border-gray-200 p-3 bg-gray-50">
-                  <div className="font-semibold text-sm text-gray-900">{booking.booking_ref}</div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="font-semibold text-sm text-gray-900">{booking.booking_ref}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {!booking.site_id ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">Missing site</span> : null}
+                      {!booking.assigned_operator_id ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">Missing operator</span> : null}
+                    </div>
+                  </div>
                   <div className="text-sm text-gray-700 mt-1">{booking.inputs?.businessName ?? 'Unknown business'}</div>
                   <div className="text-xs text-gray-500 mt-1">{booking.inputs?.address ?? 'No address'}</div>
                   <div className="text-xs text-gray-500 mt-2">

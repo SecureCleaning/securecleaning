@@ -31,7 +31,7 @@ Scaffolded by subagent on 2026-03-18.
 |---|---|
 | `api/quote/route.ts` | POST: validates input, runs calculateQuote(), upserts client in Supabase, inserts quote record, fires email (non-blocking), returns {success, quoteRef, result} |
 | `api/booking/route.ts` | POST: validates, upserts client, resolves quoteId (marks quote accepted), inserts booking, creates lead record, fires email, returns {success, bookingRef} |
-| `api/chat/route.ts` | POST: Anthropic streaming chat with "Max" persona. SSE format (data: {...}\n\n). System prompt includes all service knowledge, city limits, no-price-sharing rules, CTA directives. |
+| `api/chat/route.ts` | POST: Anthropic streaming chat with "Secure Bot" persona. SSE format (data: {...}\n\n). System prompt includes all service knowledge, city limits, no-price-sharing rules, CTA directives. |
 
 ### Source — App Pages (`src/app/`)
 | File | Notes |
@@ -70,7 +70,7 @@ Scaffolded by subagent on 2026-03-18.
 | `components/quote/QuoteResult.tsx` | Full price range display, breakdown table, CTAs, chat trigger |
 | `components/booking/BookingForm.tsx` | Complete booking form with CalendarPicker, Supabase integration |
 | `components/booking/CalendarPicker.tsx` | Custom calendar picker (no external dep), min date enforcement, visual selection |
-| `components/chat/ChatWidget.tsx` | Floating chat button, SSE streaming, "Max" persona, markdown bold, quick-action chips, mobile-friendly |
+| `components/chat/ChatWidget.tsx` | Floating chat button, SSE streaming, "Secure Bot" persona, markdown bold, quick-action chips, mobile-friendly |
 
 ### Database
 | File | Notes |

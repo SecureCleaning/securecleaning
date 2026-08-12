@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from 'next/cache'
 import { supabase, getAdminSupabase } from '@/lib/supabase'
 
 export type ContentEntryDefinition = {
@@ -22,7 +23,7 @@ const homeEntries: ContentEntryDefinition[] = [
   entry(
     'home.hero_subtitle',
     'Homepage hero subtitle',
-    'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and book your first clean today.',
+    'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and request your site inspection today.',
     'home'
   ),
   entry('home.cta_primary_label', 'Homepage primary CTA label', 'Get an Instant Quote →', 'home'),
@@ -86,7 +87,7 @@ const aboutEntries: ContentEntryDefinition[] = [
   entry('about.hero_title', 'About page hero title', 'About Secure Cleaning Aus', 'about'),
   entry('about.hero_subtitle', 'About page hero subtitle', 'A better way to clean your business. Built on the Owner-Operator model.', 'about'),
   entry('about.section_1_title', 'About section 1 heading', 'Who We Are', 'about'),
-  entry('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus is a trading name of Secure Contracts Pty Ltd, an Australian company focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our Owner-Operator network.', 'about'),
+  entry('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus is focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
   entry('about.section_1_paragraph_2', 'About section 1 paragraph 2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.', 'about'),
   entry('about.section_1_paragraph_3', 'About section 1 paragraph 3', 'We believed there was a better way.', 'about'),
   entry('about.section_2_title', 'About section 2 heading', 'The Owner-Operator Model', 'about'),
@@ -117,7 +118,7 @@ const contactEntries: ContentEntryDefinition[] = [
   entry('contact.hero_subtitle', 'Contact page subtitle', "Prefer to talk? We're here to help. Or skip the wait and get an instant quote online.", 'contact'),
   entry('contact.card_title', 'Contact details card heading', 'Get in Touch', 'contact'),
   entry('contact.email_label', 'Contact email label', 'Email', 'contact'),
-  entry('contact.email', 'Contact email address', 'info@securecleaning.au', 'contact'),
+  entry('contact.email', 'Contact email address', 'info@securecleaning.com.au', 'contact'),
   entry('contact.email_note', 'Contact email note', 'We aim to respond within 1 business day', 'contact'),
   entry('contact.phone_label', 'Contact phone label', 'Phone', 'contact'),
   entry('contact.phone', 'Contact phone number', '1300 000 000', 'contact'),
@@ -129,21 +130,21 @@ const contactEntries: ContentEntryDefinition[] = [
   entry('contact.hours_note', 'Contact business hours note', 'AI chat available 24/7', 'contact'),
   entry('contact.quick_links_title', 'Contact quick links heading', 'Quick Links', 'contact'),
   entry('contact.quick_link_1', 'Contact quick link 1', '⚡ Get an instant quote online', 'contact'),
-  entry('contact.quick_link_2', 'Contact quick link 2', '📅 Book a cleaning service', 'contact'),
+  entry('contact.quick_link_2', 'Contact quick link 2', '📅 Book a site inspection', 'contact'),
   entry('contact.quick_link_3', 'Contact quick link 3', '❓ View frequently asked questions', 'contact'),
   entry('contact.quick_link_4', 'Contact quick link 4', '🧹 Browse our services', 'contact'),
   entry('contact.form_title', 'Contact form heading', 'Send a Message', 'contact'),
   entry('contact.form_note', 'Contact form note', 'Note: This form is a placeholder. For fastest response, email us directly or use the live quote tool.', 'contact'),
   entry('contact.form_button_label', 'Contact form button label', 'Send Message (Coming Soon)', 'contact'),
   entry('contact.bottom_banner_title', 'Contact bottom banner title', 'Need an answer right now? 🤖', 'contact'),
-  entry('contact.bottom_banner_body', 'Contact bottom banner body', 'Chat with Max, our AI assistant, for instant answers about services, pricing, and more — available 24/7.', 'contact'),
+  entry('contact.bottom_banner_body', 'Contact bottom banner body', 'Chat with Secure Bot, our AI assistant, for instant answers about services, pricing, and more — available 24/7.', 'contact'),
 ]
 
 const faqEntries: ContentEntryDefinition[] = [
   entry('faq.heading', 'FAQ page heading', 'Frequently Asked Questions', 'faq'),
-  entry('faq.intro', 'FAQ page intro text', "Can't find your answer here? Chat with Max or", 'faq'),
+  entry('faq.intro', 'FAQ page intro text', "Can't find your answer here? Chat with Secure Bot or", 'faq'),
   entry('faq.item_1_question', 'FAQ 1 question', 'What is an Owner-Operator?', 'faq'),
-  entry('faq.item_1_answer', 'FAQ 1 answer', 'An Owner-Operator is an independent business owner who has purchased a cleaning territory from Secure Contracts. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.', 'faq'),
+  entry('faq.item_1_answer', 'FAQ 1 answer', 'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning Aus. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.', 'faq'),
   entry('faq.item_2_question', 'FAQ 2 question', 'Which cities do you service?', 'faq'),
   entry('faq.item_2_answer', 'FAQ 2 answer', 'We currently operate in Melbourne and Sydney only. We cover metro and greater suburban areas in both cities. More cities will be added in the future.', 'faq'),
   entry('faq.item_3_question', 'FAQ 3 question', 'How is pricing calculated?', 'faq'),
@@ -153,7 +154,7 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.item_5_question', 'FAQ 5 question', 'What does the verification process involve?', 'faq'),
   entry('faq.item_5_answer', 'FAQ 5 answer', 'Every Secure Cleaning Aus operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.', 'faq'),
   entry('faq.item_6_question', 'FAQ 6 question', 'How quickly can a clean be arranged?', 'faq'),
-  entry('faq.item_6_answer', 'FAQ 6 answer', 'For new clients, we aim to arrange a site inspection within 48 hours of your booking. From there, your first clean can typically be scheduled within 1–2 weeks, depending on your preferred start date and operator availability.', 'faq'),
+  entry('faq.item_6_answer', 'FAQ 6 answer', 'For new clients, we aim to arrange a site inspection within 48 hours of your request. After the inspection, we confirm your scope, final quote, and recommended service plan.', 'faq'),
   entry('faq.item_7_question', 'FAQ 7 question', 'Will I always have the same cleaner?', 'faq'),
   entry('faq.item_7_answer', 'FAQ 7 answer', "Yes. You're matched with a specific Owner-Operator who is responsible for your premises. You get their direct contact details. This continuity is one of the core advantages of the Owner-Operator model.", 'faq'),
   entry('faq.item_8_question', 'FAQ 8 question', "What if I'm not happy with the service?", 'faq'),
@@ -162,8 +163,8 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.item_9_answer', 'FAQ 9 answer', "Yes. Owner-Operators supply all equipment and cleaning products. If you require specific products (e.g. environmentally certified, fragrance-free), let us know in your booking notes and we'll match you with an operator who can accommodate this.", 'faq'),
   entry('faq.item_10_question', 'FAQ 10 question', 'What add-on services are available?', 'faq'),
   entry('faq.item_10_answer', 'FAQ 10 answer', 'Available add-ons include: bathroom/toilet servicing, kitchen and kitchenette cleaning, external window cleaning, consumables supply (toilet paper, soap, paper towels), and high-touch point disinfection. Carpet steam cleaning is quoted separately.', 'faq'),
-  entry('faq.item_11_question', 'FAQ 11 question', 'Can I get a spring clean or one-off deep clean?', 'faq'),
-  entry('faq.item_11_answer', 'FAQ 11 answer', 'Yes. Select "Once-Off" as your frequency, and check the Spring Clean option in our quote form. Spring cleans are priced higher than regular cleans (typically 2–3x the regular rate) to reflect the additional time and effort required.', 'faq'),
+  entry('faq.recurring_cleaning_question', 'Recurring cleaning question', 'What recurring cleaning schedules are available?', 'faq'),
+  entry('faq.recurring_cleaning_answer', 'Recurring cleaning answer', 'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, or fortnightly schedules. Request a quote and we will confirm the right service plan for your premises.', 'faq'),
   entry('faq.item_12_question', 'FAQ 12 question', 'Are your cleaners insured?', 'faq'),
   entry('faq.item_12_answer', 'FAQ 12 answer', 'All Secure Cleaning Aus Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.', 'faq'),
   entry('faq.item_13_question', 'FAQ 13 question', 'Do you clean residential properties?', 'faq'),
@@ -171,7 +172,7 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.item_14_question', 'FAQ 14 question', 'Can you clean at night or on weekends?', 'faq'),
   entry('faq.item_14_answer', 'FAQ 14 answer', 'Yes. We offer after-hours (post 6pm weekdays) and weekend cleaning. Note that after-hours and weekend cleaning attracts a surcharge (25% and 50% respectively), which is reflected in your quote.', 'faq'),
   entry('faq.cta_heading', 'FAQ bottom CTA heading', 'Still have questions?', 'faq'),
-  entry('faq.cta_body', 'FAQ bottom CTA body text', 'Get an instant estimate with our quote calculator, chat with Max 24/7, or reach out directly.', 'faq'),
+  entry('faq.cta_body', 'FAQ bottom CTA body text', 'Get an instant estimate with our quote calculator, chat with Secure Bot 24/7, or reach out directly.', 'faq'),
   entry('faq.cta_primary_label', 'FAQ bottom CTA primary button label', 'Get a Quote', 'faq'),
   entry('faq.cta_secondary_label', 'FAQ bottom CTA secondary button label', 'Contact Us', 'faq'),
 ]
@@ -182,30 +183,38 @@ const servicesEntries: ContentEntryDefinition[] = [
   entry('services.hero_cta_label', 'Services page hero CTA label', 'Get an Instant Quote', 'services'),
   entry('services.item_1_title', 'Service 1 title', 'Office Cleaning', 'services'),
   entry('services.item_1_description', 'Service 1 description', 'Regular or daily cleaning for offices, co-working spaces, corporate suites, and professional workplaces of all sizes. Includes desks, meeting rooms, kitchens, toilets, and common areas.', 'services'),
+  entry('services.item_1_features', 'Service 1 green tick list', 'Open-plan workspace cleaning\nMeeting room servicing\nKitchen and breakout areas\nBathroom and toilet cleaning\nBin emptying and waste management\nGlass and mirror polishing', 'services'),
   entry('services.item_1_multiplier', 'Service 1 pricing label', 'Standard rate', 'services'),
   entry('services.item_2_title', 'Service 2 title', 'Medical & Healthcare Cleaning', 'services'),
   entry('services.item_2_description', 'Service 2 description', 'Specialised clinical-grade cleaning for GP clinics, dental practices, allied health centres, physiotherapy studios, and other healthcare premises. Our operators understand infection control protocols.', 'services'),
+  entry('services.item_2_features', 'Service 2 green tick list', 'Clinical surface disinfection\nCross-contamination prevention\nWaiting room and reception cleaning\nTreatment room preparation\nSharps bin area management\nHACCP-aware practices', 'services'),
   entry('services.item_2_multiplier', 'Service 2 pricing label', 'Medical rate applies', 'services'),
   entry('services.item_3_title', 'Service 3 title', 'Childcare Centre Cleaning', 'services'),
   entry('services.item_3_description', 'Service 3 description', 'Safe, thorough cleaning for childcare centres, kindergartens, preschools, and OOSH services. We use child-safe products and understand the regulatory standards for early childhood environments.', 'services'),
+  entry('services.item_3_features', 'Service 3 green tick list', 'Child-safe cleaning products only\nToy and surface sanitisation\nOutdoor play area cleaning\nNappy change area disinfection\nCompliance with ECA standards\nAfter-hours cleaning available', 'services'),
   entry('services.item_3_multiplier', 'Service 3 pricing label', 'Childcare rate applies', 'services'),
-  entry('services.item_4_title', 'Service 4 title', 'Industrial Cleaning', 'services'),
-  entry('services.item_4_description', 'Service 4 description', 'Heavy-duty cleaning for factories, manufacturing facilities, production floors, and light industrial premises. Experienced operators with appropriate PPE and equipment.', 'services'),
-  entry('services.item_4_multiplier', 'Service 4 pricing label', 'Industrial rate applies', 'services'),
+  entry('services.function_centres_title', 'Function centres service title', 'Function Centre Cleaning', 'services'),
+  entry('services.function_centres_description', 'Function centres service description', 'Reliable cleaning for function rooms, event venues, reception spaces, and hospitality areas before, during, and after events.', 'services'),
+  entry('services.function_centres_features', 'Function centres green tick list', 'Event floor and venue cleaning\nPre-event and post-event cleaning\nBathrooms and amenities\nKitchen and service areas\nSeating and public area cleaning\nWaste and recycling management', 'services'),
+  entry('services.function_centres_multiplier', 'Function centres pricing label', 'Function centre rate applies', 'services'),
   entry('services.item_5_title', 'Service 5 title', 'Retail & Showroom Cleaning', 'services'),
   entry('services.item_5_description', 'Service 5 description', 'Presentation-focused cleaning for retail stores, showrooms, shopping strip tenancies, and boutique spaces. Create the right first impression for your customers every day.', 'services'),
+  entry('services.item_5_features', 'Service 5 green tick list', 'Shop floor cleaning and mopping\nWindow and display cleaning\nCounter and fitting room servicing\nEntrance and foyer maintenance\nBefore-opening clean-ups\nStock room cleaning', 'services'),
   entry('services.item_5_multiplier', 'Service 5 pricing label', 'Retail rate applies', 'services'),
   entry('services.item_6_title', 'Service 6 title', 'Gym & Fitness Studio Cleaning', 'services'),
   entry('services.item_6_description', 'Service 6 description', 'Specialised cleaning for gyms, fitness studios, pilates studios, yoga centres, and leisure facilities. Our operators understand the importance of hygiene in high-contact exercise environments.', 'services'),
+  entry('services.item_6_features', 'Service 6 green tick list', 'Equipment and machine wipe-down\nMat and floor sanitisation\nLocker room and shower cleaning\nReception and foyer cleaning\nSweat and odour control\nHigh-touch disinfection available', 'services'),
   entry('services.item_6_multiplier', 'Service 6 pricing label', 'Fitness rate applies', 'services'),
-  entry('services.item_7_title', 'Service 7 title', 'Warehouse & Distribution Cleaning', 'services'),
-  entry('services.item_7_description', 'Service 7 description', 'Practical, efficient cleaning for warehouses, distribution centres, logistics facilities, and storage premises. Keep your facility safe, compliant, and professional.', 'services'),
-  entry('services.item_7_multiplier', 'Service 7 pricing label', 'Warehouse rate applies', 'services'),
+  entry('services.sports_facilities_title', 'Sports facilities service title', 'Sports Facilities Cleaning', 'services'),
+  entry('services.sports_facilities_description', 'Sports facilities service description', 'Hygiene-focused cleaning for sporting clubs, recreation centres, training venues, courts, change rooms, and member facilities.', 'services'),
+  entry('services.sports_facilities_features', 'Sports facilities green tick list', 'Courts, fields and activity areas\nChange room and shower cleaning\nEquipment and touchpoint disinfection\nReception and member areas\nAmenities and bathroom servicing\nWaste and floor care', 'services'),
+  entry('services.sports_facilities_multiplier', 'Sports facilities pricing label', 'Sports facilities rate applies', 'services'),
   entry('services.item_8_title', 'Service 8 title', 'Other Commercial Premises', 'services'),
   entry('services.item_8_description', 'Service 8 description', 'Have a unique or specialised commercial space? We work with a range of premises not covered by the categories above. Contact us to discuss your requirements.', 'services'),
+  entry('services.item_8_features', 'Service 8 green tick list', 'Schools and education facilities\nPlaces of worship\nEvent venues\nBody corporate common areas\nGovernment offices\nAnd more...', 'services'),
   entry('services.item_8_multiplier', 'Service 8 pricing label', 'Standard rate', 'services'),
   entry('services.bottom_cta_title', 'Services page bottom CTA heading', 'Not sure which service you need?', 'services'),
-  entry('services.bottom_cta_body', 'Services page bottom CTA body', "Chat with Max, our AI assistant, or get in touch — we'll help you figure out the right solution.", 'services'),
+  entry('services.bottom_cta_body', 'Services page bottom CTA body', "Chat with Secure Bot, our AI assistant, or get in touch — we'll help you figure out the right solution.", 'services'),
   entry('services.bottom_cta_primary_label', 'Services page bottom CTA primary button label', 'Get a Quote', 'services'),
   entry('services.bottom_cta_secondary_label', 'Services page bottom CTA secondary button label', 'Contact Us', 'services'),
 ]
@@ -231,11 +240,11 @@ const melbourneEntries: ContentEntryDefinition[] = [
   entry('melbourne.pricing_body', 'Melbourne pricing box body', 'Melbourne pricing includes a city rate adjustment reflecting local labour costs. Use our instant quote calculator for accurate estimates.', 'melbourne'),
   entry('melbourne.pricing_cta_label', 'Melbourne pricing CTA label', 'Get Melbourne Quote', 'melbourne'),
   entry('melbourne.services_title', 'Melbourne services box heading', 'Services Available', 'melbourne'),
-  entry('melbourne.chat_title', 'Melbourne chat box title', '🤖 Chat with Max', 'melbourne'),
-  entry('melbourne.chat_body', 'Melbourne chat box body', 'Questions about Melbourne services? Max can help 24/7.', 'melbourne'),
+  entry('melbourne.chat_title', 'Melbourne chat box title', '🤖 Chat with Secure Bot', 'melbourne'),
+  entry('melbourne.chat_body', 'Melbourne chat box body', 'Questions about Melbourne services? Secure Bot can help 24/7.', 'melbourne'),
   entry('melbourne.bottom_cta_title', 'Melbourne bottom CTA heading', 'Ready to get started in Melbourne?', 'melbourne'),
   entry('melbourne.bottom_cta_primary_label', 'Melbourne bottom CTA primary button label', 'Get Melbourne Quote', 'melbourne'),
-  entry('melbourne.bottom_cta_secondary_label', 'Melbourne bottom CTA secondary button label', 'Book a Clean', 'melbourne'),
+  entry('melbourne.bottom_cta_secondary_label', 'Melbourne bottom CTA secondary button label', 'Book an Inspection', 'melbourne'),
 ]
 
 const sydneyEntries: ContentEntryDefinition[] = [
@@ -250,11 +259,11 @@ const sydneyEntries: ContentEntryDefinition[] = [
   entry('sydney.pricing_body', 'Sydney pricing box body', 'Sydney pricing reflects local labour market conditions. Use our instant quote calculator for an accurate, transparent estimate.', 'sydney'),
   entry('sydney.pricing_cta_label', 'Sydney pricing CTA label', 'Get Sydney Quote', 'sydney'),
   entry('sydney.services_title', 'Sydney services box heading', 'Services Available', 'sydney'),
-  entry('sydney.chat_title', 'Sydney chat box title', '🤖 Chat with Max', 'sydney'),
-  entry('sydney.chat_body', 'Sydney chat box body', 'Questions about Sydney services? Max can help 24/7.', 'sydney'),
+  entry('sydney.chat_title', 'Sydney chat box title', '🤖 Chat with Secure Bot', 'sydney'),
+  entry('sydney.chat_body', 'Sydney chat box body', 'Questions about Sydney services? Secure Bot can help 24/7.', 'sydney'),
   entry('sydney.bottom_cta_title', 'Sydney bottom CTA heading', 'Ready to get started in Sydney?', 'sydney'),
   entry('sydney.bottom_cta_primary_label', 'Sydney bottom CTA primary button label', 'Get Sydney Quote', 'sydney'),
-  entry('sydney.bottom_cta_secondary_label', 'Sydney bottom CTA secondary button label', 'Book a Clean', 'sydney'),
+  entry('sydney.bottom_cta_secondary_label', 'Sydney bottom CTA secondary button label', 'Book an Inspection', 'sydney'),
 ]
 
 const quoteEntries: ContentEntryDefinition[] = [
@@ -266,8 +275,8 @@ const quoteEntries: ContentEntryDefinition[] = [
 ]
 
 const bookingEntries: ContentEntryDefinition[] = [
-  entry('booking.hero_title', 'Booking page heading', 'Book Your Clean', 'booking'),
-  entry('booking.hero_subtitle', 'Booking page subtitle', "Complete your booking request and we'll match you with a verified Owner-Operator in your area within 1 business day.", 'booking'),
+  entry('booking.hero_title', 'Booking page heading', 'Book Your Inspection', 'booking'),
+  entry('booking.hero_subtitle', 'Booking page subtitle', "Choose an inspection time and we'll confirm your scope and prepare your quote.", 'booking'),
   entry('booking.confirm_not_found_title', 'Booking confirm not-found title', 'Booking not found', 'booking'),
   entry('booking.confirm_not_found_body', 'Booking confirm not-found body', 'Check your confirmation email or contact us.', 'booking'),
   entry('booking.confirm_not_found_cta_label', 'Booking confirm not-found CTA label', 'Back to Home', 'booking'),
@@ -276,11 +285,11 @@ const bookingEntries: ContentEntryDefinition[] = [
   entry('booking.confirm_email_prefix', 'Booking confirmation email prefix', 'Confirmation sent to', 'booking'),
   entry('booking.summary_title', 'Booking summary heading', 'Booking Summary', 'booking'),
   entry('booking.next_title', 'Booking next-steps heading', 'What Happens Next?', 'booking'),
-  entry('booking.next_step_1', 'Booking next step 1', 'Our team reviews your booking (usually within 1 business day)', 'booking'),
+  entry('booking.next_step_1', 'Booking next step 1', 'Our team reviews your inspection request (usually within 1 business day)', 'booking'),
   entry('booking.next_step_2_template', 'Booking next step 2 template', 'We match you with a verified Owner-Operator in {city}', 'booking'),
   entry('booking.next_step_3', 'Booking next step 3', 'A site inspection is arranged — typically within 48 hours', 'booking'),
   entry('booking.next_step_4', 'Booking next step 4', "You receive your operator's direct contact details", 'booking'),
-  entry('booking.next_step_5', 'Booking next step 5', 'Your first clean is scheduled to your preferred date', 'booking'),
+  entry('booking.next_step_5', 'Booking next step 5', 'We confirm your quote and recommended service plan after inspection', 'booking'),
   entry('booking.bottom_primary_label', 'Booking confirmation bottom primary button label', 'Back to Home', 'booking'),
   entry('booking.bottom_secondary_label', 'Booking confirmation bottom secondary button label', 'Contact Us', 'booking'),
 ]
@@ -307,11 +316,21 @@ const DEFAULT_CONTENT_MAP = CONTENT_DEFAULTS.reduce<ContentMap>((acc, entry) => 
   return acc
 }, {})
 
+function replaceLegacyAssistantName(value: string) {
+  return value.replace(/\bMax\b/g, 'Secure Bot')
+}
+
 export function getContentValue(map: ContentMap | null | undefined, key: string, fallback: string) {
-  return map?.[key] || fallback
+  const value = map?.[key] || fallback
+  return replaceLegacyAssistantName(value)
 }
 
 export async function getPublicContentMap(): Promise<ContentMap> {
+  // Public marketing pages read content from Supabase. Force runtime evaluation
+  // so Vercel builds don't fail or fall back when the DB isn't reachable during
+  // static generation.
+  noStore()
+
   try {
     const { data, error } = await supabase
       .from('site_content')
@@ -325,7 +344,7 @@ export async function getPublicContentMap(): Promise<ContentMap> {
     }
 
     return data.reduce<ContentMap>((acc, row) => {
-      acc[row.key] = row.content
+      acc[row.key] = replaceLegacyAssistantName(row.content)
       return acc
     }, { ...DEFAULT_CONTENT_MAP })
   } catch (error) {
@@ -352,7 +371,10 @@ export async function getAllContentEntries(): Promise<SiteContentRow[]> {
 
     const rowsByKey = new Map(data.map((row) => [row.key, row]))
 
-    return CONTENT_DEFAULTS.map((entry) => rowsByKey.get(entry.key) ?? { ...entry, updated_at: null })
+    return CONTENT_DEFAULTS.map((entry) => {
+      const row = rowsByKey.get(entry.key)
+      return row ? { ...row, content: replaceLegacyAssistantName(row.content) } : { ...entry, updated_at: null }
+    })
   } catch (error) {
     console.error('[content] Unexpected error loading admin content:', error)
     return CONTENT_DEFAULTS.map((entry) => ({ ...entry, updated_at: null }))

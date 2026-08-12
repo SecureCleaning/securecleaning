@@ -1,0 +1,34 @@
+import AdminNav from '@/components/admin/AdminNav'
+import CalendarAdmin from '@/components/admin/CalendarAdmin'
+import { getAvailabilityConfig } from '@/lib/availability'
+import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
+import { withAdminPage } from '@/lib/adminPage'
+
+export const dynamic = 'force-dynamic'
+
+export default async function AdminCalendarPage() {
+  return withAdminPage(async () => {
+    const config = await getAvailabilityConfig()
+    const calendars = await Promise.all(
+      config.assignees
+        .filter((assignee) => assignee.active)
+        .map(async (assignee) => ({
+          assignee,
+          events: await getAgentCalendarEvents(config, assignee, {
+            daysBehind: 42,
+            daysAhead: 120,
+            includeAvailability: true,
+          }),
+        })),
+    )
+
+    return (
+      <>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+          <AdminNav currentPath="/admin/calendar" />
+        </div>
+        <CalendarAdmin calendars={calendars} />
+      </>
+    )
+  })
+}
