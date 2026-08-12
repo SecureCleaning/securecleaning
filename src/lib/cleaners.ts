@@ -1,6 +1,7 @@
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
 import { writeAuditLog } from '@/lib/auditLog'
+import type { AdminSessionIdentity } from '@/lib/adminAuth'
 
 export type CleanerStatus = 'lead' | 'pending_approval' | 'approved' | 'paused' | 'rejected' | 'inactive'
 export type CleanerEmailStatus = 'draft' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced'
@@ -145,6 +146,8 @@ export interface CleanerSearchResult {
   pageSize: number
 }
 
+export type CleanerAuditActor = Pick<AdminSessionIdentity, 'id' | 'username' | 'role'>
+
 const CLEANER_SELECT =
   'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
 
@@ -184,6 +187,15 @@ const CLEANER_CSV_COLUMNS: Array<{ key: keyof CleanerRecord; label: string }> = 
 
 function cleanString(value: unknown, maxLength = 500) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function withActorDetails(actor: CleanerAuditActor, details: Record<string, unknown> = {}) {
+  return {
+    ...details,
+    actorId: actor.id,
+    actorUsername: actor.username,
+    actorRole: actor.role,
+  }
 }
 
 function nullableString(value: unknown, maxLength = 500) {
@@ -462,7 +474,7 @@ export async function getCleanerAdminData() {
   return { cleaners, templates, selected, total: cleanerPage.total, page: cleanerPage.page, pageSize: cleanerPage.pageSize }
 }
 
-export async function deleteSampleCleaners() {
+export async function deleteSampleCleaners(actor: CleanerAuditActor) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('cleaners')
@@ -474,7 +486,9 @@ export async function deleteSampleCleaners() {
     throw error
   }
 
-  return data?.length ?? 0
+  const deletedCount = data?.length ?? 0
+  await writeAuditLog('cleaner', 'sample-cleaners', 'cleaner.sample_data.deleted', withActorDetails(actor, { deletedCount }))
+  return deletedCount
 }
 
 function csvCell(value: unknown) {
@@ -488,7 +502,7 @@ function csvCell(value: unknown) {
   return `"${normalised.replace(/"/g, '""')}"`
 }
 
-export async function exportCleanersCsv() {
+export async function exportCleanersCsv(actor: CleanerAuditActor) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('cleaners')
@@ -501,14 +515,19 @@ export async function exportCleanersCsv() {
   }
 
   const header = CLEANER_CSV_COLUMNS.map((column) => csvCell(column.label)).join(',')
-  const rows = ((data ?? []) as CleanerRecord[]).map((cleaner) =>
+  const cleanerRows = (data ?? []) as CleanerRecord[]
+  const rows = cleanerRows.map((cleaner) =>
     CLEANER_CSV_COLUMNS.map((column) => csvCell(cleaner[column.key])).join(',')
   )
 
+  await writeAuditLog('cleaner', 'bulk-export', 'cleaner.exported', withActorDetails(actor, { count: cleanerRows.length }))
   return [header, ...rows].join('\n')
 }
 
-export async function importCleaners(records: Array<Partial<CleanerPayload>>): Promise<CleanerImportResult> {
+export async function importCleaners(
+  records: Array<Partial<CleanerPayload>>,
+  actor: CleanerAuditActor,
+): Promise<CleanerImportResult> {
   if (!Array.isArray(records)) {
     throw new Error('Cleaner import must be an array of records.')
   }
@@ -586,16 +605,16 @@ export async function importCleaners(records: Array<Partial<CleanerPayload>>): P
     result.updated += 1
   }
 
-  await writeAuditLog('cleaner', 'bulk-import', 'cleaner.imported', {
+  await writeAuditLog('cleaner', 'bulk-import', 'cleaner.imported', withActorDetails(actor, {
     created: result.created,
     updated: result.updated,
     skipped: result.skipped,
-  })
+  }))
 
   return result
 }
 
-export async function createCleaner(payload: CleanerPayload) {
+export async function createCleaner(payload: CleanerPayload, actor: CleanerAuditActor) {
   assertCleanerPayload(payload)
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -610,11 +629,11 @@ export async function createCleaner(payload: CleanerPayload) {
     .single()
 
   if (error) throw error
-  await writeAuditLog('cleaner', data.id, 'cleaner.created', { email: data.email })
+  await writeAuditLog('cleaner', data.id, 'cleaner.created', withActorDetails(actor, { email: data.email }))
   return data as CleanerRecord
 }
 
-export async function updateCleaner(cleanerId: string, payload: Partial<CleanerPayload>) {
+export async function updateCleaner(cleanerId: string, payload: Partial<CleanerPayload>, actor: CleanerAuditActor) {
   const updatePayload = toDbPayload(payload)
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -625,11 +644,13 @@ export async function updateCleaner(cleanerId: string, payload: Partial<CleanerP
     .single()
 
   if (error) throw error
-  await writeAuditLog('cleaner', cleanerId, 'cleaner.updated', { fields: Object.keys(updatePayload).filter((key) => updatePayload[key as keyof typeof updatePayload] !== undefined) })
+  await writeAuditLog('cleaner', cleanerId, 'cleaner.updated', withActorDetails(actor, {
+    fields: Object.keys(updatePayload).filter((key) => updatePayload[key as keyof typeof updatePayload] !== undefined),
+  }))
   return data as CleanerRecord
 }
 
-export async function addCleanerComment(cleanerId: string, comment: string, authorName = 'Admin') {
+export async function addCleanerComment(cleanerId: string, comment: string, actor: CleanerAuditActor) {
   const cleaned = cleanString(comment, 2000)
   if (!cleaned) {
     throw new Error('Comment is required.')
@@ -640,14 +661,14 @@ export async function addCleanerComment(cleanerId: string, comment: string, auth
     .from('cleaner_comments')
     .insert({
       cleaner_id: cleanerId,
-      author_name: cleanString(authorName, 80) || 'Admin',
+      author_name: actor.username,
       comment: cleaned,
     })
     .select(COMMENT_SELECT)
     .single()
 
   if (error) throw error
-  await writeAuditLog('cleaner', cleanerId, 'cleaner.comment.created', { commentId: data.id })
+  await writeAuditLog('cleaner', cleanerId, 'cleaner.comment.created', withActorDetails(actor, { commentId: data.id }))
   return data as CleanerComment
 }
 
@@ -668,7 +689,7 @@ export async function uploadCleanerDocument(payload: {
   data: Buffer
   expiryDate?: string | null
   notes?: string | null
-  uploadedBy?: string | null
+  actor: CleanerAuditActor
 }) {
   const documentType = isCleanerDocumentType(payload.documentType) ? payload.documentType : 'other'
   const fileName = sanitizeFileName(payload.fileName)
@@ -699,7 +720,7 @@ export async function uploadCleanerDocument(payload: {
       size_bytes: payload.sizeBytes,
       expiry_date: payload.expiryDate || null,
       notes: nullableString(payload.notes, 500),
-      uploaded_by: nullableString(payload.uploadedBy, 120) ?? 'Admin',
+      uploaded_by: payload.actor.username,
     })
     .select(DOCUMENT_SELECT)
     .single()
@@ -709,11 +730,11 @@ export async function uploadCleanerDocument(payload: {
     throw error
   }
 
-  await writeAuditLog('cleaner', payload.cleanerId, 'cleaner.document.uploaded', {
+  await writeAuditLog('cleaner', payload.cleanerId, 'cleaner.document.uploaded', withActorDetails(payload.actor, {
     documentId: data.id,
     documentType,
     fileName,
-  })
+  }))
 
   return data as CleanerDocument
 }
@@ -745,7 +766,7 @@ export async function downloadCleanerDocument(cleanerId: string, documentId: str
   }
 }
 
-export async function deleteCleanerDocument(cleanerId: string, documentId: string) {
+export async function deleteCleanerDocument(cleanerId: string, documentId: string, actor: CleanerAuditActor) {
   const db = getAdminSupabase()
   const { data: document, error } = await db
     .from('cleaner_documents')
@@ -776,11 +797,11 @@ export async function deleteCleanerDocument(cleanerId: string, documentId: strin
     throw deleteError
   }
 
-  await writeAuditLog('cleaner', cleanerId, 'cleaner.document.deleted', {
+  await writeAuditLog('cleaner', cleanerId, 'cleaner.document.deleted', withActorDetails(actor, {
     documentId,
     documentType: document.document_type,
     fileName: document.file_name,
-  })
+  }))
 
   return document as CleanerDocument
 }
@@ -823,7 +844,7 @@ export async function sendCleanerEmail(payload: {
   templateName?: string | null
   subject: string
   body: string
-  sentBy?: string | null
+  actor: CleanerAuditActor
 }) {
   const detail = await getCleanerDetail(payload.cleanerId)
   const cleaner = detail.cleaner
@@ -846,7 +867,7 @@ export async function sendCleanerEmail(payload: {
       subject,
       body,
       status: 'draft',
-      sent_by: payload.sentBy || 'Admin',
+      sent_by: payload.actor.username,
     })
     .select(EMAIL_SELECT)
     .single()
@@ -884,7 +905,7 @@ export async function sendCleanerEmail(payload: {
       .single()
 
     if (updateError) throw updateError
-    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.sent', { emailId: sentRow.id, providerMessageId })
+    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.sent', withActorDetails(payload.actor, { emailId: sentRow.id, providerMessageId }))
     return sentRow as CleanerEmail
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Email send failed.'
@@ -896,7 +917,7 @@ export async function sendCleanerEmail(payload: {
       })
       .eq('id', emailRow.id)
 
-    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.failed', { emailId: emailRow.id, error: message })
+    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.failed', withActorDetails(payload.actor, { emailId: emailRow.id, error: message }))
     throw error
   }
 }

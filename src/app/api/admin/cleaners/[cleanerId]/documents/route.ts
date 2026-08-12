@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { deleteCleanerDocument, uploadCleanerDocument } from '@/lib/cleaners'
 
 export const runtime = 'nodejs'
@@ -16,13 +16,27 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'documentUpload')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
     const formData = await request.formData()
     const file = formData.get('file')
+    const replaceDocumentId = typeof formData.get('replaceDocumentId') === 'string'
+      ? String(formData.get('replaceDocumentId')).trim()
+      : ''
+
+    if (replaceDocumentId) {
+      const deleteAuthorization = authorizeCleanerAdminRequest(request, 'documentDelete')
+      if (!deleteAuthorization.identity) {
+        return NextResponse.json(
+          { success: false, error: deleteAuthorization.error },
+          { status: deleteAuthorization.status },
+        )
+      }
+    }
 
     if (!file || typeof file !== 'object' || !('arrayBuffer' in file)) {
       return NextResponse.json({ success: false, error: 'File is required.' }, { status: 400 })
@@ -53,18 +67,14 @@ export async function POST(
       data: Buffer.from(await uploadedFile.arrayBuffer()),
       expiryDate: typeof formData.get('expiryDate') === 'string' ? String(formData.get('expiryDate')) : null,
       notes: typeof formData.get('notes') === 'string' ? String(formData.get('notes')) : null,
-      uploadedBy: typeof formData.get('uploadedBy') === 'string' ? String(formData.get('uploadedBy')) : 'Admin',
+      actor: authorization.identity,
     })
-
-    const replaceDocumentId = typeof formData.get('replaceDocumentId') === 'string'
-      ? String(formData.get('replaceDocumentId')).trim()
-      : ''
 
     if (replaceDocumentId) {
       try {
-        await deleteCleanerDocument(params.cleanerId, replaceDocumentId)
+        await deleteCleanerDocument(params.cleanerId, replaceDocumentId, authorization.identity)
       } catch (error) {
-        await deleteCleanerDocument(params.cleanerId, document.id).catch((cleanupError) => {
+        await deleteCleanerDocument(params.cleanerId, document.id, authorization.identity).catch((cleanupError) => {
           console.error('[api/admin/cleaners/:id/documents] Failed to roll back replacement upload:', cleanupError)
         })
         throw error

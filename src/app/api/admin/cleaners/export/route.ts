@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { exportCleanersCsv } from '@/lib/cleaners'
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'export')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
-    const csv = await exportCleanersCsv()
+    const csv = await exportCleanersCsv(authorization.identity)
     const date = new Date().toISOString().slice(0, 10)
     return new NextResponse(csv, {
       headers: {

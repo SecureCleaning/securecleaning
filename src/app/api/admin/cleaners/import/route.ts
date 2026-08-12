@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { importCleaners } from '@/lib/cleaners'
 import { rejectLargePayload } from '@/lib/abuseProtection'
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'import')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   const blocked = rejectLargePayload(request, 2 * 1024 * 1024)
@@ -13,7 +14,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const result = await importCleaners(body?.records)
+    const result = await importCleaners(body?.records, authorization.identity)
     return NextResponse.json({ success: true, ...result })
   } catch (error) {
     console.error('[api/admin/cleaners/import] Failed to import cleaners:', error)

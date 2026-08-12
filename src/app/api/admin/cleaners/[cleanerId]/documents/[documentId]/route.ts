@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { deleteCleanerDocument, downloadCleanerDocument } from '@/lib/cleaners'
 
 export const runtime = 'nodejs'
@@ -8,8 +8,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { cleanerId: string; documentId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'documentDownload')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
@@ -30,12 +31,13 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { cleanerId: string; documentId: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const authorization = authorizeCleanerAdminRequest(request, 'documentDelete')
+  if (!authorization.identity) {
+    return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
   try {
-    const document = await deleteCleanerDocument(params.cleanerId, params.documentId)
+    const document = await deleteCleanerDocument(params.cleanerId, params.documentId, authorization.identity)
     return NextResponse.json({ success: true, document })
   } catch (error) {
     console.error('[api/admin/cleaners/:id/documents/:documentId] Failed to delete document:', error)
