@@ -138,7 +138,7 @@ export function isValidAvailabilityAgentFeedToken(
 export async function hasAvailabilityAgentSession(assigneeId: string) {
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
-  if (!assignee?.accessCodeHash) return false
+  if (!assignee?.active || !assignee.accessCodeHash) return false
 
   const cookieStore = await cookies()
   const cookieValue = cookieStore.get(AVAILABILITY_AGENT_SESSION_COOKIE)?.value
@@ -153,7 +153,7 @@ export async function hasAvailabilityAgentSession(assigneeId: string) {
 export async function isAuthorizedAvailabilityAgentRequest(request: NextRequest, assigneeId: string) {
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
-  if (!assignee?.accessCodeHash) return false
+  if (!assignee?.active || !assignee.accessCodeHash) return false
 
   const headerCode = request.headers.get('x-availability-access-code')
   const sessionToken = request.cookies.get(AVAILABILITY_AGENT_SESSION_COOKIE)?.value

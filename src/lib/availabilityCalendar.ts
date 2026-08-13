@@ -9,6 +9,8 @@ import type {
   WeeklyAvailabilitySlot,
   Weekday,
 } from '@/lib/availability'
+import { getAssigneeServiceZones } from '@/lib/availability'
+import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
 
 export type AgentCalendarEvent = {
   id: string
@@ -187,7 +189,7 @@ function buildBookingEvents(
     .filter(Boolean) as AgentCalendarEvent[]
 }
 
-export async function getAgentBookingsForCalendar(assignee: AvailabilityAssignee) {
+export async function getAgentBookingsForCalendar(config: AvailabilityConfig, assignee: AvailabilityAssignee) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('bookings')
@@ -201,12 +203,10 @@ export async function getAgentBookingsForCalendar(assignee: AvailabilityAssignee
     return []
   }
 
-  return (data ?? []).filter((booking) => {
-    const inputs = booking.inputs as BookingInputs | undefined
-    return inputs?.preferredInspectionAssigneeId === assignee.id || (
-      Boolean(assignee.ownerOperatorId) && booking.assigned_operator_id === assignee.ownerOperatorId
-    )
-  }) as BookingCalendarRow[]
+  const serviceZones = getAssigneeServiceZones(config, assignee.id)
+  return (data ?? []).filter((booking) => (
+    bookingBelongsToAvailabilityAssignee(booking, assignee, serviceZones)
+  )) as BookingCalendarRow[]
 }
 
 export async function getAgentCalendarEvents(
@@ -222,7 +222,7 @@ export async function getAgentCalendarEvents(
   const weeklySlots = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id && slot.active)
   const oneOffBlocks = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id && block.active)
   const zones = config.zones.filter((zone) => zone.city === assignee.city)
-  const bookings = await getAgentBookingsForCalendar(assignee)
+  const bookings = await getAgentBookingsForCalendar(config, assignee)
 
   const events = [
     ...buildBookingEvents(bookings, rangeStart, rangeEnd),

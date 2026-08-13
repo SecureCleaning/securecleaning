@@ -40,7 +40,7 @@ export async function GET(
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
 
-  if (!assignee?.accessCodeHash) {
+  if (!assignee?.active || !assignee.accessCodeHash) {
     return NextResponse.json({ error: 'Agent not found.' }, { status: 404 })
   }
 

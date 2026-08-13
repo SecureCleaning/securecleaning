@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAuth'
-import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
+import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
+import type { AvailabilityAssignee, AvailabilityConfig } from '@/lib/availability'
+import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLog } from '@/lib/auditLog'
@@ -27,18 +29,22 @@ async function isAuthorized(request: NextRequest, assigneeId: string) {
   return isAuthorizedAdminRequest(request) || await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
 }
 
-async function getAssignedBooking(assigneeId: string, bookingRef: string) {
+async function getAssignedBooking(config: AvailabilityConfig, assignee: AvailabilityAssignee, bookingRef: string) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('bookings')
-    .select('booking_ref, status, inspection_status, inspection_scheduled_for, inputs')
+    .select('booking_ref, status, inspection_status, inspection_scheduled_for, assigned_operator_id, inputs')
     .eq('booking_ref', bookingRef)
     .maybeSingle()
 
   if (error) throw error
   if (!data) return null
   const inputs = data.inputs && typeof data.inputs === 'object' ? data.inputs as Record<string, unknown> : {}
-  return inputs.preferredInspectionAssigneeId === assigneeId ? { ...data, inputs } : null
+  return bookingBelongsToAvailabilityAssignee(
+    { ...data, inputs },
+    assignee,
+    getAssigneeServiceZones(config, assignee.id),
+  ) ? { ...data, inputs } : null
 }
 
 export async function PATCH(
@@ -54,7 +60,7 @@ export async function PATCH(
     const assignee = getAvailabilityAssignee(config, params.assigneeId)
     if (!assignee) return NextResponse.json({ success: false, error: 'Agent not found.' }, { status: 404 })
 
-    const booking = await getAssignedBooking(params.assigneeId, params.bookingRef)
+    const booking = await getAssignedBooking(config, assignee, params.bookingRef)
     if (!booking) return NextResponse.json({ success: false, error: 'Assigned booking not found.' }, { status: 404 })
     if (booking.status === 'cancelled' || booking.inspection_status === 'cancelled') {
       return NextResponse.json({ success: false, error: 'Cancelled appointments cannot be moved.' }, { status: 409 })
@@ -76,17 +82,17 @@ export async function PATCH(
     const db = getAdminSupabase()
     const { data: reservations, error: reservationError } = await db
       .from('bookings')
-      .select('booking_ref, status, inspection_status, inspection_scheduled_for, inputs')
+      .select('booking_ref, status, inspection_status, inspection_scheduled_for, assigned_operator_id, inputs')
       .not('inspection_scheduled_for', 'is', null)
       .neq('booking_ref', params.bookingRef)
       .limit(1000)
     if (reservationError) throw reservationError
 
     const proposedStart = scheduledFor.getTime()
+    const serviceZones = getAssigneeServiceZones(config, assignee.id)
     const conflicts = (reservations ?? []).some((row) => {
       if (row.status === 'cancelled' || row.inspection_status === 'cancelled') return false
-      const rowInputs = row.inputs && typeof row.inputs === 'object' ? row.inputs as Record<string, unknown> : {}
-      if (rowInputs.preferredInspectionAssigneeId !== params.assigneeId) return false
+      if (!bookingBelongsToAvailabilityAssignee(row, assignee, serviceZones)) return false
       const otherStart = new Date(String(row.inspection_scheduled_for ?? '')).getTime()
       return Number.isFinite(otherStart) && Math.abs(otherStart - proposedStart) < (INSPECTION_DURATION_MINUTES + TRAVEL_RESERVATION_MINUTES) * 60 * 1000
     })
@@ -132,7 +138,11 @@ export async function DELETE(
   }
 
   try {
-    const booking = await getAssignedBooking(params.assigneeId, params.bookingRef)
+    const config = await getAvailabilityConfig()
+    const assignee = getAvailabilityAssignee(config, params.assigneeId)
+    if (!assignee) return NextResponse.json({ success: false, error: 'Agent not found.' }, { status: 404 })
+
+    const booking = await getAssignedBooking(config, assignee, params.bookingRef)
     if (!booking) return NextResponse.json({ success: false, error: 'Assigned booking not found.' }, { status: 404 })
     const db = getAdminSupabase()
     const { data, error } = await db

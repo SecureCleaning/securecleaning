@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAvailabilityConfig, saveAvailabilityConfig } from '@/lib/availability'
 import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { getAdminSupabase } from '@/lib/supabase'
+import { validateOwnerOperatorLinks } from '@/lib/availabilityLinkage'
 
 export async function GET(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request)) {
@@ -60,6 +62,17 @@ export async function POST(request: NextRequest) {
               : config.assignees,
           }
         : config
+
+    const db = getAdminSupabase()
+    const { data: ownerOperators, error: ownerOperatorsError } = await db
+      .from('owner_operators')
+      .select('id, city, is_active')
+    if (ownerOperatorsError) throw ownerOperatorsError
+
+    const linkageError = validateOwnerOperatorLinks(nextConfig, ownerOperators ?? [])
+    if (linkageError) {
+      return NextResponse.json({ error: linkageError }, { status: 400 })
+    }
 
     const savedConfig = await saveAvailabilityConfig(nextConfig)
     return NextResponse.json({ config: savedConfig })

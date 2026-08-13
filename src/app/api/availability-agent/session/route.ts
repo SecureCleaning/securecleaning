@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       getAvailabilityAssignee(config, assigneeId) ??
       getAvailabilityAssigneeByUsername(config, username)
 
-    if (!assignee?.accessCodeHash || !verifyAvailabilityAccessCode(accessCode, assignee.accessCodeHash)) {
+    if (!assignee?.active || !assignee.accessCodeHash || !verifyAvailabilityAccessCode(accessCode, assignee.accessCodeHash)) {
       return NextResponse.json({ success: false, error: 'Invalid username or password.' }, { status: 401 })
     }
 

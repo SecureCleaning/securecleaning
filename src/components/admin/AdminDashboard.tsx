@@ -357,9 +357,23 @@ export default function AdminDashboard({ initialData }: Props) {
     )
     if (!ok) return
 
-    setBookings((current) => current.map((booking) => (
-      booking.booking_ref === bookingRef ? { ...booking, assigned_operator_id: operatorId || null } : booking
-    )))
+    setBookings((current) => current.map((booking) => {
+      if (booking.booking_ref !== bookingRef) return booking
+
+      const inputAssigneeId = booking.inputs?.preferredInspectionAssigneeId ?? null
+      const selectedOperatorAssigneeId = operators.find((operator) => operator.id === operatorId)?.availabilityAssigneeId ?? null
+      const linkedAgentId = inputAssigneeId ?? selectedOperatorAssigneeId
+      const linkedOperatorId = operatorId
+        ? null
+        : operators.find((operator) => operator.availabilityAssigneeId === inputAssigneeId)?.id ?? null
+
+      return {
+        ...booking,
+        assigned_operator_id: operatorId || null,
+        linkedAgentId,
+        linkedOperatorId,
+      }
+    }))
     void refreshOverview()
   }
 

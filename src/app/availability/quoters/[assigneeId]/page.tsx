@@ -19,7 +19,7 @@ export default async function AvailabilityQuoterPage({
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
 
-  if (!assignee) {
+  if (!assignee?.active) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="text-center max-w-md">
