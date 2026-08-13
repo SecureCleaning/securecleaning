@@ -214,6 +214,11 @@ function cleanArray(value: unknown, maxItems = 30, maxLength = 80) {
   ).slice(0, maxItems)
 }
 
+function defaultServiceAreas(suburb: unknown) {
+  const cleanedSuburb = cleanString(suburb, 80)
+  return cleanedSuburb ? [`${cleanedSuburb} + 20 km`] : []
+}
+
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
   for (let index = 0; index < items.length; index += size) {
@@ -291,7 +296,9 @@ function normaliseCleanerImportPayload(record: Partial<CleanerPayload>): Cleaner
     abn: nullableString(record.abn, 40),
     status: isCleanerStatus(record.status) ? record.status : 'lead',
     services: cleanArray(record.services),
-    serviceAreas: cleanArray(record.serviceAreas),
+    serviceAreas: cleanArray(record.serviceAreas).length > 0
+      ? cleanArray(record.serviceAreas)
+      : defaultServiceAreas(record.suburb),
     preferredWork: nullableString(record.preferredWork, 800),
     complianceStatus: nullableString(record.complianceStatus, 80),
     insuranceExpiry: record.insuranceExpiry || null,
@@ -617,13 +624,16 @@ export async function importCleaners(
 export async function createCleaner(payload: CleanerPayload, actor: CleanerAuditActor) {
   assertCleanerPayload(payload)
   const db = getAdminSupabase()
+  const serviceAreas = payload.serviceAreas && payload.serviceAreas.length > 0
+    ? payload.serviceAreas
+    : defaultServiceAreas(payload.suburb)
   const { data, error } = await db
     .from('cleaners')
     .insert({
       ...toDbPayload(payload),
       status: payload.status ?? 'lead',
       services: payload.services ?? [],
-      service_areas: payload.serviceAreas ?? [],
+      service_areas: serviceAreas,
     })
     .select(CLEANER_SELECT)
     .single()

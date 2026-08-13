@@ -210,6 +210,11 @@ function toCsv(values?: string[] | null) {
   return values?.join(', ') ?? ''
 }
 
+function defaultServiceArea(suburb: string) {
+  const cleanedSuburb = suburb.trim()
+  return cleanedSuburb ? `${cleanedSuburb} + 20 km` : ''
+}
+
 function fromCsv(value: string) {
   return value
     .split(',')
@@ -255,7 +260,7 @@ function toFormState(cleaner?: CleanerRecord | null): CleanerFormState {
     abn: cleaner?.abn ?? '',
     status: cleaner?.status ?? 'lead',
     services: toCsv(cleaner?.services),
-    serviceAreas: toCsv(cleaner?.service_areas),
+    serviceAreas: toCsv(cleaner?.service_areas) || defaultServiceArea(cleaner?.suburb ?? ''),
     preferredWork: cleaner?.preferred_work ?? '',
     complianceStatus: cleaner?.compliance_status ?? 'not_checked',
     insuranceExpiry: cleaner?.insurance_expiry ?? '',
@@ -564,6 +569,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
   const [commentDraft, setCommentDraft] = useState('')
   const [documentDraft, setDocumentDraft] = useState<DocumentDraftState>(createDocumentDraft())
   const [emailDraft, setEmailDraft] = useState(buildEmailDraft(templates[0] ?? null, initialSelected?.cleaner ?? null))
+  const [serviceAreaDraft, setServiceAreaDraft] = useState('')
   const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -624,6 +630,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
     setCommentDraft('')
     setDocumentDraft(createDocumentDraft())
     setEmailDraft(buildEmailDraft(templates[0] ?? null, null))
+    setServiceAreaDraft('')
     setStatus({ type: 'idle', message: '' })
     setModalTab('details')
     setIsModalOpen(true)
@@ -652,6 +659,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
       setEditingId(detail.cleaner.id)
       setForm(toFormState(detail.cleaner))
       setEmailDraft(buildEmailDraft(templates[0] ?? null, detail.cleaner))
+      setServiceAreaDraft('')
       setCommentDraft('')
       setDocumentDraft(createDocumentDraft())
       setModalTab('details')
@@ -794,6 +802,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
     setStatus({ type: 'idle', message: '' })
 
     try {
+      const serviceAreas = fromCsv(form.serviceAreas)
       const payload = {
         businessName: form.businessName,
         firstName: form.firstName,
@@ -810,7 +819,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
         abn: form.abn,
         status: form.status,
         services: fromCsv(form.services),
-        serviceAreas: fromCsv(form.serviceAreas),
+        serviceAreas: serviceAreas.length > 0 ? serviceAreas : (defaultServiceArea(form.suburb) ? [defaultServiceArea(form.suburb)] : []),
         preferredWork: form.preferredWork,
         complianceStatus: form.complianceStatus,
         insuranceExpiry: form.insuranceExpiry || null,
@@ -849,6 +858,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
         documents: current?.cleaner.id === cleaner.id ? current.documents : [],
       }))
       setEmailDraft(buildEmailDraft(templates[0] ?? null, cleaner))
+      setServiceAreaDraft('')
       setStatus({ type: 'success', message: editingId ? 'Cleaner updated.' : 'Cleaner created.' })
       if (!editingId) {
         setModalTab('documents')
@@ -858,6 +868,29 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
     } finally {
       setIsSaving(false)
     }
+  }
+
+  function getServiceAreaItems() {
+    return fromCsv(form.serviceAreas)
+  }
+
+  function addServiceArea() {
+    const area = serviceAreaDraft.trim()
+    if (!area) return
+    const areas = getServiceAreaItems()
+    if (!areas.some((item) => item.toLowerCase() === area.toLowerCase())) {
+      setField('serviceAreas', [...areas, area].join(', '))
+    }
+    setServiceAreaDraft('')
+  }
+
+  function removeServiceArea(areaToRemove: string) {
+    setField('serviceAreas', getServiceAreaItems().filter((area) => area !== areaToRemove).join(', '))
+  }
+
+  function resetToDefaultServiceArea() {
+    const area = defaultServiceArea(form.suburb)
+    if (area) setField('serviceAreas', area)
   }
 
   async function addComment() {
@@ -1269,7 +1302,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
                     </td>
                     <td className="px-4 py-4">
                       <div className="text-gray-700">{[cleaner.suburb, cleaner.city, cleaner.state].filter(Boolean).join(', ') || 'No location'}</div>
-                      <div className="mt-1 text-xs text-gray-500">{toCsv(cleaner.service_areas) || 'No areas set'}</div>
+                      <div className="mt-1 text-xs text-gray-500">{toCsv(cleaner.service_areas) || defaultServiceArea(cleaner.suburb ?? '') || 'No areas set'}</div>
                     </td>
                   </tr>
                 )
@@ -1419,10 +1452,57 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
                 Services
                 <input value={form.services} onChange={(event) => setField('services', event.target.value)} placeholder="office, medical, after_hours" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
-              <label className="space-y-1 text-sm font-medium text-gray-700">
-                Service areas
-                <input value={form.serviceAreas} onChange={(event) => setField('serviceAreas', event.target.value)} placeholder="Richmond, Southbank, CBD" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-              </label>
+              <div className="space-y-2 text-sm font-medium text-gray-700">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span>Service areas</span>
+                  <button
+                    type="button"
+                    onClick={resetToDefaultServiceArea}
+                    disabled={!form.suburb}
+                    className="text-xs font-semibold text-blue-700 underline-offset-2 hover:underline disabled:cursor-not-allowed disabled:text-gray-400"
+                  >
+                    Use suburb + 20 km
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  {getServiceAreaItems().map((area) => (
+                    <span key={area} className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm ring-1 ring-gray-200">
+                      {area}
+                      <button
+                        type="button"
+                        onClick={() => removeServiceArea(area)}
+                        aria-label={`Remove ${area}`}
+                        className="font-bold text-gray-400 hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {getServiceAreaItems().length === 0 ? <span className="text-xs font-normal text-gray-500">No coverage areas added yet.</span> : null}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={serviceAreaDraft}
+                    onChange={(event) => setServiceAreaDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        addServiceArea()
+                      }
+                    }}
+                    placeholder="Add suburb, postcode, or coverage area"
+                    className="min-w-0 flex-1 rounded-lg border border-gray-300 px-4 py-3 text-sm font-normal"
+                  />
+                  <button
+                    type="button"
+                    onClick={addServiceArea}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                  >
+                    Add area
+                  </button>
+                </div>
+                <p className="text-xs font-normal text-gray-500">New cleaners default to their suburb plus a 20 km coverage area. Add extra suburbs or regions when the cleaner travels further.</p>
+              </div>
               <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
                 Preferred work
                 <input value={form.preferredWork} onChange={(event) => setField('preferredWork', event.target.value)} placeholder="Medical, office, after-hours..." className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
