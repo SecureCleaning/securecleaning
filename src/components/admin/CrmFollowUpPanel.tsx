@@ -24,11 +24,13 @@ export default function CrmFollowUpPanel({
   leads,
   onQuoteUpdated,
   onLeadUpdated,
+  section = 'all',
 }: {
   quotes: QuoteItem[]
   leads: LeadItem[]
   onQuoteUpdated?: (quoteRef: string, updates: Pick<QuoteItem, 'follow_up_status' | 'follow_up_notes'>) => void
   onLeadUpdated?: (leadId: string, updates: Pick<LeadItem, 'follow_up_status' | 'follow_up_notes'>) => void
+  section?: 'all' | 'quotes' | 'leads'
 }) {
   const [quoteRef, setQuoteRef] = useState(quotes[0]?.quote_ref ?? '')
   const [leadId, setLeadId] = useState(leads[0]?.id ?? '')
@@ -130,7 +132,7 @@ export default function CrmFollowUpPanel({
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
+      {section !== 'leads' ? <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
         <div>
           <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote follow-up</h2>
           <p className="mt-1 text-sm text-gray-600">Keep sales follow-up notes current so the dashboard reflects real pipeline movement.</p>
@@ -156,9 +158,9 @@ export default function CrmFollowUpPanel({
           <button type="button" onClick={resetQuote} disabled={!quoteHasChanges || savingTarget === 'quote'} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">Reset</button>
         </div>
         <button type="button" onClick={saveQuote} disabled={!quoteHasChanges || savingTarget !== null} className="w-full rounded-lg px-4 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1a2744' }}>{savingTarget === 'quote' ? 'Saving quote follow-up…' : quoteHasChanges ? 'Save quote follow-up' : 'No changes to save'}</button>
-      </div>
+      </div> : null}
 
-      <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
+      {section !== 'quotes' ? <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
         <div>
           <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Lead follow-up</h2>
           <p className="mt-1 text-sm text-gray-600">Keep lead triage tight so new enquiries do not sit in the dashboard untouched.</p>
@@ -184,10 +186,10 @@ export default function CrmFollowUpPanel({
           <button type="button" onClick={resetLead} disabled={!leadHasChanges || savingTarget === 'lead'} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">Reset</button>
         </div>
         <button type="button" onClick={saveLead} disabled={!leadHasChanges || savingTarget !== null} className="w-full rounded-lg px-4 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1a2744' }}>{savingTarget === 'lead' ? 'Saving lead follow-up…' : leadHasChanges ? 'Save lead follow-up' : 'No changes to save'}</button>
-      </div>
+      </div> : null}
 
-      {status ? <div className="lg:col-span-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{status}</div> : null}
-      {error ? <div className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {status ? <div role="status" aria-live="polite" className="lg:col-span-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{status}</div> : null}
+      {error ? <div role="alert" className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
     </div>
   )
 }
