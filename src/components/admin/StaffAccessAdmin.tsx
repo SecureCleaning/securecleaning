@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
+import AdminPageHeader from './AdminPageHeader'
 
 const ROLE_OPTIONS: Array<{ value: AdminRole; label: string; description: string }> = [
   { value: 'owner', label: 'Owner', description: 'Full access, including staff accounts.' },
@@ -117,12 +118,8 @@ export default function StaffAccessAdmin() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: '#1a2744' }}>Staff access</h1>
-          <p className="text-gray-600 max-w-3xl">Create individual staff logins and assign the minimum access each person needs. Passwords are never displayed after saving.</p>
-        </div>
+    <div>
+      <AdminPageHeader title="Staff access" description="Create individual staff logins and assign the minimum access each person needs. Passwords are never displayed after saving." />
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-teal-100 bg-teal-50 p-5">
           <div>
@@ -151,7 +148,6 @@ export default function StaffAccessAdmin() {
           <h2 className="text-xl font-bold mb-4" style={{ color: '#1a2744' }}>Current staff accounts</h2>
           {isLoading ? <p className="text-sm text-gray-600">Loading accounts...</p> : <div className="space-y-3">{accounts.map((account) => <div key={account.id} className="flex flex-col gap-3 rounded-xl border border-gray-200 p-4 md:flex-row md:items-center md:justify-between"><div><div className="font-semibold text-gray-900">{account.displayName}</div><div className="text-sm text-gray-600">{account.username}{account.email ? ` - ${account.email}` : ''}</div>{account.role === 'agent' && account.availabilityAssigneeId ? <div className="mt-1 text-sm text-teal-700">Regional profile: {profiles.find((profile) => profile.id === account.availabilityAssigneeId)?.name ?? account.availabilityAssigneeId}</div> : null}</div><div className="flex flex-wrap items-center gap-3"><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-600">{account.role}</span><span className={`rounded-full px-3 py-1 text-xs font-semibold ${account.active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{account.active ? 'Active' : 'Disabled'}</span>{account.role === 'agent' && account.availabilityAssigneeId ? <><Link href={`/admin/availability/quoters/${account.availabilityAssigneeId}`} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Edit schedule</Link><Link href={`/availability/quotes/${account.availabilityAssigneeId}`} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Open regional quotes</Link></> : null}<button type="button" onClick={() => editAccount(account)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Edit</button></div></div>)}</div>}
         </section>
-      </div>
     </div>
   )
 }

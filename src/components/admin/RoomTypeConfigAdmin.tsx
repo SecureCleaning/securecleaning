@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import type { QuoteRoomTypeConfig, RoomMetricFieldConfig, RoomMetricInputType, RoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import AdminPageHeader from './AdminPageHeader'
 
 const INPUT_TYPES: RoomMetricInputType[] = ['integer', 'number', 'boolean']
 
@@ -56,7 +57,7 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
     message: '',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [expandedRoomIndexes, setExpandedRoomIndexes] = useState<Set<number>>(() => new Set([0]))
+  const [expandedRoomIndexes, setExpandedRoomIndexes] = useState<Set<number>>(() => new Set())
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -172,43 +173,19 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Room Type Master Control
-          </h1>
-          <p className="text-gray-600 max-w-3xl">
-            Control the room types available in the Quote Workbench, the client-facing scope inclusions for each room, mopping defaults, room pricing rules, and any extra pricing fields.
-          </p>
-          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            Use the field price as an internal pricing rule. Example: a toilet field set to <strong>$3.00</strong> means each toilet adds <strong>$3.00 per visit</strong> to the working quote.
-          </div>
+    <div>
+        <AdminPageHeader title="Room Type Master Control" description="Control Quote Workbench room types, client-facing scope inclusions, mopping defaults, room pricing rules, and extra pricing fields." actions={<><button type="button" onClick={addRoomType} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Add room type</button><button type="submit" form="room-type-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save room types'}</button></>} />
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Use field prices as internal pricing rules. A toilet field set to <strong>$3.00</strong> adds <strong>$3.00 per visit</strong> to the working quote.
         </div>
 
-        <form onSubmit={handleSave} className="space-y-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
+          <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote room type configuration</h2>
               <p className="text-sm text-gray-600">Scope and mopping defaults apply to new rooms and when an agent changes a room type.</p>
             </div>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={addRoomType}
-                className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-gray-700 border border-gray-200 bg-white"
-              >
-                Add Room Type
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-                style={{ backgroundColor: '#22c55e' }}
-              >
-                {isSubmitting ? 'Saving…' : 'Save Room Types'}
-              </button>
-            </div>
+            <span className="text-xs text-gray-500">Defaults apply to new Quote Workbench rooms.</span>
           </div>
 
           <div className="space-y-6">
@@ -477,6 +454,5 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
           ) : null}
         </form>
       </div>
-    </div>
   )
 }

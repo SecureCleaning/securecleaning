@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import AdminNav from '@/components/admin/AdminNav'
+import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import AssigneeAvailabilityEditor from '@/components/availability/AssigneeAvailabilityEditor'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
@@ -22,14 +22,11 @@ export default async function AdminAvailabilityQuoterPage({
 
     if (!assignee) {
       return (
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-          <AdminNav currentPath="/admin/availability" />
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-8 text-center">
-            <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a2744' }}>Agent not found</h1>
-            <Link href="/admin/availability" className="inline-flex items-center px-6 py-3 rounded-lg font-semibold text-white" style={{ backgroundColor: '#22c55e' }}>
-              Back to Availability
-            </Link>
-          </div>
+        <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <h1 className="mb-3 text-2xl font-bold" style={{ color: '#1a2744' }}>Agent not found</h1>
+          <Link href="/admin/availability" className="inline-flex min-h-10 items-center rounded-lg px-6 py-3 font-semibold text-white" style={{ backgroundColor: '#22c55e' }}>
+            Back to Availability
+          </Link>
         </div>
       )
     }
@@ -43,10 +40,13 @@ export default async function AdminAvailabilityQuoterPage({
     const initialCalendarEvents = await getAgentCalendarEvents(config, assignee)
 
     return (
-      <>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-          <AdminNav currentPath="/admin/availability" />
-        </div>
+      <div>
+        <AdminPageHeader
+          title={`${assignee.name} Availability`}
+          description="Manage this agent's recurring inspection windows, service zones, block-outs, and calendar feed."
+          backHref="/admin/availability"
+          backLabel="Back to availability"
+        />
         <AssigneeAvailabilityEditor
           assignee={assignee}
           initialWeeklySlots={config.weeklySlots.filter((slot) => slot.assigneeId === assigneeId)}
@@ -60,8 +60,10 @@ export default async function AdminAvailabilityQuoterPage({
           allowZoneEditing
           initialCalendarEvents={initialCalendarEvents}
           calendarFeedUrl={calendarFeedUrl}
+          compactLayout
+          showAgentNav={false}
         />
-      </>
+      </div>
     )
   })
 }

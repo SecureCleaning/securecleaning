@@ -9,6 +9,7 @@ import type {
 } from '@/lib/availability'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import AdminPageHeader from './AdminPageHeader'
 
 function toCsv(values: string[]): string {
   return values.join(', ')
@@ -165,20 +166,15 @@ export default function AvailabilityAdmin({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Availability Admin
-          </h1>
-          <p className="text-gray-600 max-w-3xl">
-            Regional agent profiles are linked to individual logins under Staff Access. Use this page for
-            inspection schedules, calendar connections, owner-operator links, and service zones.
-          </p>
-        </div>
+    <div>
+      <AdminPageHeader
+        title="Availability Admin"
+        description="Manage inspection schedules, calendar connections, owner-operator links, and service zones. Regional agent profiles are linked to individual logins under Staff Access."
+        actions={<button type="submit" form="availability-admin-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save settings'}</button>}
+      />
 
-        <form onSubmit={handleSave} className="space-y-8">
-          <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <form id="availability-admin-form" onSubmit={handleSave} className="space-y-5">
+          <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>
                 Agent access setup
@@ -187,14 +183,7 @@ export default function AvailabilityAdmin({
                 Save after creating new agents, changing usernames or passwords, or updating calendar assignments.
               </p>
             </div>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-              style={{ backgroundColor: '#22c55e' }}
-            >
-              {isSubmitting ? 'Saving…' : 'Save Agent Settings'}
-            </button>
+            <span className="text-xs text-gray-500">Changes apply to new and updated inspection matching.</span>
           </div>
 
           <section className="grid gap-4 md:grid-cols-4">
@@ -563,6 +552,5 @@ export default function AvailabilityAdmin({
           ) : null}
         </form>
       </div>
-    </div>
   )
 }

@@ -46,6 +46,8 @@ export default function AssigneeAvailabilityEditor({
   allowZoneEditing = false,
   initialCalendarEvents = [],
   calendarFeedUrl,
+  compactLayout = false,
+  showAgentNav = true,
 }: {
   assignee: AvailabilityAssignee
   initialWeeklySlots: WeeklyAvailabilitySlot[]
@@ -59,6 +61,8 @@ export default function AssigneeAvailabilityEditor({
   allowZoneEditing?: boolean
   initialCalendarEvents?: AgentCalendarEvent[]
   calendarFeedUrl?: string
+  compactLayout?: boolean
+  showAgentNav?: boolean
 }) {
   const [weeklySlots, setWeeklySlots] = useState(initialWeeklySlots)
   const [oneOffBlocks, setOneOffBlocks] = useState(initialOneOffBlocks)
@@ -156,17 +160,17 @@ export default function AssigneeAvailabilityEditor({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-        <AvailabilityAgentNav assigneeId={assignee.id} showLogout />
-        <div className="mb-10">
+    <div className={compactLayout ? 'space-y-5' : 'min-h-screen bg-gray-50 py-16'}>
+      <div className={compactLayout ? 'space-y-5' : 'max-w-5xl mx-auto px-4 sm:px-6 lg:px-8'}>
+        {showAgentNav ? <AvailabilityAgentNav assigneeId={assignee.id} showLogout /> : null}
+        {!compactLayout ? <div className="mb-10">
           <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
             {title}
           </h1>
           <p className="text-gray-600 max-w-3xl">{description}</p>
-        </div>
+        </div> : null}
 
-        <form onSubmit={handleSave} className="space-y-8">
+        <form onSubmit={handleSave} className={compactLayout ? 'space-y-5' : 'space-y-8'}>
           <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
