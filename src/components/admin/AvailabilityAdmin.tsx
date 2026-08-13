@@ -33,7 +33,21 @@ function buildAgentLoginPath(assigneeId: string) {
   return `/availability/quoters/${assigneeId}`
 }
 
-export default function AvailabilityAdmin({ initialConfig }: { initialConfig: AvailabilityConfig }) {
+type OwnerOperatorOption = {
+  id: string
+  business_name: string
+  operator_name: string
+  city: 'melbourne' | 'sydney'
+  is_active: boolean
+}
+
+export default function AvailabilityAdmin({
+  initialConfig,
+  ownerOperators,
+}: {
+  initialConfig: AvailabilityConfig
+  ownerOperators: OwnerOperatorOption[]
+}) {
   const [config, setConfig] = useState<AvailabilityConfig>(initialConfig)
   const [draftAccessCodes, setDraftAccessCodes] = useState<Record<string, string>>({})
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
@@ -115,6 +129,7 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
           username: `${slugifyUsername(defaultName) || 'agent'}.${current.assignees.length + 1}`,
           city: 'melbourne',
           email: '',
+          ownerOperatorId: '',
           calendarId: '',
           active: true,
           notes: '',
@@ -288,6 +303,27 @@ export default function AvailabilityAdmin({ initialConfig }: { initialConfig: Av
                           onChange={(event) => updateAssignee(assignee.id, { email: event.target.value })}
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
+                      </div>
+                      <div className="lg:col-span-2">
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Linked owner-operator</label>
+                        <select
+                          value={assignee.ownerOperatorId ?? ''}
+                          onChange={(event) => updateAssignee(assignee.id, { ownerOperatorId: event.target.value })}
+                          className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="">Not linked yet</option>
+                          {ownerOperators
+                            .filter((operator) => (
+                              operator.city === assignee.city
+                              && (operator.is_active || operator.id === assignee.ownerOperatorId)
+                            ))
+                            .map((operator) => (
+                              <option key={operator.id} value={operator.id}>
+                                {operator.business_name} — {operator.operator_name} ({operator.city})
+                              </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">Bookings assigned to this agent will also be assigned to this owner-operator.</p>
                       </div>
                       <div className="lg:col-span-2">
                         <label className="mb-1 block text-sm font-medium text-gray-700">Calendar ID</label>

@@ -38,6 +38,7 @@ export type AvailabilityAssignee = {
   name: string
   username?: string
   city: City
+  ownerOperatorId?: string
   email?: string
   calendarId?: string
   calendarViewUrl?: string
@@ -295,6 +296,7 @@ function mergeConfig(candidate: unknown): AvailabilityConfig {
           name: String(assignee?.name ?? `Assignee ${index + 1}`),
           username: typeof assignee?.username === 'string' ? assignee.username : '',
           city: assignee?.city === 'sydney' ? 'sydney' : 'melbourne',
+          ownerOperatorId: typeof assignee?.ownerOperatorId === 'string' ? assignee.ownerOperatorId : '',
           email: typeof assignee?.email === 'string' ? assignee.email : '',
           calendarId: typeof assignee?.calendarId === 'string' ? assignee.calendarId : '',
           calendarViewUrl: typeof assignee?.calendarViewUrl === 'string' ? assignee.calendarViewUrl : '',

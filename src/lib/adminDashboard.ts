@@ -2,6 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import type { AdminDashboardData } from '@/components/admin/AdminDashboard'
 import { getSites } from '@/lib/sites'
 import { getAdminOverviewData } from '@/lib/adminOverview'
+import { getAvailabilityConfig } from '@/lib/availability'
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const db = getAdminSupabase()
@@ -19,6 +20,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     activeOperatorsCountRes,
     sites,
     overview,
+    availabilityConfig,
   ] = await Promise.all([
     db.from('quotes').select('id, quote_ref, status, valid_until, created_at, inputs, follow_up_status, follow_up_notes').order('created_at', { ascending: false }).limit(20),
     db.from('bookings').select('id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id, inspection_status, inspection_scheduled_for, inspection_completed_at, dispatch_notes').order('created_at', { ascending: false }).limit(20),
@@ -32,6 +34,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     db.from('owner_operators').select('*', { count: 'exact', head: true }).eq('is_active', true),
     getSites(),
     getAdminOverviewData(),
+    getAvailabilityConfig(),
   ])
 
   if (quotesRes.error) console.error('[adminDashboard] quotes load failed:', quotesRes.error)
@@ -41,10 +44,39 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   if (operatorsRes.error) console.error('[adminDashboard] operators load failed:', operatorsRes.error)
 
   const quotes = quotesRes.data ?? []
-  const bookings = bookingsRes.data ?? []
+  const rawBookings = bookingsRes.data ?? []
   const clients = clientsRes.data ?? []
   const leads = leadsRes.data ?? []
-  const operators = operatorsRes.data ?? []
+  const availabilityAssigneeIdByOperatorId = new Map(
+    availabilityConfig.assignees
+      .filter((assignee) => assignee.ownerOperatorId)
+      .map((assignee) => [assignee.ownerOperatorId as string, assignee.id]),
+  )
+  const operators = (operatorsRes.data ?? []).map((operator) => ({
+    ...operator,
+    availabilityAssigneeId: availabilityAssigneeIdByOperatorId.get(operator.id) ?? null,
+  }))
+  const availabilityAssigneeById = new Map(availabilityConfig.assignees.map((assignee) => [assignee.id, assignee]))
+  const availabilityAssigneeByOperatorId = new Map(
+    availabilityConfig.assignees
+      .filter((assignee) => assignee.ownerOperatorId)
+      .map((assignee) => [assignee.ownerOperatorId as string, assignee]),
+  )
+  const bookings = rawBookings.map((booking) => {
+    const inputAssignee = booking.inputs?.preferredInspectionAssigneeId
+      ? availabilityAssigneeById.get(booking.inputs.preferredInspectionAssigneeId)
+      : undefined
+    const operatorAssignee = booking.assigned_operator_id
+      ? availabilityAssigneeByOperatorId.get(booking.assigned_operator_id)
+      : undefined
+    const linkedAgent = inputAssignee ?? operatorAssignee
+
+    return {
+      ...booking,
+      linkedAgentId: linkedAgent?.id ?? null,
+      linkedOperatorId: booking.assigned_operator_id ? null : linkedAgent?.ownerOperatorId ?? null,
+    }
+  })
 
   return {
     stats: {

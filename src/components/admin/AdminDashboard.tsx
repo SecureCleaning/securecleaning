@@ -47,6 +47,8 @@ type BookingRow = {
   created_at?: string | null
   site_id?: string | null
   assigned_operator_id?: string | null
+  linkedAgentId?: string | null
+  linkedOperatorId?: string | null
   inspection_status?: string | null
   inspection_scheduled_for?: string | null
   inspection_completed_at?: string | null
@@ -64,6 +66,7 @@ type BookingRow = {
     phone?: string
     preferredStartDate?: string
     preferredInspectionSlotLabel?: string
+    preferredInspectionAssigneeId?: string
     preferredInspectionAssigneeName?: string
     notes?: string
   }
@@ -97,6 +100,7 @@ type OperatorRow = {
   is_verified: boolean
   is_active: boolean
   premises_types?: string[] | null
+  availabilityAssigneeId?: string | null
 }
 
 type SiteRow = {
@@ -246,7 +250,7 @@ export default function AdminDashboard({ initialData }: Props) {
       },
       {
         label: 'Bookings missing operator',
-        value: bookings.filter((booking) => !booking.assigned_operator_id && booking.status !== 'completed' && booking.status !== 'cancelled').length,
+        value: bookings.filter((booking) => !booking.assigned_operator_id && !booking.linkedOperatorId && booking.status !== 'completed' && booking.status !== 'cancelled').length,
         tone: 'text-amber-700',
       },
       {
@@ -520,7 +524,12 @@ export default function AdminDashboard({ initialData }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((booking) => (
+                  {bookings.map((booking) => {
+                    const linkedAgentId = booking.linkedAgentId
+                      ?? booking.inputs?.preferredInspectionAssigneeId
+                      ?? operators.find((operator) => operator.id === booking.assigned_operator_id)?.availabilityAssigneeId
+
+                    return (
                     <tr id={`booking-row-${booking.booking_ref}`} key={booking.id} className="border-t border-gray-100 align-top scroll-mt-24">
                       <td className="px-4 py-3 font-mono">
                         <div>{booking.booking_ref}</div>
@@ -572,32 +581,63 @@ export default function AdminDashboard({ initialData }: Props) {
                         </select>
                       </td>
                       <td className="px-4 py-3">
-                        <select
-                          value={booking.assigned_operator_id ?? ''}
-                          onChange={(event) => handleBookingOperatorChange(booking.booking_ref, event.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
-                        >
-                          <option value="">Unassigned</option>
-                          {getRelevantOperators(
-                            operators,
-                            booking.inputs?.city,
-                            booking.inputs?.premisesType
-                          ).map((operator) => (
-                            <option key={operator.id} value={operator.id}>{operator.business_name} — {operator.operator_name}</option>
-                          ))}
-                        </select>
+                        <div className="space-y-2">
+                          <select
+                            value={booking.assigned_operator_id ?? ''}
+                            onChange={(event) => handleBookingOperatorChange(booking.booking_ref, event.target.value)}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          >
+                            <option value="">Unassigned</option>
+                            {getRelevantOperators(
+                              operators,
+                              booking.inputs?.city,
+                              booking.inputs?.premisesType
+                            ).map((operator) => (
+                              <option key={operator.id} value={operator.id}>{operator.business_name} — {operator.operator_name}</option>
+                            ))}
+                          </select>
+                          {booking.assigned_operator_id ? (
+                            <div className="text-xs text-gray-500">
+                              {operators.find((operator) => operator.id === booking.assigned_operator_id)?.availabilityAssigneeId
+                                ? 'Linked to inspection agent'
+                                : 'No inspection agent linked'}
+                            </div>
+                          ) : booking.linkedOperatorId ? (
+                            <div className="space-y-1 text-xs text-blue-700">
+                              <div>Inspection agent linked to {operators.find((operator) => operator.id === booking.linkedOperatorId)?.business_name ?? 'an owner-operator'}.</div>
+                              <button
+                                type="button"
+                                onClick={() => handleBookingOperatorChange(booking.booking_ref, booking.linkedOperatorId as string)}
+                                className="font-semibold underline underline-offset-2 hover:text-blue-900"
+                              >
+                                Assign linked operator
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleBookingResend(booking.booking_ref)}
-                          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
-                        >
-                          Resend confirmation
-                        </button>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleBookingResend(booking.booking_ref)}
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                          >
+                            Resend confirmation
+                          </button>
+                          {linkedAgentId ? (
+                            <a
+                              href={`/admin/availability/quoters/${encodeURIComponent(linkedAgentId)}`}
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-sm font-semibold text-blue-800 hover:border-blue-300"
+                            >
+                              Edit agent schedule
+                            </a>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

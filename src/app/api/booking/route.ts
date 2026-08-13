@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
-import { getAvailabilityCalendar } from '@/lib/availability'
+import { getAvailabilityAssignee, getAvailabilityCalendar, getAvailabilityConfig } from '@/lib/availability'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { BookingInputs } from '@/lib/types'
 import { createSiteFromBooking, findMatchingSiteForBooking } from '@/lib/siteMatching'
@@ -112,6 +112,7 @@ export async function POST(request: NextRequest) {
     let bookingInputs: BookingInputs = { ...inputs }
     let inspectionStatus = 'pending'
     let inspectionScheduledFor: string | null = null
+    let assignedOperatorId: string | null = null
     if (inputs.preferredInspectionSlotId && inputs.preferredInspectionSlotId !== 'contact_me') {
       const availability = await getAvailabilityCalendar(
         { address: inputs.address, suburb: inputs.suburb, postcode: inputs.postcode },
@@ -139,6 +140,8 @@ export async function POST(request: NextRequest) {
         preferredInspectionAssigneeName: selectedSuggestion.assigneeName,
         preferredInspectionCalendarId: selectedSuggestion.calendarId,
       }
+      const availabilityConfig = await getAvailabilityConfig()
+      assignedOperatorId = getAvailabilityAssignee(availabilityConfig, selectedSuggestion.assigneeId)?.ownerOperatorId || null
       inspectionStatus = 'scheduled'
       inspectionScheduledFor = getDateTimeInTimeZone(
         inputs.preferredStartDate,
@@ -209,6 +212,7 @@ export async function POST(request: NextRequest) {
       quote_id: quoteId,
       client_id: clientData.id,
       site_id: matchedSite?.id ?? null,
+      assigned_operator_id: assignedOperatorId,
       inputs: bookingInputs,
       status: 'pending',
       inspection_status: inspectionStatus,
