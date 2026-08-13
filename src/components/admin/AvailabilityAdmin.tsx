@@ -172,9 +172,8 @@ export default function AvailabilityAdmin({
             Availability Admin
           </h1>
           <p className="text-gray-600 max-w-3xl">
-            Admin creates the agent accounts here, provides each agent with a username and password,
-            and assigns the calendar they should use. Agents then sign in to their own page and only
-            adjust their own availability.
+            Regional agent profiles are linked to individual logins under Staff Access. Use this page for
+            inspection schedules, calendar connections, owner-operator links, and service zones.
           </p>
         </div>
 
@@ -232,17 +231,12 @@ export default function AvailabilityAdmin({
                   Agents
                 </h3>
                 <p className="text-sm text-gray-600">
-                  This is the only place new agents should be created. Each agent gets their own login and schedule page.
+                  Profiles used by the inspection schedule. Create and manage individual agent access under Staff Access.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={addAssignee}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                style={{ backgroundColor: '#1a2744' }}
-              >
-                Add Agent
-              </button>
+              <Link href="/admin/staff" className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">
+                Manage access
+              </Link>
             </div>
 
             <div className="space-y-4">
@@ -276,9 +270,7 @@ export default function AvailabilityAdmin({
                         <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>
                         <input
                           value={assignee.username ?? ''}
-                          onChange={(event) =>
-                            updateAssignee(assignee.id, { username: slugifyUsername(event.target.value) })
-                          }
+                          readOnly
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
                         <p className="mt-1 text-xs text-gray-500">This is what the agent signs in with.</p>
@@ -353,23 +345,8 @@ export default function AvailabilityAdmin({
                           placeholder="Optional ICS / webcal / external subscription link"
                         />
                       </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Set / reset password</label>
-                        <input
-                          type="password"
-                          value={draftAccessCodes[assignee.id] ?? ''}
-                          onChange={(event) =>
-                            setDraftAccessCodes((current) => ({
-                              ...current,
-                              [assignee.id]: event.target.value,
-                            }))
-                          }
-                          placeholder={assignee.accessCodeHash ? 'Leave blank to keep current password' : 'Create password'}
-                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                          {assignee.accessCodeHash ? 'Password already set.' : 'No password set yet.'}
-                        </p>
+                      <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900">
+                        Login and password changes are managed under Staff Access.
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
@@ -457,13 +434,6 @@ export default function AvailabilityAdmin({
                           />
                           Active agent
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => removeAssignee(assignee.id)}
-                          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:border-red-300"
-                        >
-                          Delete agent
-                        </button>
                       </div>
                     </div>
                   </div>

@@ -102,7 +102,7 @@ export function getAdminSessionIdentity(token: string | null | undefined): Admin
 
     if (typeof parsed.exp !== 'number' || parsed.exp <= Math.floor(Date.now() / 1000)) return null
     if (typeof parsed.sub !== 'string' || typeof parsed.username !== 'string') return null
-    if (parsed.role !== 'owner' && parsed.role !== 'manager' && parsed.role !== 'staff' && parsed.role !== 'viewer') return null
+    if (parsed.role !== 'owner' && parsed.role !== 'manager' && parsed.role !== 'staff' && parsed.role !== 'agent' && parsed.role !== 'viewer') return null
 
     return { id: parsed.sub, username: parsed.username, role: parsed.role }
   } catch {
@@ -110,11 +110,15 @@ export function getAdminSessionIdentity(token: string | null | undefined): Admin
   }
 }
 
-const ROLE_LEVEL: Record<AdminRole, number> = { viewer: 0, staff: 1, manager: 2, owner: 3 }
+const ROLE_LEVEL: Record<AdminRole, number> = { viewer: 0, agent: 1, staff: 2, manager: 3, owner: 4 }
 
 export function isAuthorizedAdminRequest(request: NextRequest, requiredRole?: AdminRole) {
   const identity = getAdminSessionIdentityFromRequest(request)
   if (!identity) return false
+
+  // Agents use the regional availability portal, not the general admin APIs.
+  // Their regional access is checked by availabilityAgentAuth instead.
+  if (identity.role === 'agent') return requiredRole === 'agent'
 
   const minimumRole = requiredRole ?? (request.method === 'GET' ? 'viewer' : 'staff')
   return ROLE_LEVEL[identity.role] >= ROLE_LEVEL[minimumRole]
@@ -125,6 +129,7 @@ export function getAdminSessionIdentityFromRequest(request: NextRequest) {
 }
 
 export function hasAdminRole(role: AdminRole, requiredRole: AdminRole) {
+  if (role === 'agent') return requiredRole === 'agent'
   return ROLE_LEVEL[role] >= ROLE_LEVEL[requiredRole]
 }
 
