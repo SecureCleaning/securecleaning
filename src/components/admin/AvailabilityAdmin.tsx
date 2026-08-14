@@ -9,6 +9,7 @@ import type {
 } from '@/lib/availability'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import AdminPageHeader from './AdminPageHeader'
 
 function toCsv(values: string[]): string {
   return values.join(', ')
@@ -165,21 +166,15 @@ export default function AvailabilityAdmin({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Availability Admin
-          </h1>
-          <p className="text-gray-600 max-w-3xl">
-            Admin creates the agent accounts here, provides each agent with a username and password,
-            and assigns the calendar they should use. Agents then sign in to their own page and only
-            adjust their own availability.
-          </p>
-        </div>
+    <div>
+      <AdminPageHeader
+        title="Availability Admin"
+        description="Manage inspection schedules, calendar connections, owner-operator links, and service zones. Regional agent profiles are linked to individual logins under Staff Access."
+        actions={<button type="submit" form="availability-admin-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save settings'}</button>}
+      />
 
-        <form onSubmit={handleSave} className="space-y-8">
-          <div className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <form id="availability-admin-form" onSubmit={handleSave} className="space-y-5">
+          <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>
                 Agent access setup
@@ -188,14 +183,7 @@ export default function AvailabilityAdmin({
                 Save after creating new agents, changing usernames or passwords, or updating calendar assignments.
               </p>
             </div>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-              style={{ backgroundColor: '#22c55e' }}
-            >
-              {isSubmitting ? 'Saving…' : 'Save Agent Settings'}
-            </button>
+            <span className="text-xs text-gray-500">Changes apply to new and updated inspection matching.</span>
           </div>
 
           <section className="grid gap-4 md:grid-cols-4">
@@ -232,17 +220,12 @@ export default function AvailabilityAdmin({
                   Agents
                 </h3>
                 <p className="text-sm text-gray-600">
-                  This is the only place new agents should be created. Each agent gets their own login and schedule page.
+                  Profiles used by the inspection schedule. Create and manage individual agent access under Staff Access.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={addAssignee}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                style={{ backgroundColor: '#1a2744' }}
-              >
-                Add Agent
-              </button>
+              <Link href="/admin/staff" className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">
+                Manage access
+              </Link>
             </div>
 
             <div className="space-y-4">
@@ -276,9 +259,7 @@ export default function AvailabilityAdmin({
                         <label className="mb-1 block text-sm font-medium text-gray-700">Username</label>
                         <input
                           value={assignee.username ?? ''}
-                          onChange={(event) =>
-                            updateAssignee(assignee.id, { username: slugifyUsername(event.target.value) })
-                          }
+                          readOnly
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
                         <p className="mt-1 text-xs text-gray-500">This is what the agent signs in with.</p>
@@ -353,23 +334,8 @@ export default function AvailabilityAdmin({
                           placeholder="Optional ICS / webcal / external subscription link"
                         />
                       </div>
-                      <div>
-                        <label className="mb-1 block text-sm font-medium text-gray-700">Set / reset password</label>
-                        <input
-                          type="password"
-                          value={draftAccessCodes[assignee.id] ?? ''}
-                          onChange={(event) =>
-                            setDraftAccessCodes((current) => ({
-                              ...current,
-                              [assignee.id]: event.target.value,
-                            }))
-                          }
-                          placeholder={assignee.accessCodeHash ? 'Leave blank to keep current password' : 'Create password'}
-                          className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                          {assignee.accessCodeHash ? 'Password already set.' : 'No password set yet.'}
-                        </p>
+                      <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900">
+                        Login and password changes are managed under Staff Access.
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
@@ -457,13 +423,6 @@ export default function AvailabilityAdmin({
                           />
                           Active agent
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => removeAssignee(assignee.id)}
-                          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 hover:border-red-300"
-                        >
-                          Delete agent
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -593,6 +552,5 @@ export default function AvailabilityAdmin({
           ) : null}
         </form>
       </div>
-    </div>
   )
 }

@@ -78,6 +78,13 @@ test('admin API authorization requires the signed session cookie', () => {
   assert.equal(isAuthorizedAdminRequest(sessionRequest), true)
   assert.equal(isAuthorizedAdminRequest(sessionRequest, 'owner'), false)
   assert.equal(isAuthorizedAdminRequest(sessionRequest, 'viewer'), true)
+
+  const agentToken = createAdminSessionToken({ id: 'agent-id', username: 'regional.agent', role: 'agent' })
+  const agentRequest = new NextRequest('https://securecleaning.com.au/api/admin/reporting', {
+    headers: { cookie: `${ADMIN_SESSION_COOKIE}=${agentToken}` },
+  })
+  assert.equal(isAuthorizedAdminRequest(agentRequest), false)
+  assert.equal(isAuthorizedAdminRequest(agentRequest, 'agent'), true)
 })
 
 test('staff passwords are salted, hashed, and roles are constrained', () => {
@@ -87,6 +94,7 @@ test('staff passwords are salted, hashed, and roles are constrained', () => {
   assert.equal(verifyStaffPassword('wrong-password', hash), false)
   assert.equal(normalizeStaffUsername('  Jane Smith! '), 'janesmith')
   assert.equal(normalizeStaffRole('manager'), 'manager')
+  assert.equal(normalizeStaffRole('agent'), 'agent')
   assert.equal(normalizeStaffRole('administrator'), null)
 })
 

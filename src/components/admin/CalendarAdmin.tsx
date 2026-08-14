@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { AvailabilityAssignee } from '@/lib/availability'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
+import AdminPageHeader from './AdminPageHeader'
 
 type CalendarData = {
   assignee: AvailabilityAssignee
@@ -123,18 +124,15 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="text-4xl font-bold" style={{ color: '#1a2744' }}>Calendar</h1>
-            <p className="mt-2 max-w-3xl text-gray-600">Compare inspection appointments, agent availability, and block-outs across the team.</p>
-          </div>
-          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm" aria-label="Calendar view">
-            <button type="button" onClick={() => changeView('week')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${viewMode === 'week' ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Weekly</button>
-            <button type="button" onClick={() => changeView('day')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${viewMode === 'day' ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Daily</button>
-          </div>
-        </div>
+    <div>
+      <AdminPageHeader
+        title="Calendar"
+        description="Compare inspection appointments, agent availability, and block-outs across the team."
+        actions={<div className="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm" aria-label="Calendar view">
+          <button type="button" onClick={() => changeView('week')} className={`min-h-10 rounded-md px-3 py-2 text-sm font-semibold ${viewMode === 'week' ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Weekly</button>
+          <button type="button" onClick={() => changeView('day')} className={`min-h-10 rounded-md px-3 py-2 text-sm font-semibold ${viewMode === 'day' ? 'bg-green-600 text-white' : 'text-gray-700 hover:bg-gray-50'}`}>Daily</button>
+        </div>}
+      />
 
         <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -208,8 +206,6 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
             })}
           </div>
         </section>
-      </div>
-
       {selectedEvent ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="admin-calendar-event-title">
           <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
@@ -221,7 +217,7 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
           </div>
         </div>
       ) : null}
-    </main>
+    </div>
   )
 }
 
