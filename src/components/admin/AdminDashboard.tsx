@@ -676,8 +676,12 @@ export default function AdminDashboard({ initialData }: Props) {
           <div id="dispatch-editor" className="scroll-mt-24">
             <DispatchPanel
               bookings={bookings}
+              sites={sites}
+              operators={operators}
               selectedBookingRef={selectedBookingRef}
               onSelectedBookingRefChange={setSelectedBookingRef}
+              onBookingSiteChange={handleBookingSiteChange}
+              onBookingOperatorChange={handleBookingOperatorChange}
               onBookingUpdated={(bookingRef, updates) => {
                 setBookings((current) => current.map((booking) => (
                   booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking

@@ -15,9 +15,12 @@ test('booking editor exposes the lifecycle status used by action-needed alerts',
 
 test('issue routing sends dispatch alerts to the inspection workflow controls', () => {
   const source = read('src/components/admin/AdminDashboard.tsx')
+  const dispatchPanel = read('src/components/admin/DispatchPanel.tsx')
 
   assert.match(source, /alert\.kind === 'new_booking'/)
   assert.match(source, /openDispatchEditor\(alert\.entity_ref\)/)
+  assert.match(dispatchPanel, /Assign the site and operator here/)
+  assert.match(dispatchPanel, /onBookingOperatorChange/)
 })
 
 test('booking mutations validate lifecycle status server-side', () => {
