@@ -70,6 +70,9 @@ export default function AlertsPanel({
               </div>
               <div className="font-semibold">{alert.title}</div>
               <div className="text-sm mt-1">{alert.description}</div>
+              <div className="mt-2 text-xs opacity-80">
+                Open the workflow below to resolve this alert.
+              </div>
               <button
                 type="button"
                 onClick={() => onOpenAlert(alert)}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { AdminDashboardData } from './AdminDashboard'
+import { bookingStatuses } from '@/lib/bookingStatus'
 
 type BookingItem = AdminDashboardData['bookings'][number]
 
@@ -30,6 +31,7 @@ export default function BookingEditor({
   const [postcode, setPostcode] = useState('')
   const [preferredDate, setPreferredDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [bookingStatus, setBookingStatus] = useState('pending')
 
   const originalBusinessName = selected?.inputs?.businessName ?? ''
   const originalContactName = selected?.inputs?.contactName ?? ''
@@ -50,7 +52,8 @@ export default function BookingEditor({
       suburb !== originalSuburb ||
       postcode !== originalPostcode ||
       preferredDate !== originalPreferredDate ||
-      notes !== originalNotes
+      notes !== originalNotes ||
+      bookingStatus !== (selected?.status ?? 'pending')
     )
   )
 
@@ -65,6 +68,7 @@ export default function BookingEditor({
     setPostcode(selected.inputs?.postcode ?? '')
     setPreferredDate(selected.first_clean_date ?? selected.inputs?.preferredStartDate ?? '')
     setNotes(selected.inputs?.notes ?? '')
+    setBookingStatus(selected.status ?? 'pending')
     setStatus(null)
     setError(null)
   }, [selectedBookingRef, selected])
@@ -99,7 +103,7 @@ export default function BookingEditor({
           updates: {
             inputs: updatedInputs,
             first_clean_date: preferredDate,
-            status: selected.status,
+            status: bookingStatus,
           },
         }),
       })
@@ -129,6 +133,7 @@ export default function BookingEditor({
     setPostcode(originalPostcode)
     setPreferredDate(originalPreferredDate)
     setNotes(originalNotes)
+    setBookingStatus(selected.status)
     setStatus(null)
     setError(null)
   }
@@ -141,7 +146,7 @@ export default function BookingEditor({
           <p className="mt-1 text-sm text-gray-600">Update customer-facing booking details and first-clean timing without leaving the dashboard.</p>
         </div>
         <div className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
-          {selected.status.replace(/_/g, ' ')}
+          {bookingStatus.replace(/_/g, ' ')}
         </div>
       </div>
 
@@ -181,6 +186,20 @@ export default function BookingEditor({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="space-y-1">
+          <span className="text-sm font-medium text-gray-700">Booking status</span>
+          <select
+            value={bookingStatus}
+            onChange={(e) => setBookingStatus(e.target.value)}
+            disabled={isSaving}
+            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+          >
+            {bookingStatuses.map((value) => (
+              <option key={value} value={value}>{value.replace(/_/g, ' ')}</option>
+            ))}
+          </select>
+          <span className="block text-xs text-gray-500">Changing this status updates the booking queue and related alerts.</span>
+        </label>
         <label className="space-y-1">
           <span className="text-sm font-medium text-gray-700">Business name</span>
           <input type="text" value={businessName} onChange={(e) => setBusinessName(e.target.value)} disabled={isSaving} placeholder="Business name" className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm disabled:bg-gray-100 disabled:text-gray-500" />

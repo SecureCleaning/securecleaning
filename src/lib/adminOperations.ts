@@ -3,6 +3,7 @@ import { sendBookingConfirmationEmail, sendQuoteEmail, sendScopeOfWorksEmail } f
 import type { BookingInputs, QuoteInputs } from '@/lib/types'
 import { writeAuditLog } from '@/lib/auditLog'
 import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { isBookingStatus } from '@/lib/bookingStatus'
 
 export async function updateQuoteStatus(quoteRef: string, status: string) {
   const db = getAdminSupabase()
@@ -20,6 +21,10 @@ export async function updateQuoteStatus(quoteRef: string, status: string) {
 }
 
 export async function updateBookingStatus(bookingRef: string, status: string) {
+  if (!bookingRef || !isBookingStatus(status)) {
+    throw new Error('Select a valid booking status.')
+  }
+
   const db = getAdminSupabase()
 
   const { data, error } = await db

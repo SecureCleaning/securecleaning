@@ -233,7 +233,12 @@ export default function AdminDashboard({ initialData }: Props) {
       return
     }
 
-    openBookingEditor(alert.entity_ref)
+    if (alert.kind === 'new_booking') {
+      openBookingEditor(alert.entity_ref)
+      return
+    }
+
+    openDispatchEditor(alert.entity_ref)
   }
 
   const workflowCoverage = useMemo(
