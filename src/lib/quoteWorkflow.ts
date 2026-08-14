@@ -3,6 +3,8 @@ import type { QuotePricingConfig } from '@/lib/pricing'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRoomScope'
 import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePreference } from '@/lib/types'
 import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeConfigById, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
+export { getFinalQuoteReadiness, isEditableFirmQuoteStatus, isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 
 export type WorkflowRoomType =
   | 'office'
@@ -57,6 +59,7 @@ export type InspectionReport = {
 }
 
 export type FirmQuoteStatus = 'draft' | 'reviewed' | 'sent' | 'accepted'
+
 
 export type FirmQuoteDraft = {
   status: FirmQuoteStatus
@@ -417,7 +420,7 @@ export function parseFirmQuoteDraft(
   const legacyMoppingRate = source.roomItems?.find((room) => Number.isFinite(Number(room.moppingMinutesPerSqm)))?.moppingMinutesPerSqm
 
   return {
-    status: typeof source.status === 'string' ? (source.status as FirmQuoteStatus) : fallback.status,
+    status: isFirmQuoteStatus(source.status) ? source.status : fallback.status,
     revisedInputs: mergeQuoteInputs(inputs, source.revisedInputs),
     roomItems: mergeRoomItems(source.roomItems, inputs, roomTypeConfig),
     moppingMinutesPerSqm: safePositiveNumber(

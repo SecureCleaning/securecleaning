@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
 import { rateLimit } from '@/lib/abuseProtection'
 
 export async function GET(
@@ -15,7 +15,8 @@ export async function GET(
     return NextResponse.json({ success: false, error: 'Quote reference is required.' }, { status: 400 })
   }
 
-  const quote = await getPublicQuoteWorkflowByRef(quoteRef)
+  const variant = request.nextUrl.searchParams.get('variant') === 'final' ? 'final' : 'remote_review'
+  const quote = await getPublicQuoteDocumentByRef(quoteRef, variant)
 
   if (!quote) {
     return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })

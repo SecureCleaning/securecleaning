@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
-import { getQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
-import { parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
+import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
+import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { getQuotePricingConfig } from '@/lib/pricing'
 
 export async function GET(
   request: NextRequest,
@@ -30,6 +31,9 @@ export async function POST(
 
   try {
     const body = await request.json()
+    if (!isEditableFirmQuoteStatus(body?.firmQuoteDraft?.status)) {
+      return NextResponse.json({ success: false, error: 'Save supports only draft or reviewed workflow states.' }, { status: 400 })
+    }
     const quote = await getQuoteWorkflowByRef(params.ref)
     const roomTypeConfig = await getQuoteRoomTypeConfig()
 
@@ -46,14 +50,33 @@ export async function POST(
 
     const inspectionReport = parseInspectionReport(body?.inspectionReport, quote.inputs)
     const firmQuoteDraft = parseFirmQuoteDraft(body?.firmQuoteDraft, quote.inputs, roomTypeConfig)
+    const readiness = getFinalQuoteReadiness(firmQuoteDraft)
+    if (firmQuoteDraft.status === 'reviewed' && !readiness.ready) {
+      return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
+    }
 
-    await saveQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft)
+    if (quote.finalDocument || quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
+      return NextResponse.json({ success: false, error: 'Reviewed and sent quotes cannot be changed by a normal save.' }, { status: 409 })
+    }
 
-    return NextResponse.json({ success: true })
+    if (firmQuoteDraft.status === 'reviewed') {
+      const identity = getAdminSessionIdentityFromRequest(request)
+      if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+      await reviewQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft, {
+        kind: 'staff_account', id: identity.id, name: identity.username,
+      }, await getQuotePricingConfig(), roomTypeConfig)
+    } else {
+      await saveQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft)
+    }
+
+    return NextResponse.json({ success: true, status: firmQuoteDraft.status })
   } catch (error) {
     console.error('[api/admin/quotes/[ref]/workflow] Failed to save workflow:', error)
+    if (error instanceof QuoteWorkflowConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 })
+    }
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to save workflow.' },
+      { success: false, error: 'The quote workflow could not be saved.' },
       { status: 500 }
     )
   }

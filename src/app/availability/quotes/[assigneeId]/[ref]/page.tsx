@@ -74,6 +74,7 @@ export default async function AvailabilityAgentQuotePage({
           canEmailScope={false}
           updatedQuoteApiPath={updatedQuoteApiPath}
           canEmailUpdatedQuote
+          canReconcileDelivery={false}
         />
       </div>
     </div>

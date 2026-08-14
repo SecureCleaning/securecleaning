@@ -4,6 +4,7 @@ import { withAdminPage } from '@/lib/adminPage'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { getAdminSessionIdentityFromCookies } from '@/lib/adminAuth'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,6 +13,7 @@ export default async function AdminQuoteWorkflowPage({ params }: { params: { ref
     const pricingConfig = await getQuotePricingConfig()
     const roomTypeConfig = await getQuoteRoomTypeConfig()
     const quote = await getQuoteWorkflowByRef(params.ref, roomTypeConfig)
+    const identity = await getAdminSessionIdentityFromCookies()
 
     if (!quote) {
       return (
@@ -28,7 +30,12 @@ export default async function AdminQuoteWorkflowPage({ params }: { params: { ref
             description="Start from the original remote quote, complete the inspection worksheet, then refine the inputs and client-facing scope into a firmer quotation."
             meta={<div className="text-right text-sm text-gray-500"><div className="font-mono font-semibold text-gray-700">{quote.quoteRef}</div><div>Status: <span className="capitalize">{quote.status}</span></div></div>}
           />
-          <QuoteWorkflowEditor quote={quote} pricingConfig={pricingConfig} roomTypeConfig={roomTypeConfig} />
+          <QuoteWorkflowEditor
+            quote={quote}
+            pricingConfig={pricingConfig}
+            roomTypeConfig={roomTypeConfig}
+            canReconcileDelivery={identity?.role === 'manager' || identity?.role === 'owner'}
+          />
       </div>
     )
   }, 'Admin login required', 'Unlock admin access to edit inspection worksheets and firm quote drafts.')

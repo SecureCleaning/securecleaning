@@ -26,6 +26,7 @@ type Props = {
   canEmailScope?: boolean
   updatedQuoteApiPath?: string
   canEmailUpdatedQuote?: boolean
+  canReconcileDelivery?: boolean
 }
 
 const frequencyOptions = [
@@ -85,12 +86,14 @@ export default function QuoteWorkflowEditor({
   pricingConfig,
   roomTypeConfig,
   workflowApiPath = `/api/admin/quotes/${quote.quoteRef}/workflow`,
-  canEmailScope = true,
+  canEmailScope = false,
   updatedQuoteApiPath = `/api/admin/quotes/${quote.quoteRef}/send`,
   canEmailUpdatedQuote = true,
+  canReconcileDelivery = false,
 }: Props) {
   const [inspectionReport, setInspectionReport] = useState<InspectionReport>(quote.inspectionReport)
   const [firmQuoteDraft, setFirmQuoteDraft] = useState<FirmQuoteDraft>(quote.firmQuoteDraft)
+  const [finalPublished, setFinalPublished] = useState(Boolean(quote.finalDocument))
   const [previewMode, setPreviewMode] = useState(false)
   const [saveState, setSaveState] = useState<{ saving: boolean; message: string | null; error: string | null }>({
     saving: false,
@@ -111,7 +114,7 @@ export default function QuoteWorkflowEditor({
   })
   const [quoteEmailComposerOpen, setQuoteEmailComposerOpen] = useState(false)
   const [quoteEmailDraft, setQuoteEmailDraft] = useState({
-    to: quote.inputs.email,
+    to: quote.finalDocument?.inputs.email ?? quote.inputs.email,
     subject: `Your updated Secure Cleaning quote — ${quote.quoteRef}`,
     message: 'Following our review of your requirements, your updated quote is ready to view online.',
   })
@@ -152,7 +155,8 @@ export default function QuoteWorkflowEditor({
   }
 
   function getScopeUrl() {
-    return `${window.location.origin}/scope/${quote.quoteRef}`
+    const variant = finalPublished || firmQuoteDraft.status === 'sent' ? '?variant=final' : ''
+    return `${window.location.origin}/scope/${quote.quoteRef}${variant}`
   }
 
   async function copyScopeLink() {
@@ -197,6 +201,7 @@ export default function QuoteWorkflowEditor({
       const result = await response.json()
       if (!response.ok || !result.success) throw new Error(result.error || 'Failed to email the updated quote.')
       setQuoteEmailComposerOpen(false)
+      setFirmQuoteDraft((current) => ({ ...current, status: 'sent' }))
       setQuoteEmailAction({ busy: false, message: `Updated quote emailed to ${quoteEmailDraft.to}.`, error: null })
     } catch (error) {
       setQuoteEmailAction({
@@ -204,6 +209,29 @@ export default function QuoteWorkflowEditor({
         message: null,
         error: error instanceof Error ? error.message : 'Failed to email the updated quote.',
       })
+    }
+  }
+
+  async function reconcileDelivery(resolution: 'confirmed_rejected' | 'confirmed_accepted') {
+    setQuoteEmailAction({ busy: true, message: null, error: null })
+    try {
+      const path = `/api/admin/quotes/${quote.quoteRef}/send/reconcile`
+      const inspect = await fetch(path)
+      const inspected = await inspect.json()
+      if (!inspect.ok || !inspected.success) throw new Error(inspected.error || 'Unable to inspect delivery status.')
+      if (!inspected.attempt) throw new Error('There is no unresolved delivery attempt for this quote.')
+      const evidence = window.prompt('Enter the provider evidence or support reference used to confirm this outcome:')?.trim()
+      if (!evidence) throw new Error('Provider evidence is required before reconciliation.')
+      const response = await fetch(path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attemptId: inspected.attempt.id, resolution, evidence, providerMessageId: inspected.attempt.provider_message_id }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.error || 'Delivery reconciliation failed.')
+      if (resolution === 'confirmed_accepted') setFirmQuoteDraft((current) => ({ ...current, status: 'sent' }))
+      setQuoteEmailAction({ busy: false, message: resolution === 'confirmed_accepted' ? 'Delivery confirmed and quote finalized as sent.' : 'Provider rejection confirmed. The quote can be retried safely.', error: null })
+    } catch (error) {
+      setQuoteEmailAction({ busy: false, message: null, error: error instanceof Error ? error.message : 'Delivery reconciliation failed.' })
     }
   }
 
@@ -232,7 +260,17 @@ export default function QuoteWorkflowEditor({
         ...current,
         revisedInputs: derivedInputs,
       }))
-      setSaveState({ saving: false, message: 'Inspection summary and firm quote draft saved.', error: null })
+      if (result.status === 'reviewed') setFinalPublished(true)
+      if (result.status === 'reviewed') {
+        setQuoteEmailDraft((current) => ({ ...current, to: derivedInputs.email.trim().toLowerCase() }))
+      }
+      setSaveState({
+        saving: false,
+        message: result.status === 'reviewed'
+          ? 'Final quote reviewed and published. It is now locked and ready to send.'
+          : 'Inspection summary and firm quote draft saved.',
+        error: null,
+      })
       openPreview()
     } catch (error) {
       setSaveState({
@@ -314,7 +352,7 @@ export default function QuoteWorkflowEditor({
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
-            onClick={() => window.open(`/scope/${quote.quoteRef}`, '_blank', 'noopener,noreferrer')}
+            onClick={() => window.open(`/scope/${quote.quoteRef}${finalPublished || firmQuoteDraft.status === 'sent' ? '?variant=final' : ''}`, '_blank', 'noopener,noreferrer')}
             className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800"
           >
             Open client view
@@ -340,11 +378,17 @@ export default function QuoteWorkflowEditor({
             <button
               type="button"
               onClick={() => setQuoteEmailComposerOpen((open) => !open)}
-              disabled={quoteEmailAction.busy || saveState.saving}
+              disabled={quoteEmailAction.busy || saveState.saving || firmQuoteDraft.status !== 'reviewed' || !finalPublished}
               className="rounded-lg border border-green-200 bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {quoteEmailComposerOpen ? 'Close email' : 'Email updated quote'}
+              {quoteEmailComposerOpen ? 'Close email' : firmQuoteDraft.status === 'sent' ? 'Final quote sent' : 'Send final quote'}
             </button>
+          ) : null}
+          {canReconcileDelivery && finalPublished ? (
+            <>
+              <button type="button" onClick={() => reconcileDelivery('confirmed_accepted')} disabled={quoteEmailAction.busy} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 disabled:opacity-60">Confirm provider delivery</button>
+              <button type="button" onClick={() => reconcileDelivery('confirmed_rejected')} disabled={quoteEmailAction.busy} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800 disabled:opacity-60">Confirm provider rejection</button>
+            </>
           ) : null}
           {!previewMode ? (
             <button
@@ -389,9 +433,10 @@ export default function QuoteWorkflowEditor({
               <input
                 type="email"
                 value={quoteEmailDraft.to}
-                onChange={(event) => setQuoteEmailDraft((current) => ({ ...current, to: event.target.value }))}
-                className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900"
+                readOnly
+                className="mt-1 w-full cursor-not-allowed rounded-lg border border-gray-300 bg-gray-100 px-3 py-2 font-normal text-gray-900"
               />
+              <span className="mt-1 block text-xs font-normal text-gray-500">Recipient is locked to the reviewed final document.</span>
             </label>
             <label className="text-sm font-semibold text-gray-700">
               Subject
@@ -420,7 +465,7 @@ export default function QuoteWorkflowEditor({
               disabled={quoteEmailAction.busy || saveState.saving}
               className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {quoteEmailAction.busy ? 'Sending...' : 'Send updated quote'}
+              {quoteEmailAction.busy ? 'Sending...' : 'Send final quote'}
             </button>
           </div>
         </div>
@@ -648,14 +693,16 @@ export default function QuoteWorkflowEditor({
               <span className="mb-1 block font-medium text-gray-700">Quote workflow status</span>
               <select
                 value={firmQuoteDraft.status}
+                disabled={finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
                 onChange={(event) => setFirmQuoteDraft((current) => ({ ...current, status: event.target.value as FirmQuoteDraft['status'] }))}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm"
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm disabled:cursor-not-allowed disabled:bg-gray-100"
               >
                 <option value="draft">Draft</option>
                 <option value="reviewed">Reviewed</option>
-                <option value="sent">Sent</option>
-                <option value="accepted">Accepted</option>
+                {firmQuoteDraft.status === 'sent' ? <option value="sent">Sent</option> : null}
+                {firmQuoteDraft.status === 'accepted' ? <option value="accepted">Accepted</option> : null}
               </select>
+              <span className="mt-1 block text-xs text-gray-500">Reviewed publishes and locks the final document. Sent is set only by the protected send action.</span>
             </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1139,10 +1186,10 @@ export default function QuoteWorkflowEditor({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saveState.saving}
+            disabled={saveState.saving || finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
             className="rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {saveState.saving ? 'Saving workflow…' : 'Save + open preview'}
+            {saveState.saving ? 'Saving workflow…' : finalPublished ? 'Final document locked' : firmQuoteDraft.status === 'reviewed' ? 'Publish reviewed final' : 'Save + open preview'}
           </button>
         </div>
       </div>

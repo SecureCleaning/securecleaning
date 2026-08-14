@@ -12,5 +12,5 @@ interface QuoteResultProps {
 }
 
 export default function QuoteResultComponent({ quoteRef, result, inputs, emailSent, emailError }: QuoteResultProps) {
-  return <QuoteResultView quoteRef={quoteRef} result={result} inputs={inputs} emailSent={emailSent} emailError={emailError} />
+  return <QuoteResultView quoteRef={quoteRef} result={result} inputs={inputs} customerEmail={inputs.email} emailSent={emailSent} emailError={emailError} />
 }
