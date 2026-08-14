@@ -7,13 +7,16 @@ type BookingItem = AdminDashboardData['bookings'][number]
 
 export default function BookingEditor({
   bookings,
+  selectedBookingRef,
+  onSelectedBookingRefChange,
   onBookingUpdated,
 }: {
   bookings: BookingItem[]
+  selectedBookingRef: string
+  onSelectedBookingRefChange: (bookingRef: string) => void
   onBookingUpdated: (booking: BookingItem) => void
 }) {
-  const [selectedRef, setSelectedRef] = useState<string>(bookings[0]?.booking_ref ?? '')
-  const selected = bookings.find((booking) => booking.booking_ref === selectedRef) ?? bookings[0]
+  const selected = bookings.find((booking) => booking.booking_ref === selectedBookingRef) ?? bookings[0]
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -64,7 +67,7 @@ export default function BookingEditor({
     setNotes(selected.inputs?.notes ?? '')
     setStatus(null)
     setError(null)
-  }, [selectedRef, selected])
+  }, [selectedBookingRef, selected])
 
   if (!selected) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">No bookings available.</div>
@@ -145,8 +148,8 @@ export default function BookingEditor({
       <label className="block space-y-1">
         <span className="text-sm font-medium text-gray-700">Booking to edit</span>
         <select
-          value={selectedRef}
-          onChange={(e) => setSelectedRef(e.target.value)}
+          value={selected?.booking_ref ?? ''}
+          onChange={(e) => onSelectedBookingRefChange(e.target.value)}
           disabled={isSaving}
           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
         >
