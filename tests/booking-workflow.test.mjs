@@ -26,6 +26,18 @@ test('issue routing sends dispatch alerts to the inspection workflow controls', 
   assert.match(read('src/app/api/admin/ops/route.ts'), /booking\.assignAgent/)
 })
 
+test('action-needed alerts expose a persisted dismiss action', () => {
+  const alertsPanel = read('src/components/admin/AlertsPanel.tsx')
+  const alerts = read('src/lib/alerts.ts')
+  const opsRoute = read('src/app/api/admin/ops/route.ts')
+
+  assert.match(alertsPanel, /onDismissAlert/)
+  assert.match(alertsPanel, /Dismiss/)
+  assert.match(alerts, /getDismissedAlertIds/)
+  assert.match(alerts, /writeAuditLog\('alert', alertId, 'dismissed'\)/)
+  assert.match(opsRoute, /alert\.dismiss/)
+})
+
 test('booking mutations validate lifecycle status server-side', () => {
   const route = read('src/app/api/admin/bookings/[ref]/route.ts')
   const operations = read('src/lib/adminOperations.ts')

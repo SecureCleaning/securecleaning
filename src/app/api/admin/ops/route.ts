@@ -11,6 +11,7 @@ import {
 import { assignBookingOperator, assignBookingSite } from '@/lib/bookingOps'
 import { updateInspectionWorkflow } from '@/lib/dispatchOps'
 import { updateLeadFollowUp, updateQuoteFollowUp } from '@/lib/crmOps'
+import { dismissAdminAlert } from '@/lib/alerts'
 
 export async function POST(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request)) {
@@ -22,6 +23,12 @@ export async function POST(request: NextRequest) {
     const action = typeof body?.action === 'string' ? body.action : ''
 
     switch (action) {
+      case 'alert.dismiss': {
+        const alertId = typeof body?.alertId === 'string' ? body.alertId : ''
+        const result = await dismissAdminAlert(alertId)
+        return NextResponse.json({ success: true, result })
+      }
+
       case 'quote.status': {
         const quoteRef = typeof body?.quoteRef === 'string' ? body.quoteRef : ''
         const status = typeof body?.status === 'string' ? body.status : ''

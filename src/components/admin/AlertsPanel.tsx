@@ -29,9 +29,11 @@ const kindLabels: Record<string, string> = {
 export default function AlertsPanel({
   alerts,
   onOpenAlert,
+  onDismissAlert,
 }: {
   alerts: AdminAlert[]
   onOpenAlert: (alert: AdminAlert) => void
+  onDismissAlert: (alert: AdminAlert) => void
 }) {
   const counts = alerts.reduce(
     (summary, alert) => {
@@ -73,13 +75,22 @@ export default function AlertsPanel({
               <div className="mt-2 text-xs opacity-80">
                 Open the workflow below to resolve this alert.
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenAlert(alert)}
-                className="mt-3 rounded-lg border border-current/25 bg-white/60 px-3 py-2 text-sm font-semibold hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
-              >
-                Open issue
-              </button>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => onOpenAlert(alert)}
+                  className="rounded-lg border border-current/25 bg-white/60 px-3 py-2 text-sm font-semibold hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
+                >
+                  Open issue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDismissAlert(alert)}
+                  className="rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold opacity-80 hover:bg-white/60 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
+                >
+                  Dismiss
+                </button>
+              </div>
             </div>
           ))}
           {alerts.length === 0 ? <div className="text-sm text-gray-500">No current alerts.</div> : null}

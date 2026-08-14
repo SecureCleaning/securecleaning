@@ -250,6 +250,16 @@ export default function AdminDashboard({ initialData }: Props) {
     openDispatchEditor(alert.entity_ref)
   }
 
+  async function dismissAlert(alert: AdminAlertRow) {
+    const ok = await runAction(
+      { action: 'alert.dismiss', alertId: alert.id },
+      'Alert dismissed.'
+    )
+    if (!ok) return
+
+    setAlerts((current) => current.filter((item) => item.id !== alert.id))
+  }
+
   const workflowCoverage = useMemo(
     () => [
       {
@@ -406,7 +416,7 @@ export default function AdminDashboard({ initialData }: Props) {
     <div className="space-y-5">
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
         <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openWorkArea} />
-        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} />
+        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
       </div>
 
       {actionState.message ? (
