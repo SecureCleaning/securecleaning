@@ -4,12 +4,9 @@ import { useMemo, useState } from 'react'
 import BookingEditor from './BookingEditor'
 import AuditLogPanel from './AuditLogPanel'
 import DispatchPanel from './DispatchPanel'
-import UpcomingInspectionsPanel from './UpcomingInspectionsPanel'
 import OperatorNotesPanel from './OperatorNotesPanel'
-import DispatchBoard from './DispatchBoard'
 import SiteNotesPanel from './SiteNotesPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
-import OverdueWorkflowPanel from './OverdueWorkflowPanel'
 import ReportingPanel from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
 import { getRelevantOperators } from '@/lib/operatorMatching'
@@ -195,6 +192,7 @@ export default function AdminDashboard({ initialData }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
   const [bookings, setBookings] = useState(initialData.bookings)
+  const [selectedBookingRef, setSelectedBookingRef] = useState(initialData.bookings[0]?.booking_ref ?? '')
   const [leads, setLeads] = useState(initialData.leads)
   const [reportingSnapshot, setReportingSnapshot] = useState(initialData.overview.reporting)
   const [alerts, setAlerts] = useState(initialData.overview.alerts)
@@ -213,28 +211,30 @@ export default function AdminDashboard({ initialData }: Props) {
     }, 0)
   }
 
+  function openBookingEditor(bookingRef: string) {
+    setSelectedBookingRef(bookingRef)
+    setActiveTab('bookings')
+    window.setTimeout(() => {
+      document.getElementById('booking-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
+  function openDispatchEditor(bookingRef: string) {
+    setSelectedBookingRef(bookingRef)
+    setActiveTab('bookings')
+    window.setTimeout(() => {
+      document.getElementById('dispatch-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
   function openAlert(alert: AdminAlertRow) {
     if (alert.kind === 'new_quote') {
       window.location.assign(`/admin/quotes/${encodeURIComponent(alert.entity_ref)}`)
       return
     }
 
-    openWorkArea('bookings')
-    window.setTimeout(() => {
-      document.getElementById(`booking-row-${alert.entity_ref}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 250)
+    openBookingEditor(alert.entity_ref)
   }
-
-  const stats = useMemo(
-    () => [
-      { label: 'Pending quotes', value: quotes.filter((quote) => quote.status === 'pending').length },
-      { label: 'Pending bookings', value: bookings.filter((booking) => booking.status === 'pending').length },
-      { label: 'Clients', value: initialData.stats.clientsTotal },
-      { label: 'Active operators', value: initialData.stats.ownerOperatorsActive },
-      { label: 'Leads', value: initialData.stats.leadsTotal },
-    ],
-    [quotes, bookings, initialData.stats.clientsTotal, initialData.stats.ownerOperatorsActive, initialData.stats.leadsTotal]
-  )
 
   const workflowCoverage = useMemo(
     () => [
@@ -364,21 +364,10 @@ export default function AdminDashboard({ initialData }: Props) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
         <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openWorkArea} />
         <AlertsPanel alerts={alerts} onOpenAlert={openAlert} />
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <div key={stat.label} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="text-sm text-gray-500">{stat.label}</div>
-            <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
-              {stat.value}
-            </div>
-          </div>
-        ))}
       </div>
 
       {actionState.message ? (
@@ -414,23 +403,30 @@ export default function AdminDashboard({ initialData }: Props) {
         </div>
 
         {activeTab === 'quotes' && (
-        <div className="space-y-6">
-          <CrmFollowUpPanel
-            quotes={quotes}
-            leads={leads}
-            onQuoteUpdated={(quoteRef, updates) => {
-              setQuotes((current) => current.map((quote) => (
-                quote.quote_ref === quoteRef ? { ...quote, ...updates } : quote
-              )))
-              void refreshOverview()
-            }}
-            onLeadUpdated={(leadId, updates) => {
-              setLeads((current) => current.map((lead) => (
-                lead.id === leadId ? { ...lead, ...updates } : lead
-              )))
-              void refreshOverview()
-            }}
-          />
+        <div className="space-y-4">
+          <details className="rounded-xl border border-gray-200 bg-white shadow-sm">
+            <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold text-gray-900 marker:hidden">
+              Follow-up tools <span className="ml-2 text-xs font-normal text-gray-500">Update quote and lead follow-up notes</span>
+            </summary>
+            <div className="border-t border-gray-100 p-4">
+              <CrmFollowUpPanel
+                quotes={quotes}
+                leads={leads}
+                onQuoteUpdated={(quoteRef, updates) => {
+                  setQuotes((current) => current.map((quote) => (
+                    quote.quote_ref === quoteRef ? { ...quote, ...updates } : quote
+                  )))
+                  void refreshOverview()
+                }}
+                onLeadUpdated={(leadId, updates) => {
+                  setLeads((current) => current.map((lead) => (
+                    lead.id === leadId ? { ...lead, ...updates } : lead
+                  )))
+                  void refreshOverview()
+                }}
+              />
+            </div>
+          </details>
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Recent Quotes</h2>
@@ -501,13 +497,16 @@ export default function AdminDashboard({ initialData }: Props) {
         )}
 
         {activeTab === 'bookings' && (
-        <div className="space-y-6">
-          <OverdueWorkflowPanel bookings={bookings} />
-          <DispatchBoard bookings={bookings} />
-          <UpcomingInspectionsPanel bookings={bookings} />
+        <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Recent Bookings</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Booking queue</h2>
+                  <p className="mt-1 text-sm text-gray-600">Open a booking to edit customer details, inspection workflow, or assignments.</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{bookings.length} shown</span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -620,6 +619,20 @@ export default function AdminDashboard({ initialData }: Props) {
                         <div className="flex flex-col gap-2">
                           <button
                             type="button"
+                            onClick={() => openBookingEditor(booking.booking_ref)}
+                            className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-center text-sm font-semibold text-green-700 hover:border-green-300"
+                          >
+                            Edit booking
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDispatchEditor(booking.booking_ref)}
+                            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-sm font-semibold text-blue-800 hover:border-blue-300"
+                          >
+                            Edit workflow
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleBookingResend(booking.booking_ref)}
                             className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
                           >
@@ -642,24 +655,32 @@ export default function AdminDashboard({ initialData }: Props) {
               </table>
             </div>
           </div>
-          <BookingEditor
-            bookings={bookings}
-            onBookingUpdated={(updatedBooking) => {
-              setBookings((current) => current.map((booking) => (
-                booking.booking_ref === updatedBooking.booking_ref ? updatedBooking : booking
-              )))
-              void refreshOverview()
-            }}
-          />
-          <DispatchPanel
-            bookings={bookings}
-            onBookingUpdated={(bookingRef, updates) => {
-              setBookings((current) => current.map((booking) => (
-                booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
-              )))
-              void refreshOverview()
-            }}
-          />
+          <div id="booking-editor" className="scroll-mt-24">
+            <BookingEditor
+              bookings={bookings}
+              selectedBookingRef={selectedBookingRef}
+              onSelectedBookingRefChange={setSelectedBookingRef}
+              onBookingUpdated={(updatedBooking) => {
+                setBookings((current) => current.map((booking) => (
+                  booking.booking_ref === updatedBooking.booking_ref ? updatedBooking : booking
+                )))
+                void refreshOverview()
+              }}
+            />
+          </div>
+          <div id="dispatch-editor" className="scroll-mt-24">
+            <DispatchPanel
+              bookings={bookings}
+              selectedBookingRef={selectedBookingRef}
+              onSelectedBookingRefChange={setSelectedBookingRef}
+              onBookingUpdated={(bookingRef, updates) => {
+                setBookings((current) => current.map((booking) => (
+                  booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
+                )))
+                void refreshOverview()
+              }}
+            />
+          </div>
         </div>
         )}
 

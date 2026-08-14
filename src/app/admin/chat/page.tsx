@@ -1,4 +1,4 @@
-import AdminNav from '@/components/admin/AdminNav'
+import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import { getAdminSessionIdentityFromCookies, hasAdminRole } from '@/lib/adminAuth'
 import { getRobofyInboxSessions } from '@/lib/robofyInbox'
 import { withAdminPage } from '@/lib/adminPage'
@@ -20,11 +20,8 @@ export default async function AdminChatPage() {
     const identity = await getAdminSessionIdentityFromCookies()
     if (!identity || !hasAdminRole(identity.role, 'viewer')) {
       return (
-        <div className="min-h-screen bg-gray-50 py-16">
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h1 className="text-3xl font-bold mb-3" style={{ color: '#1a2744' }}>Chat Inbox</h1>
-            <p className="text-gray-600">Chat inbox access requires an active admin role.</p>
-          </div>
+        <div>
+          <AdminPageHeader title="Chat Inbox" description="Chat inbox access requires an active admin role." />
         </div>
       )
     }
@@ -32,16 +29,8 @@ export default async function AdminChatPage() {
     const inbox = await getRobofyInboxSessions()
 
     return (
-      <div className="min-h-screen bg-gray-50 py-10">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: '#1a2744' }}>
-            Chat Inbox
-          </h1>
-          <p className="text-gray-600 mb-8 max-w-3xl">
-            Review recent conversations from the Secure Cleaning website chatbot. Continue sensitive conversations inside Robofy.
-          </p>
-
-          <AdminNav currentPath="/admin/chat" />
+      <div>
+          <AdminPageHeader title="Chat Inbox" description="Review recent conversations from the Secure Cleaning website chatbot. Continue sensitive conversations inside Robofy." />
 
           {!inbox.configured ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
@@ -96,7 +85,6 @@ export default async function AdminChatPage() {
               )}
             </section>
           )}
-        </div>
       </div>
     )
   })

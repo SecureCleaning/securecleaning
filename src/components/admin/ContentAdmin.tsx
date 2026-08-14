@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { SiteContentRow } from '@/lib/content'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import AdminPageHeader from './AdminPageHeader'
 
 const groupMeta: Record<string, { label: string; description: string }> = {
   home: {
@@ -304,18 +305,10 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Content Editor
-          </h1>
-          <p className="text-gray-600 max-w-3xl">
-            Update website copy page by page instead of digging through one long form. Select a page, review just that content, and save all staged changes back to Supabase.
-          </p>
-        </div>
+    <div>
+      <AdminPageHeader title="Content Editor" description="Update website copy page by page. Select a page, review just that content, and save staged changes back to Supabase." actions={<button type="submit" form="content-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save content'}</button>} />
 
-        <form onSubmit={handleSave} className="space-y-8">
+        <form id="content-editor-form" onSubmit={handleSave} className="space-y-5">
           <div className="flex flex-col xl:flex-row gap-6">
             <aside className="xl:w-80 xl:flex-shrink-0">
               <div className="xl:sticky xl:top-28 space-y-4">
@@ -571,6 +564,5 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
           </div>
         </form>
       </div>
-    </div>
   )
 }

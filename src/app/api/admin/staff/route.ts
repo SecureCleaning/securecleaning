@@ -9,6 +9,7 @@ import {
   updateStaffAccount,
 } from '@/lib/staffAccounts'
 import { rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
+import { getAvailabilityConfig } from '@/lib/availability'
 
 export async function GET(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request, 'owner')) {
@@ -32,12 +33,20 @@ export async function POST(request: NextRequest) {
     const password = typeof body?.password === 'string' ? body.password : ''
     const role = normalizeStaffRole(body?.role)
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const availabilityAssigneeId = typeof body?.availabilityAssigneeId === 'string' ? body.availabilityAssigneeId.trim() : ''
 
-    if (!username || !displayName || !role || password.length < 12) {
+    if (!username || !displayName || !role || password.length < 12 || (role === 'agent' && !availabilityAssigneeId)) {
       return NextResponse.json({ success: false, error: 'Provide a username, name, role, and password of at least 12 characters.' }, { status: 400 })
     }
 
-    const account = await createStaffAccount({ username, displayName, email, role, password })
+    if (role === 'agent') {
+      const config = await getAvailabilityConfig()
+      if (!config.assignees.some((assignee) => assignee.id === availabilityAssigneeId)) {
+        return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+      }
+    }
+
+    const account = await createStaffAccount({ username, displayName, email, role, password, availabilityAssigneeId: role === 'agent' ? availabilityAssigneeId : null })
     return NextResponse.json({ success: true, account }, { status: 201 })
   } catch (error) {
     console.error('[api/admin/staff] Failed to create staff account:', error)
@@ -65,9 +74,20 @@ export async function PATCH(request: NextRequest) {
     const current = accounts.find((account) => account.id === id)
     if (!current) return NextResponse.json({ success: false, error: 'Staff account not found.' }, { status: 404 })
     const nextRole = role ?? current.role
+    const availabilityAssigneeId = body?.availabilityAssigneeId === undefined
+      ? current.availabilityAssigneeId
+      : (typeof body.availabilityAssigneeId === 'string' ? body.availabilityAssigneeId.trim() : null)
     const nextActive = typeof body?.active === 'boolean' ? body.active : current.active
     if (current.role === 'owner' && current.active && (nextRole !== 'owner' || !nextActive) && accounts.filter((account) => account.role === 'owner' && account.active).length <= 1) {
       return NextResponse.json({ success: false, error: 'Keep at least one active owner account.' }, { status: 409 })
+    }
+
+    if (nextRole === 'agent') {
+      if (!availabilityAssigneeId) return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+      const config = await getAvailabilityConfig()
+      if (!config.assignees.some((assignee) => assignee.id === availabilityAssigneeId)) {
+        return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+      }
     }
 
     const account = await updateStaffAccount({
@@ -77,6 +97,7 @@ export async function PATCH(request: NextRequest) {
       role: nextRole,
       active: nextActive,
       password,
+      availabilityAssigneeId: nextRole === 'agent' ? availabilityAssigneeId : null,
     })
     return NextResponse.json({ success: true, account })
   } catch (error) {

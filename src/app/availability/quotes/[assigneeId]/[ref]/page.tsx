@@ -20,9 +20,10 @@ export default async function AvailabilityAgentQuotePage({
   const redirectPath = `/availability/quotes/${encodeURIComponent(assigneeId)}/${encodeURIComponent(ref)}`
 
   if (!assignee) return <div className="p-10 text-center">Agent not found.</div>
-  if (!assignee.accessCodeHash) return <div className="p-10 text-center">Agent access is not configured yet.</div>
+  const authenticated = await hasAvailabilityAgentSession(assigneeId)
+  if (!assignee.accessCodeHash && !authenticated) return <div className="p-10 text-center">Agent access is not configured yet.</div>
 
-  if (!(await hasAvailabilityAgentSession(assigneeId))) {
+  if (!authenticated) {
     return (
       <AvailabilityAgentLogin
         assigneeId={assigneeId}

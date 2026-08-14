@@ -1,7 +1,7 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { getAdminSupabase } from '@/lib/supabase'
 
-export const ADMIN_ROLES = ['owner', 'manager', 'staff', 'viewer'] as const
+export const ADMIN_ROLES = ['owner', 'manager', 'staff', 'agent', 'viewer'] as const
 export type AdminRole = (typeof ADMIN_ROLES)[number]
 
 export type StaffAccount = {
@@ -10,6 +10,7 @@ export type StaffAccount = {
   displayName: string
   email: string
   role: AdminRole
+  availabilityAssigneeId: string | null
   active: boolean
   lastLoginAt: string | null
   createdAt: string
@@ -22,6 +23,8 @@ type StaffAccountRow = StaffAccount & {
   last_login_at: string | null
   created_at: string
   updated_at: string
+  availability_assignee_id: string | null
+  legacy_password_hash: string | null
 }
 
 function toStaffAccount(row: StaffAccountRow): StaffAccount {
@@ -31,6 +34,7 @@ function toStaffAccount(row: StaffAccountRow): StaffAccount {
     displayName: row.display_name,
     email: row.email ?? '',
     role: row.role,
+    availabilityAssigneeId: row.availability_assignee_id ?? null,
     active: row.active,
     lastLoginAt: row.last_login_at,
     createdAt: row.created_at,
@@ -69,6 +73,10 @@ export function verifyStaffPassword(password: string, storedHash: string) {
   }
 }
 
+export function createMigrationPassword() {
+  return randomBytes(32).toString('base64url')
+}
+
 export async function countStaffAccounts() {
   const db = getAdminSupabase()
   const { count, error } = await db
@@ -83,7 +91,7 @@ export async function listStaffAccounts() {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('admin_staff_accounts')
-    .select('id, username, display_name, email, role, active, password_hash, last_login_at, created_at, updated_at')
+    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
     .order('display_name', { ascending: true })
 
   if (error) throw error
@@ -94,8 +102,20 @@ export async function getStaffAccountForLogin(username: string) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('admin_staff_accounts')
-    .select('id, username, display_name, email, role, active, password_hash, last_login_at, created_at, updated_at')
+    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
     .eq('username', username)
+    .maybeSingle()
+
+  if (error) throw error
+  return data as StaffAccountRow | null
+}
+
+export async function getStaffAccountById(id: string) {
+  const db = getAdminSupabase()
+  const { data, error } = await db
+    .from('admin_staff_accounts')
+    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .eq('id', id)
     .maybeSingle()
 
   if (error) throw error
@@ -108,6 +128,8 @@ export async function createStaffAccount(input: {
   email?: string
   role: AdminRole
   password: string
+  availabilityAssigneeId?: string | null
+  legacyPasswordHash?: string | null
 }) {
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -118,9 +140,11 @@ export async function createStaffAccount(input: {
       email: input.email || null,
       role: input.role,
       password_hash: hashStaffPassword(input.password),
+      availability_assignee_id: input.availabilityAssigneeId ?? null,
+      legacy_password_hash: input.legacyPasswordHash ?? null,
       active: true,
     })
-    .select('id, username, display_name, email, role, active, password_hash, last_login_at, created_at, updated_at')
+    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
     .single()
 
   if (error) throw error
@@ -134,6 +158,8 @@ export async function updateStaffAccount(input: {
   role?: AdminRole
   active?: boolean
   password?: string
+  availabilityAssigneeId?: string | null
+  clearLegacyPassword?: boolean
 }) {
   const db = getAdminSupabase()
   const update: Record<string, unknown> = {}
@@ -142,12 +168,14 @@ export async function updateStaffAccount(input: {
   if (input.role) update.role = input.role
   if (typeof input.active === 'boolean') update.active = input.active
   if (input.password) update.password_hash = hashStaffPassword(input.password)
+  if (input.availabilityAssigneeId !== undefined) update.availability_assignee_id = input.availabilityAssigneeId
+  if (input.clearLegacyPassword) update.legacy_password_hash = null
 
   const { data, error } = await db
     .from('admin_staff_accounts')
     .update(update)
     .eq('id', input.id)
-    .select('id, username, display_name, email, role, active, password_hash, last_login_at, created_at, updated_at')
+    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
     .single()
 
   if (error) throw error

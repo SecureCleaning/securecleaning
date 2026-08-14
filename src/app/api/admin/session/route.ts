@@ -11,8 +11,10 @@ import {
   getStaffAccountForLogin,
   normalizeStaffUsername,
   recordStaffLogin,
+  updateStaffAccount,
   verifyStaffPassword,
 } from '@/lib/staffAccounts'
+import { verifyAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 import { rateLimit, rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
 
 export const dynamic = 'force-dynamic'
@@ -44,13 +46,21 @@ export async function POST(request: NextRequest) {
       })
     } else {
       const storedAccount = username ? await getStaffAccountForLogin(username) : null
-      if (!storedAccount || !storedAccount.active || !verifyStaffPassword(password, storedAccount.password_hash)) {
+      const validPassword = storedAccount && (
+        verifyStaffPassword(password, storedAccount.password_hash) ||
+        (storedAccount.role === 'agent' && verifyAvailabilityAccessCode(password, storedAccount.legacy_password_hash ?? undefined))
+      )
+      if (!storedAccount || !storedAccount.active || !validPassword) {
         return NextResponse.json({ success: false, error: 'Invalid username or password.' }, { status: 401 })
       }
       account = {
         id: storedAccount.id,
         username: storedAccount.username,
         role: storedAccount.role,
+        availabilityAssigneeId: storedAccount.availability_assignee_id,
+      }
+      if (storedAccount.role === 'agent' && storedAccount.legacy_password_hash && !verifyStaffPassword(password, storedAccount.password_hash)) {
+        await updateStaffAccount({ id: storedAccount.id, password, clearLegacyPassword: true })
       }
       await recordStaffLogin(storedAccount.id)
     }
@@ -64,7 +74,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Admin auth is not configured.' }, { status: 500 })
     }
 
-    const response = NextResponse.json({ success: true })
+    const response = NextResponse.json({
+      success: true,
+      role: account.role,
+      assigneeId: account.role === 'agent' ? (account as { availabilityAssigneeId?: string | null }).availabilityAssigneeId ?? null : null,
+    })
     response.cookies.set({
       name: ADMIN_SESSION_COOKIE,
       value: sessionToken,
