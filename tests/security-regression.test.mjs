@@ -115,7 +115,7 @@ test('protected admin and agent API routes retain server-side guards', () => {
   for (const path of agentRoutes) {
     assert.match(
       readFileSync(path, 'utf8'),
-      /isAuthorizedAdminRequest|isAuthorizedAvailabilityAgentRequest|isValidAvailabilityAgentFeedToken/,
+      /isAuthorizedAdminRequest|isAuthorizedAvailabilityAgentRequest|isValidAvailabilityAgentFeedToken|getCleanerAgentContext/,
     )
   }
 })

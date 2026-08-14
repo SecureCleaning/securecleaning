@@ -1,6 +1,7 @@
 import { getAdminSupabase } from '@/lib/supabase'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { City } from '@/lib/types'
+import { normalizeAvailabilityAssigneeCity } from '@/lib/availabilityNormalization'
 
 export type Weekday =
   | 'monday'
@@ -291,21 +292,25 @@ function mergeConfig(candidate: unknown): AvailabilityConfig {
         }))
       : fallback.zones,
     assignees: Array.isArray(source.assignees)
-      ? source.assignees.map((assignee, index) => ({
-          id: String(assignee?.id ?? `assignee-${index + 1}`),
-          name: String(assignee?.name ?? `Assignee ${index + 1}`),
-          username: typeof assignee?.username === 'string' ? assignee.username : '',
-          city: assignee?.city === 'sydney' ? 'sydney' : 'melbourne',
-          ownerOperatorId: typeof assignee?.ownerOperatorId === 'string' ? assignee.ownerOperatorId : '',
-          email: typeof assignee?.email === 'string' ? assignee.email : '',
-          calendarId: typeof assignee?.calendarId === 'string' ? assignee.calendarId : '',
-          calendarViewUrl: typeof assignee?.calendarViewUrl === 'string' ? assignee.calendarViewUrl : '',
-          calendarSubscriptionUrl:
-            typeof assignee?.calendarSubscriptionUrl === 'string' ? assignee.calendarSubscriptionUrl : '',
-          accessCodeHash: typeof assignee?.accessCodeHash === 'string' ? assignee.accessCodeHash : '',
-          active: Boolean(assignee?.active ?? true),
-          notes: typeof assignee?.notes === 'string' ? assignee.notes : '',
-        }))
+      ? source.assignees.map((assignee, index) => {
+          const fallbackAssignee = fallback.assignees[index]
+          const normalizedCity = normalizeAvailabilityAssigneeCity(assignee?.city, fallbackAssignee?.city ?? 'melbourne')
+          return {
+            id: String(assignee?.id ?? `assignee-${index + 1}`),
+            name: String(assignee?.name ?? `Assignee ${index + 1}`),
+            username: typeof assignee?.username === 'string' ? assignee.username : '',
+            city: normalizedCity.city,
+            ownerOperatorId: typeof assignee?.ownerOperatorId === 'string' ? assignee.ownerOperatorId : '',
+            email: typeof assignee?.email === 'string' ? assignee.email : '',
+            calendarId: typeof assignee?.calendarId === 'string' ? assignee.calendarId : '',
+            calendarViewUrl: typeof assignee?.calendarViewUrl === 'string' ? assignee.calendarViewUrl : '',
+            calendarSubscriptionUrl:
+              typeof assignee?.calendarSubscriptionUrl === 'string' ? assignee.calendarSubscriptionUrl : '',
+            accessCodeHash: typeof assignee?.accessCodeHash === 'string' ? assignee.accessCodeHash : '',
+            active: normalizedCity.supported && Boolean(assignee?.active ?? true),
+            notes: typeof assignee?.notes === 'string' ? assignee.notes : '',
+          }
+        })
       : fallback.assignees,
     weeklySlots: Array.isArray(source.weeklySlots)
       ? source.weeklySlots.map((slot, index) => ({

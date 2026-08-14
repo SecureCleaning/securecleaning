@@ -2,6 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
 import { writeAuditLog } from '@/lib/auditLog'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
+import { toAgentCleanerEmailHistory } from '@/lib/cleanerAgentPolicy'
 
 export type CleanerStatus = 'lead' | 'pending_approval' | 'approved' | 'paused' | 'rejected' | 'inactive'
 export type CleanerEmailStatus = 'draft' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced'
@@ -146,7 +147,21 @@ export interface CleanerSearchResult {
   pageSize: number
 }
 
-export type CleanerAuditActor = Pick<AdminSessionIdentity, 'id' | 'username' | 'role'>
+export type CleanerAuditActor = Pick<AdminSessionIdentity, 'id' | 'username'> & { role: string }
+
+export type AgentCleanerDetail = {
+  cleaner: AgentCleanerRecord
+  comments: CleanerComment[]
+  emails: AgentCleanerEmailHistory[]
+}
+
+export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'suburb' | 'state' | 'status'>
+export type AgentCleanerRecord = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'phone' | 'address' | 'suburb' | 'postcode' | 'city' | 'state' | 'status' | 'services' | 'service_areas' | 'preferred_work' | 'compliance_status' | 'notes'>
+export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'template_name' | 'created_at' | 'sent_at'>
+
+const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, suburb, state, status'
+const AGENT_CLEANER_DETAIL_SELECT = 'id, business_name, first_name, last_name, contact_name, email, phone, address, suburb, postcode, city, state, status, services, service_areas, preferred_work, compliance_status, notes'
+const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at'
 
 const CLEANER_SELECT =
   'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
@@ -425,6 +440,28 @@ export async function searchCleaners(filters: CleanerFilters = {}) {
   return result.cleaners
 }
 
+export async function searchAgentCleanerPage(filters: CleanerFilters & { state: string }): Promise<{
+  cleaners: AgentCleanerSummary[]; total: number; page: number; pageSize: number
+}> {
+  const db = getAdminSupabase()
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 50, 1), 100)
+  const page = Math.max(filters.page ?? 1, 1)
+  let query = db.from('cleaners').select(AGENT_CLEANER_LIST_SELECT, { count: 'exact' })
+    .eq('state', cleanString(filters.state, 8).toUpperCase()).order('updated_at', { ascending: false })
+  const search = cleanString(filters.query, 120)
+  if (search) {
+    const escaped = search.replace(/[%_]/g, '\\$&')
+    query = query.or(['business_name', 'first_name', 'last_name', 'contact_name', 'email', 'suburb', 'postcode'].map((field) => `${field}.ilike.%${escaped}%`).join(','))
+  }
+  if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status)
+  if (filters.service && filters.service !== 'all') query = query.contains('services', [filters.service])
+  if (filters.compliance && filters.compliance !== 'all') query = query.eq('compliance_status', filters.compliance)
+  const from = (page - 1) * pageSize
+  const { data, error, count } = await query.range(from, from + pageSize - 1)
+  if (error) throw error
+  return { cleaners: (data ?? []) as AgentCleanerSummary[], total: count ?? 0, page, pageSize }
+}
+
 export async function getCleanerTemplates() {
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -460,6 +497,36 @@ export async function getCleanerDetail(cleanerId: string) {
     emails: (emails ?? []) as CleanerEmail[],
     documents: (documents ?? []) as CleanerDocument[],
   }
+}
+
+export async function getCleanerDetailForState(cleanerId: string, state: string): Promise<AgentCleanerDetail> {
+  const db = getAdminSupabase()
+  const normalizedState = cleanString(state, 8).toUpperCase()
+  const { data: cleaner, error: cleanerError } = await db
+    .from('cleaners')
+    .select(AGENT_CLEANER_DETAIL_SELECT)
+    .eq('id', cleanerId)
+    .eq('state', normalizedState)
+    .single()
+
+  if (cleanerError || !cleaner) throw new Error('Cleaner not found.')
+
+  const [{ data: comments }, { data: emails }] = await Promise.all([
+    db.from('cleaner_comments').select(COMMENT_SELECT).eq('cleaner_id', cleanerId).order('created_at', { ascending: false }).limit(30),
+    db.from('cleaner_emails').select(AGENT_EMAIL_HISTORY_SELECT).eq('cleaner_id', cleanerId).order('created_at', { ascending: false }).limit(30),
+  ])
+
+  return {
+    cleaner: cleaner as AgentCleanerRecord,
+    comments: (comments ?? []) as CleanerComment[],
+    emails: (emails ?? []) as AgentCleanerEmailHistory[],
+  }
+}
+
+async function assertCleanerInState(cleanerId: string, state: string) {
+  const { data, error } = await getAdminSupabase().from('cleaners').select('id')
+    .eq('id', cleanerId).eq('state', cleanString(state, 8).toUpperCase()).single()
+  if (error || !data) throw new Error('Cleaner not found.')
 }
 
 export async function getCleanerAdminData() {
@@ -660,12 +727,13 @@ export async function updateCleaner(cleanerId: string, payload: Partial<CleanerP
   return data as CleanerRecord
 }
 
-export async function addCleanerComment(cleanerId: string, comment: string, actor: CleanerAuditActor) {
+export async function addCleanerComment(cleanerId: string, comment: string, actor: CleanerAuditActor, state?: string) {
   const cleaned = cleanString(comment, 2000)
   if (!cleaned) {
     throw new Error('Comment is required.')
   }
 
+  if (state) await assertCleanerInState(cleanerId, state)
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('cleaner_comments')
@@ -680,6 +748,15 @@ export async function addCleanerComment(cleanerId: string, comment: string, acto
   if (error) throw error
   await writeAuditLog('cleaner', cleanerId, 'cleaner.comment.created', withActorDetails(actor, { commentId: data.id }))
   return data as CleanerComment
+}
+
+export async function addCleanerCommentForState(
+  cleanerId: string,
+  state: string,
+  comment: string,
+  actor: CleanerAuditActor,
+) {
+  return addCleanerComment(cleanerId, comment, actor, state)
 }
 
 function sanitizeFileName(value: string) {
@@ -850,13 +927,16 @@ function getProviderMessageId(response: unknown) {
 
 export async function sendCleanerEmail(payload: {
   cleanerId: string
+  state?: string
   templateId?: string | null
   templateName?: string | null
   subject: string
   body: string
   actor: CleanerAuditActor
 }) {
-  const detail = await getCleanerDetail(payload.cleanerId)
+  const detail = payload.state
+    ? await getCleanerDetailForState(payload.cleanerId, payload.state)
+    : await getCleanerDetail(payload.cleanerId)
   const cleaner = detail.cleaner
   const subject = applyTemplateTokens(cleanString(payload.subject, 240), cleaner)
   const body = applyTemplateTokens(cleanString(payload.body, 5000), cleaner)
@@ -866,6 +946,8 @@ export async function sendCleanerEmail(payload: {
   }
 
   const db = getAdminSupabase()
+
+  if (payload.state) await assertCleanerInState(cleaner.id, payload.state)
 
   const { data: emailRow, error: insertError } = await db
     .from('cleaner_emails')
@@ -930,4 +1012,36 @@ export async function sendCleanerEmail(payload: {
     await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.failed', withActorDetails(payload.actor, { emailId: emailRow.id, error: message }))
     throw error
   }
+}
+
+export async function sendCleanerEmailForState(payload: {
+  cleanerId: string
+  state: string
+  templateId?: string | null
+  subject: string
+  body: string
+  actor: CleanerAuditActor
+}) {
+  let templateName: string | null = null
+  if (payload.templateId) {
+    const { data: template, error } = await getAdminSupabase()
+      .from('cleaner_email_templates')
+      .select('id, name')
+      .eq('id', payload.templateId)
+      .eq('is_active', true)
+      .single()
+    if (error || !template) throw new Error('Email template not found.')
+    templateName = template.name
+  }
+
+  const email = await sendCleanerEmail({
+    cleanerId: payload.cleanerId,
+    state: payload.state,
+    templateId: payload.templateId || null,
+    templateName,
+    subject: payload.subject,
+    body: payload.body,
+    actor: payload.actor,
+  })
+  return toAgentCleanerEmailHistory(email)
 }

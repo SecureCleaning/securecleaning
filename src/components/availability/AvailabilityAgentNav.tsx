@@ -40,6 +40,11 @@ export default function AvailabilityAgentNav({
             My quotes
           </a>
         ) : null}
+        {assigneeId ? (
+          <a href={`/availability/cleaners/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
+            Cleaners
+          </a>
+        ) : null}
         <a href="/" className="text-gray-600 hover:text-gray-900">
           Secure Cleaning home
         </a>
