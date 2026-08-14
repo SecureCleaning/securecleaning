@@ -44,7 +44,7 @@ test('formatPriceRange collapses identical prices and preserves ranges', () => {
   assert.equal(formatPriceRange(90, 95), '$90 – $95')
 })
 
-test('quote engine applies the minimum call-out after all room extras', () => {
+test('quote engine applies the frequency-adjusted minimum after all room extras', () => {
   const result = calculateQuote({
     ...baseInputs,
     floorArea: 10,
@@ -56,8 +56,32 @@ test('quote engine applies the minimum call-out after all room extras', () => {
   })
 
   assert.equal(result.addOnsTotal, 58)
-  assert.equal(result.totalLow, DEFAULT_QUOTE_PRICING_CONFIG.settings.minimumInvoice)
-  assert.equal(result.totalHigh, DEFAULT_QUOTE_PRICING_CONFIG.settings.minimumInvoice)
+  const expectedMinimum = DEFAULT_QUOTE_PRICING_CONFIG.settings.minimumInvoice *
+    DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency.weekly
+  assert.equal(result.totalLow, expectedMinimum)
+  assert.equal(result.totalHigh, expectedMinimum)
+})
+
+test('quote engine applies the frequency multiplier to the minimum invoice', () => {
+  const pricingConfig = {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, minimumInvoice: 90 },
+    multipliers: {
+      ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers,
+      frequency: {
+        ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency,
+        fortnightly: 1.1,
+      },
+    },
+  }
+  const result = calculateQuote({
+    ...baseInputs,
+    floorArea: 10,
+    frequency: 'fortnightly',
+  }, pricingConfig)
+
+  assert.equal(result.totalLow, 99)
+  assert.equal(result.totalHigh, 99)
 })
 
 test('quote engine prices a standard bathroom at the configured base charge', () => {

@@ -9,6 +9,7 @@ import type {
   CleanerRecord,
   CleanerStatus,
 } from '@/lib/cleaners'
+import { defaultCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 
 type CleanerDetail = {
@@ -211,8 +212,7 @@ function toCsv(values?: string[] | null) {
 }
 
 function defaultServiceArea(suburb: string) {
-  const cleanedSuburb = suburb.trim()
-  return cleanedSuburb ? `${cleanedSuburb} + 20 km` : ''
+  return defaultCleanerServiceAreas(suburb)[0] ?? ''
 }
 
 function fromCsv(value: string) {

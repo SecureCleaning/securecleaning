@@ -2,6 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
 import { writeAuditLog } from '@/lib/auditLog'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
+import { cleanerServiceAreasForImportUpdate, cleanServiceAreas, normaliseCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
 
 export type CleanerStatus = 'lead' | 'pending_approval' | 'approved' | 'paused' | 'rejected' | 'inactive'
 export type CleanerEmailStatus = 'draft' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced'
@@ -214,11 +215,6 @@ function cleanArray(value: unknown, maxItems = 30, maxLength = 80) {
   ).slice(0, maxItems)
 }
 
-function defaultServiceAreas(suburb: unknown) {
-  const cleanedSuburb = cleanString(suburb, 80)
-  return cleanedSuburb ? [`${cleanedSuburb} + 20 km`] : []
-}
-
 function chunkArray<T>(items: T[], size: number) {
   const chunks: T[][] = []
   for (let index = 0; index < items.length; index += size) {
@@ -264,7 +260,7 @@ function toDbPayload(payload: Partial<CleanerPayload>) {
     abn: payload.abn !== undefined ? nullableString(payload.abn, 40) : undefined,
     status,
     services: payload.services !== undefined ? cleanArray(payload.services) : undefined,
-    service_areas: payload.serviceAreas !== undefined ? cleanArray(payload.serviceAreas) : undefined,
+    service_areas: payload.serviceAreas !== undefined ? cleanServiceAreas(payload.serviceAreas) : undefined,
     preferred_work: payload.preferredWork !== undefined ? nullableString(payload.preferredWork, 800) : undefined,
     compliance_status: payload.complianceStatus !== undefined ? nullableString(payload.complianceStatus, 80) : undefined,
     insurance_expiry: payload.insuranceExpiry || null,
@@ -296,9 +292,7 @@ function normaliseCleanerImportPayload(record: Partial<CleanerPayload>): Cleaner
     abn: nullableString(record.abn, 40),
     status: isCleanerStatus(record.status) ? record.status : 'lead',
     services: cleanArray(record.services),
-    serviceAreas: cleanArray(record.serviceAreas).length > 0
-      ? cleanArray(record.serviceAreas)
-      : defaultServiceAreas(record.suburb),
+    serviceAreas: normaliseCleanerServiceAreas(record.serviceAreas, record.suburb),
     preferredWork: nullableString(record.preferredWork, 800),
     complianceStatus: nullableString(record.complianceStatus, 80),
     insuranceExpiry: record.insuranceExpiry || null,
@@ -545,7 +539,7 @@ export async function importCleaners(
     skipped: 0,
     errors: [],
   }
-  const prepared: CleanerPayload[] = []
+  const prepared: Array<{ payload: CleanerPayload; hasServiceAreas: boolean }> = []
   const seenEmails = new Set<string>()
 
   records.slice(0, 4000).forEach((record, index) => {
@@ -558,7 +552,10 @@ export async function importCleaners(
         return
       }
       seenEmails.add(payload.email)
-      prepared.push(payload)
+      prepared.push({
+        payload,
+        hasServiceAreas: Array.isArray(record.serviceAreas) && cleanServiceAreas(record.serviceAreas).length > 0,
+      })
     } catch (error) {
       result.skipped += 1
       result.errors.push(`Row ${index + 2}: ${error instanceof Error ? error.message : 'Invalid cleaner record.'}`)
@@ -570,7 +567,7 @@ export async function importCleaners(
   }
 
   const db = getAdminSupabase()
-  const emails = prepared.map((record) => record.email)
+  const emails = prepared.map(({ payload }) => payload.email)
   const { data: existingRows, error: existingError } = await db
     .from('cleaners')
     .select('id, email')
@@ -581,13 +578,13 @@ export async function importCleaners(
   }
 
   const existingByEmail = new Map((existingRows ?? []).map((row) => [String(row.email).toLowerCase(), String(row.id)]))
-  const inserts = prepared.filter((record) => !existingByEmail.has(record.email)).map((record) => ({
-    ...toDbPayload(record),
-    status: record.status ?? 'lead',
-    services: record.services ?? [],
-    service_areas: record.serviceAreas ?? [],
+  const inserts = prepared.filter(({ payload }) => !existingByEmail.has(payload.email)).map(({ payload }) => ({
+    ...toDbPayload(payload),
+    status: payload.status ?? 'lead',
+    services: payload.services ?? [],
+    service_areas: payload.serviceAreas ?? [],
   }))
-  const updates = prepared.filter((record) => existingByEmail.has(record.email))
+  const updates = prepared.filter(({ payload }) => existingByEmail.has(payload.email))
 
   for (const chunk of chunkArray(inserts, 500)) {
     const { error } = await db.from('cleaners').insert(chunk)
@@ -597,12 +594,15 @@ export async function importCleaners(
     result.created += chunk.length
   }
 
-  for (const record of updates) {
+  for (const { payload: record, hasServiceAreas } of updates) {
     const cleanerId = existingByEmail.get(record.email)
     if (!cleanerId) continue
     const { error } = await db
       .from('cleaners')
-      .update(toDbPayload(record))
+      .update(toDbPayload({
+        ...record,
+        serviceAreas: hasServiceAreas ? cleanerServiceAreasForImportUpdate(record.serviceAreas) : undefined,
+      }))
       .eq('id', cleanerId)
     if (error) {
       result.skipped += 1
@@ -624,9 +624,7 @@ export async function importCleaners(
 export async function createCleaner(payload: CleanerPayload, actor: CleanerAuditActor) {
   assertCleanerPayload(payload)
   const db = getAdminSupabase()
-  const serviceAreas = payload.serviceAreas && payload.serviceAreas.length > 0
-    ? payload.serviceAreas
-    : defaultServiceAreas(payload.suburb)
+  const serviceAreas = normaliseCleanerServiceAreas(payload.serviceAreas, payload.suburb)
   const { data, error } = await db
     .from('cleaners')
     .insert({

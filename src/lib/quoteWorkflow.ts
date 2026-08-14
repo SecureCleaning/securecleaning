@@ -639,8 +639,9 @@ export function buildFirmQuotePreview(
   // Assess the complete job against the minimum only after every charge is included.
   const calculatedLow = roundCurrency(rawLow * factor)
   const calculatedHigh = roundCurrency(rawHigh * factor)
-  const adjustedLow = roundCurrency(Math.max(pricingConfig.settings.minimumInvoice, calculatedLow))
-  const adjustedHigh = roundCurrency(Math.max(pricingConfig.settings.minimumInvoice, calculatedHigh))
+  const frequencyAdjustedMinimum = pricingConfig.settings.minimumInvoice * calculated.breakdown.frequencyMultiplier
+  const adjustedLow = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedLow))
+  const adjustedHigh = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedHigh))
   const finalPerVisit = Number(draft.finalPerVisit)
   const targetPrice = Number(draft.targetPrice)
 

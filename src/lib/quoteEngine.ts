@@ -81,8 +81,9 @@ export function calculateQuote(
     perVisitHigh = rawTotal * settings.rangeHigh
   }
 
-  perVisitLow = Math.max(perVisitLow, settings.minimumInvoice)
-  perVisitHigh = Math.max(perVisitHigh, settings.minimumInvoice)
+  const frequencyAdjustedMinimum = settings.minimumInvoice * frequencyMultiplier
+  perVisitLow = Math.max(perVisitLow, frequencyAdjustedMinimum)
+  perVisitHigh = Math.max(perVisitHigh, frequencyAdjustedMinimum)
 
   perVisitLow = Math.round(perVisitLow * 100) / 100
   perVisitHigh = Math.round(perVisitHigh * 100) / 100
