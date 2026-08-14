@@ -29,8 +29,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       .order('inspection_scheduled_for', { ascending: true })
       .limit(100),
     db.from('bookings')
-      .select('booking_ref, created_at, status, assigned_operator_id, site_id')
-      .or('assigned_operator_id.is.null,site_id.is.null')
+      .select('booking_ref, created_at, status, assigned_operator_id, site_id, inputs')
       .neq('status', 'completed')
       .neq('status', 'cancelled')
       .order('created_at', { ascending: true })
@@ -66,6 +65,11 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   }
 
   for (const booking of unassignedBookingsRes.data ?? []) {
+    const assignedAgent = booking.inputs && typeof booking.inputs === 'object'
+      ? (booking.inputs as Record<string, unknown>).preferredInspectionAssigneeId
+      : null
+    if (booking.assigned_operator_id || assignedAgent) continue
+
     const happenedAt = new Date(booking.created_at ?? '').getTime()
     alertsById.set(`booking-unassigned-${booking.booking_ref}`, {
       id: `booking-unassigned-${booking.booking_ref}`,

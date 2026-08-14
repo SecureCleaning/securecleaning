@@ -32,7 +32,7 @@ export default function UpcomingInspectionsPanel({ bookings }: { bookings: Booki
               <div className="font-semibold text-gray-900">{booking.booking_ref} — {booking.inputs?.businessName ?? 'Unknown business'}</div>
               <div className="flex flex-wrap gap-1">
                 {!booking.site_id ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">Missing site</span> : null}
-                {!booking.assigned_operator_id && !booking.linkedOperatorId ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">Missing operator</span> : null}
+                {!booking.assigned_operator_id && !booking.linkedOperatorId && !booking.inputs?.preferredInspectionAssigneeId ? <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">Missing operator</span> : null}
               </div>
             </div>
             <div className="text-sm text-gray-600 mt-1">{booking.inputs?.address ?? 'No address recorded'}</div>

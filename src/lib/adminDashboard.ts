@@ -56,6 +56,13 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     ...operator,
     availabilityAssigneeId: availabilityAssigneeIdByOperatorId.get(operator.id) ?? null,
   }))
+  const availabilityAgents = availabilityConfig.assignees.map((assignee) => ({
+    id: assignee.id,
+    name: assignee.name,
+    city: assignee.city,
+    active: assignee.active,
+    ownerOperatorId: assignee.ownerOperatorId ?? null,
+  }))
   const availabilityAssigneeById = new Map(availabilityConfig.assignees.map((assignee) => [assignee.id, assignee]))
   const availabilityAssigneeByOperatorId = new Map(
     availabilityConfig.assignees
@@ -91,6 +98,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     clients,
     leads,
     operators,
+    availabilityAgents,
     sites,
     overview,
   }

@@ -33,20 +33,24 @@ export default function DispatchPanel({
   bookings,
   sites,
   operators,
+  availabilityAgents,
   selectedBookingRef,
   onSelectedBookingRefChange,
   onBookingUpdated,
   onBookingSiteChange,
   onBookingOperatorChange,
+  onBookingAgentChange,
 }: {
   bookings: BookingItem[]
   sites: AdminDashboardData['sites']
   operators: AdminDashboardData['operators']
+  availabilityAgents: AdminDashboardData['availabilityAgents']
   selectedBookingRef: string
   onSelectedBookingRefChange: (bookingRef: string) => void
   onBookingUpdated: (bookingRef: string, updates: Partial<BookingItem>) => void
   onBookingSiteChange: (bookingRef: string, siteId: string) => Promise<void>
   onBookingOperatorChange: (bookingRef: string, operatorId: string) => Promise<void>
+  onBookingAgentChange: (bookingRef: string, agentId: string) => Promise<void>
 }) {
   const selected = bookings.find((booking) => booking.booking_ref === selectedBookingRef) ?? bookings[0]
   const [inspectionStatus, setInspectionStatus] = useState('pending')
@@ -173,6 +177,24 @@ export default function DispatchPanel({
     }
   }
 
+  async function handleAssignmentChange(value: string) {
+    if (value.startsWith('agent:')) {
+      await onBookingAgentChange(selected.booking_ref, value.slice('agent:'.length))
+      return
+    }
+
+    await onBookingOperatorChange(
+      selected.booking_ref,
+      value.startsWith('operator:') ? value.slice('operator:'.length) : '',
+    )
+  }
+
+  const selectedAssignment = selected.assigned_operator_id
+    ? `operator:${selected.assigned_operator_id}`
+    : selected.inputs?.preferredInspectionAssigneeId
+      ? `agent:${selected.inputs.preferredInspectionAssigneeId}`
+      : ''
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -243,19 +265,30 @@ export default function DispatchPanel({
           <label className="space-y-1">
             <span className="text-sm font-medium text-gray-700">Operator / agent</span>
             <select
-              value={selected.assigned_operator_id ?? ''}
-              onChange={(e) => void handleOperatorChange(e.target.value)}
+              value={selectedAssignment}
+              onChange={(e) => void handleAssignmentChange(e.target.value)}
               disabled={isAssignmentSaving || isSaving}
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm disabled:bg-gray-100 disabled:text-gray-500"
             >
               <option value="">Unassigned</option>
-              {relevantOperators.map((operator) => (
-                <option key={operator.id} value={operator.id}>{operator.business_name} — {operator.operator_name}</option>
-              ))}
+              {relevantOperators.length > 0 ? (
+                <optgroup label="Owner-operators">
+                  {relevantOperators.map((operator) => (
+                    <option key={`operator:${operator.id}`} value={`operator:${operator.id}`}>{operator.business_name} — {operator.operator_name}</option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {availabilityAgents.filter((agent) => agent.active).length > 0 ? (
+                <optgroup label="Regional agents">
+                  {availabilityAgents.filter((agent) => agent.active).map((agent) => (
+                    <option key={`agent:${agent.id}`} value={`agent:${agent.id}`}>{agent.name} — {agent.city}</option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
         </div>
-        {selected.linkedOperatorId && !selected.assigned_operator_id ? (
+        {selected.linkedOperatorId && !selected.assigned_operator_id && !selected.inputs?.preferredInspectionAssigneeId ? (
           <button
             type="button"
             onClick={() => void handleOperatorChange(selected.linkedOperatorId as string)}

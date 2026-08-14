@@ -4,6 +4,7 @@ import type { BookingInputs, QuoteInputs } from '@/lib/types'
 import { writeAuditLog } from '@/lib/auditLog'
 import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { isBookingStatus } from '@/lib/bookingStatus'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 
 export async function updateQuoteStatus(quoteRef: string, status: string) {
   const db = getAdminSupabase()
@@ -80,4 +81,49 @@ export async function resendBookingEmailByRef(bookingRef: string) {
   await sendBookingConfirmationEmail(data.booking_ref, data.inputs as BookingInputs)
   await writeAuditLog('booking', bookingRef, 'email_resent')
   return { success: true }
+}
+
+export async function assignBookingAgent(bookingRef: string, assigneeId: string | null) {
+  const db = getAdminSupabase()
+  const config = await getAvailabilityConfig()
+  const assignee = assigneeId ? getAvailabilityAssignee(config, assigneeId) : null
+
+  if (assigneeId && (!assignee || !assignee.active)) {
+    throw new Error('Select an active regional agent.')
+  }
+
+  const { data: booking, error: bookingError } = await db
+    .from('bookings')
+    .select('inputs')
+    .eq('booking_ref', bookingRef)
+    .maybeSingle()
+
+  if (bookingError) throw bookingError
+  if (!booking) throw new Error('Booking not found.')
+
+  const inputs = booking.inputs && typeof booking.inputs === 'object'
+    ? { ...(booking.inputs as Record<string, unknown>) }
+    : {}
+
+  if (assignee) {
+    inputs.preferredInspectionAssigneeId = assignee.id
+    inputs.preferredInspectionAssigneeName = assignee.name
+  } else {
+    delete inputs.preferredInspectionAssigneeId
+    delete inputs.preferredInspectionAssigneeName
+  }
+
+  const { data, error } = await db
+    .from('bookings')
+    .update({
+      inputs,
+      ...(assigneeId ? { assigned_operator_id: null } : {}),
+    })
+    .eq('booking_ref', bookingRef)
+    .select('booking_ref, inputs, assigned_operator_id')
+    .maybeSingle()
+
+  if (error) throw error
+  await writeAuditLog('booking', bookingRef, 'agent_assigned', { assigneeId })
+  return data
 }

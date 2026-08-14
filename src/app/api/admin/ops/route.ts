@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import {
+  assignBookingAgent,
   resendBookingEmailByRef,
   resendQuoteEmailByRef,
   resendScopeOfWorksEmailByRef,
@@ -64,6 +65,13 @@ export async function POST(request: NextRequest) {
         const bookingRef = typeof body?.bookingRef === 'string' ? body.bookingRef : ''
         const operatorId = typeof body?.operatorId === 'string' && body.operatorId.length > 0 ? body.operatorId : null
         const result = await assignBookingOperator(bookingRef, operatorId)
+        return NextResponse.json({ success: true, result })
+      }
+
+      case 'booking.assignAgent': {
+        const bookingRef = typeof body?.bookingRef === 'string' ? body.bookingRef : ''
+        const agentId = typeof body?.agentId === 'string' && body.agentId.length > 0 ? body.agentId : null
+        const result = await assignBookingAgent(bookingRef, agentId)
         return NextResponse.json({ success: true, result })
       }
 

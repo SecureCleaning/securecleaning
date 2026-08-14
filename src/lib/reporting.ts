@@ -25,7 +25,7 @@ export async function getReportingSnapshot(): Promise<ReportingSnapshot> {
 
   const [quotesRes, bookingsRes, leadsRes, operatorsRes] = await Promise.all([
     db.from('quotes').select('status, follow_up_status'),
-    db.from('bookings').select('status, assigned_operator_id, site_id, inspection_status'),
+    db.from('bookings').select('status, assigned_operator_id, site_id, inspection_status, inputs'),
     db.from('leads').select('follow_up_status'),
     db.from('owner_operators').select('is_active'),
   ])
@@ -41,7 +41,12 @@ export async function getReportingSnapshot(): Promise<ReportingSnapshot> {
     pendingBookings: bookings.filter((item) => item.status === 'pending').length,
     completedBookings: bookings.filter((item) => item.status === 'completed').length,
     activeOperators: operators.filter((item) => item.is_active).length,
-    unassignedBookings: bookings.filter((item) => !item.assigned_operator_id || !item.site_id).length,
+    unassignedBookings: bookings.filter((item) => {
+      const assignedAgent = item.inputs && typeof item.inputs === 'object'
+        ? (item.inputs as Record<string, unknown>).preferredInspectionAssigneeId
+        : null
+      return (!item.assigned_operator_id && !assignedAgent) || !item.site_id
+    }).length,
     scheduledInspections: bookings.filter((item) => item.inspection_status === 'scheduled').length,
     quoteFollowUpBreakdown: tally(quotes.map((item) => item.follow_up_status), 'new'),
     leadFollowUpBreakdown: tally(leads.map((item) => item.follow_up_status), 'new'),

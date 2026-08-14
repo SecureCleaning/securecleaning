@@ -21,6 +21,9 @@ test('issue routing sends dispatch alerts to the inspection workflow controls', 
   assert.match(source, /openDispatchEditor\(alert\.entity_ref\)/)
   assert.match(dispatchPanel, /Assign the site and operator here/)
   assert.match(dispatchPanel, /onBookingOperatorChange/)
+  assert.match(dispatchPanel, /Regional agents/)
+  assert.match(dispatchPanel, /onBookingAgentChange/)
+  assert.match(read('src/app/api/admin/ops/route.ts'), /booking\.assignAgent/)
 })
 
 test('booking mutations validate lifecycle status server-side', () => {

@@ -100,6 +100,14 @@ type OperatorRow = {
   availabilityAssigneeId?: string | null
 }
 
+type AvailabilityAgentRow = {
+  id: string
+  name: string
+  city: string
+  active: boolean
+  ownerOperatorId?: string | null
+}
+
 type SiteRow = {
   id: string
   site_name?: string | null
@@ -151,6 +159,7 @@ export interface AdminDashboardData {
   clients: ClientRow[]
   leads: LeadRow[]
   operators: OperatorRow[]
+  availabilityAgents: AvailabilityAgentRow[]
   sites: SiteRow[]
   overview: {
     reporting: ReportingSnapshot
@@ -255,7 +264,7 @@ export default function AdminDashboard({ initialData }: Props) {
       },
       {
         label: 'Bookings missing operator',
-        value: bookings.filter((booking) => !booking.assigned_operator_id && !booking.linkedOperatorId && booking.status !== 'completed' && booking.status !== 'cancelled').length,
+        value: bookings.filter((booking) => !booking.assigned_operator_id && !booking.linkedOperatorId && !booking.inputs?.preferredInspectionAssigneeId && booking.status !== 'completed' && booking.status !== 'cancelled').length,
         tone: 'text-amber-700',
       },
       {
@@ -364,6 +373,31 @@ export default function AdminDashboard({ initialData }: Props) {
 
     setBookings((current) => current.map((booking) => (
       booking.booking_ref === bookingRef ? { ...booking, assigned_operator_id: operatorId || null } : booking
+    )))
+    void refreshOverview()
+  }
+
+  async function handleBookingAgentChange(bookingRef: string, agentId: string) {
+    const ok = await runAction(
+      { action: 'booking.assignAgent', bookingRef, agentId },
+      `Booking ${bookingRef} inspection agent assignment updated.`
+    )
+    if (!ok) return
+
+    const agent = initialData.availabilityAgents.find((item) => item.id === agentId)
+    setBookings((current) => current.map((booking) => (
+      booking.booking_ref === bookingRef
+        ? {
+            ...booking,
+            inputs: {
+              ...booking.inputs,
+              preferredInspectionAssigneeId: agentId || undefined,
+              preferredInspectionAssigneeName: agent?.name,
+            },
+            assigned_operator_id: agentId ? null : booking.assigned_operator_id,
+            linkedAgentId: agentId || null,
+          }
+        : booking
     )))
     void refreshOverview()
   }
@@ -678,10 +712,12 @@ export default function AdminDashboard({ initialData }: Props) {
               bookings={bookings}
               sites={sites}
               operators={operators}
+              availabilityAgents={initialData.availabilityAgents}
               selectedBookingRef={selectedBookingRef}
               onSelectedBookingRefChange={setSelectedBookingRef}
               onBookingSiteChange={handleBookingSiteChange}
               onBookingOperatorChange={handleBookingOperatorChange}
+              onBookingAgentChange={handleBookingAgentChange}
               onBookingUpdated={(bookingRef, updates) => {
                 setBookings((current) => current.map((booking) => (
                   booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
