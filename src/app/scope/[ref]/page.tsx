@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import ScopePrintButton from '@/components/scope/ScopePrintButton'
-import { getPublicScopeByRef } from '@/lib/quoteWorkflowData'
+import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
 
 export const dynamic = 'force-dynamic'
@@ -12,8 +12,9 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
 }
 
-export default async function ScopeOfWorksPage({ params }: { params: { ref: string } }) {
-  const report = /^SC-\d{8}-[A-Z0-9]{4}$/.test(params.ref) ? await getPublicScopeByRef(params.ref) : null
+export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string } }) {
+  const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
+  const report = /^SC-\d{8}-[A-Z0-9]{4}$/.test(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant) : null
   const siteUrl = getSiteUrl()
 
   if (!report) {
@@ -42,7 +43,7 @@ export default async function ScopeOfWorksPage({ params }: { params: { ref: stri
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div>
                 <Link href="/" className="text-lg font-bold tracking-tight hover:text-emerald-300">Secure Cleaning Aus</Link>
-                <p className="mt-2 text-sm text-slate-300">Client scope of works</p>
+                <p className="mt-2 text-sm text-slate-300">{variant === 'final' ? 'Final scope of works' : 'Remote-review scope of works'}</p>
               </div>
               <div className="text-left text-sm sm:text-right">
                 <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Reference</p>
@@ -67,12 +68,12 @@ export default async function ScopeOfWorksPage({ params }: { params: { ref: stri
                   <p className="mt-1 text-2xl font-bold text-slate-950">{report.displayedPrice}</p>
                   <p className="mt-1 text-xs text-slate-600">Prices exclude GST</p>
                 </div>
-                <Link
+                {variant !== 'final' ? <Link
                   href={`/booking?quoteRef=${encodeURIComponent(report.quoteRef)}`}
                   className="inline-flex min-h-[96px] min-w-[220px] items-center justify-center rounded-xl bg-emerald-600 px-5 py-4 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
                 >
                   Book site inspection
-                </Link>
+                </Link> : null}
               </div>
             </div>
 
@@ -168,7 +169,9 @@ export default async function ScopeOfWorksPage({ params }: { params: { ref: stri
                 </div>
               </div>
               <p className="mt-6 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
-                This scope is prepared for the named business and is provided for quotation purposes. Final service details are confirmed after access, site conditions, and any agreed changes are reviewed.
+                {variant === 'final'
+                  ? 'This is the reviewed final scope prepared for the named business. Any later change requires a newly reviewed document.'
+                  : 'This scope is prepared for the named business and is provided for quotation purposes. Final service details are confirmed after access, site conditions, and any agreed changes are reviewed.'}
               </p>
             </footer>
           </main>

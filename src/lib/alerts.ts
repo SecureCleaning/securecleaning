@@ -1,4 +1,5 @@
 import { getAdminSupabase } from '@/lib/supabase'
+import { writeAuditLog } from '@/lib/auditLog'
 import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
 
 export interface AdminAlert {
@@ -12,6 +13,33 @@ export interface AdminAlert {
 
 type TimedAlert = AdminAlert & {
   happenedAt: number
+}
+
+async function getDismissedAlertIds() {
+  const db = getAdminSupabase()
+  const { data, error } = await db
+    .from('admin_audit_log')
+    .select('entity_ref')
+    .eq('entity_type', 'alert')
+    .eq('action', 'dismissed')
+    .order('created_at', { ascending: false })
+    .limit(500)
+
+  if (error) {
+    console.error('[alerts] Failed to read dismissed alerts:', error)
+    return new Set<string>()
+  }
+
+  return new Set((data ?? []).map((item) => item.entity_ref).filter(Boolean))
+}
+
+export async function dismissAdminAlert(alertId: string) {
+  if (!alertId || !/^[a-z0-9_-]+$/.test(alertId)) {
+    throw new Error('Select a valid alert.')
+  }
+
+  await writeAuditLog('alert', alertId, 'dismissed')
+  return { alertId }
 }
 
 export async function getAdminAlerts(): Promise<AdminAlert[]> {
@@ -29,8 +57,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       .order('inspection_scheduled_for', { ascending: true })
       .limit(100),
     db.from('bookings')
-      .select('booking_ref, created_at, status, assigned_operator_id, site_id')
-      .or('assigned_operator_id.is.null,site_id.is.null')
+      .select('booking_ref, created_at, status, assigned_operator_id, site_id, inputs')
       .neq('status', 'completed')
       .neq('status', 'cancelled')
       .order('created_at', { ascending: true })
@@ -66,6 +93,11 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   }
 
   for (const booking of unassignedBookingsRes.data ?? []) {
+    const assignedAgent = booking.inputs && typeof booking.inputs === 'object'
+      ? (booking.inputs as Record<string, unknown>).preferredInspectionAssigneeId
+      : null
+    if (booking.assigned_operator_id || assignedAgent) continue
+
     const happenedAt = new Date(booking.created_at ?? '').getTime()
     alertsById.set(`booking-unassigned-${booking.booking_ref}`, {
       id: `booking-unassigned-${booking.booking_ref}`,
@@ -91,6 +123,9 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
     })
   }
 
+  const dismissedAlertIds = await getDismissedAlertIds()
+
   return rankAdminAlerts([...alertsById.values()])
+    .filter((alert) => !dismissedAlertIds.has(alert.id))
     .map(({ happenedAt: _happenedAt, ...alert }) => alert)
 }

@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig, locationMatchesServiceZones } from '@/lib/availability'
 import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAuth'
-import { parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
-import { getQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
+import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { getQuotePricingConfig } from '@/lib/pricing'
+import { getAdminSessionIdentityFromRequest } from '@/lib/adminAuth'
+import { getStaffAccountById } from '@/lib/staffAccounts'
 
 export async function POST(
   request: NextRequest,
@@ -14,6 +17,10 @@ export async function POST(
   }
 
   try {
+    const body = await request.json()
+    if (!isEditableFirmQuoteStatus(body?.firmQuoteDraft?.status)) {
+      return NextResponse.json({ success: false, error: 'Save supports only draft or reviewed workflow states.' }, { status: 400 })
+    }
     const config = await getAvailabilityConfig()
     const assignee = getAvailabilityAssignee(config, params.assigneeId)
     const roomTypeConfig = await getQuoteRoomTypeConfig()
@@ -31,14 +38,34 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Workflow storage columns are not available yet.' }, { status: 409 })
     }
 
-    const body = await request.json()
     const inspectionReport = parseInspectionReport(body?.inspectionReport, quote.inputs)
     const firmQuoteDraft = parseFirmQuoteDraft(body?.firmQuoteDraft, quote.inputs, roomTypeConfig)
-    await saveQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft)
+    const readiness = getFinalQuoteReadiness(firmQuoteDraft)
+    if (firmQuoteDraft.status === 'reviewed' && !readiness.ready) {
+      return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
+    }
+    if (quote.finalDocument || quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
+      return NextResponse.json({ success: false, error: 'Reviewed and sent quotes cannot be changed by a normal save.' }, { status: 409 })
+    }
+    if (firmQuoteDraft.status === 'reviewed') {
+      const sessionIdentity = getAdminSessionIdentityFromRequest(request)
+      const staffAccount = sessionIdentity ? await getStaffAccountById(sessionIdentity.id) : null
+      const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
+        ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
+        : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
+      await reviewQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft, {
+        ...actor,
+      }, await getQuotePricingConfig(), roomTypeConfig)
+    } else {
+      await saveQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft)
+    }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, status: firmQuoteDraft.status })
   } catch (error) {
     console.error('[api/availability-agent/quote-workflow] Failed to save workflow:', error)
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to save workflow.' }, { status: 500 })
+    if (error instanceof QuoteWorkflowConflictError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 409 })
+    }
+    return NextResponse.json({ success: false, error: 'The quote workflow could not be saved.' }, { status: 500 })
   }
 }

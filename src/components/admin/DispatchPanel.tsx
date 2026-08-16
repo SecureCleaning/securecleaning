@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { AdminDashboardData } from './AdminDashboard'
+import { getRelevantOperators } from '@/lib/operatorMatching'
 
 type BookingItem = AdminDashboardData['bookings'][number]
 
@@ -30,13 +31,28 @@ function toIsoOrNull(value: string) {
 
 export default function DispatchPanel({
   bookings,
+  sites,
+  operators,
+  availabilityAgents,
+  selectedBookingRef,
+  onSelectedBookingRefChange,
   onBookingUpdated,
+  onBookingSiteChange,
+  onBookingOperatorChange,
+  onBookingAgentChange,
 }: {
   bookings: BookingItem[]
+  sites: AdminDashboardData['sites']
+  operators: AdminDashboardData['operators']
+  availabilityAgents: AdminDashboardData['availabilityAgents']
+  selectedBookingRef: string
+  onSelectedBookingRefChange: (bookingRef: string) => void
   onBookingUpdated: (bookingRef: string, updates: Partial<BookingItem>) => void
+  onBookingSiteChange: (bookingRef: string, siteId: string) => Promise<void>
+  onBookingOperatorChange: (bookingRef: string, operatorId: string) => Promise<void>
+  onBookingAgentChange: (bookingRef: string, agentId: string) => Promise<void>
 }) {
-  const [selectedRef, setSelectedRef] = useState<string>(bookings[0]?.booking_ref ?? '')
-  const selected = bookings.find((booking) => booking.booking_ref === selectedRef) ?? bookings[0]
+  const selected = bookings.find((booking) => booking.booking_ref === selectedBookingRef) ?? bookings[0]
   const [inspectionStatus, setInspectionStatus] = useState('pending')
   const [inspectionScheduledFor, setInspectionScheduledFor] = useState('')
   const [inspectionCompletedAt, setInspectionCompletedAt] = useState('')
@@ -44,10 +60,14 @@ export default function DispatchPanel({
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isAssignmentSaving, setIsAssignmentSaving] = useState(false)
   const originalInspectionStatus = selected?.inspection_status ?? 'pending'
   const originalInspectionScheduledFor = toDateTimeInputValue(selected?.inspection_scheduled_for)
   const originalInspectionCompletedAt = toDateTimeInputValue(selected?.inspection_completed_at)
   const originalDispatchNotes = selected?.dispatch_notes ?? ''
+  const relevantOperators = selected
+    ? getRelevantOperators(operators, selected.inputs?.city, selected.inputs?.premisesType)
+    : []
   const hasChanges = Boolean(
     selected && (
       inspectionStatus !== originalInspectionStatus ||
@@ -73,7 +93,7 @@ export default function DispatchPanel({
     setDispatchNotes(selected.dispatch_notes ?? '')
     setStatus(null)
     setError(null)
-  }, [selectedRef, selected])
+  }, [selectedBookingRef, selected])
 
   if (!selected) {
     return <div className="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">No bookings available for dispatch.</div>
@@ -139,6 +159,42 @@ export default function DispatchPanel({
     }
   }
 
+  async function handleSiteChange(siteId: string) {
+    setIsAssignmentSaving(true)
+    try {
+      await onBookingSiteChange(selected.booking_ref, siteId)
+    } finally {
+      setIsAssignmentSaving(false)
+    }
+  }
+
+  async function handleOperatorChange(operatorId: string) {
+    setIsAssignmentSaving(true)
+    try {
+      await onBookingOperatorChange(selected.booking_ref, operatorId)
+    } finally {
+      setIsAssignmentSaving(false)
+    }
+  }
+
+  async function handleAssignmentChange(value: string) {
+    if (value.startsWith('agent:')) {
+      await onBookingAgentChange(selected.booking_ref, value.slice('agent:'.length))
+      return
+    }
+
+    await onBookingOperatorChange(
+      selected.booking_ref,
+      value.startsWith('operator:') ? value.slice('operator:'.length) : '',
+    )
+  }
+
+  const selectedAssignment = selected.assigned_operator_id
+    ? `operator:${selected.assigned_operator_id}`
+    : selected.inputs?.preferredInspectionAssigneeId
+      ? `agent:${selected.inputs.preferredInspectionAssigneeId}`
+      : ''
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -154,8 +210,8 @@ export default function DispatchPanel({
       <label className="block space-y-1">
         <span className="text-sm font-medium text-gray-700">Booking to dispatch</span>
         <select
-          value={selectedRef}
-          onChange={(e) => setSelectedRef(e.target.value)}
+          value={selected?.booking_ref ?? ''}
+          onChange={(e) => onSelectedBookingRefChange(e.target.value)}
           disabled={isSaving}
           className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
         >
@@ -184,6 +240,64 @@ export default function DispatchPanel({
 
       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600">
         {dispatchSummary}
+      </div>
+
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-3">
+        <div>
+          <h3 className="font-semibold text-amber-950">Assignment</h3>
+          <p className="mt-1 text-sm text-amber-900">Assign the site and operator here to clear missing-assignment alerts.</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-sm font-medium text-gray-700">Site</span>
+            <select
+              value={selected.site_id ?? ''}
+              onChange={(e) => void handleSiteChange(e.target.value)}
+              disabled={isAssignmentSaving || isSaving}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              <option value="">Unassigned</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>{site.site_name || site.address}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm font-medium text-gray-700">Operator / agent</span>
+            <select
+              value={selectedAssignment}
+              onChange={(e) => void handleAssignmentChange(e.target.value)}
+              disabled={isAssignmentSaving || isSaving}
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm disabled:bg-gray-100 disabled:text-gray-500"
+            >
+              <option value="">Unassigned</option>
+              {relevantOperators.length > 0 ? (
+                <optgroup label="Owner-operators">
+                  {relevantOperators.map((operator) => (
+                    <option key={`operator:${operator.id}`} value={`operator:${operator.id}`}>{operator.business_name} — {operator.operator_name}</option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {availabilityAgents.filter((agent) => agent.active).length > 0 ? (
+                <optgroup label="Regional agents">
+                  {availabilityAgents.filter((agent) => agent.active).map((agent) => (
+                    <option key={`agent:${agent.id}`} value={`agent:${agent.id}`}>{agent.name} — {agent.city}</option>
+                  ))}
+                </optgroup>
+              ) : null}
+            </select>
+          </label>
+        </div>
+        {selected.linkedOperatorId && !selected.assigned_operator_id && !selected.inputs?.preferredInspectionAssigneeId ? (
+          <button
+            type="button"
+            onClick={() => void handleOperatorChange(selected.linkedOperatorId as string)}
+            disabled={isAssignmentSaving || isSaving}
+            className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-50"
+          >
+            Assign linked regional operator
+          </button>
+        ) : null}
       </div>
 
       <label className="space-y-1">

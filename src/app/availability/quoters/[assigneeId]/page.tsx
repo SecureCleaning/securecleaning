@@ -30,7 +30,8 @@ export default async function AvailabilityQuoterPage({
     )
   }
 
-  if (!assignee.accessCodeHash) {
+  const authenticated = await hasAvailabilityAgentSession(assigneeId)
+  if (!assignee.accessCodeHash && !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
         <div className="text-center max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
@@ -45,7 +46,6 @@ export default async function AvailabilityQuoterPage({
     )
   }
 
-  const authenticated = await hasAvailabilityAgentSession(assigneeId)
   if (!authenticated) {
     return (
       <AvailabilityAgentLogin

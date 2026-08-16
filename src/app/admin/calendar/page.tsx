@@ -1,4 +1,3 @@
-import AdminNav from '@/components/admin/AdminNav'
 import CalendarAdmin from '@/components/admin/CalendarAdmin'
 import { getAvailabilityConfig } from '@/lib/availability'
 import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
@@ -22,13 +21,6 @@ export default async function AdminCalendarPage() {
         })),
     )
 
-    return (
-      <>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
-          <AdminNav currentPath="/admin/calendar" />
-        </div>
-        <CalendarAdmin calendars={calendars} />
-      </>
-    )
+    return <CalendarAdmin calendars={calendars} />
   })
 }

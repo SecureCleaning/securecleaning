@@ -16,6 +16,7 @@ export default function AvailabilityAgentNav({
 
     try {
       await fetch('/api/availability-agent/session', { method: 'DELETE' })
+      await fetch('/api/admin/session', { method: 'DELETE' })
     } finally {
       window.location.assign('/availability/login')
     }

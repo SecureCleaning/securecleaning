@@ -3,6 +3,8 @@ import type { QuotePricingConfig } from '@/lib/pricing'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRoomScope'
 import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePreference } from '@/lib/types'
 import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeConfigById, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
+export { getFinalQuoteReadiness, isEditableFirmQuoteStatus, isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 
 export type WorkflowRoomType =
   | 'office'
@@ -57,6 +59,7 @@ export type InspectionReport = {
 }
 
 export type FirmQuoteStatus = 'draft' | 'reviewed' | 'sent' | 'accepted'
+
 
 export type FirmQuoteDraft = {
   status: FirmQuoteStatus
@@ -417,7 +420,7 @@ export function parseFirmQuoteDraft(
   const legacyMoppingRate = source.roomItems?.find((room) => Number.isFinite(Number(room.moppingMinutesPerSqm)))?.moppingMinutesPerSqm
 
   return {
-    status: typeof source.status === 'string' ? (source.status as FirmQuoteStatus) : fallback.status,
+    status: isFirmQuoteStatus(source.status) ? source.status : fallback.status,
     revisedInputs: mergeQuoteInputs(inputs, source.revisedInputs),
     roomItems: mergeRoomItems(source.roomItems, inputs, roomTypeConfig),
     moppingMinutesPerSqm: safePositiveNumber(
@@ -639,8 +642,9 @@ export function buildFirmQuotePreview(
   // Assess the complete job against the minimum only after every charge is included.
   const calculatedLow = roundCurrency(rawLow * factor)
   const calculatedHigh = roundCurrency(rawHigh * factor)
-  const adjustedLow = roundCurrency(Math.max(pricingConfig.settings.minimumInvoice, calculatedLow))
-  const adjustedHigh = roundCurrency(Math.max(pricingConfig.settings.minimumInvoice, calculatedHigh))
+  const frequencyAdjustedMinimum = pricingConfig.settings.minimumInvoice * calculated.breakdown.frequencyMultiplier
+  const adjustedLow = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedLow))
+  const adjustedHigh = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedHigh))
   const finalPerVisit = Number(draft.finalPerVisit)
   const targetPrice = Number(draft.targetPrice)
 

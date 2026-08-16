@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import QuoteResultView from '@/components/quote/QuoteResultView'
-import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
 
-export default async function QuoteByRefPage({ params }: { params: { ref: string } }) {
-  const quote = await getPublicQuoteWorkflowByRef(params.ref)
+export default async function QuoteByRefPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string } }) {
+  const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
+  const quote = await getPublicQuoteDocumentByRef(params.ref, variant)
 
   if (!quote) {
     return (
@@ -31,7 +32,7 @@ export default async function QuoteByRefPage({ params }: { params: { ref: string
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-        <QuoteResultView quoteRef={quote.quoteRef} result={quote.result} inputs={quote.inputs} />
+        <QuoteResultView quoteRef={quote.quoteRef} result={quote.result} inputs={quote.inputs} documentVariant={quote.variant} />
       </div>
     </div>
   )

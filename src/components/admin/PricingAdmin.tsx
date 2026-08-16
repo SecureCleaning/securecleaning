@@ -3,8 +3,26 @@
 import { useState } from 'react'
 import type { QuotePricingConfig, PricingItem, PricingItemUnit } from '@/lib/pricing'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import AdminPageHeader from './AdminPageHeader'
 
 const UNIT_OPTIONS: PricingItemUnit[] = ['fixed', 'count', 'sqm', 'flag']
+
+const LABELS: Record<string, string> = {
+  hourlyRate: 'Hourly rate', minimumInvoice: 'Minimum invoice', multiFloorBase: 'Multi-floor base multiplier',
+  multiFloorPerExtra: 'Additional floor multiplier', springCleanLow: 'Spring clean low multiplier',
+  springCleanHigh: 'Spring clean high multiplier', rangeLow: 'Standard range low multiplier', rangeHigh: 'Standard range high multiplier',
+  office: 'Office', medical: 'Medical and healthcare', industrial: 'Industrial', childcare: 'Childcare', retail: 'Retail', gym: 'Gym and fitness', warehouse: 'Warehouse', function_centre: 'Function centre', sports_facility: 'Sports facility', other: 'Other',
+  daily: 'Daily', '3x_week': '3 times per week', '2x_week': '2 times per week', weekly: 'Weekly', fortnightly: 'Fortnightly', once_off: 'Once-off',
+  melbourne: 'Melbourne', sydney: 'Sydney', business_hours: 'Business hours', after_hours: 'After hours', weekend: 'Weekend',
+}
+
+function readableLabel(key: string) {
+  return LABELS[key] ?? key.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function isCurrencyKey(key: string) {
+  return key === 'hourlyRate' || key === 'minimumInvoice'
+}
 
 export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePricingConfig }) {
   const [config, setConfig] = useState<QuotePricingConfig>(initialConfig)
@@ -109,72 +127,67 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
   const knownCodes = ['bathrooms', 'kitchens', 'windows', 'consumables', 'highTouchDisinfection', 'carpetSteam']
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <h1 className="text-4xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Pricing Editor
-          </h1>
-          <p className="text-gray-600 max-w-3xl">
-            Manage the quote calculator settings, multipliers, and pricing items. Changes affect future remote quote calculations.
-          </p>
-        </div>
+    <div>
+      <AdminPageHeader
+        title="Pricing Editor"
+        description="Manage quote calculator settings, multipliers, and pricing items. Changes affect future remote quote calculations."
+        actions={<button type="submit" form="pricing-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save pricing'}</button>}
+      />
 
-        <form onSubmit={handleSave} className="space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <form id="pricing-editor-form" onSubmit={handleSave} className="space-y-5">
+            <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote pricing configuration</h2>
                 <p className="text-sm text-gray-600">Save once you&apos;ve finished adjusting rates and multipliers.</p>
               </div>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center rounded-lg px-5 py-3 font-semibold text-white transition-opacity disabled:opacity-60"
-                style={{ backgroundColor: '#22c55e' }}
-              >
-                {isSubmitting ? 'Saving…' : 'Save Pricing'}
-              </button>
+              <span className="text-xs text-gray-500">Changes apply to future quotes.</span>
             </div>
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h3 className="text-xl font-bold mb-5" style={{ color: '#1a2744' }}>Global settings</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+              <h3 className="mb-4 text-lg font-bold" style={{ color: '#1a2744' }}>Global settings</h3>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {Object.entries(config.settings).map(([key, value]) => (
                   <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{key}</label>
+                    <label htmlFor={`pricing-setting-${key}`} className="mb-1 block text-sm font-medium text-gray-700">{readableLabel(key)}</label>
                     <input
+                      id={`pricing-setting-${key}`}
                       type="number"
                       step="0.01"
+                      inputMode="decimal"
                       value={value}
                       onChange={(event) => updateSetting(key as keyof QuotePricingConfig['settings'], event.target.value)}
-                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      className="block min-h-10 w-full max-w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
+                    <span className="mt-1 block text-xs text-gray-500">{isCurrencyKey(key) ? 'AUD per visit' : 'Multiplier or factor'}</span>
                   </div>
                 ))}
               </div>
             </section>
 
             {(Object.entries(config.multipliers) as Array<[keyof QuotePricingConfig['multipliers'], Record<string, number>]>).map(([section, values]) => (
-              <section key={section} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-                <h3 className="text-xl font-bold capitalize mb-5" style={{ color: '#1a2744' }}>{section} multipliers</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <section key={section} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
+                <h3 className="mb-4 text-lg font-bold capitalize" style={{ color: '#1a2744' }}>{readableLabel(section)} multipliers</h3>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
                   {Object.entries(values).map(([key, value]) => (
                     <div key={key}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{key}</label>
+                      <label htmlFor={`pricing-multiplier-${section}-${key}`} className="mb-1 block text-sm font-medium text-gray-700">{readableLabel(key)}</label>
                       <input
+                        id={`pricing-multiplier-${section}-${key}`}
                         type="number"
                         step="0.01"
+                        inputMode="decimal"
                         value={value}
                         onChange={(event) => updateMultiplier(section, key, event.target.value)}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                        className="block min-h-10 w-full max-w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       />
+                      <span className="mt-1 block text-xs text-gray-500">1.10 = 10% increase</span>
                     </div>
                   ))}
                 </div>
               </section>
             ))}
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
               <div className="flex items-center justify-between gap-4 mb-5">
                 <div>
                   <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Pricing items</h3>
@@ -286,6 +299,5 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
             ) : null}
         </form>
       </div>
-    </div>
   )
 }

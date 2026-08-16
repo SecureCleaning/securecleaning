@@ -56,14 +56,45 @@ CREATE TABLE quotes (
   result       JSONB NOT NULL,          -- QuoteResult snapshot
   status       quote_status NOT NULL DEFAULT 'pending',
   valid_until  TIMESTAMPTZ NOT NULL,
+  inspection_report JSONB NOT NULL DEFAULT '{}'::jsonb,
+  firm_quote_workflow JSONB NOT NULL DEFAULT '{}'::jsonb,
+  final_quote_document JSONB,
+  final_quote_document_version INTEGER,
+  final_quote_reviewed_at TIMESTAMPTZ,
+  final_quote_reviewed_by JSONB,
+  final_quote_sent_at TIMESTAMPTZ,
+  final_quote_sent_by JSONB,
+  final_quote_sent_to TEXT,
+  final_quote_sent_variant TEXT CHECK (final_quote_sent_variant IS NULL OR final_quote_sent_variant = 'final'),
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ((final_quote_document IS NULL AND final_quote_document_version IS NULL) OR
+         (final_quote_document IS NOT NULL AND final_quote_document_version > 0))
 );
 
 CREATE INDEX idx_quotes_client_id  ON quotes(client_id);
 CREATE INDEX idx_quotes_quote_ref  ON quotes(quote_ref);
 CREATE INDEX idx_quotes_status     ON quotes(status);
 CREATE INDEX idx_quotes_created_at ON quotes(created_at DESC);
+
+CREATE TABLE quote_send_attempts (
+  id UUID PRIMARY KEY,
+  quote_ref TEXT NOT NULL REFERENCES quotes(quote_ref) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('claimed', 'provider_accepted', 'finalized', 'failed')),
+  actor JSONB NOT NULL,
+  recipient TEXT NOT NULL,
+  document_variant TEXT NOT NULL CHECK (document_variant = 'final'),
+  document_version INTEGER NOT NULL CHECK (document_version > 0),
+  provider_message_id TEXT,
+  failure_stage TEXT CHECK (failure_stage IS NULL OR failure_stage IN ('provider_rejected', 'internal_before_provider')),
+  claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  provider_accepted_at TIMESTAMPTZ,
+  finalized_at TIMESTAMPTZ,
+  failed_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX idx_quote_send_attempts_unresolved ON quote_send_attempts(quote_ref, document_version)
+  WHERE status IN ('claimed', 'provider_accepted');
+CREATE INDEX idx_quote_send_attempts_reconciliation ON quote_send_attempts(status, claimed_at);
 
 -- ─── BOOKINGS ────────────────────────────────────────────────────────────────
 
@@ -250,11 +281,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION protect_final_quote_document()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.final_quote_document IS NOT NULL AND (
+    NEW.final_quote_document IS DISTINCT FROM OLD.final_quote_document OR
+    NEW.final_quote_document_version IS DISTINCT FROM OLD.final_quote_document_version OR
+    NEW.final_quote_reviewed_at IS DISTINCT FROM OLD.final_quote_reviewed_at OR
+    NEW.final_quote_reviewed_by IS DISTINCT FROM OLD.final_quote_reviewed_by
+  ) THEN RAISE EXCEPTION 'reviewed final quote document is immutable'; END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER trg_clients_updated_at
   BEFORE UPDATE ON clients FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_quotes_updated_at
   BEFORE UPDATE ON quotes FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_protect_final_quote_document
+  BEFORE UPDATE ON quotes FOR EACH ROW EXECUTE FUNCTION protect_final_quote_document();
 
 CREATE TRIGGER trg_bookings_updated_at
   BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -289,6 +335,7 @@ CREATE TRIGGER trg_site_content_updated_at
 -- Enable RLS on all tables
 ALTER TABLE clients               ENABLE ROW LEVEL SECURITY;
 ALTER TABLE quotes                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE quote_send_attempts   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings              ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inspectors            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE availability_blocks   ENABLE ROW LEVEL SECURITY;
@@ -318,6 +365,12 @@ CREATE POLICY "Users read own client record"
 
 CREATE POLICY "Service role full access — quotes"
   ON quotes FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+CREATE POLICY "Service role full access — quote_send_attempts"
+  ON quote_send_attempts FOR ALL
   TO service_role
   USING (true)
   WITH CHECK (true);

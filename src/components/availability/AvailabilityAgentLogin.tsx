@@ -33,10 +33,10 @@ export default function AvailabilityAgentLogin({
     setError(null)
 
     try {
-      const response = await fetch('/api/availability-agent/session', {
+      const response = await fetch('/api/admin/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assigneeId, username, accessCode }),
+        body: JSON.stringify({ username, password: accessCode }),
       })
 
       const result = await response.json()
@@ -44,6 +44,9 @@ export default function AvailabilityAgentLogin({
         throw new Error(result.error || 'Invalid access code.')
       }
 
+      if (result.role !== 'agent' || (assigneeId && result.assigneeId !== assigneeId)) {
+        throw new Error('This login is not linked to the selected regional agent.')
+      }
       window.location.href = redirectPath || `/availability/quoters/${result.assigneeId}`
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to unlock your schedule page.')

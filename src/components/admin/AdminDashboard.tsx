@@ -98,6 +98,14 @@ type OperatorRow = {
   availabilityAssigneeId?: string | null
 }
 
+type AvailabilityAgentRow = {
+  id: string
+  name: string
+  city: string
+  active: boolean
+  ownerOperatorId?: string | null
+}
+
 type SiteRow = {
   id: string
   site_name?: string | null
@@ -149,6 +157,7 @@ export interface AdminDashboardData {
   clients: ClientRow[]
   leads: LeadRow[]
   operators: OperatorRow[]
+  availabilityAgents: AvailabilityAgentRow[]
   sites: SiteRow[]
   overview: {
     reporting: ReportingSnapshot
@@ -187,6 +196,7 @@ export default function AdminDashboard({ initialData }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
   const [bookings, setBookings] = useState(initialData.bookings)
+  const [selectedBookingRef, setSelectedBookingRef] = useState(initialData.bookings[0]?.booking_ref ?? '')
   const [leads, setLeads] = useState(initialData.leads)
   const [reportingSnapshot, setReportingSnapshot] = useState(initialData.overview.reporting)
   const [alerts, setAlerts] = useState(initialData.overview.alerts)
@@ -207,18 +217,45 @@ export default function AdminDashboard({ initialData }: Props) {
     }, 0)
   }
 
+  function openBookingEditor(bookingRef: string) {
+    setSelectedBookingRef(bookingRef)
+    setActiveTab('bookings')
+    window.setTimeout(() => {
+      document.getElementById('booking-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
+  function openDispatchEditor(bookingRef: string) {
+    setSelectedBookingRef(bookingRef)
+    setActiveTab('bookings')
+    window.setTimeout(() => {
+      document.getElementById('dispatch-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
   function openAlert(alert: AdminAlertRow) {
     if (alert.kind === 'new_quote') {
       window.location.assign(`/admin/quotes/${encodeURIComponent(alert.entity_ref)}`)
       return
     }
 
-    openWorkArea('bookings')
-    window.setTimeout(() => {
-      document.getElementById(`booking-row-${alert.entity_ref}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 250)
+    if (alert.kind === 'new_booking') {
+      openBookingEditor(alert.entity_ref)
+      return
+    }
+
+    openDispatchEditor(alert.entity_ref)
   }
 
+  async function dismissAlert(alert: AdminAlertRow) {
+    const ok = await runAction(
+      { action: 'alert.dismiss', alertId: alert.id },
+      'Alert dismissed.'
+    )
+    if (!ok) return
+
+    setAlerts((current) => current.filter((item) => item.id !== alert.id))
+  }
   async function refreshOverview() {
     try {
       const [reportingResponse, alertsResponse] = await Promise.all([
@@ -334,6 +371,31 @@ export default function AdminDashboard({ initialData }: Props) {
     void refreshOverview()
   }
 
+  async function handleBookingAgentChange(bookingRef: string, agentId: string) {
+    const ok = await runAction(
+      { action: 'booking.assignAgent', bookingRef, agentId },
+      `Booking ${bookingRef} inspection agent assignment updated.`
+    )
+    if (!ok) return
+
+    const agent = initialData.availabilityAgents.find((item) => item.id === agentId)
+    setBookings((current) => current.map((booking) => (
+      booking.booking_ref === bookingRef
+        ? {
+            ...booking,
+            inputs: {
+              ...booking.inputs,
+              preferredInspectionAssigneeId: agentId || undefined,
+              preferredInspectionAssigneeName: agent?.name,
+            },
+            assigned_operator_id: agentId ? null : booking.assigned_operator_id,
+            linkedAgentId: agentId || null,
+          }
+        : booking
+    )))
+    void refreshOverview()
+  }
+
   return (
     <div className="space-y-8">
       <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
@@ -354,7 +416,7 @@ export default function AdminDashboard({ initialData }: Props) {
           </div>
           <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openWorkArea} />
         </div>
-        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} />
+        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
       </div>
 
       <nav className="flex flex-wrap gap-2" aria-label="Admin shortcuts">
@@ -482,7 +544,13 @@ export default function AdminDashboard({ initialData }: Props) {
         <div className="space-y-6">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Recent Bookings</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Booking queue</h2>
+                  <p className="mt-1 text-sm text-gray-600">Open a booking to edit customer details, inspection workflow, or assignments.</p>
+                </div>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{bookings.length} shown</span>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -595,6 +663,20 @@ export default function AdminDashboard({ initialData }: Props) {
                         <div className="flex flex-col gap-2">
                           <button
                             type="button"
+                            onClick={() => openBookingEditor(booking.booking_ref)}
+                            className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-center text-sm font-semibold text-green-700 hover:border-green-300"
+                          >
+                            Edit booking
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openDispatchEditor(booking.booking_ref)}
+                            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-sm font-semibold text-blue-800 hover:border-blue-300"
+                          >
+                            Edit workflow
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => handleBookingResend(booking.booking_ref)}
                             className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
                           >
@@ -617,24 +699,38 @@ export default function AdminDashboard({ initialData }: Props) {
               </table>
             </div>
           </div>
-          <BookingEditor
-            bookings={bookings}
-            onBookingUpdated={(updatedBooking) => {
-              setBookings((current) => current.map((booking) => (
-                booking.booking_ref === updatedBooking.booking_ref ? updatedBooking : booking
-              )))
-              void refreshOverview()
-            }}
-          />
-          <DispatchPanel
-            bookings={bookings}
-            onBookingUpdated={(bookingRef, updates) => {
-              setBookings((current) => current.map((booking) => (
-                booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
-              )))
-              void refreshOverview()
-            }}
-          />
+          <div id="booking-editor" className="scroll-mt-24">
+            <BookingEditor
+              bookings={bookings}
+              selectedBookingRef={selectedBookingRef}
+              onSelectedBookingRefChange={setSelectedBookingRef}
+              onBookingUpdated={(updatedBooking) => {
+                setBookings((current) => current.map((booking) => (
+                  booking.booking_ref === updatedBooking.booking_ref ? updatedBooking : booking
+                )))
+                void refreshOverview()
+              }}
+            />
+          </div>
+          <div id="dispatch-editor" className="scroll-mt-24">
+            <DispatchPanel
+              bookings={bookings}
+              sites={sites}
+              operators={operators}
+              availabilityAgents={initialData.availabilityAgents}
+              selectedBookingRef={selectedBookingRef}
+              onSelectedBookingRefChange={setSelectedBookingRef}
+              onBookingSiteChange={handleBookingSiteChange}
+              onBookingOperatorChange={handleBookingOperatorChange}
+              onBookingAgentChange={handleBookingAgentChange}
+              onBookingUpdated={(bookingRef, updates) => {
+                setBookings((current) => current.map((booking) => (
+                  booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
+                )))
+                void refreshOverview()
+              }}
+            />
+          </div>
         </div>
         )}
 

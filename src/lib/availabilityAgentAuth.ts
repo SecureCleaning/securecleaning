@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import type { NextRequest } from 'next/server'
+import { getAdminSessionIdentityFromRequest, getAdminSessionIdentityFromCookies } from '@/lib/adminAuth'
+import { getStaffAccountById } from '@/lib/staffAccounts'
 import {
   getAvailabilityAssignee,
   getAvailabilityConfig,
@@ -138,28 +140,48 @@ export function isValidAvailabilityAgentFeedToken(
 export async function hasAvailabilityAgentSession(assigneeId: string) {
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
-  if (!assignee?.active || !assignee.accessCodeHash) return false
+  if (!assignee?.active) return false
+
+  const identity = await getAdminSessionIdentityFromCookies()
+  if (identity?.role === 'agent') {
+    const account = await getStaffAccountById(identity.id)
+    if (account?.active && account.role === 'agent' && account.availability_assignee_id === assigneeId) return true
+  }
+
+  if (!assignee.accessCodeHash) return false
 
   const cookieStore = await cookies()
   const cookieValue = cookieStore.get(AVAILABILITY_AGENT_SESSION_COOKIE)?.value
 
-  return isValidAvailabilityAgentSessionToken(
+  if (isValidAvailabilityAgentSessionToken(
     cookieValue,
     assigneeId,
     assignee.accessCodeHash
-  )
+  )) return true
+
+  return false
 }
 
 export async function isAuthorizedAvailabilityAgentRequest(request: NextRequest, assigneeId: string) {
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
-  if (!assignee?.active || !assignee.accessCodeHash) return false
+  if (!assignee?.active) return false
+
+  const identity = getAdminSessionIdentityFromRequest(request)
+  if (identity?.role === 'agent') {
+    const account = await getStaffAccountById(identity.id)
+    if (account?.active && account.role === 'agent' && account.availability_assignee_id === assigneeId) return true
+  }
+
+  if (!assignee.accessCodeHash) return false
 
   const headerCode = request.headers.get('x-availability-access-code')
   const sessionToken = request.cookies.get(AVAILABILITY_AGENT_SESSION_COOKIE)?.value
 
-  return (
+  if (
     verifyAvailabilityAccessCode(normalize(headerCode), assignee.accessCodeHash) ||
     isValidAvailabilityAgentSessionToken(sessionToken, assigneeId, assignee.accessCodeHash)
-  )
+  ) return true
+
+  return false
 }

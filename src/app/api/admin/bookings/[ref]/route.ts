@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLog } from '@/lib/auditLog'
+import { isBookingStatus } from '@/lib/bookingStatus'
 
 export async function PATCH(
   request: NextRequest,
@@ -17,6 +18,10 @@ export async function PATCH(
 
     if (!updates || typeof updates !== 'object') {
       return NextResponse.json({ success: false, error: 'Invalid updates payload.' }, { status: 400 })
+    }
+
+    if (typeof updates.status !== 'string' || !isBookingStatus(updates.status)) {
+      return NextResponse.json({ success: false, error: 'Select a valid booking status.' }, { status: 400 })
     }
 
     const db = getAdminSupabase()

@@ -112,17 +112,17 @@
 }
 
 .scope-report-shell::before {
-  content: 'SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU';
+  content: 'SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU';
   position: absolute;
   z-index: 0;
   top: 24%;
   left: -30%;
   width: 160%;
-  color: rgba(11, 95, 116, 0.1);
-  font-size: clamp(1.05rem, 2.6vw, 1.7rem);
+  color: rgba(11, 95, 116, 0.045);
+  font-size: clamp(0.95rem, 2.2vw, 1.35rem);
   font-weight: 800;
   letter-spacing: 0.14em;
-  line-height: 5;
+  line-height: 7;
   pointer-events: none;
   text-align: center;
   transform: rotate(-24deg);
@@ -169,7 +169,7 @@
   }
 
   .scope-report-shell::before {
-    color: rgba(11, 95, 116, 0.12);
+    color: rgba(11, 95, 116, 0.065);
   }
 
   .site-header,

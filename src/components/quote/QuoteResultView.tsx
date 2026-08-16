@@ -4,13 +4,16 @@ import Link from 'next/link'
 import type { QuoteResult as QuoteResultType, QuoteInputs } from '@/lib/types'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from '@/lib/publicRoomScope'
 import { formatPriceRange } from '@/lib/quoteEngine'
+import type { PublicQuoteDisplayInputs } from '@/lib/publicQuoteDocument'
 
 interface QuoteResultViewProps {
   quoteRef: string
-  result: QuoteResultType
-  inputs: QuoteInputs
+  result: QuoteResultType | Pick<QuoteResultType, 'totalLow' | 'totalHigh' | 'carpetSteamSeparate'>
+  inputs: QuoteInputs | PublicQuoteDisplayInputs
   emailSent?: boolean
   emailError?: string | null
+  documentVariant?: 'remote_review' | 'final'
+  customerEmail?: string
 }
 
 const frequencyLabels: Record<string, string> = {
@@ -41,7 +44,7 @@ const timeLabels: Record<string, string> = {
   weekend: 'Weekend (sometimes cheaper!)',
 }
 
-export default function QuoteResultView({ quoteRef, result, inputs, emailSent }: QuoteResultViewProps) {
+export default function QuoteResultView({ quoteRef, result, inputs, emailSent, documentVariant = 'remote_review', customerEmail }: QuoteResultViewProps) {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const hasEmailIssue = emailSent === false
   const roomScopeSummary = summarizePublicRoomScope(
@@ -63,22 +66,22 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent }:
           </svg>
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: '#1a2744' }}>
-          Your Instant Quote
+          {documentVariant === 'final' ? 'Your Final Quote' : 'Your Instant Quote'}
         </h1>
         <p className="text-gray-500 text-sm">
           Quote Reference: <span className="font-mono font-semibold text-gray-700">{quoteRef}</span>
         </p>
-        <p className="text-gray-500 text-sm mt-1">
+        {customerEmail ? <p className="text-gray-500 text-sm mt-1">
           {hasEmailIssue ? (
             <>
-              We could not email your copy just yet, but your quote is ready here for <strong>{inputs.email}</strong>
+              We could not email your copy just yet, but your quote is ready here for <strong>{customerEmail}</strong>
             </>
           ) : (
             <>
-              A copy has been prepared for <strong>{inputs.email}</strong>
+              A copy has been prepared for <strong>{customerEmail}</strong>
             </>
           )}
-        </p>
+        </p> : null}
       </div>
 
       {hasEmailIssue && (
@@ -93,10 +96,10 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent }:
 
       <div className="rounded-2xl p-8 text-white mb-6 text-center" style={{ backgroundColor: '#1a2744' }}>
         <p className="text-gray-400 text-sm mb-2">
-          {`Per Visit Estimate (${frequencyLabels[inputs.frequency] ?? 'Recurring service'})`}
+          {`${documentVariant === 'final' ? 'Confirmed price' : 'Per Visit Estimate'} (${frequencyLabels[inputs.frequency] ?? 'Recurring service'})`}
         </p>
         <p className="text-5xl font-black mb-1">{formatPriceRange(result.totalLow, result.totalHigh)}</p>
-        <p className="text-gray-400 text-sm">Price range per visit · Excl. GST</p>
+        <p className="text-gray-400 text-sm">{documentVariant === 'final' ? 'Final price per visit' : 'Price range per visit'} · Excl. GST</p>
         {result.carpetSteamSeparate && (
           <p className="mt-3 text-amber-300 text-sm">* Carpet steam cleaning quoted separately</p>
         )}
@@ -146,7 +149,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent }:
           )}
 
           <div className="border-t border-gray-200 pt-3 mt-3 flex justify-between font-bold text-base">
-            <span>Indicative total per visit</span>
+            <span>{documentVariant === 'final' ? 'Confirmed total per visit' : 'Indicative total per visit'}</span>
             <span style={{ color: '#1a2744' }}>
               {formatPriceRange(result.totalLow, result.totalHigh)}
             </span>
@@ -154,7 +157,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent }:
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
+      {documentVariant !== 'final' ? <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
         <p className="font-semibold mb-1">What this quote includes</p>
         <p>
           This is an indicative estimate based on your premises size, cleaning frequency, timing preference,
@@ -166,22 +169,22 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent }:
             Glass cleaning is not included in this remote estimate. We can estimate the cost of internal / external glass cleaning during your inspection.
           </p>
         ) : null}
-      </div>
+      </div> : null}
 
       <p className="text-xs text-gray-500 text-center mb-8">
-        Final pricing is confirmed after your free site inspection. Valid for 30 days. All prices exclude GST.
+        {documentVariant === 'final' ? 'This is the reviewed final quotation. Valid for 30 days. All prices exclude GST.' : 'Final pricing is confirmed after your free site inspection. Valid for 30 days. All prices exclude GST.'}
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Link
+        {documentVariant !== 'final' ? <Link
           href={`/booking?quoteRef=${quoteRef}`}
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-bold text-white text-lg transition-all hover:opacity-90"
           style={{ backgroundColor: '#22c55e' }}
         >
           Book Site Inspection
-        </Link>
+        </Link> : null}
         <Link
-          href={`/scope/${quoteRef}`}
+          href={`/scope/${quoteRef}${documentVariant === 'final' ? '?variant=final' : ''}`}
           className="inline-flex items-center justify-center rounded-xl border-2 border-teal-700 px-8 py-4 text-lg font-bold text-teal-800 transition-all hover:bg-teal-50"
         >
           View Scope of Works

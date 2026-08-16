@@ -89,8 +89,13 @@ export async function sendEmailOrThrow(payload: Record<string, unknown>) {
 
   const response = await resend.emails.send(payload)
   if (response?.error) {
-    throw new Error(response.error.message || 'Email send failed')
+    throw new EmailProviderRejectedError(response.error.message || 'Email send failed')
   }
+  return response?.data ?? response
+}
+
+export class EmailProviderRejectedError extends Error {
+  readonly outcome = 'provider_rejected'
 }
 
 export async function sendEmailWithResult(payload: Record<string, unknown>) {
@@ -285,11 +290,12 @@ export async function sendUpdatedQuoteEmail(
     subject?: string
     message?: string
   },
-): Promise<void> {
+) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const quoteUrl = `${SITE_URL}/quote/${quoteRef}`
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}`
+  const finalQuoteUrl = `${quoteUrl}?variant=final`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?variant=final`
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
   const recipient = options?.to?.trim() || inputs.email.trim()
@@ -300,7 +306,7 @@ export async function sendUpdatedQuoteEmail(
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')
 
-  await sendEmailOrThrow({
+  return sendEmailOrThrow({
     from: FROM_EMAIL,
     to: recipient,
     replyTo: ADMIN_EMAIL,
@@ -332,11 +338,11 @@ export async function sendUpdatedQuoteEmail(
 
           <p style="margin-top: 28px;">Please use the links below to review the updated quote and the scope of works.</p>
           <p style="margin: 28px 0;">
-            <a href="${quoteUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">View Updated Quote</a>
+            <a href="${finalQuoteUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">View Updated Quote</a>
             <a href="${scopeUrl}" style="display: inline-block; background: #0b5f74; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">View Scope of Works</a>
           </p>
 
-          <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${businessLabel}. If you have any questions or would like to discuss the next step, please reply to this email.</p>
+          <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>
         </div>
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">Secure Cleaning Aus | Melbourne & Sydney</div>
       </div>
