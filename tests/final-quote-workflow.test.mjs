@@ -84,6 +84,32 @@ test('send finalization persists sent metadata and audit atomically in the migra
   assert.match(migration, /GRANT EXECUTE .* TO service_role/)
 })
 
+test('final quote RPC ACL hardening explicitly removes browser role execution', () => {
+  const migration = readFileSync(`${root}/supabase/final_quote_rpc_acl_hardening_migration.sql`, 'utf8')
+  const signatures = [
+    'public.claim_final_quote_send(UUID, TEXT, JSONB, TEXT, INTEGER)',
+    'public.finalize_final_quote_send(TEXT, UUID, INTEGER, TIMESTAMPTZ)',
+    'public.reconcile_final_quote_send(TEXT, UUID, TEXT, TEXT, JSONB, TEXT, TIMESTAMPTZ)',
+  ]
+
+  for (const signature of signatures) {
+    const escapedSignature = signature.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    assert.match(migration, new RegExp(`REVOKE ALL PRIVILEGES ON FUNCTION ${escapedSignature} FROM PUBLIC;`))
+    assert.match(migration, new RegExp(`REVOKE ALL PRIVILEGES ON FUNCTION ${escapedSignature} FROM anon;`))
+    assert.match(migration, new RegExp(`REVOKE ALL PRIVILEGES ON FUNCTION ${escapedSignature} FROM authenticated;`))
+    assert.match(migration, new RegExp(`GRANT EXECUTE ON FUNCTION ${escapedSignature} TO service_role;`))
+  }
+})
+
+test('send-attempt table ACL hardening explicitly removes browser role privileges', () => {
+  const migration = readFileSync(`${root}/supabase/final_quote_send_attempts_acl_hardening_migration.sql`, 'utf8')
+  assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.quote_send_attempts FROM PUBLIC;/)
+  assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.quote_send_attempts FROM anon;/)
+  assert.match(migration, /REVOKE ALL PRIVILEGES ON TABLE public\.quote_send_attempts FROM authenticated;/)
+  assert.match(migration, /GRANT ALL PRIVILEGES ON TABLE public\.quote_send_attempts TO service_role;/)
+  assert.doesNotMatch(migration, /\b(?:ALTER TABLE|CREATE POLICY|DROP POLICY|SEQUENCE|OWNER TO)\b/i)
+})
+
 test('send policy locks the reviewed recipient and never retries an uncertain provider call', () => {
   assert.deepEqual(resolveFinalQuoteRecipient(' Client@Example.com ', 'client@example.com'), {
     authoritative: 'client@example.com', matches: true,
