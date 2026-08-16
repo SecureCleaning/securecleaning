@@ -14,6 +14,7 @@ interface QuoteResultViewProps {
   emailError?: string | null
   documentVariant?: 'remote_review' | 'final'
   customerEmail?: string
+  bookingHandoffToken?: string
 }
 
 const frequencyLabels: Record<string, string> = {
@@ -44,7 +45,7 @@ const timeLabels: Record<string, string> = {
   weekend: 'Weekend (sometimes cheaper!)',
 }
 
-export default function QuoteResultView({ quoteRef, result, inputs, emailSent, documentVariant = 'remote_review', customerEmail }: QuoteResultViewProps) {
+export default function QuoteResultView({ quoteRef, result, inputs, emailSent, documentVariant = 'remote_review', customerEmail, bookingHandoffToken }: QuoteResultViewProps) {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const hasEmailIssue = emailSent === false
   const roomScopeSummary = summarizePublicRoomScope(
@@ -108,6 +109,10 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <h2 className="font-bold text-gray-900 mb-4">Service Summary</h2>
         <div className="space-y-3 text-sm">
+          {inputs.businessName?.trim() ? <div className="flex justify-between gap-4">
+            <span className="text-gray-600">Company</span>
+            <span className="font-medium text-right">{inputs.businessName.trim()}</span>
+          </div> : null}
           <div className="flex justify-between">
             <span className="text-gray-600">Premises</span>
             <span className="font-medium">
@@ -177,7 +182,10 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {documentVariant !== 'final' ? <Link
-          href={`/booking?quoteRef=${quoteRef}`}
+          href={`/booking?${new URLSearchParams({
+            quoteRef,
+            ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
+          }).toString()}`}
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-bold text-white text-lg transition-all hover:opacity-90"
           style={{ backgroundColor: '#22c55e' }}
         >

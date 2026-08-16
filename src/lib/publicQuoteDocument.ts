@@ -2,7 +2,7 @@ import type { QuoteInputs, QuoteResult } from '@/lib/types'
 import type { QuoteDocumentVariant, PublicQuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
 
 export type PublicQuoteDisplayInputs = Pick<QuoteInputs,
-  'city' | 'premisesType' | 'floorArea' | 'floors' | 'frequency' | 'timePreference' | 'roomScope'
+  'businessName' | 'city' | 'premisesType' | 'floorArea' | 'floors' | 'frequency' | 'timePreference' | 'roomScope'
 > & {
   addOns: Pick<QuoteInputs['addOns'],
     'bathrooms' | 'kitchens' | 'glassCleaningRequired' | 'highTouchDisinfection' | 'carpetSteam' | 'consumables'
@@ -22,6 +22,7 @@ export function toPublicQuoteDocument(record: PublicQuoteWorkflowRecord, variant
     quoteRef: record.quoteRef,
     variant,
     inputs: {
+      businessName: source.businessName,
       city: source.city,
       premisesType: source.premisesType,
       floorArea: source.floorArea,

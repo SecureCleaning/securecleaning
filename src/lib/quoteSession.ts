@@ -1,6 +1,9 @@
 'use client'
 
 import type { BookingInputs, QuoteInputs, QuoteResult } from '@/lib/types'
+import { buildBookingPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
+
+export { buildBookingPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
 
 const QUOTE_RESULT_KEY = 'quoteResult'
 const QUOTE_DRAFT_KEY = 'quoteDraft'
@@ -47,27 +50,6 @@ export function getQuoteResult(): StoredQuoteResult | null {
     return JSON.parse(raw) as StoredQuoteResult
   } catch {
     return null
-  }
-}
-
-export function buildBookingPrefillFromQuoteInputs(quoteRef: string | undefined, quoteInputs: Partial<QuoteInputs>): Partial<BookingInputs> {
-  return {
-    quoteRef,
-    businessName: quoteInputs.businessName,
-    contactName: quoteInputs.contactName,
-    email: quoteInputs.email,
-    phone: quoteInputs.phone,
-    address: quoteInputs.address,
-    city: quoteInputs.city,
-    suburb: quoteInputs.suburb,
-    postcode: quoteInputs.postcode,
-    premisesType: quoteInputs.premisesType,
-    floorArea: quoteInputs.floorArea,
-    frequency: quoteInputs.frequency,
-    timePreference: quoteInputs.timePreference,
-    addOns: quoteInputs.addOns,
-    notes: quoteInputs.notes,
-    preferredStartDate: quoteInputs.preferredStartDate,
   }
 }
 

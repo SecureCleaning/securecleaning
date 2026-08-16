@@ -9,7 +9,8 @@ import CalendarPicker from './CalendarPicker'
 import AddressAutocomplete from './AddressAutocomplete'
 import LocalityAutocomplete from '@/components/shared/LocalityAutocomplete'
 import type { BookingInputs, City, PremisesType, CleaningFrequency, TimePreference, QuoteAddOns } from '@/lib/types'
-import { buildBookingPrefillFromQuoteInputs, getBookingPrefillFromQuote } from '@/lib/quoteSession'
+import { getBookingPrefillFromQuote } from '@/lib/quoteSession'
+import { buildBookingPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
 
 const defaultAddOns: QuoteAddOns = {
   bathrooms: 0,
@@ -122,6 +123,7 @@ export default function BookingForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const quoteRef = searchParams.get('quoteRef') ?? undefined
+  const handoffToken = searchParams.get('handoff') ?? undefined
 
   const [formData, setFormData] = useState<Partial<BookingInputs>>({
     quoteRef,
@@ -171,11 +173,23 @@ export default function BookingForm() {
     if (!quoteRef) return
 
     const controller = new AbortController()
-    fetch(`/api/quote/${encodeURIComponent(quoteRef)}`, { signal: controller.signal })
+    const privatePrefillUrl = handoffToken
+      ? `/api/quote/${encodeURIComponent(quoteRef)}/booking-prefill?handoff=${encodeURIComponent(handoffToken)}`
+      : null
+    const publicPrefillUrl = `/api/quote/${encodeURIComponent(quoteRef)}`
+
+    fetch(privatePrefillUrl ?? publicPrefillUrl, { signal: controller.signal })
       .then(async (response) => {
+        if (!response.ok && privatePrefillUrl) {
+          const fallback = await fetch(publicPrefillUrl, { signal: controller.signal })
+          if (!fallback.ok) return null
+          const fallbackPayload = await fallback.json()
+          return fallbackPayload.success && fallbackPayload.quote?.inputs ? fallbackPayload.quote.inputs : null
+        }
         if (!response.ok) return null
         const payload = await response.json()
-        return payload.success && payload.quote?.inputs ? payload.quote.inputs : null
+        if (!payload.success) return null
+        return payload.prefill ?? payload.quote?.inputs ?? null
       })
       .then((inputs) => {
         if (!inputs) return
@@ -194,7 +208,7 @@ export default function BookingForm() {
       .catch(() => undefined)
 
     return () => controller.abort()
-  }, [quoteRef, prefilledFromQuote])
+  }, [handoffToken, quoteRef, prefilledFromQuote])
 
   useEffect(() => {
     const address = formData.address?.trim()

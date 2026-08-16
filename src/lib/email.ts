@@ -5,6 +5,7 @@ import { getSiteUrl } from './siteUrl'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from './publicRoomScope'
 import type { FirmQuoteDisplayPrice } from './quoteWorkflow'
 import { getAvailabilityAssignee, getAvailabilityAssigneesForLocation, getAvailabilityConfig } from './availability'
+import { createQuoteBookingHandoffToken } from './quoteBookingAccess'
 
 /**
  * Email helper module using Resend.
@@ -134,6 +135,9 @@ export async function sendQuoteEmail(
     sanitizePublicRoomScope(inputs.roomScope).filter((room) => isBathroomRoomScopeType(room.type))
   )
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}`
+  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
+  const bookingUrl = `${SITE_URL}/booking?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
+  const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
   const quoteAssigneeEmails = await getQuoteAssigneeEmails(inputs)
 
   // Email to client
@@ -177,11 +181,11 @@ export async function sendQuoteEmail(
           <p style="margin-top: 32px;">
             Next step: request a site inspection so we can confirm your areas, requirements, and final pricing.
           </p>
-          <a href="${SITE_URL}/booking?quoteRef=${quoteRef}" 
+          <a href="${bookingUrl}"
              style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 12px;">
             Book Site Inspection
           </a>
-          <a href="${SITE_URL}/quote/${quoteRef}" 
+          <a href="${onlineQuoteUrl}"
              style="display: inline-block; background: #1a2744; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">
             View Quote Online
           </a>

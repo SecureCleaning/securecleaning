@@ -49,7 +49,7 @@ test('public documents select explicit remote-review and final variants', () => 
   assert.match(data, /createDefaultFirmQuoteDraft\(quote\.inputs/)
 })
 
-test('public quote DTO excludes workflow, staff, contact, configuration, and send metadata in both variants', () => {
+test('public quote DTO shows company while excluding contact, workflow, staff, configuration, and send metadata', () => {
   const record = {
     quoteRef: 'SC-20260814-TEST',
     inputs: {
@@ -66,6 +66,7 @@ test('public quote DTO excludes workflow, staff, contact, configuration, and sen
   for (const variant of ['remote_review', 'final']) {
     const dto = toPublicQuoteDocument(record, variant)
     assert.deepEqual(Object.keys(dto).sort(), ['inputs', 'quoteRef', 'result', 'variant'])
+    assert.equal(dto.inputs.businessName, 'Private business')
     const serialized = JSON.stringify(dto)
     for (const forbidden of ['inspectionReport', 'firmQuoteDraft', 'finalDocument', 'roomTypeConfig', 'sentAt', 'sentBy', 'sentTo', 'email', 'phone', 'address', 'notes', 'reviewedBy', 'breakdown', 'estimatedHours', 'internalLabour']) {
       assert.equal(serialized.includes(forbidden), false, `${forbidden} leaked from ${variant}`)
