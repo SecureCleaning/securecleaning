@@ -2,6 +2,7 @@ import Link from 'next/link'
 import ScopePrintButton from '@/components/scope/ScopePrintButton'
 import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
+import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,8 +13,9 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
 }
 
-export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string } }) {
+export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string } }) {
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
+  const handoff = isQuoteBookingHandoffToken(searchParams?.handoff) ? searchParams?.handoff : undefined
   const report = /^SC-\d{8}-[A-Z0-9]{4}$/.test(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant) : null
   const siteUrl = getSiteUrl()
 
@@ -69,7 +71,10 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                   <p className="mt-1 text-xs text-slate-600">Prices exclude GST</p>
                 </div>
                 {variant !== 'final' ? <Link
-                  href={`/booking?quoteRef=${encodeURIComponent(report.quoteRef)}`}
+                  href={`/booking?${new URLSearchParams({
+                    quoteRef: report.quoteRef,
+                    ...(handoff ? { handoff } : {}),
+                  }).toString()}`}
                   className="inline-flex min-h-[96px] min-w-[220px] items-center justify-center rounded-xl bg-emerald-600 px-5 py-4 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
                 >
                   Book site inspection

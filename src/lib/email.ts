@@ -134,10 +134,10 @@ export async function sendQuoteEmail(
   const bathroomScopeSummary = summarizePublicRoomScope(
     sanitizePublicRoomScope(inputs.roomScope).filter((room) => isBathroomRoomScopeType(room.type))
   )
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}`
   const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
   const bookingUrl = `${SITE_URL}/booking?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
   const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
   const quoteAssigneeEmails = await getQuoteAssigneeEmails(inputs)
 
   // Email to client
@@ -242,7 +242,7 @@ export async function sendQuoteEmail(
             ${inputs.notes ? `<p><strong>Notes:</strong><br>${inputs.notes}</p>` : ''}
 
             <p style="margin-top: 24px;">
-              <a href="${SITE_URL}/quote/${quoteRef}" style="display: inline-block; background: #1a2744; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">Open Quote</a>
+              <a href="${onlineQuoteUrl}" style="display: inline-block; background: #1a2744; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">Open Quote</a>
               <a href="${scopeUrl}" style="display: inline-block; background: #0b5f74; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">Open Scope</a>
             </p>
           </div>
@@ -254,7 +254,8 @@ export async function sendQuoteEmail(
 }
 
 export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInputs): Promise<void> {
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}`
+  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
   const businessLabel = inputs.businessName?.trim() || 'your premises'
 
   await sendEmailOrThrow({
@@ -297,9 +298,9 @@ export async function sendUpdatedQuoteEmail(
 ) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
-  const quoteUrl = `${SITE_URL}/quote/${quoteRef}`
-  const finalQuoteUrl = `${quoteUrl}?variant=final`
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?variant=final`
+  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
+  const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
   const recipient = options?.to?.trim() || inputs.email.trim()

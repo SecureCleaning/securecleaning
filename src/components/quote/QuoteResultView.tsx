@@ -192,7 +192,10 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           Book Site Inspection
         </Link> : null}
         <Link
-          href={`/scope/${quoteRef}${documentVariant === 'final' ? '?variant=final' : ''}`}
+          href={`/scope/${quoteRef}?${new URLSearchParams({
+            ...(documentVariant === 'final' ? { variant: 'final' } : {}),
+            ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
+          }).toString()}`}
           className="inline-flex items-center justify-center rounded-xl border-2 border-teal-700 px-8 py-4 text-lg font-bold text-teal-800 transition-all hover:bg-teal-50"
         >
           View Scope of Works
