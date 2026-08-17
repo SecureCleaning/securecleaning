@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import ProgressBar from '@/components/ui/ProgressBar'
 import Button from '@/components/ui/Button'
 import StepOne from './StepOne'
@@ -71,6 +71,9 @@ function validateStep(step: number, data: Partial<QuoteInputs>): StepErrors {
 
 export default function QuoteForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const quoteRef = searchParams.get('quoteRef')
+  const handoffToken = searchParams.get('handoff')
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState<Partial<QuoteInputs>>(initialData)
   const [errors, setErrors] = useState<StepErrors>({})
@@ -78,13 +81,37 @@ export default function QuoteForm() {
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (quoteRef && handoffToken) {
+      const controller = new AbortController()
+      fetch(`/api/quote/${encodeURIComponent(quoteRef)}/booking-prefill?handoff=${encodeURIComponent(handoffToken)}`, {
+        signal: controller.signal,
+      })
+        .then(async (response) => {
+          if (!response.ok) return null
+          const payload = await response.json()
+          return payload.success && payload.prefill ? payload.prefill as Partial<QuoteInputs> : null
+        })
+        .then((prefill) => {
+          if (!prefill) return
+          setFormData((current) => ({
+            ...current,
+            ...prefill,
+            formStartedAt: Date.now(),
+            acceptableUseAccepted: false,
+          }))
+        })
+        .catch(() => undefined)
+
+      return () => controller.abort()
+    }
+
     const draft = getQuoteDraft()
     if (draft) {
       setFormData((prev) => ({ ...prev, ...draft, formStartedAt: draft.formStartedAt ?? Date.now() }))
       return
     }
     setFormData((prev) => ({ ...prev, formStartedAt: Date.now() }))
-  }, [])
+  }, [handoffToken, quoteRef])
 
   useEffect(() => {
     saveQuoteDraft(formData)

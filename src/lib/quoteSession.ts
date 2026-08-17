@@ -57,12 +57,12 @@ export function getBookingPrefillFromQuote(quoteRef?: string): Partial<BookingIn
   const storedResult = getQuoteResult()
   const storedDraft = getQuoteDraft()
 
-  const quoteInputs = storedResult?.inputs ?? storedDraft
-  if (!quoteInputs) return null
-
-  if (quoteRef && storedResult?.quoteRef && storedResult.quoteRef !== quoteRef) {
+  if (quoteRef && storedResult?.quoteRef !== quoteRef) {
     return null
   }
+
+  const quoteInputs = storedResult?.inputs ?? (quoteRef ? null : storedDraft)
+  if (!quoteInputs) return null
 
   return buildBookingPrefillFromQuoteInputs(quoteRef ?? storedResult?.quoteRef, quoteInputs)
 }

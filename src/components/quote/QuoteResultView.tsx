@@ -198,7 +198,9 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           View Scope of Works
         </Link>
         <Link
-          href="/quote"
+          href={bookingHandoffToken
+            ? `/quote?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
+            : '/quote'}
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-semibold text-gray-700 text-lg border-2 border-gray-200 hover:border-gray-300 transition-all"
         >
           Recalculate
