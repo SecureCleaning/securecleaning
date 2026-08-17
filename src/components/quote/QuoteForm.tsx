@@ -89,7 +89,7 @@ export default function QuoteForm() {
         .then(async (response) => {
           if (!response.ok) return null
           const payload = await response.json()
-          return payload.success && payload.prefill ? payload.prefill as Partial<QuoteInputs> : null
+          return payload.success && payload.quotePrefill ? payload.quotePrefill as Partial<QuoteInputs> : null
         })
         .then((prefill) => {
           if (!prefill) return

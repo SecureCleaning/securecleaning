@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit } from '@/lib/abuseProtection'
 import { verifyQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
-import { buildBookingPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
+import { buildBookingPrefillFromQuoteInputs, buildQuoteEditPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
 import { getQuoteByRef } from '@/lib/quoteData'
 
 export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
@@ -19,5 +19,9 @@ export async function GET(request: NextRequest, { params }: { params: { ref: str
     return NextResponse.json({ success: false, error: 'Quote booking details are unavailable.' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, prefill: buildBookingPrefillFromQuoteInputs(quoteRef, quote.inputs) })
+  return NextResponse.json({
+    success: true,
+    prefill: buildBookingPrefillFromQuoteInputs(quoteRef, quote.inputs),
+    quotePrefill: buildQuoteEditPrefillFromQuoteInputs(quote.inputs),
+  })
 }

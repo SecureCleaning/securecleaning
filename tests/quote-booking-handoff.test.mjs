@@ -8,6 +8,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 const root = fileURLToPath(new URL('..', import.meta.url))
 const { createQuoteBookingHandoffToken, verifyQuoteBookingHandoffToken } = await import('../src/lib/quoteBookingAccess.ts')
 const { buildBookingPrefillFromQuoteInputs } = await import('../src/lib/quoteBookingPrefill.ts')
+const { buildQuoteEditPrefillFromQuoteInputs } = await import('../src/lib/quoteBookingPrefill.ts')
 
 test('booking handoff tokens are quote-bound, tamper-resistant, and expire', () => {
   const now = Date.UTC(2026, 7, 17)
@@ -35,6 +36,32 @@ test('authorized booking prefill contains customer and premises fields but not q
   assert.equal('totalLow' in prefill, false)
 })
 
+test('authorized quote edit prefill restores room selections and quote-only premises fields', () => {
+  const roomScope = [
+    { id: 'room-bathroom', type: 'bathroom', label: 'General bathroom / amenities', quantity: 2, moppingRequired: true, isCustom: false },
+    { id: 'room-meeting', type: 'meeting_room', label: 'Meeting rooms', quantity: 3, moppingRequired: false, isCustom: false },
+  ]
+  const prefill = buildQuoteEditPrefillFromQuoteInputs({
+    floors: 2,
+    flooringType: 'mixed',
+    meetingRooms: 3,
+    roomScope,
+    heardAboutUs: 'Internal workflow testing',
+    acceptableUseAccepted: true,
+    formStartedAt: 123,
+    website: 'must-not-carry',
+  })
+
+  assert.deepEqual(prefill.roomScope, roomScope)
+  assert.equal(prefill.floors, 2)
+  assert.equal(prefill.flooringType, 'mixed')
+  assert.equal(prefill.meetingRooms, 3)
+  assert.equal(prefill.heardAboutUs, 'Internal workflow testing')
+  assert.equal('acceptableUseAccepted' in prefill, false)
+  assert.equal('formStartedAt' in prefill, false)
+  assert.equal('website' in prefill, false)
+})
+
 test('private booking prefill route is token-protected and the public quote endpoint remains minimized', () => {
   const route = readFileSync(`${root}/src/app/api/quote/[ref]/booking-prefill/route.ts`, 'utf8')
   const publicRoute = readFileSync(`${root}/src/app/api/quote/[ref]/route.ts`, 'utf8')
@@ -48,10 +75,12 @@ test('private booking prefill route is token-protected and the public quote endp
   assert.match(route, /verifyQuoteBookingHandoffToken/)
   assert.match(route, /rateLimit/)
   assert.match(route, /buildBookingPrefillFromQuoteInputs/)
+  assert.match(route, /buildQuoteEditPrefillFromQuoteInputs/)
   assert.match(publicRoute, /getPublicQuoteDocumentByRef/)
   assert.doesNotMatch(publicRoute, /getQuoteByRef/)
   assert.match(bookingForm, /booking-prefill\?handoff=/)
   assert.match(quoteForm, /booking-prefill\?handoff=/)
+  assert.match(quoteForm, /payload\.quotePrefill/)
   assert.match(quoteResult, /quoteRef, handoff: bookingHandoffToken/)
   assert.match(quoteResult, /bookingHandoffToken \? \{ handoff: bookingHandoffToken \}/)
   assert.match(scopePage, /isQuoteBookingHandoffToken/)
