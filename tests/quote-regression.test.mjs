@@ -140,7 +140,23 @@ test('room scope summary includes mopping only when selected', () => {
   const summary = summarizePublicRoomScope([
     { id: 'hall', type: 'hallway', label: 'Hallway', quantity: 1, moppingRequired: true },
     { id: 'board', type: 'meeting_room', label: 'Boardroom', quantity: 1, moppingRequired: false },
+    { id: 'stairs', type: 'stairs', label: 'Stairs', quantity: 2, moppingRequired: false },
   ])
 
-  assert.deepEqual(summary, ['Hallway x1 · mopping requested', 'Boardroom x1'])
+  assert.deepEqual(summary, ['Hallway x1 · mopping requested', 'Boardroom x1', 'Stairs x2'])
+})
+
+test('stairs remain a recognized room type throughout public quote scope sanitization', () => {
+  const [stairs] = sanitizePublicRoomScope([
+    { id: 'stairs', type: 'stairs', label: '', quantity: 3, moppingRequired: true, isCustom: true },
+  ])
+
+  assert.deepEqual(stairs, {
+    id: 'stairs',
+    type: 'stairs',
+    label: 'Stairs',
+    quantity: 3,
+    moppingRequired: true,
+    isCustom: true,
+  })
 })

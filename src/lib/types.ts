@@ -35,6 +35,7 @@ export type PublicRoomScopeType =
   | 'meeting_room'
   | 'reception'
   | 'hallway'
+  | 'stairs'
   | 'breakout'
   | 'warehouse'
   | 'other'

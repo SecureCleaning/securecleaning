@@ -76,6 +76,13 @@ export const PUBLIC_ROOM_SCOPE_OPTIONS: PublicRoomScopeOption[] = [
     recommendedFor: ['office', 'medical', 'childcare', 'industrial', 'retail', 'gym', 'warehouse', 'function_centre', 'sports_facility', 'other'],
   },
   {
+    type: 'stairs',
+    label: 'Stairs',
+    description: 'Internal staircases, landings and handrails that need to be included in the cleaning scope.',
+    allowMopping: true,
+    recommendedFor: [],
+  },
+  {
     type: 'breakout',
     label: 'Breakout / staff area',
     description: 'Lunchrooms, shared staff hubs and breakout spaces.',
