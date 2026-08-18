@@ -91,3 +91,21 @@ test('private booking prefill route is token-protected and the public quote endp
   assert.match(email, /href="\$\{onlineQuoteUrl\}"[^>]*>Open Quote/)
   assert.doesNotMatch(email, /href="\$\{SITE_URL\}\/quote\/\$\{quoteRef\}"/)
 })
+
+test('quote workflow destinations request a new browser tab without changing resend behavior', () => {
+  const quoteResult = readFileSync(`${root}/src/components/quote/QuoteResultView.tsx`, 'utf8')
+  const scopePage = readFileSync(`${root}/src/app/scope/[ref]/page.tsx`, 'utf8')
+  const dashboard = readFileSync(`${root}/src/components/admin/AdminDashboard.tsx`, 'utf8')
+  const email = readFileSync(`${root}/src/lib/email.ts`, 'utf8')
+
+  for (const label of ['Book Site Inspection', 'View Scope of Works', 'Recalculate']) {
+    assert.match(quoteResult, new RegExp(`target="_blank"[\\s\\S]{0,500}${label}`))
+  }
+  assert.match(scopePage, /target="_blank"[\s\S]{0,500}Book site inspection/)
+  assert.match(dashboard, /href=\{`\/quote\/\$\{quote\.quote_ref\}`\}[\s\S]{0,200}target="_blank"/)
+  assert.match(dashboard, /onClick=\{\(\) => handleQuoteResend\(quote\.quote_ref\)\}/)
+
+  for (const destination of ['bookingUrl', 'onlineQuoteUrl', 'scopeUrl', 'finalQuoteUrl']) {
+    assert.match(email, new RegExp(`href="\\$\\{${destination}\\}" target="_blank" rel="noopener noreferrer"`))
+  }
+})

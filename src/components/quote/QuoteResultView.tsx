@@ -186,6 +186,8 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
             quoteRef,
             ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
           }).toString()}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-bold text-white text-lg transition-all hover:opacity-90"
           style={{ backgroundColor: '#22c55e' }}
         >
@@ -196,6 +198,8 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
             ...(documentVariant === 'final' ? { variant: 'final' } : {}),
             ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
           }).toString()}`}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center justify-center rounded-xl border-2 border-teal-700 px-8 py-4 text-lg font-bold text-teal-800 transition-all hover:bg-teal-50"
         >
           View Scope of Works
@@ -204,6 +208,8 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           href={bookingHandoffToken
             ? `/quote?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
             : '/quote'}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-semibold text-gray-700 text-lg border-2 border-gray-200 hover:border-gray-300 transition-all"
         >
           Recalculate

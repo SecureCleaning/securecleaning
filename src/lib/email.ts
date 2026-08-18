@@ -181,15 +181,15 @@ export async function sendQuoteEmail(
           <p style="margin-top: 32px;">
             Next step: request a site inspection so we can confirm your areas, requirements, and final pricing.
           </p>
-          <a href="${bookingUrl}"
+          <a href="${bookingUrl}" target="_blank" rel="noopener noreferrer"
              style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 12px;">
             Book Site Inspection
           </a>
-          <a href="${onlineQuoteUrl}"
+          <a href="${onlineQuoteUrl}" target="_blank" rel="noopener noreferrer"
              style="display: inline-block; background: #1a2744; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">
             View Quote Online
           </a>
-          <a href="${scopeUrl}"
+          <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer"
              style="display: inline-block; background: #0b5f74; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 12px;">
             View Scope of Works
           </a>
@@ -242,8 +242,8 @@ export async function sendQuoteEmail(
             ${inputs.notes ? `<p><strong>Notes:</strong><br>${inputs.notes}</p>` : ''}
 
             <p style="margin-top: 24px;">
-              <a href="${onlineQuoteUrl}" style="display: inline-block; background: #1a2744; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">Open Quote</a>
-              <a href="${scopeUrl}" style="display: inline-block; background: #0b5f74; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">Open Scope</a>
+              <a href="${onlineQuoteUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #1a2744; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">Open Quote</a>
+              <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #0b5f74; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">Open Scope</a>
             </p>
           </div>
         </div>
@@ -274,7 +274,7 @@ export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInput
           <p>Your client scope of works for <strong>${businessLabel}</strong> is ready to view online.</p>
           <p>The report lists the planned areas, regular tasks, and options selected for your remote quotation. Any agreed changes can be reflected in the same online report.</p>
           <p style="margin: 28px 0; text-align: center;">
-            <a href="${scopeUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Scope of Works</a>
+            <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Scope of Works</a>
           </p>
           <p style="color: #64748b; font-size: 13px;">Reference: ${quoteRef}<br>This link is provided by Secure Cleaning Aus and should be used as the current version of the report.</p>
         </div>
@@ -343,8 +343,8 @@ export async function sendUpdatedQuoteEmail(
 
           <p style="margin-top: 28px;">Please use the links below to review the updated quote and the scope of works.</p>
           <p style="margin: 28px 0;">
-            <a href="${finalQuoteUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">View Updated Quote</a>
-            <a href="${scopeUrl}" style="display: inline-block; background: #0b5f74; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">View Scope of Works</a>
+            <a href="${finalQuoteUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">View Updated Quote</a>
+            <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #0b5f74; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">View Scope of Works</a>
           </p>
 
           <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>

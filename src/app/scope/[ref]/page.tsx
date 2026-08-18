@@ -75,6 +75,8 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                     quoteRef: report.quoteRef,
                     ...(handoff ? { handoff } : {}),
                   }).toString()}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex min-h-[96px] min-w-[220px] items-center justify-center rounded-xl bg-emerald-600 px-5 py-4 text-center text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
                 >
                   Book site inspection

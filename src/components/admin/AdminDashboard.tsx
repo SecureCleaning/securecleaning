@@ -508,6 +508,8 @@ export default function AdminDashboard({ initialData }: Props) {
                           </button>
                           <a
                             href={`/quote/${quote.quote_ref}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300 text-center"
                           >
                             View quote
