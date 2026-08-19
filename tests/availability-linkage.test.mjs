@@ -155,3 +155,15 @@ test('admin schedule links are encoded and destination pages retain role-bound a
   assert.match(agentPageSource, /hasAvailabilityAgentSession\(assigneeId\)/)
   assert.match(agentPageSource, /apiPath=\{`\/api\/availability-agent\/\$\{assigneeId\}`\}/)
 })
+
+test('agent schedule explains the suburb and postcode coverage for every inspection zone', () => {
+  const editorSource = source('src/components/availability/AssigneeAvailabilityEditor.tsx')
+  const agentRouteSource = source('src/app/api/availability-agent/[assigneeId]/route.ts')
+
+  assert.match(editorSource, /Inspection zone coverage/)
+  assert.match(editorSource, /zone\.matchTerms\.map/)
+  assert.match(editorSource, /zone\.postcodes\.map/)
+  assert.match(editorSource, /<details key=\{zone\.id\}/)
+  assert.match(agentRouteSource, /zones: config\.zones\.filter\(\(zone\) => zone\.city === assignee\.city\)/)
+  assert.doesNotMatch(editorSource, /body: JSON\.stringify\(\{ weeklySlots, oneOffBlocks, zones \}\)/)
+})

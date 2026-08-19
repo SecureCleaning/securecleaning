@@ -372,6 +372,51 @@ export default function AssigneeAvailabilityEditor({
             </div>
           </section>
 
+          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-bold" style={{ color: '#1a2744' }}>Inspection zone coverage</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Expand a zone to see the suburbs, area names, and postcodes it covers before assigning it to a slot.
+              </p>
+            </div>
+            {zones.length > 0 ? (
+              <div className="space-y-3">
+                {zones.map((zone) => (
+                  <details key={zone.id} className="group rounded-xl border border-gray-200 bg-gray-50 open:bg-white">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3 text-sm font-semibold text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600">
+                      <span>{zone.name}</span>
+                      <span className="shrink-0 text-xs font-medium text-teal-700 group-open:hidden">View coverage</span>
+                      <span className="hidden shrink-0 text-xs font-medium text-teal-700 group-open:inline">Hide coverage</span>
+                    </summary>
+                    <div className="grid gap-4 border-t border-gray-200 px-4 py-4 md:grid-cols-2">
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Suburbs and areas</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {zone.matchTerms.length > 0 ? zone.matchTerms.map((term) => (
+                            <span key={term} className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-700">{term}</span>
+                          )) : <span className="text-sm text-gray-500">No suburb or area terms configured.</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Postcodes</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {zone.postcodes.length > 0 ? zone.postcodes.map((postcode) => (
+                            <span key={postcode} className="rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 font-mono text-xs font-semibold text-teal-900">{postcode}</span>
+                          )) : <span className="text-sm text-gray-500">No postcodes configured.</span>}
+                        </div>
+                      </div>
+                      {zone.notes ? <p className="text-sm text-gray-600 md:col-span-2"><span className="font-semibold text-gray-700">Zone notes:</span> {zone.notes}</p> : null}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500">
+                No inspection zones are configured for this city yet.
+              </p>
+            )}
+          </section>
+
           <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-center justify-between gap-4 mb-5">
               <div>
