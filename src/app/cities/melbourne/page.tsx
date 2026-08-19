@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Commercial Cleaning Melbourne — Secure Cleaning Aus',
   description:
     'Professional commercial cleaning services across Melbourne CBD, inner suburbs, and greater metro area. Verified Owner-Operators. Get an instant quote.',
+  alternates: { canonical: '/cities/melbourne' },
 }
 
 const suburbs = [

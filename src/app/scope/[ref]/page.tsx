@@ -1,10 +1,16 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import ScopePrintButton from '@/components/scope/ScopePrintButton'
 import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 
 export const dynamic = 'force-dynamic'
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false, noarchive: true },
+}
 
 function formatDate(value?: string | null) {
   if (!value) return null
@@ -20,18 +26,7 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
   const siteUrl = getSiteUrl()
 
   if (!report) {
-    return (
-      <div className="min-h-screen bg-slate-50 px-6 py-20">
-        <div className="mx-auto max-w-lg rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-teal-700">Secure Cleaning Aus</p>
-          <h1 className="text-3xl font-bold text-slate-900">Scope not found</h1>
-          <p className="mt-3 text-slate-600">This scope link may be incorrect, expired, or no longer available.</p>
-          <Link href="/" className="mt-6 inline-flex rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white hover:bg-teal-800">
-            Visit securecleaning.com.au
-          </Link>
-        </div>
-      </div>
-    )
+    notFound()
   }
 
   const validUntil = formatDate(report.validUntil)

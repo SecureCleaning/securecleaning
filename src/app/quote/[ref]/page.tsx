@@ -1,33 +1,19 @@
-import Link from 'next/link'
+import type { Metadata } from 'next'
+import { notFound } from 'next/navigation'
 import QuoteResultView from '@/components/quote/QuoteResultView'
 import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
 import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+
+export const metadata: Metadata = {
+  robots: { index: false, follow: false, noarchive: true },
+}
 
 export default async function QuoteByRefPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string } }) {
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
   const quote = await getPublicQuoteDocumentByRef(params.ref, variant)
 
   if (!quote) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="text-center max-w-md">
-          <div className="text-5xl mb-4">🔍</div>
-          <h1 className="text-2xl font-bold mb-2" style={{ color: '#1a2744' }}>
-            Quote not found
-          </h1>
-          <p className="text-gray-600 mb-6">
-            This quote could not be found. It may have expired or the reference may be incorrect.
-          </p>
-          <Link
-            href="/quote"
-            className="inline-flex items-center px-6 py-3 rounded-lg font-semibold text-white transition-all"
-            style={{ backgroundColor: '#22c55e' }}
-          >
-            Get a New Quote
-          </Link>
-        </div>
-      </div>
-    )
+    notFound()
   }
 
   return (

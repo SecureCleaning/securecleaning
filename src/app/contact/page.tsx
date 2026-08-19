@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Contact Secure Cleaning Aus',
   description:
     'Get in touch with Secure Cleaning Aus. We service Melbourne and Sydney businesses.',
+  alternates: { canonical: '/contact' },
 }
 
 export default async function ContactPage() {

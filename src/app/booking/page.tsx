@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: 'Book a Site Inspection',
   description:
     'Book a site inspection for your commercial premises in Melbourne or Sydney.',
+  alternates: { canonical: '/booking' },
 }
 
 export default async function BookingPage() {

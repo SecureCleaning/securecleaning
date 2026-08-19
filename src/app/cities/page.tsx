@@ -5,6 +5,7 @@ import { getContentValue, getPublicContentMap } from '@/lib/content'
 export const metadata: Metadata = {
   title: 'Cities We Service — Melbourne & Sydney',
   description: 'Secure Cleaning Aus operates in Melbourne and Sydney. Find your local Owner-Operator.',
+  alternates: { canonical: '/cities' },
 }
 
 export default async function CitiesPage() {

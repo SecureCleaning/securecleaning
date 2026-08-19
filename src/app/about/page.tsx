@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'About Secure Cleaning Aus',
   description:
     'Learn about Secure Cleaning Aus and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
+  alternates: { canonical: '/about' },
 }
 
 export default async function AboutPage() {

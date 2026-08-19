@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Commercial Cleaning Services',
   description:
     'Professional commercial cleaning for offices, medical centres, childcare, retail, function centres, sports facilities, and gyms in Melbourne and Sydney.',
+  alternates: { canonical: '/services' },
 }
 
 const serviceDefaults = [

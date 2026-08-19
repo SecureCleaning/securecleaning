@@ -5,6 +5,7 @@ import { getContentValue, getPublicContentMap } from '@/lib/content'
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions',
   description: 'Answers to common questions about Secure Cleaning Aus services, pricing, Owner-Operators, and how the booking process works.',
+  alternates: { canonical: '/faq' },
 }
 
 const FAQ_DEFAULTS = [

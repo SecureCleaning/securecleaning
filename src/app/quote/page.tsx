@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Get an Instant Commercial Cleaning Quote',
   description:
     'Answer a few questions about your premises and get an instant estimate for commercial cleaning in Melbourne or Sydney. No obligation.',
+  alternates: { canonical: '/quote' },
 }
 
 export default async function QuotePage() {

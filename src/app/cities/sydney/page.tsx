@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Commercial Cleaning Sydney — Secure Cleaning Aus',
   description:
     'Professional commercial cleaning services across Sydney CBD, North Shore, Eastern Suburbs, Western Sydney, and surrounds. Verified Owner-Operators. Get an instant quote.',
+  alternates: { canonical: '/cities/sydney' },
 }
 
 const suburbs = [
