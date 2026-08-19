@@ -87,6 +87,8 @@ export interface QuoteInputs {
   address?: string
   suburb: string
   postcode: string
+  latitude?: number
+  longitude?: number
 
   // Premises
   premisesType: PremisesType
@@ -161,6 +163,8 @@ export interface BookingInputs {
   city: City
   suburb: string
   postcode: string
+  latitude?: number
+  longitude?: number
   premisesType: PremisesType
   floorArea: number
   frequency: CleaningFrequency

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAvailabilityConfig, saveAvailabilityConfig } from '@/lib/availability'
+import { getAvailabilityConfig, saveAvailabilityConfig, validateAvailabilityZoneConfig } from '@/lib/availability'
 import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     if (!config || typeof config !== 'object') {
       return NextResponse.json({ error: 'Invalid availability config.' }, { status: 400 })
     }
+    const zoneConfigError = validateAvailabilityZoneConfig(config)
+    if (zoneConfigError) return NextResponse.json({ error: zoneConfigError }, { status: 400 })
 
     if (Array.isArray(config.assignees)) {
       const usernames: string[] = config.assignees.map((assignee: { username?: string }) =>

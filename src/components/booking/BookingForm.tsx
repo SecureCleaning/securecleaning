@@ -229,7 +229,15 @@ export default function BookingForm() {
     const timeout = window.setTimeout(async () => {
       try {
         const response = await fetch(
-          `/api/availability?city=${encodeURIComponent(city)}&address=${encodeURIComponent(address ?? '')}&suburb=${encodeURIComponent(suburb ?? '')}&postcode=${encodeURIComponent(postcode ?? '')}&preferredDate=${encodeURIComponent(formData.preferredStartDate ?? '')}`,
+          `/api/availability?${new URLSearchParams({
+            city,
+            address: address ?? '',
+            suburb: suburb ?? '',
+            postcode: postcode ?? '',
+            preferredDate: formData.preferredStartDate ?? '',
+            ...(Number.isFinite(formData.latitude) ? { latitude: String(formData.latitude) } : {}),
+            ...(Number.isFinite(formData.longitude) ? { longitude: String(formData.longitude) } : {}),
+          }).toString()}`,
           { signal: controller.signal }
         )
         const result = await response.json()
@@ -310,7 +318,7 @@ export default function BookingForm() {
       controller.abort()
       window.clearTimeout(timeout)
     }
-  }, [formData.address, formData.city, formData.preferredStartDate, formData.suburb, formData.postcode])
+  }, [formData.address, formData.city, formData.latitude, formData.longitude, formData.preferredStartDate, formData.suburb, formData.postcode])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -384,12 +392,14 @@ export default function BookingForm() {
               required
               city={formData.city}
               value={formData.address ?? ''}
-              onChange={(value) => update({ address: value })}
+              onChange={(value) => update({ address: value, latitude: undefined, longitude: undefined })}
               onSelect={(suggestion) =>
                 update({
                   address: suggestion.value,
                   suburb: suggestion.suburb ?? formData.suburb ?? '',
                   postcode: suggestion.postcode ?? formData.postcode ?? '',
+                  latitude: suggestion.latitude ? Number(suggestion.latitude) : undefined,
+                  longitude: suggestion.longitude ? Number(suggestion.longitude) : undefined,
                 })
               }
               error={errors.address}
@@ -411,7 +421,7 @@ export default function BookingForm() {
             suburbError={errors.suburb}
             postcodeError={errors.postcode}
             required
-            onChange={({ suburb, postcode }) => update({ suburb, postcode })}
+            onChange={({ suburb, postcode }) => update({ suburb, postcode, latitude: undefined, longitude: undefined })}
           />
         </div>
       </section>

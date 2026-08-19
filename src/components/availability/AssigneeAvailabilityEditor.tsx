@@ -405,6 +405,18 @@ export default function AssigneeAvailabilityEditor({
                           )) : <span className="text-sm text-gray-500">No postcodes configured.</span>}
                         </div>
                       </div>
+                      {(zone.anchors ?? []).length > 0 ? <div className="md:col-span-2">
+                        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Radius coverage</h3>
+                        <ul className="mt-2 space-y-1 text-sm text-gray-700">
+                          {(zone.anchors ?? []).map((anchor) => (
+                            <li key={anchor.id}><span className="font-semibold">{anchor.label}</span> — within {anchor.radiusKm} km</li>
+                          ))}
+                        </ul>
+                      </div> : null}
+                      {((zone.excludedMatchTerms ?? []).length > 0 || (zone.excludedPostcodes ?? []).length > 0) ? <div className="md:col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                        <span className="font-semibold">Excluded from this zone:</span>{' '}
+                        {[...(zone.excludedMatchTerms ?? []), ...(zone.excludedPostcodes ?? [])].join(', ')}
+                      </div> : null}
                       {zone.notes ? <p className="text-sm text-gray-600 md:col-span-2"><span className="font-semibold text-gray-700">Zone notes:</span> {zone.notes}</p> : null}
                     </div>
                   </details>

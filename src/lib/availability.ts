@@ -18,8 +18,21 @@ export type ServiceZone = {
   city: City
   matchTerms: string[]
   postcodes: string[]
+  excludedMatchTerms?: string[]
+  excludedPostcodes?: string[]
+  anchors?: ServiceZoneAnchor[]
   notes?: string
 }
+
+export type ServiceZoneAnchor = {
+  id: string
+  label: string
+  latitude: number
+  longitude: number
+  radiusKm: number
+}
+
+export type AvailabilityMatchMethod = 'postcode' | 'suburb' | 'radius' | 'none'
 
 export type WeeklyAvailabilitySlot = {
   id: string
@@ -83,6 +96,7 @@ export type AvailabilitySuggestion = {
 
 export type AvailabilityCalendarResult = {
   zoneMatched: boolean
+  matchMethod: AvailabilityMatchMethod
   matchedZoneNames: string[]
   suggestions: AvailabilitySuggestion[]
   availableDates: string[]
@@ -268,6 +282,57 @@ function sanitizeList(value: unknown): string[] {
     : []
 }
 
+function sanitizeCoordinate(value: unknown, minimum: number, maximum: number): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null
+}
+
+function sanitizeZoneAnchors(value: unknown, zoneId: string): ServiceZoneAnchor[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((anchor, index) => {
+    if (!anchor || typeof anchor !== 'object') return []
+    const source = anchor as Partial<ServiceZoneAnchor>
+    const latitude = sanitizeCoordinate(source.latitude, -44, -10)
+    const longitude = sanitizeCoordinate(source.longitude, 112, 154)
+    const radiusKm = Number(source.radiusKm)
+    if (latitude === null || longitude === null || !Number.isFinite(radiusKm) || radiusKm < 0.1 || radiusKm > 100) return []
+    return [{
+      id: String(source.id || `${zoneId}-anchor-${index + 1}`).slice(0, 120),
+      label: String(source.label || `Anchor ${index + 1}`).slice(0, 120),
+      latitude,
+      longitude,
+      radiusKm,
+    }]
+  }).slice(0, 40)
+}
+
+export function validateAvailabilityZoneConfig(candidate: unknown): string | null {
+  if (!candidate || typeof candidate !== 'object') return 'Availability configuration is invalid.'
+  const zones = (candidate as { zones?: unknown }).zones
+  if (!Array.isArray(zones)) return 'Service zones must be a list.'
+  const zoneIds = new Set<string>()
+  for (const [zoneIndex, zone] of zones.entries()) {
+    if (!zone || typeof zone !== 'object') return `Zone ${zoneIndex + 1} is invalid.`
+    const source = zone as Partial<ServiceZone>
+    const zoneId = String(source.id ?? '').trim()
+    if (!zoneId || zoneIds.has(zoneId)) return 'Every service zone must have a unique ID.'
+    zoneIds.add(zoneId)
+    if (!String(source.name ?? '').trim()) return `Zone ${zoneId} must have a name.`
+    if (!['melbourne', 'sydney'].includes(String(source.city ?? ''))) return `Zone ${zoneId} has an invalid city.`
+    if (!Array.isArray(source.matchTerms) || !Array.isArray(source.postcodes)) return `Zone ${zoneId} has invalid coverage lists.`
+    if ((source.anchors ?? []).length > 40) return `Zone ${zoneId} has too many radius anchors.`
+    for (const [anchorIndex, anchor] of (source.anchors ?? []).entries()) {
+      const latitude = sanitizeCoordinate(anchor.latitude, -44, -10)
+      const longitude = sanitizeCoordinate(anchor.longitude, 112, 154)
+      const radiusKm = Number(anchor.radiusKm)
+      if (!String(anchor.label ?? '').trim() || latitude === null || longitude === null || !Number.isFinite(radiusKm) || radiusKm < 0.1 || radiusKm > 100) {
+        return `Anchor ${anchorIndex + 1} in zone ${zoneId} must have a name, Australian coordinates, and a radius from 0.1 to 100 km.`
+      }
+    }
+  }
+  return null
+}
+
 function mergeConfig(candidate: unknown): AvailabilityConfig {
   const fallback = cloneDefaultConfig()
 
@@ -282,14 +347,20 @@ function mergeConfig(candidate: unknown): AvailabilityConfig {
       maxSlotsToShow: Number(source.settings?.maxSlotsToShow ?? fallback.settings.maxSlotsToShow),
     },
     zones: Array.isArray(source.zones)
-      ? source.zones.map((zone, index) => ({
-          id: String(zone?.id ?? `zone-${index + 1}`),
-          name: String(zone?.name ?? `Zone ${index + 1}`),
-          city: zone?.city === 'sydney' ? 'sydney' : 'melbourne',
-          matchTerms: sanitizeList(zone?.matchTerms),
-          postcodes: sanitizeList(zone?.postcodes),
-          notes: typeof zone?.notes === 'string' ? zone.notes : '',
-        }))
+      ? source.zones.map((zone, index) => {
+          const zoneId = String(zone?.id ?? `zone-${index + 1}`)
+          return {
+            id: zoneId,
+            name: String(zone?.name ?? `Zone ${index + 1}`),
+            city: zone?.city === 'sydney' ? 'sydney' : 'melbourne',
+            matchTerms: sanitizeList(zone?.matchTerms),
+            postcodes: sanitizeList(zone?.postcodes),
+            excludedMatchTerms: sanitizeList(zone?.excludedMatchTerms),
+            excludedPostcodes: sanitizeList(zone?.excludedPostcodes),
+            anchors: sanitizeZoneAnchors(zone?.anchors, zoneId),
+            notes: typeof zone?.notes === 'string' ? zone.notes : '',
+          }
+        })
       : fallback.zones,
     assignees: Array.isArray(source.assignees)
       ? source.assignees.map((assignee, index) => {
@@ -354,21 +425,69 @@ function extractPostcode(address: string): string | null {
 }
 
 export function findMatchingZones(searchText: string, city: City, config: AvailabilityConfig): ServiceZone[] {
+  return matchServiceZones({ address: searchText }, city, config.zones).zones
+}
+
+function haversineDistanceKm(latitudeA: number, longitudeA: number, latitudeB: number, longitudeB: number) {
+  const toRadians = (degrees: number) => degrees * Math.PI / 180
+  const latitudeDelta = toRadians(latitudeB - latitudeA)
+  const longitudeDelta = toRadians(longitudeB - longitudeA)
+  const value = Math.sin(latitudeDelta / 2) ** 2
+    + Math.cos(toRadians(latitudeA)) * Math.cos(toRadians(latitudeB)) * Math.sin(longitudeDelta / 2) ** 2
+  return 6371.0088 * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value))
+}
+
+export function matchServiceZones(
+  location: { address?: string; suburb?: string; postcode?: string; latitude?: number; longitude?: number },
+  city: City,
+  zones: ServiceZone[],
+): { zones: ServiceZone[]; method: AvailabilityMatchMethod; distanceKm?: number } {
+  const searchText = [location.address, location.suburb, location.postcode].filter(Boolean).join(' ')
   const normalizedAddress = normalizeText(searchText)
-  const postcode = extractPostcode(searchText)
+  const postcode = location.postcode?.match(/^\d{4}$/)?.[0] ?? extractPostcode(searchText)
+  const latitude = sanitizeCoordinate(location.latitude, -44, -10)
+  const longitude = sanitizeCoordinate(location.longitude, 112, 154)
+  const exactPostcode: ServiceZone[] = []
+  const exactTerm: ServiceZone[] = []
+  const radiusMatches: Array<{ zone: ServiceZone; distanceKm: number }> = []
 
-  return config.zones.filter((zone) => {
-    if (zone.city !== city) return false
-
+  for (const zone of zones) {
+    if (zone.city !== city) continue
+    const excludedByPostcode = Boolean(postcode && (zone.excludedPostcodes ?? []).includes(postcode))
+    const excludedByTerm = (zone.excludedMatchTerms ?? []).some((term) => {
+      const normalizedTerm = normalizeText(term)
+      return normalizedTerm.length > 0 && normalizedAddress.includes(normalizedTerm)
+    })
+    if (excludedByPostcode || excludedByTerm) continue
+    if (postcode && zone.postcodes.includes(postcode)) {
+      exactPostcode.push(zone)
+      continue
+    }
     const termMatch = zone.matchTerms.some((term) => {
       const normalizedTerm = normalizeText(term)
       return normalizedTerm.length > 0 && normalizedAddress.includes(normalizedTerm)
     })
+    if (termMatch) {
+      exactTerm.push(zone)
+      continue
+    }
+    if (latitude !== null && longitude !== null) {
+      const distances = (zone.anchors ?? []).map((anchor) => ({
+        distanceKm: haversineDistanceKm(latitude, longitude, anchor.latitude, anchor.longitude),
+        radiusKm: anchor.radiusKm,
+      }))
+      const nearest = distances.filter((candidate) => candidate.distanceKm <= candidate.radiusKm + 0.000001)
+        .sort((a, b) => a.distanceKm - b.distanceKm)[0]
+      if (nearest) radiusMatches.push({ zone, distanceKm: nearest.distanceKm })
+    }
+  }
 
-    const postcodeMatch = Boolean(postcode && zone.postcodes.includes(postcode))
-
-    return termMatch || postcodeMatch
-  })
+  if (exactPostcode.length > 0) return { zones: exactPostcode, method: 'postcode' }
+  if (exactTerm.length > 0) return { zones: exactTerm, method: 'suburb' }
+  radiusMatches.sort((a, b) => a.distanceKm - b.distanceKm || a.zone.id.localeCompare(b.zone.id))
+  return radiusMatches.length > 0
+    ? { zones: radiusMatches.map((match) => match.zone), method: 'radius', distanceKm: radiusMatches[0].distanceKm }
+    : { zones: [], method: 'none' }
 }
 
 export function getAssigneeServiceZones(config: AvailabilityConfig, assigneeId: string) {
@@ -382,13 +501,11 @@ export function getAssigneeServiceZones(config: AvailabilityConfig, assigneeId: 
 }
 
 export function locationMatchesServiceZones(
-  location: { address?: string; suburb?: string; postcode?: string },
+  location: { address?: string; suburb?: string; postcode?: string; latitude?: number; longitude?: number },
   city: City,
   zones: ServiceZone[],
 ) {
-  const searchText = [location.address, location.suburb, location.postcode].filter(Boolean).join(' ')
-  if (!searchText.trim()) return false
-  return findMatchingZones(searchText, city, { ...DEFAULT_AVAILABILITY_CONFIG, zones }).length > 0
+  return matchServiceZones(location, city, zones).zones.length > 0
 }
 
 function getWeekdayForDate(dateString: string): Weekday | null {
@@ -698,22 +815,23 @@ export async function getAvailabilityAssigneesForLocation(
 }
 
 export async function getAvailabilityCalendar(
-  location: { address?: string; suburb?: string; postcode?: string },
+  location: { address?: string; suburb?: string; postcode?: string; latitude?: number; longitude?: number },
   city: City,
   preferredDate?: string,
   daysToShow = 90
 ): Promise<AvailabilityCalendarResult> {
   const searchText = [location.address, location.suburb, location.postcode].filter(Boolean).join(' ')
   if (!searchText.trim()) {
-    return { zoneMatched: false, matchedZoneNames: [], suggestions: [], availableDates: [] }
+    return { zoneMatched: false, matchMethod: 'none', matchedZoneNames: [], suggestions: [], availableDates: [] }
   }
 
   const config = await getAvailabilityConfig()
-  const matchingZones = findMatchingZones(searchText, city, config)
+  const match = matchServiceZones(location, city, config.zones)
+  const matchingZones = match.zones
   const matchedZoneNames = matchingZones.map((zone) => zone.name)
 
   if (matchingZones.length === 0) {
-    return { zoneMatched: false, matchedZoneNames, suggestions: [], availableDates: [] }
+    return { zoneMatched: false, matchMethod: 'none', matchedZoneNames, suggestions: [], availableDates: [] }
   }
 
   const calendarDate = getCalendarStartDate()
@@ -738,6 +856,7 @@ export async function getAvailabilityCalendar(
 
   return {
     zoneMatched: true,
+    matchMethod: match.method,
     matchedZoneNames,
     suggestions,
     availableDates,

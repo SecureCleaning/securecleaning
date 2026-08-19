@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'One or more fields are too long.' }, { status: 400 })
     }
 
-    const rawInputs = body as QuoteInputs
+    const untrustedInputs = body as QuoteInputs
+    const { latitude: _browserLatitude, longitude: _browserLongitude, ...rawInputs } = untrustedInputs
     const identityLimit =
       rateLimitValue(rawInputs.email, { key: 'quote:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
       rateLimitValue(rawInputs.phone, { key: 'quote:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??

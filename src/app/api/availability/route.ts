@@ -14,6 +14,10 @@ export async function GET(request: NextRequest) {
   const suburb = searchParams.get('suburb')?.trim() ?? ''
   const postcode = searchParams.get('postcode')?.trim() ?? ''
   const preferredDate = searchParams.get('preferredDate')?.trim() ?? ''
+  const latitudeText = searchParams.get('latitude')?.trim() ?? ''
+  const longitudeText = searchParams.get('longitude')?.trim() ?? ''
+  const latitude = latitudeText ? Number(latitudeText) : undefined
+  const longitude = longitudeText ? Number(longitudeText) : undefined
   const city = searchParams.get('city') as City | null
 
   if (!city || !['melbourne', 'sydney'].includes(city)) {
@@ -29,12 +33,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Search value is too long.' }, { status: 400 })
   }
 
+  if (
+    (latitudeText && (!Number.isFinite(latitude) || latitude! < -44 || latitude! > -10))
+    || (longitudeText && (!Number.isFinite(longitude) || longitude! < 112 || longitude! > 154))
+    || Boolean(latitudeText) !== Boolean(longitudeText)
+  ) {
+    return NextResponse.json({ error: 'Coordinates are invalid.' }, { status: 400 })
+  }
+
   if (!address && !suburb && !postcode) {
-    return NextResponse.json({ suggestions: [], availableDates: [], zoneMatched: false, matchedZoneNames: [] })
+    return NextResponse.json({ suggestions: [], availableDates: [], zoneMatched: false, matchMethod: 'none', matchedZoneNames: [] })
   }
 
   const availability = await getAvailabilityCalendar(
-    { address, suburb, postcode },
+    { address, suburb, postcode, latitude, longitude },
     city,
     preferredDate || undefined
   )

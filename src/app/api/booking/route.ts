@@ -6,6 +6,7 @@ import { getAvailabilityAssignee, getAvailabilityCalendar, getAvailabilityConfig
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { BookingInputs } from '@/lib/types'
 import { createSiteFromBooking, findMatchingSiteForBooking } from '@/lib/siteMatching'
+import { verifyAddressCoordinates } from '@/lib/addressGeocoding'
 import {
   limitString,
   rateLimit,
@@ -54,7 +55,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'One or more fields are too long.' }, { status: 400 })
     }
 
-    const inputs = body as BookingInputs
+    const rawInputs = body as BookingInputs
+    const { latitude: _browserLatitude, longitude: _browserLongitude, ...inputs } = rawInputs
     const businessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
     const identityLimit =
       rateLimitValue(inputs.email, { key: 'booking:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
     if (identityLimit) return identityLimit
 
     // ── Validate required fields ──────────────────────────────────────────
-    const required: (keyof BookingInputs)[] = [
+    const required: (keyof typeof inputs)[] = [
       'contactName',
       'email',
       'phone',
@@ -114,11 +116,28 @@ export async function POST(request: NextRequest) {
     let inspectionScheduledFor: string | null = null
     let assignedOperatorId: string | null = null
     if (inputs.preferredInspectionSlotId && inputs.preferredInspectionSlotId !== 'contact_me') {
-      const availability = await getAvailabilityCalendar(
-        { address: inputs.address, suburb: inputs.suburb, postcode: inputs.postcode },
+      const location = { address: inputs.address, suburb: inputs.suburb, postcode: inputs.postcode }
+      let availability = await getAvailabilityCalendar(
+        location,
         inputs.city,
         inputs.preferredStartDate,
       )
+      if (!availability.suggestions.some((suggestion) => suggestion.slotId === inputs.preferredInspectionSlotId)) {
+        const verifiedCoordinates = await verifyAddressCoordinates(
+          inputs.address,
+          inputs.suburb,
+          inputs.postcode,
+          inputs.city,
+        )
+        if (verifiedCoordinates) {
+          availability = await getAvailabilityCalendar(
+            { ...location, ...verifiedCoordinates },
+            inputs.city,
+            inputs.preferredStartDate,
+          )
+          bookingInputs = { ...bookingInputs, ...verifiedCoordinates }
+        }
+      }
       const selectedSuggestion = availability.suggestions.find(
         (suggestion) => suggestion.slotId === inputs.preferredInspectionSlotId,
       )

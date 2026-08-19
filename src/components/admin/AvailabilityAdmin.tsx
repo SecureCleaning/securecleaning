@@ -6,6 +6,7 @@ import type {
   AvailabilityAssignee,
   AvailabilityConfig,
   ServiceZone,
+  ServiceZoneAnchor,
 } from '@/lib/availability'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
@@ -20,6 +21,24 @@ function fromCsv(value: string): string[] {
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function toAnchorLines(anchors: ServiceZoneAnchor[] = []): string {
+  return anchors.map((anchor) => `${anchor.label} | ${anchor.latitude} | ${anchor.longitude} | ${anchor.radiusKm}`).join('\n')
+}
+
+function fromAnchorLines(value: string, zoneId: string): ServiceZoneAnchor[] {
+  return value.split('\n').flatMap((line, index) => {
+    const [label, latitudeText, longitudeText, radiusText] = line.split('|').map((part) => part.trim())
+    if (!label && !latitudeText && !longitudeText && !radiusText) return []
+    return [{
+      id: `${zoneId}-anchor-${index + 1}`,
+      label: label || `Anchor ${index + 1}`,
+      latitude: Number(latitudeText),
+      longitude: Number(longitudeText),
+      radiusKm: Number(radiusText),
+    }]
+  })
 }
 
 function slugifyUsername(value: string) {
@@ -112,7 +131,7 @@ export default function AvailabilityAdmin({
       ...current,
       zones: [
         ...current.zones,
-        { id, name: 'New Zone', city: 'melbourne', matchTerms: [], postcodes: [], notes: '' },
+        { id, name: 'New Zone', city: 'melbourne', matchTerms: [], postcodes: [], excludedMatchTerms: [], excludedPostcodes: [], anchors: [], notes: '' },
       ],
     }))
   }
@@ -495,6 +514,43 @@ export default function AvailabilityAdmin({
                       onChange={(event) => updateZone(zone.id, { matchTerms: fromCsv(event.target.value) })}
                       className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                     />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Excluded suburbs / areas (comma separated)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={toCsv(zone.excludedMatchTerms ?? [])}
+                        onChange={(event) => updateZone(zone.id, { excludedMatchTerms: fromCsv(event.target.value) })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Excluded postcodes (comma separated)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={toCsv(zone.excludedPostcodes ?? [])}
+                        onChange={(event) => updateZone(zone.id, { excludedPostcodes: fromCsv(event.target.value) })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-gray-700">
+                      Radius anchors — name | latitude | longitude | radius km (one per line)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={toAnchorLines(zone.anchors)}
+                      onChange={(event) => updateZone(zone.id, { anchors: fromAnchorLines(event.target.value, zone.id) })}
+                      placeholder="Chatswood | -33.7969 | 151.1831 | 10"
+                      className="block w-full rounded-lg border border-gray-300 px-4 py-3 font-mono text-sm"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Exact postcode and suburb matches take priority. Exclusions override both exact and radius matches.</p>
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium text-gray-700">
