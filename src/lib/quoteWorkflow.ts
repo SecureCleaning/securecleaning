@@ -2,7 +2,7 @@ import { calculateQuote } from '@/lib/quoteEngine'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRoomScope'
 import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePreference } from '@/lib/types'
-import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeConfigById, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeConfigById, type QuoteRoomTypeConfig, type RoomMetricFieldConfig } from '@/lib/roomTypeConfig'
 import { isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 export { getFinalQuoteReadiness, isEditableFirmQuoteStatus, isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 
@@ -32,6 +32,8 @@ export type WorkflowRoomItem = {
   size: number
   floor: number
   metrics?: Record<string, number | boolean>
+  customMetricFields?: RoomMetricFieldConfig[]
+  excludedMetricFieldIds?: string[]
   moppingEnabled?: boolean
   moppingMinutesPerSqm?: number
   pricingOverride?: boolean
@@ -127,6 +129,31 @@ function buildDefaultMetrics(roomTypeId: WorkflowRoomType, roomTypeConfig: Quote
   return Object.fromEntries((roomType?.fields ?? []).map((field) => [field.id, field.defaultValue]))
 }
 
+export function getWorkflowRoomMetricFields(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
+  const excluded = new Set(room.excludedMetricFieldIds ?? [])
+  const systemFields = (getRoomTypeConfigById(roomTypeConfig, room.type)?.fields ?? []).filter((field) => !excluded.has(field.id))
+  return [...systemFields, ...(room.customMetricFields ?? [])].slice(0, 30)
+}
+
+function sanitizeCustomMetricFields(value: unknown): RoomMetricFieldConfig[] {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 20).flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const source = candidate as Partial<RoomMetricFieldConfig>
+    const id = typeof source.id === 'string' && source.id.trim() ? source.id.trim().slice(0, 64) : `custom_${index + 1}`
+    const inputType = source.inputType === 'boolean' || source.inputType === 'number' ? source.inputType : 'integer'
+    return [{
+      id,
+      label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 80) : `Custom field ${index + 1}`,
+      inputType,
+      defaultValue: inputType === 'boolean' ? Boolean(source.defaultValue) : safePositiveNumber(source.defaultValue, 0),
+      includedUnits: safePositiveNumber(source.includedUnits, 0),
+      pricePerUnit: safePositiveNumber(source.pricePerUnit, 0),
+      helpText: typeof source.helpText === 'string' ? source.helpText.trim().slice(0, 120) : '',
+    }]
+  })
+}
+
 function buildPublicBathroomMetrics(scopeType: string, metrics: Record<string, number | boolean>) {
   if (scopeType === 'female_bathroom') {
     return { ...metrics, toilets: 1, basins: 1, urinals: 0, disabled_toilet: 0 }
@@ -157,6 +184,8 @@ export function createRoomItem(
     size: roomType?.defaultSize ?? (type === 'bathroom' || type === 'kitchen' ? 0 : 20),
     floor: 1,
     metrics: buildDefaultMetrics(type, roomTypeConfig),
+    customMetricFields: [],
+    excludedMetricFieldIds: [],
     moppingEnabled: roomType?.defaultMopping ?? false,
     moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
     pricingOverride: false,
@@ -304,6 +333,10 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         size: safePositiveNumber(source.size, 0),
         floor: safePositiveInteger(source.floor, 1),
         metrics,
+        customMetricFields: sanitizeCustomMetricFields(source.customMetricFields),
+        excludedMetricFieldIds: Array.isArray(source.excludedMetricFieldIds)
+          ? source.excludedMetricFieldIds.filter((id): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 30)
+          : [],
         moppingEnabled: typeof source.moppingEnabled === 'boolean'
           ? source.moppingEnabled
           : getRoomTypeConfigById(roomTypeConfig, type)?.defaultMopping ?? false,
@@ -494,10 +527,10 @@ export function getRoomAreaAllocations(
 
 export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
   return draft.roomItems.reduce((sum, room) => {
-    const config = getRoomTypeConfigById(roomTypeConfig, room.type)
-    if (!config?.fields?.length) return sum
+    const fields = getWorkflowRoomMetricFields(room, roomTypeConfig)
+    if (!fields.length) return sum
 
-    const roomTotal = config.fields.reduce((fieldSum, field) => {
+    const roomTotal = fields.reduce((fieldSum, field) => {
       const value = room.metrics?.[field.id]
       return fieldSum + getMetricExtra(field, value ?? field.defaultValue)
     }, 0)

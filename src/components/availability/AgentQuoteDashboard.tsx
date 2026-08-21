@@ -51,9 +51,14 @@ export default function AgentQuoteDashboard({
   return (
     <main className="min-h-screen bg-gray-50 py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold" style={{ color: '#1a2744' }}>My regional quotes</h1>
-          <p className="mt-2 text-gray-600">Quotes assigned to {assigneeName} in the {city} service region.</p>
+        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold" style={{ color: '#1a2744' }}>My regional quotes</h1>
+            <p className="mt-2 text-gray-600">Quotes assigned to {assigneeName} in the {city} service region.</p>
+          </div>
+          <a href="/quote" target="_blank" rel="noreferrer" className="inline-flex rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700">
+            + Create new quote
+          </a>
         </div>
 
         <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">

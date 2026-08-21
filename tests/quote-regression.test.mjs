@@ -7,6 +7,8 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
+const { getRoomMetricExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG } = await import('../src/lib/roomTypeConfig.ts')
 const {
   deriveQuoteAddOnCountsFromRoomScope,
   defaultMoppingRequiredForType,
@@ -99,6 +101,19 @@ test('quote engine prices a standard bathroom at the configured base charge', ()
 
   assert.equal(result.breakdown.addOnsDetail.bathroomsTotal, 8)
   assert.equal(result.addOnsTotal, 8)
+})
+
+test('quote room fields can exclude saved fields and price quote-specific blank fields', () => {
+  const draft = {
+    roomItems: [{
+      id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1,
+      metrics: { bins: 99, extra_desks: 5 },
+      excludedMetricFieldIds: ['bins'],
+      customMetricFields: [{ id: 'extra_desks', label: 'Extra desks', inputType: 'integer', defaultValue: 0, includedUnits: 1, pricePerUnit: 2 }],
+    }],
+  }
+
+  assert.equal(getRoomMetricExtraTotal(draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), 16)
 })
 
 test('room scope derives bathroom and kitchen counts from selected rooms', () => {

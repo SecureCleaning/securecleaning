@@ -11,12 +11,13 @@ import {
   deriveQuoteInputsFromRooms,
   getRoomAreaAllocationTotal,
   getRoomPricingBreakdown,
+  getWorkflowRoomMetricFields,
   type FirmQuoteDraft,
   type InspectionReport,
   type WorkflowRoomItem,
   type WorkflowRoomType,
 } from '@/lib/quoteWorkflow'
-import { getRoomTypeConfigById, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { getRoomTypeConfigById, type QuoteRoomTypeConfig, type RoomMetricFieldConfig } from '@/lib/roomTypeConfig'
 
 type Props = {
   quote: QuoteWorkflowRecord
@@ -129,6 +130,13 @@ export default function QuoteWorkflowEditor({
     () => roomTypeConfig.roomTypes.map((roomType) => [roomType.id as WorkflowRoomType, roomType.label] as const),
     [roomTypeConfig]
   )
+  const systemMetricFieldOptions = useMemo(() => {
+    const fields = new Map<string, RoomMetricFieldConfig>()
+    roomTypeConfig.roomTypes.forEach((roomType) => roomType.fields.forEach((field) => {
+      if (!fields.has(field.id)) fields.set(field.id, field)
+    }))
+    return [...fields.values()]
+  }, [roomTypeConfig])
 
   function openPreview(options?: { smooth?: boolean }) {
     const behavior = options?.smooth === false ? 'auto' : 'smooth'
@@ -325,6 +333,54 @@ export default function QuoteWorkflowEditor({
         ? current.roomItems.filter((room) => room.id !== roomId)
         : current.roomItems,
     }))
+  }
+
+  function addBlankMetricField(room: WorkflowRoomItem) {
+    const id = `custom_${Date.now().toString(36)}`
+    updateRoom(room.id, {
+      customMetricFields: [...(room.customMetricFields ?? []), {
+        id,
+        label: 'New field',
+        inputType: 'integer',
+        defaultValue: 0,
+        includedUnits: 0,
+        pricePerUnit: 0,
+        helpText: '',
+      }],
+      metrics: { ...(room.metrics ?? {}), [id]: 0 },
+    })
+  }
+
+  function addSystemMetricField(room: WorkflowRoomItem, fieldId: string) {
+    const field = systemMetricFieldOptions.find((candidate) => candidate.id === fieldId)
+    if (!field) return
+    const belongsToRoomType = getRoomTypeConfigById(roomTypeConfig, room.type)?.fields.some((candidate) => candidate.id === fieldId)
+    updateRoom(room.id, {
+      excludedMetricFieldIds: (room.excludedMetricFieldIds ?? []).filter((id) => id !== fieldId),
+      customMetricFields: belongsToRoomType || (room.customMetricFields ?? []).some((candidate) => candidate.id === fieldId)
+        ? room.customMetricFields ?? []
+        : [...(room.customMetricFields ?? []), { ...field }],
+      metrics: { ...(room.metrics ?? {}), [fieldId]: field.defaultValue },
+    })
+  }
+
+  function removeMetricField(room: WorkflowRoomItem, fieldId: string) {
+    const isCustom = (room.customMetricFields ?? []).some((field) => field.id === fieldId)
+    const metrics = { ...(room.metrics ?? {}) }
+    delete metrics[fieldId]
+    updateRoom(room.id, isCustom ? {
+      customMetricFields: (room.customMetricFields ?? []).filter((field) => field.id !== fieldId),
+      metrics,
+    } : {
+      excludedMetricFieldIds: [...new Set([...(room.excludedMetricFieldIds ?? []), fieldId])],
+      metrics,
+    })
+  }
+
+  function updateCustomMetricField(room: WorkflowRoomItem, fieldId: string, patch: Partial<RoomMetricFieldConfig>) {
+    updateRoom(room.id, {
+      customMetricFields: (room.customMetricFields ?? []).map((field) => field.id === fieldId ? { ...field, ...patch } : field),
+    })
   }
 
   const previewSection = (
@@ -837,6 +893,8 @@ export default function QuoteWorkflowEditor({
                               label: nextTypeConfig?.defaultLabel ?? nextTypeConfig?.label ?? room.label,
                               size: nextTypeConfig?.defaultSize ?? 0,
                               metrics: Object.fromEntries((nextTypeConfig?.fields ?? []).map((field) => [field.id, field.defaultValue])),
+                              customMetricFields: [],
+                              excludedMetricFieldIds: [],
                               moppingEnabled: nextTypeConfig?.defaultMopping ?? false,
                               pricingOverride: false,
                               pricingAdjustmentPercent: nextTypeConfig?.pricingAdjustmentPercent ?? 0,
@@ -996,11 +1054,42 @@ export default function QuoteWorkflowEditor({
                         ) : null}
                       </div>
                     </div>
-                    {typeConfig?.fields?.length ? (
-                      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        {typeConfig.fields.map((field) => (
-                          <label key={field.id} className="text-sm">
-                            <span className="mb-1 block font-medium text-gray-700">{field.label}</span>
+                    <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-gray-800">Extra fields</div>
+                          <div className="text-xs text-gray-500">Use a saved room field or add a blank one for this quote.</div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <select
+                            defaultValue=""
+                            onChange={(event) => {
+                              if (event.target.value) addSystemMetricField(room, event.target.value)
+                              event.target.value = ''
+                            }}
+                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold"
+                          >
+                            <option value="">Add saved field…</option>
+                            {systemMetricFieldOptions.filter((field) => !getWorkflowRoomMetricFields(room, roomTypeConfig).some((active) => active.id === field.id)).map((field) => (
+                              <option key={field.id} value={field.id}>{field.label}</option>
+                            ))}
+                          </select>
+                          <button type="button" onClick={() => addBlankMetricField(room)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700">
+                            + Blank field
+                          </button>
+                        </div>
+                      </div>
+                      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                        {getWorkflowRoomMetricFields(room, roomTypeConfig).map((field) => {
+                          const isCustom = (room.customMetricFields ?? []).some((candidate) => candidate.id === field.id)
+                          return (
+                          <div key={field.id} className="rounded-lg bg-gray-50 p-3 text-sm">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              {isCustom ? (
+                                <input value={field.label} onChange={(event) => updateCustomMetricField(room, field.id, { label: event.target.value })} aria-label="Custom field label" className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 font-medium" />
+                              ) : <span className="font-medium text-gray-700">{field.label}</span>}
+                              <button type="button" onClick={() => removeMetricField(room, field.id)} className="text-xs font-semibold text-red-600">Remove</button>
+                            </div>
                             {field.inputType === 'boolean' ? (
                               <select
                                 value={room.metrics?.[field.id] === true ? 'true' : 'false'}
@@ -1030,13 +1119,18 @@ export default function QuoteWorkflowEditor({
                                 className="w-full rounded-xl border border-gray-300 px-3 py-3"
                               />
                             )}
-                            <span className="mt-1 block text-xs text-gray-500">
-                              {field.helpText?.trim() ? field.helpText : describeFieldPricing(field.label, field.pricePerUnit)}
-                            </span>
-                          </label>
-                        ))}
+                            {isCustom ? (
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                <label className="text-xs text-gray-500">Price / unit<input type="number" min="0" step="0.1" value={field.pricePerUnit ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { pricePerUnit: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
+                                <label className="text-xs text-gray-500">Included<input type="number" min="0" step="1" value={field.includedUnits ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { includedUnits: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
+                              </div>
+                            ) : null}
+                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() ? field.helpText : describeFieldPricing(field.label, field.pricePerUnit)}</span>
+                          </div>
+                        )})}
+                        {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}
                       </div>
-                    ) : null}
+                    </div>
                         </>
                       )
                     })()}

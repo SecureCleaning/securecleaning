@@ -20,7 +20,7 @@ export async function withAdminPage(
         <div className="mx-auto max-w-xl px-4 text-center">
           <h1 className="mb-3 text-2xl font-bold" style={{ color: '#1a2744' }}>Regional agent access</h1>
           <p className="mb-6 text-gray-600">Use the agent portal to manage your regional quotes, bookings, and inspection calendar.</p>
-          <Link href="/availability/login" className="inline-flex rounded-lg bg-green-600 px-5 py-3 font-semibold text-white">Open agent portal</Link>
+          <Link href="/agent" className="inline-flex rounded-lg bg-green-600 px-5 py-3 font-semibold text-white">Open agent portal</Link>
         </div>
       </div>
     )

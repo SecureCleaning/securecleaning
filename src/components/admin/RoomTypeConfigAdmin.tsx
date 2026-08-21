@@ -34,22 +34,6 @@ function createField(): RoomMetricFieldConfig {
   }
 }
 
-function formatPricingExplanation(field: RoomMetricFieldConfig) {
-  const rate = Number(field.pricePerUnit ?? 0)
-  if (!Number.isFinite(rate) || rate === 0) {
-    return `${field.label || 'This field'} does not currently affect the quote total.`
-  }
-
-  if (field.inputType === 'boolean') {
-    return `If selected, this adds $${rate.toFixed(2)} per visit.`
-  }
-
-  const included = Number(field.includedUnits ?? 0)
-  return included > 0
-    ? `First ${included} included; each additional ${field.label || 'unit'} adds $${rate.toFixed(2)} per visit.`
-    : `Each ${field.label || 'unit'} adds $${rate.toFixed(2)} per unit, per visit.`
-}
-
 export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: QuoteRoomTypeConfig }) {
   const [config, setConfig] = useState<QuoteRoomTypeConfig>(initialConfig)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
@@ -343,7 +327,7 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
 
                   <div className="space-y-4">
                     {roomType.fields.map((field, fieldIndex) => (
-                      <div key={`room-field-row-${roomTypeIndex}-${fieldIndex}`} className="rounded-xl border border-gray-200 p-4">
+                      <div key={`room-field-row-${roomTypeIndex}-${fieldIndex}`} className="rounded-xl border border-gray-200 p-3">
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Field ID</span>
@@ -410,29 +394,26 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
                               placeholder="0"
                             />
                           </label>
-                          <div className="flex items-end">
-                            <button
-                              type="button"
-                              onClick={() => removeField(roomType.id, field.id)}
-                              className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                            >
-                              Remove field
-                            </button>
-                          </div>
                         </div>
-                        <label className="mt-3 block text-sm">
-                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Internal help text</span>
-                          <textarea
+                        <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_140px] md:items-end">
+                          <label className="block text-sm">
+                          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Internal help (10–15 words)</span>
+                          <input
                             value={field.helpText ?? ''}
                             onChange={(event) => updateField(roomType.id, field.id, { helpText: event.target.value })}
                             className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                            rows={2}
-                            placeholder="Explain this field to internal users"
+                            maxLength={120}
+                            placeholder="Briefly explain what to count and how it affects price"
                           />
-                        </label>
-                        <p className="mt-2 text-xs text-gray-500">
-                          {field.helpText?.trim() ? field.helpText : formatPricingExplanation(field)}
-                        </p>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeField(roomType.id, field.id)}
+                            className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
+                          >
+                            Remove field
+                          </button>
+                        </div>
                       </div>
                     ))}
                     {roomType.fields.length === 0 ? (
