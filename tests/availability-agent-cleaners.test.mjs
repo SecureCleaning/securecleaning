@@ -85,7 +85,7 @@ test('agent email derives recipient and active template metadata on the server',
   assert.doesNotMatch(route, /body\?\.to|body\?\.templateName|body\?\.sentBy/)
 })
 
-test('agent responses use explicit least-data projections and throttle after authentication', () => {
+test('agent responses expose full regional cleaner records while keeping email history minimized', () => {
   const cleaners = read('src/lib/cleaners.ts')
   assert.match(cleaners, /AGENT_CLEANER_LIST_SELECT/)
   assert.match(cleaners, /AGENT_CLEANER_DETAIL_SELECT/)
@@ -96,12 +96,24 @@ test('agent responses use explicit least-data projections and throttle after aut
   assert.ok(commentRoute.indexOf('getCleanerAgentContext') < commentRoute.indexOf('rateLimit(request'))
 })
 
-test('agent portal exposes cleaner navigation without admin mutation routes', () => {
+test('agent portal exposes state-scoped cleaner record and document mutations', () => {
   const nav = read('src/components/availability/AvailabilityAgentNav.tsx')
   const page = read('src/app/availability/cleaners/[assigneeId]/page.tsx')
   const component = read('src/components/availability/AgentCleaners.tsx')
   assert.match(nav, /availability\/cleaners\/\$\{assigneeId\}/)
   assert.match(page, /hasAvailabilityAgentSession\(assigneeId\)/)
-  assert.match(component, /Cleaner records and email templates are read-only/)
-  assert.doesNotMatch(component, /method:\s*['"](?:PATCH|DELETE)['"]|\/import|\/export/)
+  assert.match(component, /can create and manage all cleaner record details/)
+  assert.match(component, /method: creating \? 'POST' : 'PATCH'/)
+  assert.match(component, /method: 'DELETE'/)
+  assert.match(component, /Upload document/)
+  for (const path of [
+    'src/app/api/availability-agent/[assigneeId]/cleaners/route.ts',
+    'src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/route.ts',
+    'src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/documents/route.ts',
+    'src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/documents/[documentId]/route.ts',
+  ]) {
+    const route = read(path)
+    assert.match(route, /getCleanerAgentContext/)
+    assert.match(route, /context\.state/)
+  }
 })

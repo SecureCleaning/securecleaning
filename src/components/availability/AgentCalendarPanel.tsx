@@ -128,7 +128,7 @@ export default function AgentCalendarPanel({
     return map
   }, [calendarEvents])
 
-  const upcomingCount = calendarEvents.filter((event) => new Date(event.startsAt) >= new Date()).length
+  const upcomingCount = calendarEvents.filter((event) => event.kind === 'booking' && new Date(event.startsAt) >= new Date()).length
 
   function beginEdit(event: AgentCalendarEvent) {
     setSelectedEvent(null)
@@ -197,7 +197,7 @@ export default function AgentCalendarPanel({
           </p>
         </div>
         <div className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600">
-          {upcomingCount} upcoming event{upcomingCount === 1 ? '' : 's'}
+          {upcomingCount} upcoming client visit{upcomingCount === 1 ? '' : 's'}
         </div>
       </div>
 

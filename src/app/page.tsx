@@ -85,18 +85,6 @@ export default async function HomePage() {
       ][index]),
     }
   })
-  const testimonials = [1, 2, 3].map((item) => ({
-    name: getContentValue(content, `home.testimonial_${item}_name`, ['Sarah M.', 'James T.', 'Priya K.'][item - 1]),
-    business: getContentValue(content, `home.testimonial_${item}_business`, ['Parkville Medical Centre', 'East Sydney Co-Working', 'Little Stars Childcare'][item - 1]),
-    city: getContentValue(content, `home.testimonial_${item}_city`, ['Melbourne', 'Sydney', 'Melbourne'][item - 1]),
-    quote: getContentValue(content, `home.testimonial_${item}_quote`, [
-      "Switched from a national franchise 18 months ago. The difference is night and day — our operator treats our clinic like it's their own business. Because it is.",
-      'Loved that I could get an instant quote online and book without playing phone tag. Our space has been spotless since day one.',
-      "As a childcare centre, we need someone we can trust completely. Our operator came in for a site induction before starting and hasn't missed a clean in 8 months.",
-    ][item - 1]),
-    rating: 5,
-  }))
-
   return (
     <>
       <section
@@ -328,40 +316,6 @@ export default async function HomePage() {
                 </span>
               </div>
             </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
-              {getContentValue(content, 'home.testimonials_title', 'What Our Clients Say')}
-            </h2>
-            <p className="text-lg text-gray-600">
-              {getContentValue(content, 'home.testimonials_subtitle', "Don't take our word for it.")}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {testimonials.map((t) => (
-              <div key={t.name} className="bg-gray-50 rounded-xl p-6 border border-gray-100">
-                <div className="flex gap-0.5 mb-4">
-                  {Array.from({ length: t.rating }).map((_, i) => (
-                    <span key={i} className="text-yellow-400 text-lg">★</span>
-                  ))}
-                </div>
-                <p className="text-gray-700 leading-relaxed mb-6 italic">
-                  &ldquo;{t.quote}&rdquo;
-                </p>
-                <div>
-                  <p className="font-semibold text-gray-900">{t.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {t.business} · {t.city}
-                  </p>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </section>

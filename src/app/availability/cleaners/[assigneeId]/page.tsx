@@ -14,8 +14,9 @@ export default async function AvailabilityCleanersPage({ params }: { params: Pro
   const assignee = getAvailabilityAssignee(config, assigneeId)
 
   if (!assignee?.active) return <div className="p-10 text-center">Agent not found.</div>
-  if (!assignee.accessCodeHash) return <div className="p-10 text-center">Agent access is not configured yet.</div>
-  if (!(await hasAvailabilityAgentSession(assigneeId))) {
+  const authenticated = await hasAvailabilityAgentSession(assigneeId)
+  if (!assignee.accessCodeHash && !authenticated) return <div className="p-10 text-center">Agent access is not configured yet.</div>
+  if (!authenticated) {
     return <AvailabilityAgentLogin assigneeId={assigneeId} assigneeName={assignee.name} defaultUsername={assignee.username ?? ''} lockUsername={Boolean(assignee.username)} redirectPath={`/availability/cleaners/${assigneeId}`} />
   }
 

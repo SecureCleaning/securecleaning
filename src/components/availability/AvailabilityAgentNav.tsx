@@ -18,7 +18,7 @@ export default function AvailabilityAgentNav({
       await fetch('/api/availability-agent/session', { method: 'DELETE' })
       await fetch('/api/admin/session', { method: 'DELETE' })
     } finally {
-      window.location.assign('/availability/login')
+      window.location.assign('/agent')
     }
   }
 
@@ -28,8 +28,8 @@ export default function AvailabilityAgentNav({
       className="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm"
     >
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-        <a href="/availability/login" className="font-semibold text-gray-900 hover:text-teal-700">
-          Agent login
+        <a href="/agent" className="font-semibold text-gray-900 hover:text-teal-700">
+          Agent portal
         </a>
         {assigneeId ? (
           <a href={`/availability/quoters/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">

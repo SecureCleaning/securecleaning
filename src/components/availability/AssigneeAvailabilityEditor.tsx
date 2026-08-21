@@ -214,11 +214,11 @@ export default function AssigneeAvailabilityEditor({
                 ) : null}
                 {calendarFeedUrl ? (
                   <div className="w-full rounded-xl border border-teal-200 bg-teal-50 p-4">
-                    <div className="text-sm font-bold text-teal-950">Google Calendar sync</div>
-                    <p className="mt-1 text-sm text-teal-900">In Google Calendar, choose <strong>Other calendars +</strong>, then <strong>From URL</strong>, and paste this private feed link. New, moved, and cancelled Secure Cleaning appointments will appear after Google refreshes the subscription.</p>
+                    <div className="text-sm font-bold text-teal-950">Client visits in your calendar</div>
+                    <p className="mt-1 text-sm text-teal-900">Copy the private feed link, then in Google Calendar choose <strong>Other calendars +</strong> and <strong>From URL</strong>. Only booked client visits are published. Availability windows and block-outs stay in this portal.</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <a href={calendarFeedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-900 hover:border-teal-400">Open private ICS feed</a>
-                      <button type="button" onClick={async () => { await navigator.clipboard.writeText(calendarFeedUrl); setFeedCopied(true); window.setTimeout(() => setFeedCopied(false), 2000) }} className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-900 hover:border-teal-400">{feedCopied ? 'Feed link copied' : 'Copy feed link'}</button>
+                      <button type="button" onClick={async () => { await navigator.clipboard.writeText(calendarFeedUrl); setFeedCopied(true); window.setTimeout(() => setFeedCopied(false), 2000) }} className="inline-flex items-center justify-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800">{feedCopied ? 'Feed link copied' : 'Copy calendar subscription link'}</button>
+                      <a href={calendarFeedUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-900 hover:border-teal-400">Preview ICS file</a>
                     </div>
                     <p className="mt-2 break-all text-xs text-teal-800">Keep this private: anyone with the link can view this agent&apos;s calendar feed.</p>
                   </div>

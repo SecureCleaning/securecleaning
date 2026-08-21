@@ -49,7 +49,8 @@ export async function GET(
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 
-  const events = await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: true })
+  const events = (await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: false }))
+    .filter((event) => event.kind === 'booking')
 
   const body = [
     'BEGIN:VCALENDAR',

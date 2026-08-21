@@ -559,7 +559,7 @@ export default function QuoteWorkflowEditor({
       <div className="grid gap-6">
         <div className="contents">
           <details open className="order-1 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <summary className="cursor-pointer">
+            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-xl font-bold" style={{ color: '#1a2744' }}>Original Remote Quote</h2>
                 <span className="text-sm font-semibold text-gray-500">Expand / collapse</span>
@@ -652,32 +652,27 @@ export default function QuoteWorkflowEditor({
             </div>
 
             <div className="mt-4 space-y-4">
-              {[
-                ['summary', 'Inspection summary'],
-                ['accessNotes', 'Access / security notes'],
-                ['parkingNotes', 'Parking / arrival notes'],
-                ['alarmNotes', 'Alarm / key / lockup notes'],
-                ['riskNotes', 'Risks / cleaning constraints'],
-                ['exclusions', 'Exclusions / priced separately'],
-                ['followUpActions', 'Follow-up actions before final quote'],
-              ].map(([key, label]) => (
-                <label key={key} className="block text-sm">
-                  <span className="mb-1 block font-medium text-gray-700">{label}</span>
-                  <textarea
-                    value={inspectionReport[key as keyof InspectionReport] as string}
-                    onChange={(event) => setInspectionReport((current) => ({ ...current, [key]: event.target.value }))}
-                    rows={key === 'summary' ? 5 : 3}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3"
-                  />
-                </label>
-              ))}
+              <label className="block text-sm">
+                <span className="mb-1 flex flex-wrap items-center gap-2 font-medium text-gray-700">
+                  Inspection summary
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Internal only</span>
+                </span>
+                <textarea
+                  value={inspectionReport.summary}
+                  onChange={(event) => setInspectionReport((current) => ({ ...current, summary: event.target.value }))}
+                  rows={5}
+                  placeholder="Record access, parking, security, risks, exclusions, and follow-up actions needed by staff or the agent."
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3"
+                />
+                <span className="mt-1 block text-xs text-gray-500">This is operational information and is never shown in the client quote or scope.</span>
+              </label>
             </div>
           </section>
         </div>
 
         <div className="contents">
           <details open className="order-2 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <summary className="cursor-pointer">
+            <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold" style={{ color: '#1a2744' }}>Firm Quote Draft</h2>
@@ -805,7 +800,7 @@ export default function QuoteWorkflowEditor({
               <div className="space-y-3">
                 {firmQuoteDraft.roomItems.map((room) => (
                   <details key={room.id} className="rounded-xl border border-gray-200">
-                    <summary className="cursor-pointer p-4">
+                    <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <div className="font-semibold" style={{ color: '#1a2744' }}>{room.label || room.type}</div>
@@ -1133,23 +1128,21 @@ export default function QuoteWorkflowEditor({
               </div>
             </div>
 
-            <div className="mt-6 space-y-4">
-              {[
-                ['scopeSummary', 'Scope summary'],
-                ['inclusions', 'Included services'],
-                ['exclusions', 'Exclusions / assumptions'],
-                ['serviceCommentary', 'Client commentary'],
-              ].map(([key, label]) => (
-                <label key={key} className="block text-sm">
-                  <span className="mb-1 block font-medium text-gray-700">{label}</span>
-                  <textarea
-                    value={firmQuoteDraft[key as keyof FirmQuoteDraft] as string}
-                    onChange={(event) => setFirmQuoteDraft((current) => ({ ...current, [key]: event.target.value }))}
-                    rows={key === 'scopeSummary' ? 3 : 4}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-3"
-                  />
-                </label>
-              ))}
+            <div className="mt-6">
+              <label className="block text-sm">
+                <span className="mb-1 flex flex-wrap items-center gap-2 font-medium text-gray-700">
+                  Scope summary
+                  <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">Client visible</span>
+                </span>
+                <textarea
+                  value={firmQuoteDraft.scopeSummary}
+                  onChange={(event) => setFirmQuoteDraft((current) => ({ ...current, scopeSummary: event.target.value }))}
+                  rows={4}
+                  placeholder="Summarise the agreed services, important exclusions, and assumptions in client-ready language."
+                  className="w-full rounded-xl border border-gray-300 px-4 py-3"
+                />
+                <span className="mt-1 block text-xs text-gray-500">This appears in the client scope. Do not include keys, alarm details, hazards, staff actions, or other internal notes.</span>
+              </label>
             </div>
             </div>
           </details>

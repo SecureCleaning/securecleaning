@@ -154,18 +154,19 @@ export type AgentCleanerDetail = {
   cleaner: AgentCleanerRecord
   comments: CleanerComment[]
   emails: AgentCleanerEmailHistory[]
+  documents: CleanerDocument[]
 }
 
 export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'suburb' | 'state' | 'status'>
-export type AgentCleanerRecord = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'phone' | 'address' | 'suburb' | 'postcode' | 'city' | 'state' | 'status' | 'services' | 'service_areas' | 'preferred_work' | 'compliance_status' | 'notes'>
+export type AgentCleanerRecord = CleanerRecord
 export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'template_name' | 'created_at' | 'sent_at'>
 
 const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, suburb, state, status'
-const AGENT_CLEANER_DETAIL_SELECT = 'id, business_name, first_name, last_name, contact_name, email, phone, address, suburb, postcode, city, state, status, services, service_areas, preferred_work, compliance_status, notes'
 const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at'
 
 const CLEANER_SELECT =
   'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
+const AGENT_CLEANER_DETAIL_SELECT = CLEANER_SELECT
 
 const COMMENT_SELECT = 'id, cleaner_id, author_name, comment, created_at'
 const TEMPLATE_SELECT = 'id, name, description, subject, body, is_active, created_at, updated_at'
@@ -505,15 +506,17 @@ export async function getCleanerDetailForState(cleanerId: string, state: string)
 
   if (cleanerError || !cleaner) throw new Error('Cleaner not found.')
 
-  const [{ data: comments }, { data: emails }] = await Promise.all([
+  const [{ data: comments }, { data: emails }, { data: documents }] = await Promise.all([
     db.from('cleaner_comments').select(COMMENT_SELECT).eq('cleaner_id', cleanerId).order('created_at', { ascending: false }).limit(30),
     db.from('cleaner_emails').select(AGENT_EMAIL_HISTORY_SELECT).eq('cleaner_id', cleanerId).order('created_at', { ascending: false }).limit(30),
+    db.from('cleaner_documents').select(DOCUMENT_SELECT).eq('cleaner_id', cleanerId).order('created_at', { ascending: false }).limit(50),
   ])
 
   return {
     cleaner: cleaner as AgentCleanerRecord,
     comments: (comments ?? []) as CleanerComment[],
     emails: (emails ?? []) as AgentCleanerEmailHistory[],
+    documents: (documents ?? []) as CleanerDocument[],
   }
 }
 
@@ -521,6 +524,30 @@ async function assertCleanerInState(cleanerId: string, state: string) {
   const { data, error } = await getAdminSupabase().from('cleaners').select('id')
     .eq('id', cleanerId).eq('state', cleanString(state, 8).toUpperCase()).single()
   if (error || !data) throw new Error('Cleaner not found.')
+}
+
+export async function createCleanerForState(payload: CleanerPayload, state: string, actor: CleanerAuditActor) {
+  return createCleaner({ ...payload, state: cleanString(state, 8).toUpperCase() }, actor)
+}
+
+export async function updateCleanerForState(cleanerId: string, payload: Partial<CleanerPayload>, state: string, actor: CleanerAuditActor) {
+  await assertCleanerInState(cleanerId, state)
+  return updateCleaner(cleanerId, { ...payload, state: cleanString(state, 8).toUpperCase() }, actor)
+}
+
+export async function uploadCleanerDocumentForState(payload: Parameters<typeof uploadCleanerDocument>[0] & { state: string }) {
+  await assertCleanerInState(payload.cleanerId, payload.state)
+  return uploadCleanerDocument(payload)
+}
+
+export async function downloadCleanerDocumentForState(cleanerId: string, documentId: string, state: string) {
+  await assertCleanerInState(cleanerId, state)
+  return downloadCleanerDocument(cleanerId, documentId)
+}
+
+export async function deleteCleanerDocumentForState(cleanerId: string, documentId: string, state: string, actor: CleanerAuditActor) {
+  await assertCleanerInState(cleanerId, state)
+  return deleteCleanerDocument(cleanerId, documentId, actor)
 }
 
 export async function getCleanerAdminData() {
