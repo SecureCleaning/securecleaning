@@ -16,7 +16,7 @@ const tabs = [
 export default function AdminNav({ currentPath }: { currentPath: string }) {
   return (
     <nav aria-label="Admin navigation" className="min-w-0 flex-1 overflow-x-auto">
-      <div className="flex min-w-max gap-2 pb-1">
+      <div className="flex min-w-max gap-1.5 pb-1">
       {tabs.map((tab) => {
         const isActive = tab.href === '/admin'
           ? currentPath === '/admin' || currentPath.startsWith('/admin/quotes/')
@@ -25,7 +25,7 @@ export default function AdminNav({ currentPath }: { currentPath: string }) {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`inline-flex min-h-10 items-center whitespace-nowrap rounded-full px-3 py-2 text-sm font-semibold transition-colors ${
+            className={`inline-flex min-h-9 items-center whitespace-nowrap rounded-full px-2.5 py-1.5 text-sm font-semibold transition-colors ${
               isActive
                 ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-700 border border-gray-200 hover:border-gray-300'

@@ -611,10 +611,10 @@ export default function QuoteWorkflowEditor({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div className="grid gap-6">
         <div className="contents">
-          <details open className="order-1 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <details open className="order-1 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-xl font-bold" style={{ color: '#1a2744' }}>Original Remote Quote</h2>
@@ -1140,7 +1140,7 @@ export default function QuoteWorkflowEditor({
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl bg-gray-50 p-5">
+            <div className="mt-4 rounded-xl bg-gray-50 p-4">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 <div>
                   <div className="text-sm text-gray-500">Client total floor area (reference)</div>

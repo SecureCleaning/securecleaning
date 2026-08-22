@@ -12,15 +12,15 @@ export default async function CitiesPage() {
   const content = await getPublicContentMap()
 
   return (
-    <div className="min-h-screen py-16 bg-gray-50">
+    <div className="min-h-screen py-12 sm:py-14 bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'cities.hero_title', 'Cities We Service')}</h1>
           <p className="text-lg text-gray-600">
             {getContentValue(content, 'cities.hero_subtitle', 'Currently operating in Melbourne and Sydney, with more cities coming soon.')}
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {[
             {
               city: 'melbourne',
@@ -38,7 +38,7 @@ export default async function CitiesPage() {
             },
           ].map(({ city, name, icon, desc, label }) => (
             <Link key={city} href={`/cities/${city}`}
-              className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-8 hover:shadow-md transition-shadow">
+              className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-6 hover:shadow-md transition-shadow">
               <div className="text-5xl mb-4">{icon}</div>
               <h2 className="text-2xl font-bold mb-3" style={{ color: '#1a2744' }}>{name}</h2>
               <p className="text-gray-600 text-sm leading-relaxed mb-5">{desc}</p>

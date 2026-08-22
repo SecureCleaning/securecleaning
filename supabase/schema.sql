@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Secure Cleaning — Supabase Schema
--- Secure Contracts Pty Ltd
+-- Secure Cleaning Aus schema
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Enable UUID extension
@@ -536,10 +536,10 @@ VALUES
   ('home.cta_primary_label', 'Homepage primary CTA label', 'Get an Instant Quote →', 'home'),
   ('home.cta_secondary_label', 'Homepage secondary CTA label', 'View Services', 'home'),
   ('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning Aus?', 'home'),
-  ('contact.email', 'Contact email address', 'info@securecleaning.au', 'contact'),
-  ('contact.phone', 'Contact phone number', '1300 000 000', 'contact'),
+  ('contact.email', 'Contact email address', 'info@securecleaning.com.au', 'contact'),
+  ('contact.phone', 'Contact phone number', '1300 850 593', 'contact'),
   ('contact.service_areas', 'Contact service areas', 'Melbourne & Sydney, Australia', 'contact'),
-  ('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus is a trading name of Secure Contracts Pty Ltd, an Australian company focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our Owner-Operator network.', 'about'),
+  ('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
   ('faq.heading', 'FAQ page heading', 'Frequently Asked Questions', 'faq')
 ON CONFLICT (key) DO UPDATE SET
   title = EXCLUDED.title,

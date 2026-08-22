@@ -29,11 +29,11 @@ export default function Footer() {
 
   return (
     <footer style={{ backgroundColor: 'var(--brand-ink)' }} className="site-footer text-white">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+      <div className="max-w-6xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand column */}
           <div className="lg:col-span-1">
-            <div className="mb-4">
+            <div className="mb-3">
               <Image
                 src="/secure-cleaning-logo-aug26.png"
                 alt="Secure Cleaning Aus"
@@ -42,7 +42,7 @@ export default function Footer() {
                 className="h-20 w-auto"
               />
             </div>
-            <p className="text-gray-400 text-sm leading-relaxed mb-6">
+            <p className="text-gray-400 text-sm leading-relaxed mb-4">
               Professional commercial cleaning in Melbourne and Sydney.
               Verified Owner-Operators. Flexible frequencies. No lock-in contracts.
             </p>
@@ -65,7 +65,7 @@ export default function Footer() {
 
           {/* Services */}
           <div>
-            <h3 className="font-semibold text-white mb-4">Services</h3>
+            <h3 className="font-semibold text-white mb-3">Services</h3>
             <ul className="space-y-2">
               {serviceLinks.map((link) => (
                 <li key={link.href}>
@@ -82,7 +82,7 @@ export default function Footer() {
 
           {/* Cities */}
           <div>
-            <h3 className="font-semibold text-white mb-4">Cities</h3>
+            <h3 className="font-semibold text-white mb-3">Cities</h3>
             <ul className="space-y-2">
               {cityLinks.map((link) => (
                 <li key={link.href}>
@@ -96,7 +96,7 @@ export default function Footer() {
               ))}
             </ul>
 
-            <h3 className="font-semibold text-white mb-4 mt-8">Company</h3>
+            <h3 className="font-semibold text-white mb-3 mt-6">Company</h3>
             <ul className="space-y-2">
               {companyLinks.map((link) => (
                 <li key={link.href}>
@@ -113,7 +113,7 @@ export default function Footer() {
 
           {/* CTA column */}
           <div>
-            <h3 className="font-semibold text-white mb-4">Get Started</h3>
+            <h3 className="font-semibold text-white mb-3">Get Started</h3>
             <p className="text-gray-400 text-sm mb-4">
               Start with a remote quote, or book a site inspection.
             </p>
@@ -125,7 +125,7 @@ export default function Footer() {
               Get a Quote →
             </Link>
 
-            <div className="mt-8 p-4 rounded-lg border border-gray-700 text-sm">
+            <div className="mt-6 p-3 rounded-lg border border-gray-700 text-sm">
               <p className="text-gray-300 font-medium mb-1">🤖 Chat with Secure Bot</p>
               <p className="text-gray-500 text-xs">
                 Our AI assistant can answer questions about services, pricing, and more — 24/7.

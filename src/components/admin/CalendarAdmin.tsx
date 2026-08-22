@@ -134,7 +134,7 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
         </div>}
       />
 
-        <section className="mb-6 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <section className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Calendars</h2>
@@ -162,7 +162,7 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
           </div>
         </section>
 
-        <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 pb-5">
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => move(-1)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">Previous</button>
@@ -175,7 +175,7 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
             </div>
           </div>
 
-          <div className="mt-5 space-y-5">
+          <div className="mt-4 space-y-4">
             {days.map((day) => {
               const dayEvents = eventsByDay.get(dateKey(day)) ?? []
               return (

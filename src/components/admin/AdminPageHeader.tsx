@@ -20,9 +20,9 @@ export default function AdminPageHeader({
   meta,
 }: AdminPageHeaderProps) {
   return (
-    <div className="mb-5 flex flex-col gap-4 border-b border-gray-200 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {showBack ? <Link href={backHref} className="mb-2 inline-flex min-h-10 items-center text-sm font-semibold text-gray-600 hover:text-gray-900">
+        {showBack ? <Link href={backHref} className="mb-1 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900">
           <span aria-hidden="true" className="mr-2 text-base">←</span>
           {backLabel}
         </Link> : null}

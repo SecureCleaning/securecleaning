@@ -45,7 +45,7 @@ export default function AlertsPanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-100">
+      <div className="px-4 py-3 border-b border-gray-100">
         <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Action needed</h2>
       </div>
       <div className="p-4">
@@ -59,10 +59,10 @@ export default function AlertsPanel({
             </div>
           ))}
         </div>
-        <div className="mt-3 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+        <div className="mt-3 max-h-[22rem] space-y-2 overflow-y-auto pr-1">
           {alerts.map((alert) => (
-            <div key={alert.id} className={`rounded-xl border p-4 ${severityStyles[alert.severity]}`}>
-              <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div key={alert.id} className={`rounded-xl border p-3 ${severityStyles[alert.severity]}`}>
+              <div className="mb-1.5 flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-current/20 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide">
                   {kindLabels[alert.kind] ?? alert.kind.replace(/_/g, ' ')}
                 </span>
@@ -75,7 +75,7 @@ export default function AlertsPanel({
               <div className="mt-2 text-xs opacity-80">
                 Open the workflow below to resolve this alert.
               </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
+              <div className="mt-2 flex items-center justify-between gap-3">
                 <button
                   type="button"
                   onClick={() => onOpenAlert(alert)}

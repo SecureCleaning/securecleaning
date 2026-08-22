@@ -121,7 +121,7 @@ const contactEntries: ContentEntryDefinition[] = [
   entry('contact.email', 'Contact email address', 'info@securecleaning.com.au', 'contact'),
   entry('contact.email_note', 'Contact email note', 'We aim to respond within 1 business day', 'contact'),
   entry('contact.phone_label', 'Contact phone label', 'Phone', 'contact'),
-  entry('contact.phone', 'Contact phone number', '1300 000 000', 'contact'),
+  entry('contact.phone', 'Contact phone number', '1300 850 593', 'contact'),
   entry('contact.phone_note', 'Contact phone note', 'For urgent enquiries during business hours', 'contact'),
   entry('contact.service_areas_label', 'Contact service areas label', 'Service Areas', 'contact'),
   entry('contact.service_areas', 'Contact service areas', 'Melbourne & Sydney, Australia', 'contact'),

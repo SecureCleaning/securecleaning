@@ -24,7 +24,7 @@ export default async function MelbournePage() {
 
   return (
     <div className="min-h-screen">
-      <section className="py-16 text-white" style={{ backgroundColor: '#1a2744' }}>
+      <section className="py-12 text-white" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="flex items-start gap-5">
             <div className="text-6xl">🏙️</div>
@@ -40,11 +40,11 @@ export default async function MelbournePage() {
         </div>
       </section>
 
-      <section className="py-16 bg-gray-50">
+      <section className="py-12 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-8">
-              <div className="bg-white rounded-2xl border border-gray-100 p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-2xl border border-gray-100 p-6">
                 <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>
                   {getContentValue(content, 'melbourne.why_title', 'Why Melbourne Businesses Choose Secure Cleaning Aus')}
                 </h2>
@@ -56,7 +56,7 @@ export default async function MelbournePage() {
                 </p>
               </div>
 
-              <div className="bg-white rounded-2xl border border-gray-100 p-8">
+              <div className="bg-white rounded-2xl border border-gray-100 p-6">
                 <h2 className="text-2xl font-bold mb-5" style={{ color: '#1a2744' }}>
                   {getContentValue(content, 'melbourne.areas_title', 'Areas We Cover')}
                 </h2>

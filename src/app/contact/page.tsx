@@ -12,25 +12,25 @@ export const metadata: Metadata = {
 export default async function ContactPage() {
   const content = await getPublicContentMap()
   const email = getContentValue(content, 'contact.email', 'info@securecleaning.com.au')
-  const phone = getContentValue(content, 'contact.phone', '1300 000 000')
+  const phone = getContentValue(content, 'contact.phone', '').trim()
   const serviceAreas = getContentValue(content, 'contact.service_areas', 'Melbourne & Sydney, Australia')
   const phoneHref = `tel:${phone.replace(/[^+\d]/g, '')}`
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
+    <div className="min-h-screen bg-gray-50 py-12 sm:py-14">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.hero_title', 'Contact Us')}</h1>
           <p className="text-lg text-gray-600">
             {getContentValue(content, 'contact.hero_subtitle', "Prefer to talk? We're here to help. Or start with a remote quote or site inspection request online.")}
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-              <h2 className="text-xl font-bold mb-6" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.card_title', 'Get in Touch')}</h2>
-              <div className="space-y-5">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+              <h2 className="text-xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.card_title', 'Get in Touch')}</h2>
+              <div className="space-y-4">
                 <div className="flex items-start gap-4">
                   <span className="text-2xl">📧</span>
                   <div>
@@ -42,16 +42,18 @@ export default async function ContactPage() {
                     <p className="text-gray-500 text-xs mt-0.5">{getContentValue(content, 'contact.email_note', 'We aim to respond within 1 business day')}</p>
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <span className="text-2xl">📞</span>
-                  <div>
-                    <p className="font-semibold text-gray-900">{getContentValue(content, 'contact.phone_label', 'Phone')}</p>
-                    <a href={phoneHref} className="text-green-600 hover:underline text-sm">
-                      {phone}
-                    </a>
-                    <p className="text-gray-500 text-xs mt-0.5">{getContentValue(content, 'contact.phone_note', 'For urgent enquiries during business hours')}</p>
+                {phone ? (
+                  <div className="flex items-start gap-4">
+                    <span className="text-2xl">📞</span>
+                    <div>
+                      <p className="font-semibold text-gray-900">{getContentValue(content, 'contact.phone_label', 'Phone')}</p>
+                      <a href={phoneHref} className="text-green-600 hover:underline text-sm">
+                        {phone}
+                      </a>
+                      <p className="text-gray-500 text-xs mt-0.5">{getContentValue(content, 'contact.phone_note', 'For urgent enquiries during business hours')}</p>
+                    </div>
                   </div>
-                </div>
+                ) : null}
                 <div className="flex items-start gap-4">
                   <span className="text-2xl">📍</span>
                   <div>
@@ -70,7 +72,7 @@ export default async function ContactPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
               <h2 className="text-xl font-bold mb-3" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.quick_links_title', 'Quick Links')}</h2>
               <div className="space-y-2">
                 {[
@@ -88,8 +90,8 @@ export default async function ContactPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-100 p-8 shadow-sm">
-            <h2 className="text-xl font-bold mb-6" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.form_title', 'Send a Message')}</h2>
+          <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <h2 className="text-xl font-bold mb-4" style={{ color: '#1a2744' }}>{getContentValue(content, 'contact.form_title', 'Send a Message')}</h2>
             <form className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>

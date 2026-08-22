@@ -397,10 +397,10 @@ export default function AdminDashboard({ initialData }: Props) {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
+    <div className="space-y-5">
+      <div className="grid gap-3 lg:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-4">
-          <div className="rounded-2xl border border-green-200 bg-green-50 p-5 shadow-sm">
+          <div className="rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <div className="text-sm font-semibold uppercase tracking-wide text-green-700">Quote priority</div>
@@ -459,34 +459,34 @@ export default function AdminDashboard({ initialData }: Props) {
         </div>
 
         {activeTab === 'quotes' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Recent Quotes</h2>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
-                    <th className="px-4 py-3 text-left">Reference</th>
-                    <th className="px-4 py-3 text-left">Business</th>
-                    <th className="px-4 py-3 text-left">City</th>
-                    <th className="px-4 py-3 text-left">Frequency</th>
-                    <th className="px-4 py-3 text-left">Status</th>
-                    <th className="px-4 py-3 text-left">Actions</th>
+                    <th className="px-3 py-2 text-left">Reference</th>
+                    <th className="px-3 py-2 text-left">Business</th>
+                    <th className="px-3 py-2 text-left">City</th>
+                    <th className="px-3 py-2 text-left">Frequency</th>
+                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {quotes.map((quote) => (
                     <tr key={quote.id} className="border-t border-gray-100 align-top">
-                      <td className="px-4 py-3 font-mono">
+                      <td className="px-3 py-2 font-mono">
                         <div>{quote.quote_ref}</div>
                         <div className="text-xs text-gray-500 mt-1">{formatDate(quote.created_at)}</div>
                       </td>
-                      <td className="px-4 py-3">{quote.inputs?.businessName ?? '—'}</td>
-                      <td className="px-4 py-3 capitalize">{quote.inputs?.city ?? '—'}</td>
-                      <td className="px-4 py-3">{quote.inputs?.frequency?.replace(/_/g, ' ') ?? '—'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">{quote.inputs?.businessName ?? '—'}</td>
+                      <td className="px-3 py-2 capitalize">{quote.inputs?.city ?? '—'}</td>
+                      <td className="px-3 py-2">{quote.inputs?.frequency?.replace(/_/g, ' ') ?? '—'}</td>
+                      <td className="px-3 py-2">
                         <select
                           value={quote.status}
                           onChange={(event) => handleQuoteStatusChange(quote.quote_ref, event.target.value)}
@@ -497,7 +497,7 @@ export default function AdminDashboard({ initialData }: Props) {
                           ))}
                         </select>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-2">
                         <div className="flex flex-col gap-2">
                           <button
                             type="button"
@@ -543,9 +543,9 @@ export default function AdminDashboard({ initialData }: Props) {
         )}
 
         {activeTab === 'bookings' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
+            <div className="px-4 py-3 border-b border-gray-100">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Booking queue</h2>

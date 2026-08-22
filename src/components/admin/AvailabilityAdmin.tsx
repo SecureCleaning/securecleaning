@@ -206,25 +206,25 @@ export default function AvailabilityAdmin({
           </div>
 
           <section className="grid gap-4 md:grid-cols-4">
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active agents</div>
               <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
                 {config.assignees.filter((assignee) => assignee.active).length}
               </div>
             </div>
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recurring slots</div>
               <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
                 {config.weeklySlots.length}
               </div>
             </div>
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">One-off block-outs</div>
               <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
                 {config.oneOffBlocks.length}
               </div>
             </div>
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Service zones</div>
               <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
                 {config.zones.length}
@@ -232,7 +232,7 @@ export default function AvailabilityAdmin({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <section className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
             <div className="mb-5 flex items-center justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>

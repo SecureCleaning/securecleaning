@@ -104,9 +104,9 @@ export default async function FAQPage() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-50 py-16">
+    <div className="min-h-screen bg-gray-50 py-12 sm:py-14">
       <div className="max-w-3xl mx-auto px-4 sm:px-6">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4" style={{ color: '#1a2744' }}>
             {heading}
           </h1>
@@ -133,7 +133,7 @@ export default async function FAQPage() {
           ))}
         </div>
 
-        <div className="mt-12 p-8 rounded-2xl text-white text-center" style={{ backgroundColor: '#1a2744' }}>
+        <div className="mt-8 p-6 rounded-2xl text-white text-center" style={{ backgroundColor: '#1a2744' }}>
           <h2 className="text-xl font-bold mb-3">{ctaHeading}</h2>
           <p className="text-gray-300 mb-6 text-sm">
             {ctaBody}

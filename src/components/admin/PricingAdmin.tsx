@@ -12,7 +12,7 @@ const LABELS: Record<string, string> = {
   multiFloorPerExtra: 'Additional floor multiplier', springCleanLow: 'Spring clean low multiplier',
   springCleanHigh: 'Spring clean high multiplier', rangeLow: 'Standard range low multiplier', rangeHigh: 'Standard range high multiplier',
   office: 'Office', medical: 'Medical and healthcare', industrial: 'Industrial', childcare: 'Childcare', retail: 'Retail', gym: 'Gym and fitness', warehouse: 'Warehouse', function_centre: 'Function centre', sports_facility: 'Sports facility', other: 'Other',
-  daily: 'Daily', '3x_week': '3 times per week', '2x_week': '2 times per week', weekly: 'Weekly', fortnightly: 'Fortnightly', once_off: 'Once-off',
+  daily: 'Daily', '3x_week': '3 times per week', '2x_week': '2 times per week', weekly: 'Weekly', fortnightly: 'Fortnightly',
   melbourne: 'Melbourne', sydney: 'Sydney', business_hours: 'Business hours', after_hours: 'After hours', weekend: 'Weekend',
 }
 
@@ -168,7 +168,7 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
               <section key={section} className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
                 <h3 className="mb-4 text-lg font-bold capitalize" style={{ color: '#1a2744' }}>{readableLabel(section)} multipliers</h3>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {Object.entries(values).map(([key, value]) => (
+                  {Object.entries(values).filter(([key]) => !(section === 'frequency' && key === 'once_off')).map(([key, value]) => (
                     <div key={key}>
                       <label htmlFor={`pricing-multiplier-${section}-${key}`} className="mb-1 block text-sm font-medium text-gray-700">{readableLabel(key)}</label>
                       <input

@@ -15,7 +15,7 @@ export default async function AboutPage() {
   const modelPoints = [1, 2, 3, 4].map((item) =>
     getContentValue(content, `about.model_point_${item}`, [
       "Financial commitment: Our operators have real money at stake. They've purchased their territory and have a business to protect.",
-      'Personal accountability: When you call about a concern, you call your operator directly — not a 1300 number.',
+      'Personal accountability: When you call about a concern, you call your operator directly rather than a distant call centre.',
       'Long-term thinking: Owner-Operators build client relationships over years, not weeks.',
       "Professional pride: These aren't casuals. They're trained cleaning professionals who run their own business.",
     ][item - 1])
@@ -34,7 +34,7 @@ export default async function AboutPage() {
 
   return (
     <div className="min-h-screen">
-      <section className="py-18 md:py-20 text-white" style={{ backgroundColor: 'var(--brand-ink)' }}>
+      <section className="py-14 md:py-16 text-white" style={{ backgroundColor: 'var(--brand-ink)' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-5">{getContentValue(content, 'about.hero_title', 'About Secure Cleaning Aus')}</h1>
           <p className="text-xl text-gray-200 leading-relaxed">
@@ -43,20 +43,20 @@ export default async function AboutPage() {
         </div>
       </section>
 
-      <section className="py-16 md:py-20 bg-white">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-10 md:space-y-12">
-          <section className="space-y-5">
+      <section className="py-12 md:py-16 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-8 md:space-y-10">
+          <section className="space-y-4">
             <h2 className="text-3xl font-bold" style={{ color: 'var(--brand-ink)' }}>
               {getContentValue(content, 'about.section_1_title', 'Who We Are')}
             </h2>
-            <div className="space-y-5 text-lg leading-8 text-gray-700">
-              <p>{getContentValue(content, 'about.intro', 'Secure Cleaning Aus is focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.')}</p>
+            <div className="space-y-4 text-lg leading-8 text-gray-700">
+              <p>{getContentValue(content, 'about.intro', 'Secure Cleaning Aus delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.')}</p>
               <p>{getContentValue(content, 'about.section_1_paragraph_2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.')}</p>
               <p>{getContentValue(content, 'about.section_1_paragraph_3', 'We believed there was a better way.')}</p>
             </div>
           </section>
 
-          <section className="space-y-5 rounded-3xl border border-gray-100 bg-gray-50 p-8 md:p-10">
+          <section className="space-y-4 rounded-2xl border border-gray-100 bg-gray-50 p-6 md:p-8">
             <h2 className="text-3xl font-bold" style={{ color: 'var(--brand-ink)' }}>
               {getContentValue(content, 'about.section_2_title', 'The Owner-Operator Model')}
             </h2>

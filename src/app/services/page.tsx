@@ -101,7 +101,7 @@ export default async function ServicesPage() {
 
   return (
     <div className="min-h-screen">
-      <section className="py-16 text-white text-center" style={{ backgroundColor: '#1a2744' }}>
+      <section className="py-12 text-white text-center" style={{ backgroundColor: '#1a2744' }}>
         <div className="max-w-3xl mx-auto px-4">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">{getContentValue(content, 'services.hero_title', 'Our Services')}</h1>
           <p className="text-xl text-gray-300 mb-8">
@@ -115,13 +115,13 @@ export default async function ServicesPage() {
         </div>
       </section>
 
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-10">
+      <section className="py-12 bg-gray-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-6">
           {services.map((service) => (
             <div key={service.id} id={service.id}
               className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="p-8">
-                <div className="flex items-start gap-5">
+              <div className="p-6">
+                <div className="flex items-start gap-4">
                   <div className="text-5xl shrink-0">{service.icon}</div>
                   <div>
                     <h2 className="text-2xl font-bold mb-2" style={{ color: '#1a2744' }}>

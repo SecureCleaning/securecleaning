@@ -88,7 +88,7 @@ export default async function HomePage() {
   return (
     <>
       <section
-        className="relative overflow-hidden text-white py-24 md:py-32"
+        className="relative overflow-hidden text-white py-16 md:py-20"
         style={{ backgroundColor: 'var(--brand-ink)' }}
       >
         <div
@@ -100,7 +100,7 @@ export default async function HomePage() {
         />
 
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid items-center gap-10 lg:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="grid items-center gap-8 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-6"
               style={{ backgroundColor: 'rgba(201,155,52,0.14)', color: 'var(--brand-gold)', border: '1px solid rgba(201,155,52,0.28)' }}>
@@ -108,11 +108,11 @@ export default async function HomePage() {
               {heroBadge}
             </div>
 
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-6">
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight mb-4">
               {heroTitle}
             </h1>
 
-            <p className="text-xl text-gray-300 mb-10 max-w-2xl leading-relaxed">
+            <p className="text-xl text-gray-300 mb-7 max-w-2xl leading-relaxed">
               {heroSubtitle}
             </p>
 
