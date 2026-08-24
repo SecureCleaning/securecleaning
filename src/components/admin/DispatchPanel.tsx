@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { AdminDashboardData } from './AdminDashboard'
 import { getRelevantOperators } from '@/lib/operatorMatching'
+import DismissAlertButton from './DismissAlertButton'
 
 type BookingItem = AdminDashboardData['bookings'][number]
 
@@ -40,6 +41,8 @@ export default function DispatchPanel({
   onBookingSiteChange,
   onBookingOperatorChange,
   onBookingAgentChange,
+  selectedAlertId,
+  onAlertDismissed,
 }: {
   bookings: BookingItem[]
   sites: AdminDashboardData['sites']
@@ -51,6 +54,8 @@ export default function DispatchPanel({
   onBookingSiteChange: (bookingRef: string, siteId: string) => Promise<void>
   onBookingOperatorChange: (bookingRef: string, operatorId: string) => Promise<void>
   onBookingAgentChange: (bookingRef: string, agentId: string) => Promise<void>
+  selectedAlertId?: string | null
+  onAlertDismissed?: (alertId: string) => void
 }) {
   const selected = bookings.find((booking) => booking.booking_ref === selectedBookingRef) ?? bookings[0]
   const [inspectionStatus, setInspectionStatus] = useState('pending')
@@ -197,6 +202,13 @@ export default function DispatchPanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm p-6 space-y-4">
+      {selectedAlertId ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm text-blue-900">This inspection workflow was opened from an Action needed reminder.</p>
+          <DismissAlertButton alertId={selectedAlertId} onDismissed={onAlertDismissed} />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Dispatch / inspection workflow</h2>

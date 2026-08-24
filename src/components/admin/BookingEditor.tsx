@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { AdminDashboardData } from './AdminDashboard'
 import { bookingStatuses } from '@/lib/bookingStatus'
+import DismissAlertButton from './DismissAlertButton'
 
 type BookingItem = AdminDashboardData['bookings'][number]
 
@@ -11,11 +12,15 @@ export default function BookingEditor({
   selectedBookingRef,
   onSelectedBookingRefChange,
   onBookingUpdated,
+  selectedAlertId,
+  onAlertDismissed,
 }: {
   bookings: BookingItem[]
   selectedBookingRef: string
   onSelectedBookingRefChange: (bookingRef: string) => void
   onBookingUpdated: (booking: BookingItem) => void
+  selectedAlertId?: string | null
+  onAlertDismissed?: (alertId: string) => void
 }) {
   const selected = bookings.find((booking) => booking.booking_ref === selectedBookingRef) ?? bookings[0]
   const [status, setStatus] = useState<string | null>(null)
@@ -149,6 +154,13 @@ export default function BookingEditor({
           {bookingStatus.replace(/_/g, ' ')}
         </div>
       </div>
+
+      {selectedAlertId ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <p className="text-sm text-blue-900">This booking was opened from an Action needed reminder.</p>
+          <DismissAlertButton alertId={selectedAlertId} onDismissed={onAlertDismissed} />
+        </div>
+      ) : null}
 
       <label className="block space-y-1">
         <span className="text-sm font-medium text-gray-700">Booking to edit</span>

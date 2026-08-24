@@ -5,6 +5,7 @@ import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getAdminSessionIdentityFromCookies } from '@/lib/adminAuth'
+import DismissAlertButton from '@/components/admin/DismissAlertButton'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,7 @@ export default async function AdminQuoteWorkflowPage({ params }: { params: { ref
             title="Quote Workbench"
             description="Start from the original remote quote, complete the inspection worksheet, then refine the inputs and client-facing scope into a firmer quotation."
             meta={<div className="text-right text-sm text-gray-500"><div className="font-mono font-semibold text-gray-700">{quote.quoteRef}</div><div>Status: <span className="capitalize">{quote.status}</span></div></div>}
+            actions={<DismissAlertButton alertId={`quote-${quote.quoteRef}`} />}
           />
           <QuoteWorkflowEditor
             quote={quote}

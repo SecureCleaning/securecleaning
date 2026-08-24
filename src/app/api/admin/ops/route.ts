@@ -11,7 +11,7 @@ import {
 import { assignBookingOperator, assignBookingSite } from '@/lib/bookingOps'
 import { updateInspectionWorkflow } from '@/lib/dispatchOps'
 import { updateLeadFollowUp, updateQuoteFollowUp } from '@/lib/crmOps'
-import { dismissAdminAlert } from '@/lib/alerts'
+import { dismissAdminAlert, isValidAdminAlertId } from '@/lib/alerts'
 
 export async function POST(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request)) {
@@ -25,6 +25,9 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'alert.dismiss': {
         const alertId = typeof body?.alertId === 'string' ? body.alertId : ''
+        if (!isValidAdminAlertId(alertId)) {
+          return NextResponse.json({ success: false, error: 'Select a valid alert.' }, { status: 400 })
+        }
         const result = await dismissAdminAlert(alertId)
         return NextResponse.json({ success: true, result })
       }

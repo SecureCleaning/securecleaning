@@ -1,6 +1,9 @@
 import { getAdminSupabase } from '@/lib/supabase'
-import { writeAuditLog } from '@/lib/auditLog'
+import { writeAuditLogStrict } from '@/lib/auditLog'
 import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
+import { isValidAdminAlertId } from '@/lib/adminAlertId'
+
+export { isValidAdminAlertId } from '@/lib/adminAlertId'
 
 export interface AdminAlert {
   id: string
@@ -34,11 +37,16 @@ async function getDismissedAlertIds() {
 }
 
 export async function dismissAdminAlert(alertId: string) {
-  if (!alertId || !/^[a-z0-9_-]+$/.test(alertId)) {
+  if (!isValidAdminAlertId(alertId)) {
     throw new Error('Select a valid alert.')
   }
 
-  await writeAuditLog('alert', alertId, 'dismissed')
+  try {
+    await writeAuditLogStrict('alert', alertId, 'dismissed')
+  } catch (error) {
+    console.error('[alerts] Failed to dismiss alert:', error)
+    throw new Error('Unable to dismiss alert.')
+  }
   return { alertId }
 }
 

@@ -19,6 +19,22 @@ export async function writeAuditLog(
   }
 }
 
+export async function writeAuditLogStrict(
+  entityType: string,
+  entityRef: string,
+  action: string,
+  details: Record<string, unknown> = {}
+) {
+  const db = getAdminSupabase()
+  const { error } = await db.from('admin_audit_log').insert({
+    entity_type: entityType,
+    entity_ref: entityRef,
+    action,
+    details,
+  })
+  if (error) throw error
+}
+
 export async function getAuditLog(entityType?: string, entityRef?: string) {
   try {
     const db = getAdminSupabase()

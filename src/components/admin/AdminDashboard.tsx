@@ -197,6 +197,7 @@ export default function AdminDashboard({ initialData }: Props) {
   const [quotes, setQuotes] = useState(initialData.quotes)
   const [bookings, setBookings] = useState(initialData.bookings)
   const [selectedBookingRef, setSelectedBookingRef] = useState(initialData.bookings[0]?.booking_ref ?? '')
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [leads, setLeads] = useState(initialData.leads)
   const [reportingSnapshot, setReportingSnapshot] = useState(initialData.overview.reporting)
   const [alerts, setAlerts] = useState(initialData.overview.alerts)
@@ -217,16 +218,18 @@ export default function AdminDashboard({ initialData }: Props) {
     }, 0)
   }
 
-  function openBookingEditor(bookingRef: string) {
+  function openBookingEditor(bookingRef: string, alertId?: string) {
     setSelectedBookingRef(bookingRef)
+    setSelectedAlertId(alertId ?? null)
     setActiveTab('bookings')
     window.setTimeout(() => {
       document.getElementById('booking-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
   }
 
-  function openDispatchEditor(bookingRef: string) {
+  function openDispatchEditor(bookingRef: string, alertId?: string) {
     setSelectedBookingRef(bookingRef)
+    setSelectedAlertId(alertId ?? null)
     setActiveTab('bookings')
     window.setTimeout(() => {
       document.getElementById('dispatch-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -240,11 +243,11 @@ export default function AdminDashboard({ initialData }: Props) {
     }
 
     if (alert.kind === 'new_booking') {
-      openBookingEditor(alert.entity_ref)
+      openBookingEditor(alert.entity_ref, alert.id)
       return
     }
 
-    openDispatchEditor(alert.entity_ref)
+    openDispatchEditor(alert.entity_ref, alert.id)
   }
 
   async function dismissAlert(alert: AdminAlertRow) {
@@ -712,6 +715,15 @@ export default function AdminDashboard({ initialData }: Props) {
                 )))
                 void refreshOverview()
               }}
+              selectedAlertId={
+                selectedAlertId?.startsWith('booking-unassigned-') || selectedAlertId?.startsWith('booking-overdue-')
+                  ? null
+                  : selectedAlertId
+              }
+              onAlertDismissed={(alertId) => {
+                setAlerts((current) => current.filter((alert) => alert.id !== alertId))
+                setSelectedAlertId(null)
+              }}
             />
           </div>
           <div id="dispatch-editor" className="scroll-mt-24">
@@ -725,6 +737,15 @@ export default function AdminDashboard({ initialData }: Props) {
               onBookingSiteChange={handleBookingSiteChange}
               onBookingOperatorChange={handleBookingOperatorChange}
               onBookingAgentChange={handleBookingAgentChange}
+              selectedAlertId={
+                selectedAlertId?.startsWith('booking-unassigned-') || selectedAlertId?.startsWith('booking-overdue-')
+                  ? selectedAlertId
+                  : null
+              }
+              onAlertDismissed={(alertId) => {
+                setAlerts((current) => current.filter((alert) => alert.id !== alertId))
+                setSelectedAlertId(null)
+              }}
               onBookingUpdated={(bookingRef, updates) => {
                 setBookings((current) => current.map((booking) => (
                   booking.booking_ref === bookingRef ? { ...booking, ...updates } : booking
