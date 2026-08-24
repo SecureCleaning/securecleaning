@@ -10,6 +10,7 @@ import {
 } from '@/lib/staffAccounts'
 import { rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
 import { getAvailabilityConfig } from '@/lib/availability'
+import { canAccessClientCrm, getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
 
 export async function GET(request: NextRequest) {
   if (!isAuthorizedAdminRequest(request, 'owner')) {
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 12 * 1024)
   if (blocked) return blocked
   if (!isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })
@@ -33,10 +34,19 @@ export async function POST(request: NextRequest) {
     const password = typeof body?.password === 'string' ? body.password : ''
     const role = normalizeStaffRole(body?.role)
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : ''
+    const jobTitle = typeof body?.jobTitle === 'string' ? body.jobTitle.trim().slice(0, 120) : ''
+    const phone = typeof body?.phone === 'string' ? body.phone.trim().slice(0, 40) : ''
     const availabilityAssigneeId = typeof body?.availabilityAssigneeId === 'string' ? body.availabilityAssigneeId.trim() : ''
 
     if (!username || !displayName || !role || password.length < 12 || (role === 'agent' && !availabilityAssigneeId)) {
       return NextResponse.json({ success: false, error: 'Provide a username, name, role, and password of at least 12 characters.' }, { status: 400 })
+    }
+
+    if (canAccessClientCrm(role)) {
+      const missing = getMissingCrmSignatureFields({ displayName, email, jobTitle, phone })
+      if (missing.length > 0) {
+        return NextResponse.json({ success: false, error: `Complete the email signature profile: ${missing.join(', ')}.` }, { status: 400 })
+      }
     }
 
     if (role === 'agent') {
@@ -46,7 +56,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const account = await createStaffAccount({ username, displayName, email, role, password, availabilityAssigneeId: role === 'agent' ? availabilityAssigneeId : null })
+    const account = await createStaffAccount({ username, displayName, email, jobTitle, phone, role, password, availabilityAssigneeId: role === 'agent' ? availabilityAssigneeId : null })
     return NextResponse.json({ success: true, account }, { status: 201 })
   } catch (error) {
     console.error('[api/admin/staff] Failed to create staff account:', error)
@@ -55,7 +65,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 12 * 1024)
   if (blocked) return blocked
   if (!isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })
@@ -78,6 +88,10 @@ export async function PATCH(request: NextRequest) {
       ? current.availabilityAssigneeId
       : (typeof body.availabilityAssigneeId === 'string' ? body.availabilityAssigneeId.trim() : null)
     const nextActive = typeof body?.active === 'boolean' ? body.active : current.active
+    const nextDisplayName = typeof body?.displayName === 'string' ? body.displayName.trim() : current.displayName
+    const nextEmail = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : current.email
+    const nextJobTitle = typeof body?.jobTitle === 'string' ? body.jobTitle.trim().slice(0, 120) : current.jobTitle
+    const nextPhone = typeof body?.phone === 'string' ? body.phone.trim().slice(0, 40) : current.phone
     if (current.role === 'owner' && current.active && (nextRole !== 'owner' || !nextActive) && accounts.filter((account) => account.role === 'owner' && account.active).length <= 1) {
       return NextResponse.json({ success: false, error: 'Keep at least one active owner account.' }, { status: 409 })
     }
@@ -90,10 +104,20 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+
+    if (nextActive && canAccessClientCrm(nextRole)) {
+      const missing = getMissingCrmSignatureFields({ displayName: nextDisplayName, email: nextEmail, jobTitle: nextJobTitle, phone: nextPhone })
+      if (missing.length > 0) {
+        return NextResponse.json({ success: false, error: `Complete the email signature profile: ${missing.join(', ')}.` }, { status: 400 })
+      }
+    }
+
     const account = await updateStaffAccount({
       id,
-      displayName: typeof body?.displayName === 'string' ? body.displayName.trim() : undefined,
-      email: typeof body?.email === 'string' ? body.email.trim().toLowerCase() : undefined,
+      displayName: nextDisplayName,
+      email: nextEmail,
+      jobTitle: nextJobTitle,
+      phone: nextPhone,
       role: nextRole,
       active: nextActive,
       password,

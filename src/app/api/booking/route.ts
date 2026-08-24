@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
+import { resolvePublicSubmissionClient, syncBookingCrmLead } from '@/lib/clientCrmData'
 import { getAvailabilityAssignee, getAvailabilityCalendar, getAvailabilityConfig } from '@/lib/availability'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { BookingInputs } from '@/lib/types'
@@ -172,25 +173,21 @@ export async function POST(request: NextRequest) {
     // ── Resolve client ────────────────────────────────────────────────────
     const db = getAdminSupabase()
 
-    const { data: clientData, error: clientError } = await db
-      .from('clients')
-      .upsert(
-        {
-          business_name: businessLabel,
-          contact_name: inputs.contactName,
-          email: inputs.email,
-          phone: inputs.phone,
-          address: inputs.address,
-          city: inputs.city,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'email' }
-      )
-      .select('id')
-      .single()
-
-    if (clientError || !clientData?.id) {
+    let clientData: { id: string; existing: boolean } | null = null
+    try {
+      clientData = await resolvePublicSubmissionClient({
+        businessName: businessLabel,
+        contactName: inputs.contactName,
+        email: inputs.email,
+        phone: inputs.phone,
+        address: inputs.address,
+        city: inputs.city,
+      })
+    } catch (clientError) {
       console.error('[booking] Client upsert failed:', clientError)
+    }
+
+    if (!clientData?.id) {
       return NextResponse.json(
         { success: false, error: 'Failed to save client record.' },
         { status: 500 }
@@ -251,19 +248,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Create lead record for CRM ────────────────────────────────────────
-    const { error: leadInsertError } = await db.from('leads').insert({
-      email: inputs.email,
-      business_name: businessLabel,
-      contact_name: inputs.contactName,
-      phone: inputs.phone,
-      city: inputs.city,
-      source: inputs.quoteRef ? 'quote_flow' : 'direct_booking',
-      converted_to_client_id: clientData.id,
-    })
-
-    if (leadInsertError) {
-      console.error('[booking] Non-critical lead insert failed:', leadInsertError)
+    // Keep one CRM lead connected from the first enquiry through booking.
+    try {
+      await syncBookingCrmLead({
+        quoteId,
+        clientId: clientData.id,
+        siteId: matchedSite?.id ?? null,
+        businessName: businessLabel,
+        contactName: inputs.contactName,
+        email: inputs.email,
+        phone: inputs.phone,
+        address: inputs.address,
+        suburb: inputs.suburb,
+        postcode: inputs.postcode,
+        city: inputs.city,
+        availabilityAssigneeId: bookingInputs.preferredInspectionAssigneeId ?? null,
+      })
+    } catch (leadSyncError) {
+      console.error('[booking] Non-critical CRM lead sync failed:', leadSyncError)
     }
 
     // ── Send confirmation emails ──────────────────────────────────────────

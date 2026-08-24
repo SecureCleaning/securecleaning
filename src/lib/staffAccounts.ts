@@ -9,6 +9,8 @@ export type StaffAccount = {
   username: string
   displayName: string
   email: string
+  jobTitle: string
+  phone: string
   role: AdminRole
   availabilityAssigneeId: string | null
   active: boolean
@@ -19,6 +21,7 @@ export type StaffAccount = {
 
 type StaffAccountRow = StaffAccount & {
   display_name: string
+  job_title: string | null
   password_hash: string
   last_login_at: string | null
   created_at: string
@@ -33,6 +36,8 @@ function toStaffAccount(row: StaffAccountRow): StaffAccount {
     username: row.username,
     displayName: row.display_name,
     email: row.email ?? '',
+    jobTitle: row.job_title ?? '',
+    phone: row.phone ?? '',
     role: row.role,
     availabilityAssigneeId: row.availability_assignee_id ?? null,
     active: row.active,
@@ -41,6 +46,8 @@ function toStaffAccount(row: StaffAccountRow): StaffAccount {
     updatedAt: row.updated_at,
   }
 }
+
+const STAFF_ACCOUNT_SELECT = 'id, username, display_name, email, job_title, phone, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at'
 
 export function normalizeStaffUsername(value: unknown) {
   return typeof value === 'string'
@@ -91,7 +98,7 @@ export async function listStaffAccounts() {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('admin_staff_accounts')
-    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .select(STAFF_ACCOUNT_SELECT)
     .order('display_name', { ascending: true })
 
   if (error) throw error
@@ -102,7 +109,7 @@ export async function getStaffAccountForLogin(username: string) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('admin_staff_accounts')
-    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .select(STAFF_ACCOUNT_SELECT)
     .eq('username', username)
     .maybeSingle()
 
@@ -114,7 +121,7 @@ export async function getStaffAccountById(id: string) {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('admin_staff_accounts')
-    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .select(STAFF_ACCOUNT_SELECT)
     .eq('id', id)
     .maybeSingle()
 
@@ -122,14 +129,22 @@ export async function getStaffAccountById(id: string) {
   return data as StaffAccountRow | null
 }
 
+export async function getStaffAccountProfileById(id: string) {
+  const row = await getStaffAccountById(id)
+  return row ? toStaffAccount(row) : null
+}
+
 export async function createStaffAccount(input: {
   username: string
   displayName: string
   email?: string
+  jobTitle?: string
+  phone?: string
   role: AdminRole
   password: string
   availabilityAssigneeId?: string | null
   legacyPasswordHash?: string | null
+  active?: boolean
 }) {
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -138,13 +153,15 @@ export async function createStaffAccount(input: {
       username: input.username,
       display_name: input.displayName,
       email: input.email || null,
+      job_title: input.jobTitle || null,
+      phone: input.phone || null,
       role: input.role,
       password_hash: hashStaffPassword(input.password),
       availability_assignee_id: input.availabilityAssigneeId ?? null,
       legacy_password_hash: input.legacyPasswordHash ?? null,
-      active: true,
+      active: input.active ?? true,
     })
-    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .select(STAFF_ACCOUNT_SELECT)
     .single()
 
   if (error) throw error
@@ -155,6 +172,8 @@ export async function updateStaffAccount(input: {
   id: string
   displayName?: string
   email?: string
+  jobTitle?: string
+  phone?: string
   role?: AdminRole
   active?: boolean
   password?: string
@@ -165,6 +184,8 @@ export async function updateStaffAccount(input: {
   const update: Record<string, unknown> = {}
   if (typeof input.displayName === 'string') update.display_name = input.displayName
   if (typeof input.email === 'string') update.email = input.email || null
+  if (typeof input.jobTitle === 'string') update.job_title = input.jobTitle || null
+  if (typeof input.phone === 'string') update.phone = input.phone || null
   if (input.role) update.role = input.role
   if (typeof input.active === 'boolean') update.active = input.active
   if (input.password) update.password_hash = hashStaffPassword(input.password)
@@ -175,7 +196,7 @@ export async function updateStaffAccount(input: {
     .from('admin_staff_accounts')
     .update(update)
     .eq('id', input.id)
-    .select('id, username, display_name, email, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at')
+    .select(STAFF_ACCOUNT_SELECT)
     .single()
 
   if (error) throw error

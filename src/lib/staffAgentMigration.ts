@@ -6,6 +6,7 @@ import {
   normalizeStaffUsername,
   updateStaffAccount,
 } from '@/lib/staffAccounts'
+import { hasCompleteCrmSignature } from '@/lib/clientCrmPolicy'
 
 export async function migrateAvailabilityAgentsToStaffAccounts() {
   const [config, accounts] = await Promise.all([getAvailabilityConfig(), listStaffAccounts()])
@@ -22,10 +23,8 @@ export async function migrateAvailabilityAgentsToStaffAccounts() {
     if (current) {
       await updateStaffAccount({
         id: current.id,
-        displayName: assignee.name,
-        email: assignee.email ?? '',
         role: 'agent',
-        active: assignee.active,
+        active: assignee.active && hasCompleteCrmSignature(current),
         availabilityAssigneeId: assignee.id,
       })
     } else {
@@ -33,10 +32,12 @@ export async function migrateAvailabilityAgentsToStaffAccounts() {
         username,
         displayName: assignee.name,
         email: assignee.email ?? '',
+        jobTitle: 'Regional Agent',
         role: 'agent',
         password: createMigrationPassword(),
         availabilityAssigneeId: assignee.id,
         legacyPasswordHash: assignee.accessCodeHash ?? null,
+        active: false,
       })
     }
 

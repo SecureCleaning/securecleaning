@@ -3,6 +3,7 @@ import Link from 'next/link'
 const tabs = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/sites', label: 'Sites' },
+  { href: '/admin/clients', label: 'Clients' },
   { href: '/admin/content', label: 'Content' },
   { href: '/admin/pricing', label: 'Pricing' },
   { href: '/admin/room-types', label: 'Room Types' },
@@ -10,7 +11,7 @@ const tabs = [
   { href: '/admin/calendar', label: 'Calendar' },
   { href: '/admin/cleaners', label: 'Cleaners' },
   { href: '/admin/chat', label: 'Chat' },
-  { href: '/admin/staff', label: 'Staff Access' },
+  { href: '/admin/staff', label: 'Team Access' },
 ]
 
 export default function AdminNav({ currentPath }: { currentPath: string }) {

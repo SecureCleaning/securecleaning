@@ -21,6 +21,7 @@ import {
   rejectLargePayload,
   validatePublicSubmission,
 } from '@/lib/abuseProtection'
+import { resolvePublicSubmissionClient, upsertOnlineQuoteCrmLead } from '@/lib/clientCrmData'
 
 export async function POST(request: NextRequest) {
   try {
@@ -128,38 +129,50 @@ export async function POST(request: NextRequest) {
 
     const db = getAdminSupabase()
 
-    const { data: clientData } = await db
-      .from('clients')
-      .upsert(
-        {
-          business_name: businessLabel,
-          contact_name: inputs.contactName,
-          email: inputs.email,
-          phone: inputs.phone,
-          city: inputs.city,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'email' }
-      )
-      .select('id')
-      .single()
-
-    const clientId = clientData?.id
+    let clientId: string | null = null
+    try {
+      clientId = (await resolvePublicSubmissionClient({
+        businessName: businessLabel,
+        contactName: inputs.contactName,
+        email: inputs.email,
+        phone: inputs.phone,
+        city: inputs.city,
+      })).id
+    } catch (clientError) {
+      console.error('[quote] Client resolution failed:', clientError)
+    }
 
     const validUntil = new Date()
     validUntil.setDate(validUntil.getDate() + 30)
 
-    const { error: quoteError } = await db.from('quotes').insert({
+    const { data: quoteData, error: quoteError } = await db.from('quotes').insert({
       quote_ref: quoteRef,
       client_id: clientId ?? null,
       inputs: inputs,
       result: result,
       status: 'pending',
       valid_until: validUntil.toISOString(),
-    })
+    }).select('id').single()
 
     if (quoteError) {
       console.error('[quote] Supabase insert error:', quoteError)
+    } else if (quoteData?.id) {
+      try {
+        await upsertOnlineQuoteCrmLead({
+          quoteId: quoteData.id,
+          clientId: clientId ?? null,
+          businessName: businessLabel,
+          contactName: inputs.contactName,
+          email: inputs.email,
+          phone: inputs.phone,
+          address: inputs.address,
+          suburb: inputs.suburb,
+          postcode: inputs.postcode,
+          city: inputs.city,
+        })
+      } catch (crmError) {
+        console.error('[quote] Non-critical CRM lead sync failed:', crmError)
+      }
     }
 
     let emailSent = false
