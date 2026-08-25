@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'https://example.supabase.co'
@@ -12,9 +12,11 @@ const {
   buildContactSourceExplanation,
   canAccessClientCrm,
   canActorAccessAssignedOpportunity,
+  canActorSendCrmEmailAs,
   getMissingCrmSignatureFields,
   hasCompleteCrmSignature,
   requiresNamedSourceProvider,
+  resolveDefaultCrmSenderId,
 } = await import('../src/lib/clientCrmPolicy.ts')
 
 const { buildCrmFooter, buildCrmSignature } = await import('../src/lib/clientCrmEmail.ts')
@@ -50,6 +52,13 @@ test('client CRM roles and assignment access remain tightly bounded', () => {
   assert.equal(canActorAccessAssignedOpportunity('agent', 'agent-1', 'agent-1'), true)
   assert.equal(canActorAccessAssignedOpportunity('agent', 'agent-1', 'agent-2'), false)
   assert.equal(canActorAccessAssignedOpportunity('agent', 'agent-1', null), false)
+
+  assert.equal(canActorSendCrmEmailAs('owner', 'owner-1', 'agent-2'), true)
+  assert.equal(canActorSendCrmEmailAs('manager', 'manager-1', 'agent-2'), true)
+  assert.equal(canActorSendCrmEmailAs('agent', 'agent-1', 'agent-1'), true)
+  assert.equal(canActorSendCrmEmailAs('agent', 'agent-1', 'agent-2'), false)
+  assert.equal(resolveDefaultCrmSenderId('owner-1', 'agent-2', ['owner-1', 'agent-2']), 'agent-2')
+  assert.equal(resolveDefaultCrmSenderId('owner-1', 'disabled-agent', ['owner-1', 'agent-2']), 'owner-1')
 })
 
 test('one customer and site reuses an active opportunity for multiple quote history rows', () => {
@@ -121,7 +130,7 @@ test('every signature detail shown to a client is mandatory for a sender', () =>
     'Regional Agent',
     '0400 123 456',
     'alex@securecleaning.com.au',
-    'Secure Cleaning Aus',
+    'Secure Cleaning',
     'securecleaning.com.au',
     'ABN 81 674 121 825',
   ]) assert.match(signature, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -136,7 +145,7 @@ test('source disclosure and template fields are deterministic and non-empty', ()
   )
   assert.equal(
     buildContactSourceExplanation({ sourceType: 'online_quote' }),
-    'you requested information or a quote through the Secure Cleaning Aus website',
+    'you requested information or a quote through the Secure Cleaning website',
   )
   assert.equal(
     applyCrmTemplateTokens('Hi {{first_name}} from {{business_name}}', { first_name: 'Lee', business_name: 'Acme' }),
@@ -180,8 +189,10 @@ test('CRM authorization revalidates the current active staff record', () => {
 test('CRM sends derive sensitive addressing and fixed sections on the server', () => {
   const email = source('src/lib/clientCrmEmail.ts')
   assert.match(email, /\.select\('id, email, contact_name, unsubscribe_token'\)/)
-  assert.match(email, /replyTo: actor\.email/)
-  assert.match(email, /buildCrmSignature\(actor\)/)
+  assert.match(email, /getStaffAccountProfileById\(senderStaffId\)/)
+  assert.match(email, /canActorSendCrmEmailAs\(actor\.role, actor\.id, senderStaffId\)/)
+  assert.match(email, /replyTo: sender\.email/)
+  assert.match(email, /buildCrmSignature\(sender\)/)
   assert.match(email, /buildCrmFooter\(sourceExplanation, unsubscribeUrl\)/)
   assert.match(email, /List-Unsubscribe/)
   assert.match(email, /\/api\/email-preferences\/unsubscribe\?token=/)
@@ -197,6 +208,55 @@ test('CRM sends derive sensitive addressing and fixed sections on the server', (
   assert.doesNotMatch(email, /input\.from/)
   assert.doesNotMatch(email, /input\.replyTo/)
   assert.doesNotMatch(email, /input\.signature/)
+})
+
+test('owner and manager sender selection is explicit while agents remain locked to themselves', () => {
+  const data = source('src/lib/clientCrmData.ts')
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const email = source('src/lib/clientCrmEmail.ts')
+  const migration = source('supabase/client_crm_sender_and_brand_migration.sql')
+
+  assert.match(data, /getAllowedCrmSenders/)
+  assert.match(data, /account\.active && \['owner', 'manager', 'agent'\]\.includes\(account\.role\)/)
+  assert.match(workspace, /Send as/)
+  assert.match(workspace, /senderStaffId: compose\.senderStaffId/)
+  assert.match(workspace, /selectedLead\.assignedStaffId/)
+  assert.match(workspace, /canManageShared \? <select value=\{compose\.senderStaffId\}/)
+  assert.match(email, /p_actor_id: actor\.id/)
+  assert.match(email, /p_sender_staff_id: sender\.id/)
+  assert.match(migration, /actor_account\.id IS NULL OR p_actor_role NOT IN \('owner', 'manager', 'agent'\)/)
+  assert.match(migration, /p_sender_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.match(migration, /SET search_path = public/)
+  assert.match(migration, /FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /TO service_role/)
+})
+
+test('quote history links to the correct admin or regional-agent editor', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  assert.match(workspace, /`\/admin\/quotes\/\$\{encodeURIComponent\(quote\.quoteRef\)\}`/)
+  assert.match(workspace, /`\/availability\/quotes\/\$\{encodeURIComponent\(data\.actor\.availabilityAssigneeId\)\}\/\$\{encodeURIComponent\(quote\.quoteRef\)\}`/)
+  assert.match(workspace, />Open quote</)
+})
+
+test('current website copy uses the Secure Cleaning text brand consistently', () => {
+  const files = []
+  const collect = (directory) => {
+    for (const name of readdirSync(directory)) {
+      const path = `${directory}/${name}`
+      if (statSync(path).isDirectory()) collect(path)
+      else files.push(path)
+    }
+  }
+  collect(`${projectRoot}/src`)
+  const websiteSource = files.map((path) => readFileSync(path, 'utf8')).join('\n')
+  assert.doesNotMatch(websiteSource, /Secure Cleaning Aus/)
+
+  const migration = source('supabase/client_crm_sender_and_brand_migration.sql')
+  assert.match(migration, /UPDATE site_content/)
+  assert.match(migration, /UPDATE crm_email_templates/)
+  assert.match(migration, /INSERT INTO crm_email_template_versions/)
+  assert.doesNotMatch(migration, /UPDATE crm_communications/)
+  assert.doesNotMatch(migration, /UPDATE clients/)
 })
 
 test('agent views and data queries are constrained by staff assignment', () => {

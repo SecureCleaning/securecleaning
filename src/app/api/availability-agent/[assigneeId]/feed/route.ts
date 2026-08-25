@@ -55,7 +55,7 @@ export async function GET(
   const body = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Secure Cleaning Aus//Agent Feed//EN',
+    'PRODID:-//Secure Cleaning//Agent Feed//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     ...events.flatMap((event) => [

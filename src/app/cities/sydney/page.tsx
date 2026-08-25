@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
-  title: 'Commercial Cleaning Sydney — Secure Cleaning Aus',
+  title: 'Commercial Cleaning Sydney — Secure Cleaning',
   description:
     'Professional commercial cleaning services across Sydney CBD, North Shore, Eastern Suburbs, Western Sydney, and surrounds. Verified Owner-Operators. Get an instant quote.',
   alternates: { canonical: '/cities/sydney' },
@@ -33,7 +33,7 @@ export default async function SydneyPage() {
                 {getContentValue(content, 'sydney.hero_title', 'Commercial Cleaning Sydney')}
               </h1>
               <p className="text-xl text-gray-300 max-w-2xl">
-                {getContentValue(content, 'sydney.hero_body', 'Secure Cleaning Aus operates across greater Sydney — CBD, North Shore, Eastern Suburbs, Western Sydney, and the broader metro area. Verified Owner-Operators who take pride in your premises.')}
+                {getContentValue(content, 'sydney.hero_body', 'Secure Cleaning operates across greater Sydney — CBD, North Shore, Eastern Suburbs, Western Sydney, and the broader metro area. Verified Owner-Operators who take pride in your premises.')}
               </p>
             </div>
           </div>
@@ -46,7 +46,7 @@ export default async function SydneyPage() {
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white rounded-2xl border border-gray-100 p-6">
                 <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>
-                  {getContentValue(content, 'sydney.why_title', 'Why Sydney Businesses Choose Secure Cleaning Aus')}
+                  {getContentValue(content, 'sydney.why_title', 'Why Sydney Businesses Choose Secure Cleaning')}
                 </h2>
                 <p className="text-gray-600 leading-relaxed mb-4">
                   {getContentValue(content, 'sydney.why_body_1', "Sydney's commercial sector spans everything from glass-tower CBD offices to industrial parks in Blacktown, from medical precincts in Macquarie Park to childcare centres across the suburbs. Each environment has different needs — and our Owner-Operators are matched to your specific type of premises.")}

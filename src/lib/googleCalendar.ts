@@ -52,7 +52,7 @@ export async function createBookingFollowUpEvent(
   await calendar.events.insert({
     calendarId,
     requestBody: {
-      summary: `Secure Cleaning Aus site inspection — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'} (${bookingRef})`,
+      summary: `Secure Cleaning site inspection — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'} (${bookingRef})`,
       description: [
         `Booking ref: ${bookingRef}`,
         `Contact: ${inputs.contactName}`,

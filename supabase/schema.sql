@@ -1,6 +1,6 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Secure Cleaning — Supabase Schema
--- Secure Cleaning Aus schema
+-- Secure Cleaning schema
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- Enable UUID extension
@@ -535,11 +535,11 @@ VALUES
   ('home.hero_subtitle', 'Homepage hero subtitle', 'Verified Owner-Operators. Transparent pricing. No lock-in contracts. Get an instant online quote and book your first clean today.', 'home'),
   ('home.cta_primary_label', 'Homepage primary CTA label', 'Get an Instant Quote →', 'home'),
   ('home.cta_secondary_label', 'Homepage secondary CTA label', 'View Services', 'home'),
-  ('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning Aus?', 'home'),
+  ('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning?', 'home'),
   ('contact.email', 'Contact email address', 'info@securecleaning.com.au', 'contact'),
   ('contact.phone', 'Contact phone number', '1300 850 593', 'contact'),
   ('contact.service_areas', 'Contact service areas', 'Melbourne & Sydney, Australia', 'contact'),
-  ('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
+  ('about.intro', 'About page intro paragraph', 'Secure Cleaning delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
   ('faq.heading', 'FAQ page heading', 'Frequently Asked Questions', 'faq')
 ON CONFLICT (key) DO UPDATE SET
   title = EXCLUDED.title,

@@ -19,6 +19,15 @@ export function canManageSharedCrmTemplates(role: AdminRole) {
   return role === 'owner' || role === 'manager'
 }
 
+export function canActorSendCrmEmailAs(role: AdminRole, actorId: string, senderStaffId: string) {
+  if (role === 'owner' || role === 'manager') return Boolean(senderStaffId)
+  return role === 'agent' && Boolean(actorId) && senderStaffId === actorId
+}
+
+export function resolveDefaultCrmSenderId(actorId: string, assignedStaffId: string | null, allowedSenderIds: string[]) {
+  return assignedStaffId && allowedSenderIds.includes(assignedStaffId) ? assignedStaffId : actorId
+}
+
 export function hasCompleteCrmSignature(account: Pick<StaffAccount, 'displayName' | 'email' | 'phone' | 'jobTitle'>) {
   return Boolean(
     account.displayName.trim()
@@ -81,12 +90,12 @@ export function buildContactSourceExplanation(input: {
   if (custom) return custom.slice(0, 500)
 
   const provider = input.sourceProvider?.trim()
-  if (input.sourceType === 'online_quote') return 'you requested information or a quote through the Secure Cleaning Aus website'
-  if (input.sourceType === 'direct_booking') return 'you requested a site inspection through the Secure Cleaning Aus website'
+  if (input.sourceType === 'online_quote') return 'you requested information or a quote through the Secure Cleaning website'
+  if (input.sourceType === 'direct_booking') return 'you requested a site inspection through the Secure Cleaning website'
   if (input.sourceType === 'purchased_lead' && provider) return `we received your contact information from ${provider} in relation to commercial cleaning services`
   if (input.sourceType === 'cold_outreach' && provider) return `your business contact details were publicly listed by ${provider}`
   if (provider) return `we received your contact information from ${provider}`
-  return 'your details were provided to Secure Cleaning Aus in relation to commercial cleaning services'
+  return 'your details were provided to Secure Cleaning in relation to commercial cleaning services'
 }
 
 export function applyCrmTemplateTokens(value: string, tokens: Record<string, string>) {

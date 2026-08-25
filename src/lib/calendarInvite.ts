@@ -105,7 +105,7 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
   const { start, end } = getBookingEventWindow(inputs)
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
-  const summary = `Secure Cleaning Aus inspection hold — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
+  const summary = `Secure Cleaning inspection hold — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
   const description = [
     `Booking reference: ${bookingRef}`,
     `Contact: ${inputs.contactName}`,
@@ -116,13 +116,13 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     `Time preference: ${inputs.timePreference.replace(/_/g, ' ')}`,
     `Notes: ${inputs.notes?.trim() || 'None provided'}`,
     '',
-    'This is a provisional inspection appointment selected within the published appointment window. Travel time between inspection appointments is reserved. Secure Cleaning Aus will confirm the exact inspection time as soon as possible.',
+    'This is a provisional inspection appointment selected within the published appointment window. Travel time between inspection appointments is reserved. Secure Cleaning will confirm the exact inspection time as soon as possible.',
   ].join('\n')
 
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Secure Cleaning Aus//Booking Hold//EN',
+    'PRODID:-//Secure Cleaning//Booking Hold//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:REQUEST',
     'BEGIN:VEVENT',

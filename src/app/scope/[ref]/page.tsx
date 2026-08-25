@@ -39,7 +39,7 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
           <header className="border-b border-slate-200 bg-slate-950 px-6 py-7 text-white sm:px-10">
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div>
-                <Link href="/" className="text-lg font-bold tracking-tight hover:text-emerald-300">Secure Cleaning Aus</Link>
+                <Link href="/" className="text-lg font-bold tracking-tight hover:text-emerald-300">Secure Cleaning</Link>
                 <p className="mt-2 text-sm text-slate-300">{variant === 'final' ? 'Final scope of works' : 'Remote-review scope of works'}</p>
               </div>
               <div className="text-left text-sm sm:text-right">
@@ -166,7 +166,7 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                   {validUntil ? <p className="mt-1">Valid until {validUntil}</p> : null}
                 </div>
                 <div className="text-left sm:text-right">
-                  <p className="font-semibold text-slate-700">Secure Cleaning Aus</p>
+                  <p className="font-semibold text-slate-700">Secure Cleaning</p>
                   <Link href="/" className="mt-1 inline-block text-teal-700 hover:underline">{siteUrl.replace(/^https?:\/\//, '')}</Link>
                 </div>
               </div>

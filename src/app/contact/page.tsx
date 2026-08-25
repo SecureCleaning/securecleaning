@@ -3,9 +3,9 @@ import Link from 'next/link'
 import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
-  title: 'Contact Secure Cleaning Aus',
+  title: 'Contact Secure Cleaning',
   description:
-    'Get in touch with Secure Cleaning Aus. We service Melbourne and Sydney businesses.',
+    'Get in touch with Secure Cleaning. We service Melbourne and Sydney businesses.',
   alternates: { canonical: '/contact' },
 }
 

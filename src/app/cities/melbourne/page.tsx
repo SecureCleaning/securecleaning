@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
-  title: 'Commercial Cleaning Melbourne — Secure Cleaning Aus',
+  title: 'Commercial Cleaning Melbourne — Secure Cleaning',
   description:
     'Professional commercial cleaning services across Melbourne CBD, inner suburbs, and greater metro area. Verified Owner-Operators. Get an instant quote.',
   alternates: { canonical: '/cities/melbourne' },
@@ -33,7 +33,7 @@ export default async function MelbournePage() {
                 {getContentValue(content, 'melbourne.hero_title', 'Commercial Cleaning Melbourne')}
               </h1>
               <p className="text-xl text-gray-300 max-w-2xl">
-                {getContentValue(content, 'melbourne.hero_body', 'Secure Cleaning Aus operates across all of Melbourne — from the CBD and inner suburbs to the outer metro area. Our verified Owner-Operators are local business owners who know Melbourne inside out.')}
+                {getContentValue(content, 'melbourne.hero_body', 'Secure Cleaning operates across all of Melbourne — from the CBD and inner suburbs to the outer metro area. Our verified Owner-Operators are local business owners who know Melbourne inside out.')}
               </p>
             </div>
           </div>
@@ -46,7 +46,7 @@ export default async function MelbournePage() {
             <div className="lg:col-span-2 space-y-6">
               <div className="bg-white rounded-2xl border border-gray-100 p-6">
                 <h2 className="text-2xl font-bold mb-4" style={{ color: '#1a2744' }}>
-                  {getContentValue(content, 'melbourne.why_title', 'Why Melbourne Businesses Choose Secure Cleaning Aus')}
+                  {getContentValue(content, 'melbourne.why_title', 'Why Melbourne Businesses Choose Secure Cleaning')}
                 </h2>
                 <p className="text-gray-600 leading-relaxed mb-4">
                   {getContentValue(content, 'melbourne.why_body_1', "Melbourne's commercial property market is dense and competitive. Whether you're in a Collins Street tower, a Fitzroy warehouse conversion, or an industrial estate in the west, your cleaning needs to be reliable, consistent, and professionally managed.")}

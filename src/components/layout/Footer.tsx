@@ -36,7 +36,7 @@ export default function Footer() {
             <div className="mb-3">
               <Image
                 src="/secure-cleaning-logo-aug26.png"
-                alt="Secure Cleaning Aus"
+                alt="Secure Cleaning"
                 width={993}
                 height={662}
                 className="h-20 w-auto"
@@ -138,7 +138,7 @@ export default function Footer() {
       {/* Bottom bar */}
       <div className="border-t border-gray-800">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-gray-500">
-          <p>© {year} Secure Cleaning Aus. All rights reserved.</p>
+          <p>© {year} Secure Cleaning. All rights reserved.</p>
           <div className="flex gap-6">
             <Link href="/privacy" className="hover:text-gray-300 transition-colors">Privacy Policy</Link>
             <Link href="/terms" className="hover:text-gray-300 transition-colors">Terms of Service</Link>

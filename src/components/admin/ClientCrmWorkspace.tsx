@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
-import { applyCrmTemplateTokens, getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
-import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity } from '@/lib/clientCrmData'
+import { applyCrmTemplateTokens, getMissingCrmSignatureFields, resolveDefaultCrmSenderId } from '@/lib/clientCrmPolicy'
+import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity, CrmSenderOption } from '@/lib/clientCrmData'
 import type { StaffAccount } from '@/lib/staffAccounts'
 
 type WorkspaceData = {
   opportunities: CrmOpportunity[]
   templates: CrmEmailTemplate[]
   agents: CrmAgentOption[]
+  senders: CrmSenderOption[]
   actor: StaffAccount
 }
 
@@ -58,7 +60,7 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
   const [leadDraft, setLeadDraft] = useState(emptyLeadDraft)
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
-  const [compose, setCompose] = useState({ templateId: '', subject: '', body: '' })
+  const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '' })
   const [leadEdit, setLeadEdit] = useState({ stage: 'new', notes: '', nextFollowUpAt: '', assignedStaffId: '', contactBasis: '', sourceProvider: '', sourceExplanation: '' })
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState('')
@@ -99,8 +101,13 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       sourceProvider: selectedLead.sourceProvider || '',
       sourceExplanation: selectedLead.sourceExplanation || '',
     })
-    setCompose({ templateId: '', subject: '', body: '' })
-  }, [selectedLead])
+    const defaultSenderId = resolveDefaultCrmSenderId(
+      data?.actor.id ?? '',
+      selectedLead.assignedStaffId,
+      data?.senders.map((sender) => sender.id) ?? [],
+    )
+    setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '' })
+  }, [data?.actor.id, data?.senders, selectedLead])
 
   async function post(body: Record<string, unknown>) {
     const response = await fetch('/api/admin/client-crm', {
@@ -116,7 +123,7 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
   function chooseTemplate(templateId: string) {
     const template = data?.templates.find((item) => item.id === templateId)
     if (!template || !selectedLead) {
-      setCompose({ templateId: '', subject: '', body: '' })
+      setCompose((current) => ({ ...current, templateId: '', subject: '', body: '' }))
       return
     }
     const tokens = {
@@ -127,11 +134,12 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       postcode: selectedLead.postcode,
       lead_source: selectedLead.sourceProvider || selectedLead.sourceType,
     }
-    setCompose({
+    setCompose((current) => ({
+      ...current,
       templateId,
       subject: applyCrmTemplateTokens(template.subject, tokens),
       body: applyCrmTemplateTokens(template.body, tokens),
-    })
+    }))
   }
 
   async function createLead(event: React.FormEvent) {
@@ -174,6 +182,7 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       await post({
         action: 'email.send',
         opportunityId: selectedLead.id,
+        senderStaffId: compose.senderStaffId,
         templateId: compose.templateId || null,
         subject: compose.subject,
         body: compose.body,
@@ -224,9 +233,10 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
   }
 
   const canManageShared = data.actor.role === 'owner' || data.actor.role === 'manager'
-  const signatureMissing = getMissingCrmSignatureFields(data.actor)
+  const selectedSender = data.senders.find((sender) => sender.id === compose.senderStaffId) ?? null
+  const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
-  const canSend = Boolean(selectedLead && !selectedLead.suppressed && !hasUnresolvedEmail && signatureMissing.length === 0 && compose.subject.trim() && compose.body.trim())
+  const canSend = Boolean(selectedLead && selectedSender && !selectedLead.suppressed && !hasUnresolvedEmail && signatureMissing.length === 0 && compose.subject.trim() && compose.body.trim())
 
   return (
     <div>
@@ -239,8 +249,6 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       />
 
       {status ? <div role={status.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-xl border p-4 text-sm ${status.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>{status.message}</div> : null}
-      {signatureMissing.length > 0 ? <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Client-email sending is disabled until Team Access has: {signatureMissing.join(', ')}.</div> : null}
-
       {view === 'new' ? <form onSubmit={createLead} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-900">Create an opportunity</h2>
         <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. The postcode suggests an agent automatically; an existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>
@@ -281,8 +289,40 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search business, contact, email or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" /><div className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto">{filteredLeads.map((lead) => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className={`block w-full rounded-xl border p-3 text-left ${lead.id === selectedLeadId ? 'border-teal-500 bg-teal-50' : 'border-gray-200 bg-white'}`}><span className="block font-semibold text-gray-900">{lead.businessName || lead.email}</span><span className="block text-sm text-gray-600">{lead.contactName} - {lead.stage} - cycle {lead.cycleNumber}</span><span className="mt-1 block text-xs text-gray-500">{lead.assignedStaffName || 'Unassigned'} - {lead.postcode || 'Site to confirm'} - {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>{lead.suppressed ? <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Email suppressed</span> : null}</button>)}{filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}</div></section>
         {selectedLead ? <div className="space-y-5">
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">{selectedLead.businessName}</h2><p className="text-sm text-gray-600">{selectedLead.contactName} - {selectedLead.email} - {selectedLead.phone || 'No phone'}</p><p className="mt-1 text-sm text-gray-500">{[selectedLead.address, selectedLead.suburb, selectedLead.postcode, selectedLead.state].filter(Boolean).join(', ')}</p></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span></div><div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4"><label className="text-sm font-medium text-gray-700">Stage<select value={leadEdit.stage} onChange={(event) => setLeadEdit({ ...leadEdit, stage: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}</select></label><label className="text-sm font-medium text-gray-700">Next follow-up<input type="datetime-local" value={leadEdit.nextFollowUpAt} onChange={(event) => setLeadEdit({ ...leadEdit, nextFollowUpAt: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>{canManageShared ? <label className="text-sm font-medium text-gray-700">Assigned agent<select value={leadEdit.assignedStaffId} onChange={(event) => setLeadEdit({ ...leadEdit, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Unassigned</option>{data.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label> : null}<label className={`text-sm font-medium text-gray-700 ${canManageShared ? '' : 'md:col-span-2'}`}>Internal notes<textarea rows={2} value={leadEdit.notes} onChange={(event) => setLeadEdit({ ...leadEdit, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Contact basis<select value={leadEdit.contactBasis} onChange={(event) => setLeadEdit({ ...leadEdit, contactBasis: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select basis</option>{basisOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadEdit.sourceProvider} onChange={(event) => setLeadEdit({ ...leadEdit, sourceProvider: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation<textarea rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div><button type="button" onClick={() => void updateLead()} disabled={busy === 'lead-update'} className="mt-4 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'lead-update' ? 'Saving...' : 'Save workflow'}</button></section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Email client</h2><p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. The saved contact, sender, Reply-To, source disclosure, signature, unsubscribe state, and footer are verified again on the server.</p>{selectedLead.suppressed ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">This contact has unsubscribed or is suppressed. CRM outreach is disabled.</p> : null}{hasUnresolvedEmail ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">A previous email has an unresolved delivery outcome. Reconcile it before sending again.</p> : null}<div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label><label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 md:col-span-2">Message<textarea rows={9} value={compose.body} onChange={(event) => setCompose({ ...compose, body: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div><div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm"><div className="font-semibold text-gray-900">Fixed email details</div><p className="mt-1 text-gray-600">Source: {selectedLead.sourceExplanation || 'Missing - sending blocked'}</p><p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${data.actor.displayName}\n${data.actor.jobTitle}\nSecure Cleaning Aus\n${data.actor.phone}\n${data.actor.email}\nsecurecleaning.com.au\nABN 81 674 121 825`}</p><p className="mt-2 text-xs text-gray-500">The unsubscribe link and company footer are appended after this signature.</p></div><button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="mt-4 rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Check eligibility and send'}</button></section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Quote history</h2><div className="mt-3 divide-y divide-gray-100">{selectedLead.quotes.map((quote) => <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><span className="font-semibold text-gray-900">#{quote.sequenceNumber} - {quote.quoteRef}</span><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span></div>)}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div></section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900">Email client</h2>
+            <p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. Sender access, recipient details, contact source, signature, unsubscribe state, and unresolved sends are verified again when you send.</p>
+            {selectedLead.suppressed ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">This contact has unsubscribed or is suppressed. CRM outreach is disabled.</p> : null}
+            {hasUnresolvedEmail ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">A previous email has an unresolved delivery outcome. Reconcile it before sending again.</p> : null}
+            {signatureMissing.length > 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Sending as this person is disabled until Team Access has: {signatureMissing.join(', ')}.</p> : null}
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <label className="text-sm font-medium text-gray-700">Send as
+                {canManageShared ? <select value={compose.senderStaffId} onChange={(event) => setCompose({ ...compose, senderStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                  {data.senders.map((sender) => <option key={sender.id} value={sender.id}>{sender.displayName} - {sender.jobTitle}</option>)}
+                </select> : <span className="mt-1 block rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 font-normal">{selectedSender?.displayName ?? data.actor.displayName}</span>}
+              </label>
+              <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700 md:col-span-2 lg:col-span-3">Message<textarea rows={9} value={compose.body} onChange={(event) => setCompose({ ...compose, body: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+            </div>
+            <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
+              <div className="font-semibold text-gray-900">Email details</div>
+              <p className="mt-1 text-gray-600">Source: {selectedLead.sourceExplanation || 'Missing - sending blocked'}</p>
+              {selectedSender ? <p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${selectedSender.displayName}\n${selectedSender.jobTitle}\nSecure Cleaning\n${selectedSender.phone}\n${selectedSender.email}\nsecurecleaning.com.au\nABN 81 674 121 825`}</p> : null}
+              <p className="mt-2 text-xs text-gray-500">The unsubscribe link and company footer are appended after this signature.</p>
+            </div>
+            <button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="mt-4 rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button>
+            <p className="mt-2 text-xs text-gray-500">The system automatically checks sender permission, recipient consistency, contact source, unsubscribe status, signature completeness, and any unresolved prior send.</p>
+          </section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-gray-900">Quote history</h2>
+            <div className="mt-3 divide-y divide-gray-100">{selectedLead.quotes.map((quote) => {
+              const quoteHref = portal === 'agent' && data.actor.availabilityAssigneeId
+                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}`
+                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}`
+              return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
+            })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
+          </section>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}

@@ -11,8 +11,8 @@ const siteUrl = getCanonicalSiteUrl()
 export const metadata: Metadata = {
   metadataBase: siteUrl,
   title: {
-    default: 'Secure Cleaning Aus — Professional Commercial Cleaning in Melbourne & Sydney',
-    template: '%s | Secure Cleaning Aus',
+    default: 'Secure Cleaning — Professional Commercial Cleaning in Melbourne & Sydney',
+    template: '%s | Secure Cleaning',
   },
   description:
     'Professional commercial cleaning services in Melbourne and Sydney. Verified Owner-Operators, flexible frequencies, no lock-in contracts. Get an instant quote online.',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     'sports facilities cleaning',
     'Owner-Operator cleaning',
   ],
-  authors: [{ name: 'Secure Cleaning Aus' }],
+  authors: [{ name: 'Secure Cleaning' }],
   icons: {
     icon: '/secure-cleaning-logo-aug26.png',
     shortcut: '/secure-cleaning-logo-aug26.png',
@@ -36,16 +36,16 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   openGraph: {
-    title: 'Secure Cleaning Aus — Professional Commercial Cleaning',
+    title: 'Secure Cleaning — Professional Commercial Cleaning',
     description: 'Verified Owner-Operators. Flexible frequencies. No lock-in. Melbourne & Sydney.',
     url: siteUrl,
-    siteName: 'Secure Cleaning Aus',
+    siteName: 'Secure Cleaning',
     images: [
       {
         url: '/secure-cleaning-logo-aug26.png',
         width: 993,
         height: 662,
-        alt: 'Secure Cleaning Aus',
+        alt: 'Secure Cleaning',
       },
     ],
     locale: 'en_AU',

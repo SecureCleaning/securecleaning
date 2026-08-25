@@ -7,9 +7,9 @@ import {
   rejectLargePayload,
 } from '@/lib/abuseProtection'
 
-const SYSTEM_PROMPT = `You are Secure Bot, the professional AI assistant for Secure Cleaning Aus — a commercial cleaning service operating in Melbourne and Sydney, Australia.
+const SYSTEM_PROMPT = `You are Secure Bot, the professional AI assistant for Secure Cleaning — a commercial cleaning service operating in Melbourne and Sydney, Australia.
 
-## About Secure Cleaning Aus
+## About Secure Cleaning
 - Operates exclusively in Melbourne and Sydney (no other cities)
 - Uses the Owner-Operator model: every cleaner is a business owner who has personally invested in their territory
 - Owner-Operators are fully verified, site inducted, and directly contactable by clients

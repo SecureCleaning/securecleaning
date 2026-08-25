@@ -23,14 +23,14 @@ export default function Header() {
           {/* Logo */}
           <Link
             href="/"
-            aria-label="Secure Cleaning Aus home"
+            aria-label="Secure Cleaning home"
             title="Go to homepage"
             onClick={handleLogoClick}
             className="relative z-10 inline-flex items-center shrink-0"
           >
             <Image
               src="/secure-cleaning-logo-aug26.png"
-              alt="Secure Cleaning Aus"
+              alt="Secure Cleaning"
               width={993}
               height={662}
               className="h-16 w-auto md:h-20"

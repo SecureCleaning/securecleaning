@@ -4,7 +4,7 @@ import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
   title: 'FAQ — Frequently Asked Questions',
-  description: 'Answers to common questions about Secure Cleaning Aus services, pricing, Owner-Operators, and how the booking process works.',
+  description: 'Answers to common questions about Secure Cleaning services, pricing, Owner-Operators, and how the booking process works.',
   alternates: { canonical: '/faq' },
 }
 
@@ -12,7 +12,7 @@ const FAQ_DEFAULTS = [
   {
     question: 'What is an Owner-Operator?',
     answer:
-      'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning Aus. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.',
+      'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.',
   },
   {
     question: 'Which cities do you service?',
@@ -32,7 +32,7 @@ const FAQ_DEFAULTS = [
   {
     question: 'What does the verification process involve?',
     answer:
-      'Every Secure Cleaning Aus operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.',
+      'Every Secure Cleaning operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.',
   },
   {
     question: 'How quickly can a clean be arranged?',
@@ -67,12 +67,12 @@ const FAQ_DEFAULTS = [
   {
     question: 'Are your cleaners insured?',
     answer:
-      'All Secure Cleaning Aus Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.',
+      'All Secure Cleaning Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.',
   },
   {
     question: 'Do you clean residential properties?',
     answer:
-      'No. Secure Cleaning Aus focuses exclusively on commercial and business premises. We do not offer residential cleaning services.',
+      'No. Secure Cleaning focuses exclusively on commercial and business premises. We do not offer residential cleaning services.',
   },
   {
     question: 'Can you clean at night or on weekends?',

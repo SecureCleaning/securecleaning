@@ -112,7 +112,7 @@
 }
 
 .scope-report-shell::before {
-  content: 'SECURE CLEANING AUS  •  SECURECLEANING.COM.AU\A SECURE CLEANING AUS  •  SECURECLEANING.COM.AU';
+  content: 'SECURE CLEANING  •  SECURECLEANING.COM.AU\A SECURE CLEANING  •  SECURECLEANING.COM.AU';
   position: absolute;
   z-index: 0;
   top: 24%;

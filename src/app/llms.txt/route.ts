@@ -1,14 +1,14 @@
-const llms = `# Secure Cleaning Aus
+const llms = `# Secure Cleaning
 
 ## Business Profile
 
-- Business name: Secure Cleaning Aus
+- Business name: Secure Cleaning
 - ABN: 81 674 121 825
 - Website: https://securecleaning.com.au/
 - Business type: Professional commercial cleaning service
 - Service model: Verified Owner-Operators matched to business premises
 - Service coverage: Melbourne and Sydney metropolitan and greater suburban areas
-- Residential cleaning: Not offered; Secure Cleaning Aus focuses on commercial and business premises
+- Residential cleaning: Not offered; Secure Cleaning focuses on commercial and business premises
 
 ## Key Pages
 

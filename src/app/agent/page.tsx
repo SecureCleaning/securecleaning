@@ -4,7 +4,7 @@ import AvailabilityAgentLogin from '@/components/availability/AvailabilityAgentL
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  title: 'Agent Portal Login | Secure Cleaning Aus',
+  title: 'Agent Portal Login | Secure Cleaning',
   description: 'Secure login for Secure Cleaning regional agents.',
 }
 

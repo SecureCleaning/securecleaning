@@ -145,16 +145,16 @@ export async function sendQuoteEmail(
     from: FROM_EMAIL,
     to: inputs.email,
     replyTo: ADMIN_EMAIL,
-    subject: `Your Secure Cleaning Aus Quote — ${quoteRef}`,
+    subject: `Your Secure Cleaning Quote — ${quoteRef}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning Aus</h1>
+          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
           <p style="color: #22c55e; margin: 4px 0 0;">Professional Commercial Cleaning</p>
         </div>
         <div style="padding: 32px 24px;">
           <p>Hi ${inputs.contactName},</p>
-          <p>Thank you for requesting a remote quote from Secure Cleaning Aus. Here's your estimate for <strong>${businessLabel}</strong> in ${cityLabel}.</p>
+          <p>Thank you for requesting a remote quote from Secure Cleaning. Here's your estimate for <strong>${businessLabel}</strong> in ${cityLabel}.</p>
           
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 16px;">Quote Reference: ${quoteRef}</h2>
@@ -200,7 +200,7 @@ export async function sendQuoteEmail(
           ${inputs.addOns.glassCleaningRequired ? '<p style="color: #64748b; font-size: 13px; margin-top: 12px;">Glass cleaning is not included in this remote estimate. We can estimate the cost during your inspection.</p>' : ''}
         </div>
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
-          Secure Cleaning Aus | Melbourne & Sydney
+          Secure Cleaning | Melbourne & Sydney
         </div>
       </div>
     `,
@@ -215,7 +215,7 @@ export async function sendQuoteEmail(
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; color: #334155;">
           <div style="background: #1a2744; padding: 24px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning Aus</h1>
+            <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
             <p style="color: #22c55e; margin: 4px 0 0;">Internal Quote Copy</p>
           </div>
           <div style="padding: 28px 24px;">
@@ -266,7 +266,7 @@ export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInput
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
         <div style="background: #0b5f74; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning Aus</h1>
+          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
           <p style="color: #bbf7d0; margin: 4px 0 0;">Client Scope of Works</p>
         </div>
         <div style="padding: 32px 24px;">
@@ -276,7 +276,7 @@ export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInput
           <p style="margin: 28px 0; text-align: center;">
             <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Scope of Works</a>
           </p>
-          <p style="color: #64748b; font-size: 13px;">Reference: ${quoteRef}<br>This link is provided by Secure Cleaning Aus and should be used as the current version of the report.</p>
+          <p style="color: #64748b; font-size: 13px;">Reference: ${quoteRef}<br>This link is provided by Secure Cleaning and should be used as the current version of the report.</p>
         </div>
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
           <a href="${SITE_URL}" style="color: #0b5f74;">securecleaning.com.au</a>
@@ -319,7 +319,7 @@ export async function sendUpdatedQuoteEmail(
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #334155;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning Aus</h1>
+          <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
           <p style="color: #22c55e; margin: 4px 0 0;">Updated Quote Confirmation</p>
         </div>
         <div style="padding: 32px 24px;">
@@ -349,7 +349,7 @@ export async function sendUpdatedQuoteEmail(
 
           <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>
         </div>
-        <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">Secure Cleaning Aus | Melbourne & Sydney</div>
+        <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">Secure Cleaning | Melbourne & Sydney</div>
       </div>
     `,
   })
@@ -389,7 +389,7 @@ export async function sendBookingConfirmationEmail(
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
-          <h1 style="color: white; margin: 0;">Secure Cleaning Aus</h1>
+          <h1 style="color: white; margin: 0;">Secure Cleaning</h1>
           <p style="color: #22c55e; margin: 4px 0 0;">Site Inspection Request Received ✓</p>
         </div>
         <div style="padding: 32px 24px;">
@@ -422,7 +422,7 @@ export async function sendBookingConfirmationEmail(
           <p>Questions? Reply to this email or call us.</p>
         </div>
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
-          Secure Cleaning Aus | Melbourne & Sydney
+          Secure Cleaning | Melbourne & Sydney
         </div>
       </div>
     `,

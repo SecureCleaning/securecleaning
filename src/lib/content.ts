@@ -41,7 +41,7 @@ const homeEntries: ContentEntryDefinition[] = [
   entry('home.step_3_title', 'Homepage step 3 title', 'Your Space, Professionally Cleaned', 'home'),
   entry('home.step_3_desc', 'Homepage step 3 description', "Your operator starts on your schedule. You have their direct number. If anything ever isn't right, you tell them — and it gets fixed.", 'home'),
   entry('home.how_cta_label', 'Homepage how-it-works CTA label', 'Start Your Quote', 'home'),
-  entry('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning Aus?', 'home'),
+  entry('home.why_title', 'Homepage why section heading', 'Why Secure Cleaning?', 'home'),
   entry('home.why_subtitle', 'Homepage why section subtitle', "The Owner-Operator model is fundamentally different — and better. Here's why businesses across Melbourne and Sydney choose us.", 'home'),
   entry('home.benefit_1_title', 'Homepage benefit 1 title', 'No Lock-In Contracts', 'home'),
   entry('home.benefit_1_desc', 'Homepage benefit 1 description', "Stay because you love the service — not because you're trapped. Cancel any time with reasonable notice.", 'home'),
@@ -84,20 +84,20 @@ const homeEntries: ContentEntryDefinition[] = [
 ]
 
 const aboutEntries: ContentEntryDefinition[] = [
-  entry('about.hero_title', 'About page hero title', 'About Secure Cleaning Aus', 'about'),
+  entry('about.hero_title', 'About page hero title', 'About Secure Cleaning', 'about'),
   entry('about.hero_subtitle', 'About page hero subtitle', 'A better way to clean your business. Built on the Owner-Operator model.', 'about'),
   entry('about.section_1_title', 'About section 1 heading', 'Who We Are', 'about'),
-  entry('about.intro', 'About page intro paragraph', 'Secure Cleaning Aus is focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
+  entry('about.intro', 'About page intro paragraph', 'Secure Cleaning is focused on delivering professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.', 'about'),
   entry('about.section_1_paragraph_2', 'About section 1 paragraph 2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.', 'about'),
   entry('about.section_1_paragraph_3', 'About section 1 paragraph 3', 'We believed there was a better way.', 'about'),
   entry('about.section_2_title', 'About section 2 heading', 'The Owner-Operator Model', 'about'),
-  entry('about.section_2_intro', 'About section 2 intro paragraph', 'Every Secure Cleaning Aus operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:', 'about'),
+  entry('about.section_2_intro', 'About section 2 intro paragraph', 'Every Secure Cleaning operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:', 'about'),
   entry('about.model_point_1', 'About model point 1', "Financial commitment: Our operators have real money at stake. They've purchased their territory and have a business to protect.", 'about'),
   entry('about.model_point_2', 'About model point 2', 'Personal accountability: When you call about a concern, you call your operator directly — not a 1300 number.', 'about'),
   entry('about.model_point_3', 'About model point 3', 'Long-term thinking: Owner-Operators build client relationships over years, not weeks.', 'about'),
   entry('about.model_point_4', 'About model point 4', "Professional pride: These aren't casuals. They're trained cleaning professionals who run their own business.", 'about'),
   entry('about.section_3_title', 'About section 3 heading', 'Verification & Standards', 'about'),
-  entry('about.section_3_intro', 'About section 3 intro paragraph', 'Every Secure Cleaning Aus operator must pass our verification process before taking on clients:', 'about'),
+  entry('about.section_3_intro', 'About section 3 intro paragraph', 'Every Secure Cleaning operator must pass our verification process before taking on clients:', 'about'),
   entry('about.standard_1', 'About standard 1', 'National police check', 'about'),
   entry('about.standard_2', 'About standard 2', 'Public liability insurance verification', 'about'),
   entry('about.standard_3', 'About standard 3', 'Reference checks', 'about'),
@@ -144,7 +144,7 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.heading', 'FAQ page heading', 'Frequently Asked Questions', 'faq'),
   entry('faq.intro', 'FAQ page intro text', "Can't find your answer here? Chat with Secure Bot or", 'faq'),
   entry('faq.item_1_question', 'FAQ 1 question', 'What is an Owner-Operator?', 'faq'),
-  entry('faq.item_1_answer', 'FAQ 1 answer', 'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning Aus. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.', 'faq'),
+  entry('faq.item_1_answer', 'FAQ 1 answer', 'An Owner-Operator is an independent business owner who has invested in running a cleaning territory with Secure Cleaning. Unlike casual workers employed by a franchise, Owner-Operators have invested their own money and have a genuine financial stake in the quality of their work. They run their cleaning business as their own enterprise.', 'faq'),
   entry('faq.item_2_question', 'FAQ 2 question', 'Which cities do you service?', 'faq'),
   entry('faq.item_2_answer', 'FAQ 2 answer', 'We currently operate in Melbourne and Sydney only. We cover metro and greater suburban areas in both cities. More cities will be added in the future.', 'faq'),
   entry('faq.item_3_question', 'FAQ 3 question', 'How is pricing calculated?', 'faq'),
@@ -152,7 +152,7 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.item_4_question', 'FAQ 4 question', 'Is there a minimum contract period?', 'faq'),
   entry('faq.item_4_answer', 'FAQ 4 answer', "No. We don't believe in lock-in contracts. You stay because the service is excellent, not because you're trapped. We do ask for reasonable notice to cancel — typically 2 weeks for regular services.", 'faq'),
   entry('faq.item_5_question', 'FAQ 5 question', 'What does the verification process involve?', 'faq'),
-  entry('faq.item_5_answer', 'FAQ 5 answer', 'Every Secure Cleaning Aus operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.', 'faq'),
+  entry('faq.item_5_answer', 'FAQ 5 answer', 'Every Secure Cleaning operator must complete a national police check, provide evidence of public liability insurance, pass reference checks, undergo a skills assessment, and complete a site induction process for each new client. We do not send unverified people to your premises.', 'faq'),
   entry('faq.item_6_question', 'FAQ 6 question', 'How quickly can a clean be arranged?', 'faq'),
   entry('faq.item_6_answer', 'FAQ 6 answer', 'For new clients, we aim to arrange a site inspection within 48 hours of your request. After the inspection, we confirm your scope, final quote, and recommended service plan.', 'faq'),
   entry('faq.item_7_question', 'FAQ 7 question', 'Will I always have the same cleaner?', 'faq'),
@@ -166,9 +166,9 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.recurring_cleaning_question', 'Recurring cleaning question', 'What recurring cleaning schedules are available?', 'faq'),
   entry('faq.recurring_cleaning_answer', 'Recurring cleaning answer', 'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, or fortnightly schedules. Request a quote and we will confirm the right service plan for your premises.', 'faq'),
   entry('faq.item_12_question', 'FAQ 12 question', 'Are your cleaners insured?', 'faq'),
-  entry('faq.item_12_answer', 'FAQ 12 answer', 'All Secure Cleaning Aus Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.', 'faq'),
+  entry('faq.item_12_answer', 'FAQ 12 answer', 'All Secure Cleaning Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.', 'faq'),
   entry('faq.item_13_question', 'FAQ 13 question', 'Do you clean residential properties?', 'faq'),
-  entry('faq.item_13_answer', 'FAQ 13 answer', 'No. Secure Cleaning Aus focuses exclusively on commercial and business premises. We do not offer residential cleaning services.', 'faq'),
+  entry('faq.item_13_answer', 'FAQ 13 answer', 'No. Secure Cleaning focuses exclusively on commercial and business premises. We do not offer residential cleaning services.', 'faq'),
   entry('faq.item_14_question', 'FAQ 14 question', 'Can you clean at night or on weekends?', 'faq'),
   entry('faq.item_14_answer', 'FAQ 14 answer', 'Yes. We offer after-hours (post 6pm weekdays) and weekend cleaning. Note that after-hours and weekend cleaning attracts a surcharge (25% and 50% respectively), which is reflected in your quote.', 'faq'),
   entry('faq.cta_heading', 'FAQ bottom CTA heading', 'Still have questions?', 'faq'),
@@ -230,8 +230,8 @@ const citiesEntries: ContentEntryDefinition[] = [
 
 const melbourneEntries: ContentEntryDefinition[] = [
   entry('melbourne.hero_title', 'Melbourne page hero title', 'Commercial Cleaning Melbourne', 'melbourne'),
-  entry('melbourne.hero_body', 'Melbourne page hero body', 'Secure Cleaning Aus operates across all of Melbourne — from the CBD and inner suburbs to the outer metro area. Our verified Owner-Operators are local business owners who know Melbourne inside out.', 'melbourne'),
-  entry('melbourne.why_title', 'Melbourne page why section heading', 'Why Melbourne Businesses Choose Secure Cleaning Aus', 'melbourne'),
+  entry('melbourne.hero_body', 'Melbourne page hero body', 'Secure Cleaning operates across all of Melbourne — from the CBD and inner suburbs to the outer metro area. Our verified Owner-Operators are local business owners who know Melbourne inside out.', 'melbourne'),
+  entry('melbourne.why_title', 'Melbourne page why section heading', 'Why Melbourne Businesses Choose Secure Cleaning', 'melbourne'),
   entry('melbourne.why_body_1', 'Melbourne page why section paragraph 1', "Melbourne's commercial property market is dense and competitive. Whether you're in a Collins Street tower, a Fitzroy warehouse conversion, or an industrial estate in the west, your cleaning needs to be reliable, consistent, and professionally managed.", 'melbourne'),
   entry('melbourne.why_body_2', 'Melbourne page why section paragraph 2', "Our Melbourne Owner-Operators have invested in their territories. They're not casuals who might not show up — they're business owners with a reputation to protect and a livelihood that depends on your satisfaction.", 'melbourne'),
   entry('melbourne.areas_title', 'Melbourne page areas heading', 'Areas We Cover', 'melbourne'),
@@ -249,8 +249,8 @@ const melbourneEntries: ContentEntryDefinition[] = [
 
 const sydneyEntries: ContentEntryDefinition[] = [
   entry('sydney.hero_title', 'Sydney page hero title', 'Commercial Cleaning Sydney', 'sydney'),
-  entry('sydney.hero_body', 'Sydney page hero body', 'Secure Cleaning Aus operates across greater Sydney — CBD, North Shore, Eastern Suburbs, Western Sydney, and the broader metro area. Verified Owner-Operators who take pride in your premises.', 'sydney'),
-  entry('sydney.why_title', 'Sydney page why section heading', 'Why Sydney Businesses Choose Secure Cleaning Aus', 'sydney'),
+  entry('sydney.hero_body', 'Sydney page hero body', 'Secure Cleaning operates across greater Sydney — CBD, North Shore, Eastern Suburbs, Western Sydney, and the broader metro area. Verified Owner-Operators who take pride in your premises.', 'sydney'),
+  entry('sydney.why_title', 'Sydney page why section heading', 'Why Sydney Businesses Choose Secure Cleaning', 'sydney'),
   entry('sydney.why_body_1', 'Sydney page why section paragraph 1', "Sydney's commercial sector spans everything from glass-tower CBD offices to industrial parks in Blacktown, from medical precincts in Macquarie Park to childcare centres across the suburbs. Each environment has different needs — and our Owner-Operators are matched to your specific type of premises.", 'sydney'),
   entry('sydney.why_body_2', 'Sydney page why section paragraph 2', "With Sydney's high cost of doing business, reliability is everything. Our Owner-Operators have invested in their territories — they have every incentive to show up, do a great job, and keep your business.", 'sydney'),
   entry('sydney.areas_title', 'Sydney page areas heading', 'Areas We Cover', 'sydney'),
@@ -317,7 +317,9 @@ const DEFAULT_CONTENT_MAP = CONTENT_DEFAULTS.reduce<ContentMap>((acc, entry) => 
 }, {})
 
 function replaceLegacyAssistantName(value: string) {
-  return value.replace(/\bMax\b/g, 'Secure Bot')
+  return value
+    .replace(/\bMax\b/g, 'Secure Bot')
+    .replaceAll(['Secure Cleaning', 'Aus'].join(' '), 'Secure Cleaning')
 }
 
 export function getContentValue(map: ContentMap | null | undefined, key: string, fallback: string) {

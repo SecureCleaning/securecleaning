@@ -18,6 +18,7 @@ import {
 } from '@/lib/clientCrmPolicy'
 
 export type CrmAgentOption = Pick<StaffAccount, 'id' | 'displayName' | 'email' | 'jobTitle' | 'phone' | 'availabilityAssigneeId' | 'active'>
+export type CrmSenderOption = Pick<StaffAccount, 'id' | 'displayName' | 'email' | 'jobTitle' | 'phone' | 'role' | 'availabilityAssigneeId' | 'active'>
 
 export type CrmQuoteHistory = {
   id: string
@@ -118,7 +119,7 @@ function resolvePublicContactMatch(rows: Array<Record<string, unknown>>, input: 
       && (!savedPhone || !normalizedPhone || savedPhone === normalizedPhone)
   })
   if (matching.length !== 1) {
-    throw new ClientCrmError('These contact details match more than one existing client record or conflict with the saved record. Please contact Secure Cleaning Aus so we can reconcile the client before continuing.', 409)
+    throw new ClientCrmError('These contact details match more than one existing client record or conflict with the saved record. Please contact Secure Cleaning so we can reconcile the client before continuing.', 409)
   }
   return matching[0]
 }
@@ -209,6 +210,22 @@ async function getAllowedCrmAgents(actor: ClientCrmActor) {
     }))
 }
 
+async function getAllowedCrmSenders(actor: ClientCrmActor): Promise<CrmSenderOption[]> {
+  if (actor.role === 'agent') return [actor]
+  return (await listStaffAccounts())
+    .filter((account) => account.active && ['owner', 'manager', 'agent'].includes(account.role))
+    .map((account) => ({
+      id: account.id,
+      displayName: account.displayName,
+      email: account.email,
+      jobTitle: account.jobTitle,
+      phone: account.phone,
+      role: account.role,
+      availabilityAssigneeId: account.availabilityAssigneeId,
+      active: account.active,
+    }))
+}
+
 function mapTemplate(row: Record<string, unknown>): CrmEmailTemplate {
   return {
     id: String(row.id),
@@ -251,13 +268,14 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     .limit(200)
   if (actor.role === 'agent') opportunityQuery = opportunityQuery.eq('assigned_staff_id', actor.id)
 
-  const [opportunitiesResult, templatesResult, agents] = await Promise.all([
+  const [opportunitiesResult, templatesResult, agents, senders] = await Promise.all([
     opportunityQuery,
     db.from('crm_email_templates')
       .select('id, name, description, category, purpose, visibility, status, subject, body, current_version, created_by_staff_id, updated_at')
       .neq('status', 'archived')
       .order('name', { ascending: true }),
     getAllowedCrmAgents(actor),
+    getAllowedCrmSenders(actor),
   ])
   if (opportunitiesResult.error) throw opportunitiesResult.error
   if (templatesResult.error) throw templatesResult.error
@@ -393,7 +411,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       || template.visibility === 'shared'
     ))
 
-  return { opportunities, templates, agents, actor }
+  return { opportunities, templates, agents, senders, actor }
 }
 
 export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {

@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     if (inputs.frequency === 'once_off' || inputs.isSpringClean) {
       return NextResponse.json(
-        { success: false, error: 'Secure Cleaning Aus provides recurring cleaning services only.' },
+        { success: false, error: 'Secure Cleaning provides recurring cleaning services only.' },
         { status: 400 }
       )
     }

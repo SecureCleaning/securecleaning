@@ -3,9 +3,9 @@ import Link from 'next/link'
 import { getContentValue, getPublicContentMap } from '@/lib/content'
 
 export const metadata: Metadata = {
-  title: 'About Secure Cleaning Aus',
+  title: 'About Secure Cleaning',
   description:
-    'Learn about Secure Cleaning Aus and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
+    'Learn about Secure Cleaning and the Owner-Operator model that delivers better commercial cleaning outcomes for Melbourne and Sydney businesses.',
   alternates: { canonical: '/about' },
 }
 
@@ -36,7 +36,7 @@ export default async function AboutPage() {
     <div className="min-h-screen">
       <section className="py-14 md:py-16 text-white" style={{ backgroundColor: 'var(--brand-ink)' }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-5">{getContentValue(content, 'about.hero_title', 'About Secure Cleaning Aus')}</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-5">{getContentValue(content, 'about.hero_title', 'About Secure Cleaning')}</h1>
           <p className="text-xl text-gray-200 leading-relaxed">
             {getContentValue(content, 'about.hero_subtitle', 'A better way to clean your business. Built on the Owner-Operator model.')}
           </p>
@@ -50,7 +50,7 @@ export default async function AboutPage() {
               {getContentValue(content, 'about.section_1_title', 'Who We Are')}
             </h2>
             <div className="space-y-4 text-lg leading-8 text-gray-700">
-              <p>{getContentValue(content, 'about.intro', 'Secure Cleaning Aus delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.')}</p>
+              <p>{getContentValue(content, 'about.intro', 'Secure Cleaning delivers professional commercial cleaning services to businesses in Melbourne and Sydney through our trusted Owner-Operator network.')}</p>
               <p>{getContentValue(content, 'about.section_1_paragraph_2', 'We started with a simple observation: the commercial cleaning industry was dominated by large franchise operators who hired casual, low-paid workers with minimal investment in quality or consistency. Clients were locked into long contracts, left dealing with call centres, and had no direct relationship with the person cleaning their premises.')}</p>
               <p>{getContentValue(content, 'about.section_1_paragraph_3', 'We believed there was a better way.')}</p>
             </div>
@@ -61,7 +61,7 @@ export default async function AboutPage() {
               {getContentValue(content, 'about.section_2_title', 'The Owner-Operator Model')}
             </h2>
             <p className="text-lg leading-8 text-gray-700">
-              {getContentValue(content, 'about.section_2_intro', 'Every Secure Cleaning Aus operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:')}
+              {getContentValue(content, 'about.section_2_intro', 'Every Secure Cleaning operator is an independent business owner who has purchased a territory and invested in their own business. This creates fundamentally different incentives:')}
             </p>
             <ul className="space-y-4">
               {modelPoints.map((point) => {
@@ -80,7 +80,7 @@ export default async function AboutPage() {
               {getContentValue(content, 'about.section_3_title', 'Verification & Standards')}
             </h2>
             <p className="text-lg leading-8 text-gray-700">
-              {getContentValue(content, 'about.section_3_intro', 'Every Secure Cleaning Aus operator must pass our verification process before taking on clients:')}
+              {getContentValue(content, 'about.section_3_intro', 'Every Secure Cleaning operator must pass our verification process before taking on clients:')}
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               {standards.map((standard) => (

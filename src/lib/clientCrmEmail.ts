@@ -5,8 +5,11 @@ import { writeAuditLogStrict } from '@/lib/auditLog'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
 import { actorCanAccessOpportunity } from '@/lib/clientCrmAuth'
 import { ClientCrmError } from '@/lib/clientCrmData'
+import { getStaffAccountProfileById } from '@/lib/staffAccounts'
 import {
   applyCrmTemplateTokens,
+  canAccessClientCrm,
+  canActorSendCrmEmailAs,
   getMissingCrmSignatureFields,
   normalizeCrmEmail,
 } from '@/lib/clientCrmPolicy'
@@ -55,7 +58,7 @@ export function buildCrmSignature(account: Pick<ClientCrmActor, 'displayName' | 
     '',
     account.displayName,
     account.jobTitle,
-    'Secure Cleaning Aus',
+    'Secure Cleaning',
     account.phone,
     account.email,
     'securecleaning.com.au',
@@ -66,13 +69,14 @@ export function buildCrmSignature(account: Pick<ClientCrmActor, 'displayName' | 
 export function buildCrmFooter(sourceExplanation: string, unsubscribeUrl: string) {
   return [
     `You are receiving this email because ${sourceExplanation}.`,
-    `To stop receiving marketing emails from Secure Cleaning Aus, unsubscribe here: ${unsubscribeUrl}`,
-    'Secure Cleaning Aus | securecleaning.com.au | ABN 81 674 121 825',
+    `To stop receiving marketing emails from Secure Cleaning, unsubscribe here: ${unsubscribeUrl}`,
+    'Secure Cleaning | securecleaning.com.au | ABN 81 674 121 825',
   ].join('\n')
 }
 
 export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<string, unknown>) {
   const opportunityId = clean(input.opportunityId, 100)
+  const senderStaffId = clean(input.senderStaffId, 100) || actor.id
   const templateId = clean(input.templateId, 100)
   const idempotencyKey = clean(input.idempotencyKey, 100)
   const requestedSubject = clean(input.subject, 240)
@@ -80,9 +84,16 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   if (!opportunityId || !requestedSubject || !requestedBody || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
     throw new ClientCrmError('Opportunity, subject, message, and a valid send request are required.')
   }
-  const missingSignature = getMissingCrmSignatureFields(actor)
+  if (!canActorSendCrmEmailAs(actor.role, actor.id, senderStaffId)) {
+    throw new ClientCrmError('You cannot send client email as that team member.', 403)
+  }
+  const sender = await getStaffAccountProfileById(senderStaffId)
+  if (!sender?.active || !canAccessClientCrm(sender.role)) {
+    throw new ClientCrmError('Select an active team member who can send client email.', 409)
+  }
+  const missingSignature = getMissingCrmSignatureFields(sender)
   if (missingSignature.length > 0) {
-    throw new ClientCrmError(`Complete your Team Access email signature before sending: ${missingSignature.join(', ')}.`, 409)
+    throw new ClientCrmError(`Complete the selected sender's Team Access email signature before sending: ${missingSignature.join(', ')}.`, 409)
   }
 
   const db = getAdminSupabase()
@@ -151,7 +162,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     first_name: contactName.split(/\s+/)[0] ?? '',
     suburb: String(intake.suburb ?? ''),
     postcode: String(intake.postcode ?? ''),
-    lead_source: String(intake.source_provider ?? 'Secure Cleaning Aus'),
+    lead_source: String(intake.source_provider ?? 'Secure Cleaning'),
   }
   const subject = applyCrmTemplateTokens(requestedSubject, tokens)
   const body = applyCrmTemplateTokens(requestedBody, tokens)
@@ -173,16 +184,17 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     throw new ClientCrmError('A previous email has an unresolved delivery outcome. Reconcile that activity before sending again.', 409)
   }
 
-  const signature = buildCrmSignature(actor)
+  const signature = buildCrmSignature(sender)
   const unsubscribeUrl = `${getSiteUrl()}/unsubscribe?token=${contact.unsubscribe_token}`
   const oneClickUnsubscribeUrl = `${getSiteUrl()}/api/email-preferences/unsubscribe?token=${contact.unsubscribe_token}`
   const sourceExplanation = String(intake.source_explanation)
   const footer = buildCrmFooter(sourceExplanation, unsubscribeUrl)
   const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
-  const fromHeader = `${safeHeaderName(actor.displayName)} - Secure Cleaning Aus <${fromAddress}>`
+  const fromHeader = `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`
 
   const { data: communicationId, error: insertError } = await db.rpc('claim_client_crm_communication', {
     p_opportunity_id: opportunity.id,
+    p_actor_id: actor.id,
     p_organisation_id: opportunity.organisation_id,
     p_contact_id: contact.id,
     p_template_id: templateId || null,
@@ -191,9 +203,9 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     p_idempotency_key: idempotencyKey,
     p_to_email: recipient,
     p_from_email: fromAddress,
-    p_reply_to_email: actor.email,
-    p_sender_staff_id: actor.id,
-    p_sender_name: actor.displayName,
+    p_reply_to_email: sender.email,
+    p_sender_staff_id: sender.id,
+    p_sender_name: sender.displayName,
     p_subject: subject,
     p_body: body,
     p_signature: signature,
@@ -216,16 +228,16 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     response = await sendEmailOrThrow({
       from: fromHeader,
       to: recipient,
-      replyTo: actor.email,
+      replyTo: sender.email,
       subject,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; line-height: 1.55;">
-          <div style="background: #1a2744; padding: 20px 24px;"><strong style="color: white; font-size: 20px;">Secure Cleaning Aus</strong></div>
+          <div style="background: #1a2744; padding: 20px 24px;"><strong style="color: white; font-size: 20px;">Secure Cleaning</strong></div>
           <div style="padding: 24px;">${textToHtml(body)}<div style="margin-top: 28px;">${textToHtml(signature)}</div></div>
           <div style="border-top: 1px solid #e5e7eb; padding: 18px 24px; color: #6b7280; font-size: 12px;">
             <p style="margin: 0 0 10px;">You are receiving this email because ${escapeHtml(sourceExplanation)}.</p>
             <p style="margin: 0 0 10px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color: #0f766e;">Unsubscribe from marketing emails</a></p>
-            <p style="margin: 0;">Secure Cleaning Aus | securecleaning.com.au | ABN 81 674 121 825</p>
+            <p style="margin: 0;">Secure Cleaning | securecleaning.com.au | ABN 81 674 121 825</p>
           </div>
         </div>
       `,
@@ -242,6 +254,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     }).eq('id', communicationId).eq('status', 'sending')
     await writeAuditLogStrict('crm_opportunity', opportunity.id, 'crm.email.failed', {
       actorId: actor.id,
+      senderStaffId: sender.id,
       communicationId,
       status,
     })
@@ -261,6 +274,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     p_sent_at: sentAt,
     p_audit_details: {
       actorId: actor.id,
+      senderStaffId: sender.id,
       communicationId,
       templateId: templateId || null,
       purpose,
