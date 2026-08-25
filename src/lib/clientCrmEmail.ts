@@ -3,7 +3,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { writeAuditLogStrict } from '@/lib/auditLog'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
-import { actorCanAccessLead } from '@/lib/clientCrmAuth'
+import { actorCanAccessOpportunity } from '@/lib/clientCrmAuth'
 import { ClientCrmError } from '@/lib/clientCrmData'
 import {
   applyCrmTemplateTokens,
@@ -72,13 +72,13 @@ export function buildCrmFooter(sourceExplanation: string, unsubscribeUrl: string
 }
 
 export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<string, unknown>) {
-  const leadId = clean(input.leadId, 100)
+  const opportunityId = clean(input.opportunityId, 100)
   const templateId = clean(input.templateId, 100)
   const idempotencyKey = clean(input.idempotencyKey, 100)
   const requestedSubject = clean(input.subject, 240)
   const requestedBody = clean(input.body, 10000)
-  if (!leadId || !requestedSubject || !requestedBody || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
-    throw new ClientCrmError('Lead, subject, message, and a valid send request are required.')
+  if (!opportunityId || !requestedSubject || !requestedBody || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
+    throw new ClientCrmError('Opportunity, subject, message, and a valid send request are required.')
   }
   const missingSignature = getMissingCrmSignatureFields(actor)
   if (missingSignature.length > 0) {
@@ -92,26 +92,40 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     .maybeSingle()
   if (existing) return { id: existing.id, status: existing.status, sentAt: existing.sent_at, duplicate: true }
 
-  const { data: lead, error: leadError } = await db.from('leads')
-    .select('id, organisation_id, contact_id, quote_id, email, business_name, contact_name, suburb, postcode, source, source_provider, source_explanation, contact_basis, assigned_staff_id')
-    .eq('id', leadId)
+  const { data: opportunity, error: opportunityError } = await db.from('crm_opportunities')
+    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id')
+    .eq('id', opportunityId)
     .maybeSingle()
-  if (leadError) throw leadError
-  if (!lead || !actorCanAccessLead(actor, lead.assigned_staff_id)) throw new ClientCrmError('Lead not found.', 404)
-  if (!lead.contact_id) throw new ClientCrmError('Add a client contact before sending email.', 409)
-  if (!lead.contact_basis || !lead.source_explanation) {
+  if (opportunityError) throw opportunityError
+  if (!opportunity || !actorCanAccessOpportunity(actor, opportunity.assigned_staff_id)) throw new ClientCrmError('Opportunity not found.', 404)
+
+  const { data: intakeLink, error: intakeLinkError } = await db.from('crm_opportunity_intakes')
+    .select('lead_id')
+    .eq('opportunity_id', opportunity.id)
+    .order('linked_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (intakeLinkError) throw intakeLinkError
+  const { data: intake, error: intakeError } = intakeLink?.lead_id
+    ? await db.from('leads')
+      .select('id, email, business_name, contact_name, suburb, postcode, source_provider, source_explanation, contact_basis')
+      .eq('id', intakeLink.lead_id)
+      .maybeSingle()
+    : { data: null, error: null }
+  if (intakeError) throw intakeError
+  if (!intake?.contact_basis || !intake.source_explanation) {
     throw new ClientCrmError('Record the contact basis and source explanation before sending.', 409)
   }
 
   const { data: contact, error: contactError } = await db.from('clients')
     .select('id, email, contact_name, unsubscribe_token')
-    .eq('id', lead.contact_id)
+    .eq('id', opportunity.primary_contact_id)
     .maybeSingle()
   if (contactError) throw contactError
   if (!contact) throw new ClientCrmError('Client contact not found.', 404)
   const recipient = normalizeCrmEmail(contact.email)
-  if (!recipient || recipient !== normalizeCrmEmail(lead.email)) {
-    throw new ClientCrmError('The saved lead and client contact emails do not match. Review the record before sending.', 409)
+  if (!recipient || recipient !== normalizeCrmEmail(intake.email)) {
+    throw new ClientCrmError('The saved intake and contact emails do not match. Review the record before sending.', 409)
   }
 
   const purpose = 'marketing' as const
@@ -130,14 +144,14 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     templateVersion = Number(template.current_version ?? 1)
   }
 
-  const contactName = String(contact.contact_name ?? lead.contact_name ?? '')
+  const contactName = String(contact.contact_name ?? intake.contact_name ?? '')
   const tokens = {
-    business_name: String(lead.business_name ?? ''),
+    business_name: String(intake.business_name ?? ''),
     contact_name: contactName,
     first_name: contactName.split(/\s+/)[0] ?? '',
-    suburb: String(lead.suburb ?? ''),
-    postcode: String(lead.postcode ?? ''),
-    lead_source: String(lead.source_provider ?? 'Secure Cleaning Aus'),
+    suburb: String(intake.suburb ?? ''),
+    postcode: String(intake.postcode ?? ''),
+    lead_source: String(intake.source_provider ?? 'Secure Cleaning Aus'),
   }
   const subject = applyCrmTemplateTokens(requestedSubject, tokens)
   const body = applyCrmTemplateTokens(requestedBody, tokens)
@@ -162,31 +176,31 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   const signature = buildCrmSignature(actor)
   const unsubscribeUrl = `${getSiteUrl()}/unsubscribe?token=${contact.unsubscribe_token}`
   const oneClickUnsubscribeUrl = `${getSiteUrl()}/api/email-preferences/unsubscribe?token=${contact.unsubscribe_token}`
-  const sourceExplanation = String(lead.source_explanation)
+  const sourceExplanation = String(intake.source_explanation)
   const footer = buildCrmFooter(sourceExplanation, unsubscribeUrl)
   const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
   const fromHeader = `${safeHeaderName(actor.displayName)} - Secure Cleaning Aus <${fromAddress}>`
 
-  const { data: communication, error: insertError } = await db.from('crm_communications').insert({
-    lead_id: lead.id,
-    organisation_id: lead.organisation_id,
-    contact_id: contact.id,
-    template_id: templateId || null,
-    template_version: templateVersion,
-    purpose,
-    idempotency_key: idempotencyKey,
-    to_email: recipient,
-    from_email: fromAddress,
-    reply_to_email: actor.email,
-    sender_staff_id: actor.id,
-    sender_name: actor.displayName,
-    subject_snapshot: subject,
-    body_snapshot: body,
-    signature_snapshot: signature,
-    source_snapshot: sourceExplanation,
-    footer_snapshot: footer,
-    status: 'sending',
-  }).select('id').single()
+  const { data: communicationId, error: insertError } = await db.rpc('claim_client_crm_communication', {
+    p_opportunity_id: opportunity.id,
+    p_organisation_id: opportunity.organisation_id,
+    p_contact_id: contact.id,
+    p_template_id: templateId || null,
+    p_template_version: templateVersion,
+    p_purpose: purpose,
+    p_idempotency_key: idempotencyKey,
+    p_to_email: recipient,
+    p_from_email: fromAddress,
+    p_reply_to_email: actor.email,
+    p_sender_staff_id: actor.id,
+    p_sender_name: actor.displayName,
+    p_subject: subject,
+    p_body: body,
+    p_signature: signature,
+    p_source: sourceExplanation,
+    p_footer: footer,
+    p_actor_role: actor.role,
+  })
   if (insertError) {
     if (insertError.code === '23505') {
       const { data: claimed } = await db.from('crm_communications').select('id, status, sent_at').eq('idempotency_key', idempotencyKey).single()
@@ -195,6 +209,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     }
     throw insertError
   }
+  if (!communicationId) throw new ClientCrmError('The email could not be claimed for sending.', 409)
 
   let response: unknown
   try {
@@ -224,10 +239,10 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     await db.from('crm_communications').update({
       status,
       failure_code: error instanceof EmailProviderRejectedError ? 'provider_rejected' : 'provider_outcome_unknown',
-    }).eq('id', communication.id).eq('status', 'sending')
-    await writeAuditLogStrict('lead', lead.id, 'crm.email.failed', {
+    }).eq('id', communicationId).eq('status', 'sending')
+    await writeAuditLogStrict('crm_opportunity', opportunity.id, 'crm.email.failed', {
       actorId: actor.id,
-      communicationId: communication.id,
+      communicationId,
       status,
     })
     throw new ClientCrmError(
@@ -241,12 +256,12 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   const providerMessageId = getProviderMessageId(response)
   const sentAt = new Date().toISOString()
   const { error: finalizeError } = await db.rpc('finalize_client_crm_communication', {
-    p_communication_id: communication.id,
+    p_communication_id: communicationId,
     p_provider_message_id: providerMessageId,
     p_sent_at: sentAt,
     p_audit_details: {
       actorId: actor.id,
-      communicationId: communication.id,
+      communicationId,
       templateId: templateId || null,
       purpose,
     },
@@ -255,10 +270,10 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     await db.from('crm_communications').update({
       status: 'unknown',
       failure_code: 'provider_accepted_finalize_failed',
-    }).eq('id', communication.id).eq('status', 'sending')
+    }).eq('id', communicationId).eq('status', 'sending')
     throw new ClientCrmError('The email provider accepted this message, but local finalisation failed. Do not resend until the activity is reconciled.', 502)
   }
-  return { id: communication.id, status: 'sent', sentAt, duplicate: false }
+  return { id: communicationId, status: 'sent', sentAt, duplicate: false }
 }
 
 export async function unsubscribeCrmContact(token: string) {

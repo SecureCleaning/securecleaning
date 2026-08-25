@@ -21,7 +21,7 @@ import {
   rejectLargePayload,
   validatePublicSubmission,
 } from '@/lib/abuseProtection'
-import { resolvePublicSubmissionClient, upsertOnlineQuoteCrmLead } from '@/lib/clientCrmData'
+import { ClientCrmError, resolvePublicSubmissionClient, syncOnlineQuoteCrmOpportunity } from '@/lib/clientCrmData'
 
 export async function POST(request: NextRequest) {
   try {
@@ -140,6 +140,9 @@ export async function POST(request: NextRequest) {
       })).id
     } catch (clientError) {
       console.error('[quote] Client resolution failed:', clientError)
+      if (clientError instanceof ClientCrmError) {
+        return NextResponse.json({ success: false, error: clientError.message }, { status: clientError.status })
+      }
     }
 
     const validUntil = new Date()
@@ -158,7 +161,7 @@ export async function POST(request: NextRequest) {
       console.error('[quote] Supabase insert error:', quoteError)
     } else if (quoteData?.id) {
       try {
-        await upsertOnlineQuoteCrmLead({
+        await syncOnlineQuoteCrmOpportunity({
           quoteId: quoteData.id,
           clientId: clientId ?? null,
           businessName: businessLabel,
@@ -171,7 +174,7 @@ export async function POST(request: NextRequest) {
           city: inputs.city,
         })
       } catch (crmError) {
-        console.error('[quote] Non-critical CRM lead sync failed:', crmError)
+        console.error('[quote] Non-critical CRM opportunity sync failed:', crmError)
       }
     }
 

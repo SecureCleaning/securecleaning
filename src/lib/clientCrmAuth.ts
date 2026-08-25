@@ -15,6 +15,6 @@ export async function getClientCrmActor(request: NextRequest): Promise<ClientCrm
   if (account.role === 'agent' && !account.availabilityAssigneeId) return null
   return account as ClientCrmActor
 }
-export function actorCanAccessLead(actor: ClientCrmActor, assignedStaffId: string | null) {
+export function actorCanAccessOpportunity(actor: ClientCrmActor, assignedStaffId: string | null) {
   return actor.role === 'owner' || actor.role === 'manager' || assignedStaffId === actor.id
 }

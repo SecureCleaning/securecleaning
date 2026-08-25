@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
-import { resolvePublicSubmissionClient, syncBookingCrmLead } from '@/lib/clientCrmData'
+import { ClientCrmError, resolvePublicSubmissionClient, syncBookingCrmOpportunity } from '@/lib/clientCrmData'
 import { getAvailabilityAssignee, getAvailabilityCalendar, getAvailabilityConfig } from '@/lib/availability'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { BookingInputs } from '@/lib/types'
@@ -185,6 +185,9 @@ export async function POST(request: NextRequest) {
       })
     } catch (clientError) {
       console.error('[booking] Client upsert failed:', clientError)
+      if (clientError instanceof ClientCrmError) {
+        return NextResponse.json({ success: false, error: clientError.message }, { status: clientError.status })
+      }
     }
 
     if (!clientData?.id) {
@@ -197,11 +200,18 @@ export async function POST(request: NextRequest) {
     // ── Resolve quote ID if quoteRef provided ─────────────────────────────
     let quoteId: string | null = null
     if (inputs.quoteRef) {
-      const { data: quoteData } = await db
+      const { data: quoteData, error: quoteLookupError } = await db
         .from('quotes')
-        .select('id')
+        .select('id, client_id')
         .eq('quote_ref', inputs.quoteRef)
-        .single()
+        .eq('client_id', clientData.id)
+        .maybeSingle()
+      if (quoteLookupError || !quoteData) {
+        return NextResponse.json(
+          { success: false, error: 'The quote could not be matched to these booking details.' },
+          { status: 400 }
+        )
+      }
       quoteId = quoteData?.id ?? null
 
       // Mark quote as accepted
@@ -223,7 +233,7 @@ export async function POST(request: NextRequest) {
     // ── Insert booking ────────────────────────────────────────────────────
     const bookingRef = generateBookingRef()
 
-    const { error: bookingError } = await db.from('bookings').insert({
+    const { data: bookingData, error: bookingError } = await db.from('bookings').insert({
       booking_ref: bookingRef,
       quote_id: quoteId,
       client_id: clientData.id,
@@ -238,7 +248,7 @@ export async function POST(request: NextRequest) {
         frequency: inputs.frequency,
         timeStart: inputs.timePreference === 'after_hours' ? '18:00' : '08:00',
       },
-    })
+    }).select('id').single()
 
     if (bookingError) {
       console.error('[booking] Insert failed:', bookingError)
@@ -248,9 +258,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Keep one CRM lead connected from the first enquiry through booking.
+    // Keep one CRM opportunity connected from the first enquiry through booking.
     try {
-      await syncBookingCrmLead({
+      await syncBookingCrmOpportunity({
+        bookingId: bookingData.id,
         quoteId,
         clientId: clientData.id,
         siteId: matchedSite?.id ?? null,
@@ -264,8 +275,8 @@ export async function POST(request: NextRequest) {
         city: inputs.city,
         availabilityAssigneeId: bookingInputs.preferredInspectionAssigneeId ?? null,
       })
-    } catch (leadSyncError) {
-      console.error('[booking] Non-critical CRM lead sync failed:', leadSyncError)
+    } catch (opportunitySyncError) {
+      console.error('[booking] Non-critical CRM opportunity sync failed:', opportunitySyncError)
     }
 
     // ── Send confirmation emails ──────────────────────────────────────────

@@ -16,6 +16,9 @@ export async function findMatchingSiteForBooking(inputs: BookingInputs, clientId
     .from('sites')
     .select('id, client_id, address, suburb, postcode, city')
     .eq('city', inputs.city)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
     .limit(20)
 
   if (clientId) {

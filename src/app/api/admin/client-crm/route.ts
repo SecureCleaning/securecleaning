@@ -3,10 +3,10 @@ import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/
 import { getClientCrmActor } from '@/lib/clientCrmAuth'
 import {
   ClientCrmError,
-  createManualCrmLead,
+  createManualCrmOpportunity,
   getClientCrmWorkspace,
   saveCrmTemplate,
-  updateCrmLead,
+  updateCrmOpportunity,
 } from '@/lib/clientCrmData'
 import { sendClientCrmEmail } from '@/lib/clientCrmEmail'
 
@@ -31,12 +31,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
-    if (action === 'lead.create') {
-      const result = await createManualCrmLead(actor, body)
+    if (action === 'opportunity.create') {
+      const result = await createManualCrmOpportunity(actor, body)
       return NextResponse.json({ success: true, result }, { status: 201 })
     }
-    if (action === 'lead.update') {
-      return NextResponse.json({ success: true, result: await updateCrmLead(actor, body) })
+    if (action === 'opportunity.update') {
+      return NextResponse.json({ success: true, result: await updateCrmOpportunity(actor, body) })
     }
     if (action === 'template.save') {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })

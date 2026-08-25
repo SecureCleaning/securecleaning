@@ -1,11 +1,11 @@
 import { getAdminSupabase } from '@/lib/supabase'
 import { findMatchingZones, getAvailabilityConfig } from '@/lib/availability'
 import { listStaffAccounts, type StaffAccount } from '@/lib/staffAccounts'
-import { writeAuditLog } from '@/lib/auditLog'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
+import { normalizeCrmPhone } from '@/lib/clientCrmOpportunity'
 import {
   buildContactSourceExplanation,
-  canActorAccessAssignedLead,
+  canActorAccessAssignedOpportunity,
   isValidCrmEmail,
   normalizeCrmContactBasis,
   normalizeCrmEmail,
@@ -19,12 +19,20 @@ import {
 
 export type CrmAgentOption = Pick<StaffAccount, 'id' | 'displayName' | 'email' | 'jobTitle' | 'phone' | 'availabilityAssigneeId' | 'active'>
 
-export type CrmLead = {
+export type CrmQuoteHistory = {
+  id: string
+  quoteRef: string
+  status: string
+  sequenceNumber: number
+  createdAt: string
+}
+
+export type CrmOpportunity = {
   id: string
   organisationId: string | null
   contactId: string | null
   siteId: string | null
-  quoteId: string | null
+  cycleNumber: number
   email: string
   businessName: string
   contactName: string
@@ -46,6 +54,8 @@ export type CrmLead = {
   createdAt: string
   updatedAt: string
   suppressed: boolean
+  hasContactUnresolvedEmail: boolean
+  quotes: CrmQuoteHistory[]
   communications: CrmCommunication[]
 }
 
@@ -66,7 +76,7 @@ export type CrmEmailTemplate = {
 
 export type CrmCommunication = {
   id: string
-  leadId: string
+  opportunityId: string
   templateId: string | null
   templateVersion: number | null
   purpose: 'marketing' | 'transactional'
@@ -92,8 +102,25 @@ function cityFromInput(value: unknown): 'melbourne' | 'sydney' | null {
   return value === 'melbourne' || value === 'sydney' ? value : null
 }
 
-function stateForCity(city: 'melbourne' | 'sydney') {
-  return city === 'sydney' ? 'NSW' : 'VIC'
+function resolvePublicContactMatch(rows: Array<Record<string, unknown>>, input: {
+  businessName: string
+  contactName: string
+  phone?: string
+}) {
+  if (rows.length === 0) return null
+  const normalizedBusiness = input.businessName.trim().toLowerCase()
+  const normalizedContact = input.contactName.trim().toLowerCase()
+  const normalizedPhone = normalizeCrmPhone(input.phone)
+  const matching = rows.filter((row) => {
+    const savedPhone = normalizeCrmPhone(typeof row.phone === 'string' ? row.phone : null)
+    return String(row.business_name ?? '').trim().toLowerCase() === normalizedBusiness
+      && String(row.contact_name ?? '').trim().toLowerCase() === normalizedContact
+      && (!savedPhone || !normalizedPhone || savedPhone === normalizedPhone)
+  })
+  if (matching.length !== 1) {
+    throw new ClientCrmError('These contact details match more than one existing client record or conflict with the saved record. Please contact Secure Cleaning Aus so we can reconcile the client before continuing.', 409)
+  }
+  return matching[0]
 }
 
 export async function resolvePublicSubmissionClient(input: {
@@ -106,13 +133,10 @@ export async function resolvePublicSubmissionClient(input: {
 }) {
   const db = getAdminSupabase()
   const email = normalizeCrmEmail(input.email)
-  const { data: existing, error: existingError } = await db.from('clients')
-    .select('id')
-    .ilike('email', email)
-    .limit(1)
-    .maybeSingle()
+  const { data: existingRows, error: existingError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
   if (existingError) throw existingError
-  if (existing?.id) return { id: existing.id, existing: true }
+  const existing = resolvePublicContactMatch((existingRows ?? []) as Array<Record<string, unknown>>, input)
+  if (existing?.id) return { id: String(existing.id), existing: true }
 
   const { data: created, error: createError } = await db.from('clients').insert({
     business_name: input.businessName,
@@ -125,13 +149,11 @@ export async function resolvePublicSubmissionClient(input: {
   if (!createError && created?.id) return { id: created.id, existing: false }
   if (createError?.code !== '23505') throw createError
 
-  const { data: raced, error: racedError } = await db.from('clients')
-    .select('id')
-    .ilike('email', email)
-    .limit(1)
-    .single()
+  const { data: racedRows, error: racedError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
   if (racedError) throw racedError
-  return { id: raced.id, existing: true }
+  const raced = resolvePublicContactMatch((racedRows ?? []) as Array<Record<string, unknown>>, input)
+  if (!raced?.id) throw createError
+  return { id: String(raced.id), existing: true }
 }
 
 export async function getCrmAssignmentCandidates(input: {
@@ -207,7 +229,7 @@ function mapTemplate(row: Record<string, unknown>): CrmEmailTemplate {
 function mapCommunication(row: Record<string, unknown>): CrmCommunication {
   return {
     id: String(row.id),
-    leadId: String(row.lead_id),
+    opportunityId: String(row.opportunity_id),
     templateId: typeof row.template_id === 'string' ? row.template_id : null,
     templateVersion: typeof row.template_version === 'number' ? row.template_version : null,
     purpose: row.purpose === 'transactional' ? 'transactional' : 'marketing',
@@ -222,78 +244,145 @@ function mapCommunication(row: Record<string, unknown>): CrmCommunication {
 
 export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   const db = getAdminSupabase()
-  let leadQuery = db
-    .from('leads')
-    .select('id, organisation_id, contact_id, site_id, quote_id, email, business_name, contact_name, phone, address, suburb, postcode, city, state, source, source_provider, source_explanation, contact_basis, follow_up_status, follow_up_notes, next_follow_up_at, assigned_staff_id, created_at, updated_at')
+  let opportunityQuery = db
+    .from('crm_opportunities')
+    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at')
     .order('updated_at', { ascending: false })
     .limit(200)
-  if (actor.role === 'agent') leadQuery = leadQuery.eq('assigned_staff_id', actor.id)
+  if (actor.role === 'agent') opportunityQuery = opportunityQuery.eq('assigned_staff_id', actor.id)
 
-  const [leadsResult, templatesResult, agents] = await Promise.all([
-    leadQuery,
+  const [opportunitiesResult, templatesResult, agents] = await Promise.all([
+    opportunityQuery,
     db.from('crm_email_templates')
       .select('id, name, description, category, purpose, visibility, status, subject, body, current_version, created_by_staff_id, updated_at')
       .neq('status', 'archived')
       .order('name', { ascending: true }),
     getAllowedCrmAgents(actor),
   ])
-  if (leadsResult.error) throw leadsResult.error
+  if (opportunitiesResult.error) throw opportunitiesResult.error
   if (templatesResult.error) throw templatesResult.error
 
-  const leadRows = (leadsResult.data ?? []) as Array<Record<string, unknown>>
-  const leadIds = leadRows.map((row) => String(row.id))
-  const emails = leadIds.length > 0
+  const opportunityRows = (opportunitiesResult.data ?? []) as Array<Record<string, unknown>>
+  const opportunityIds = opportunityRows.map((row) => String(row.id))
+  const contactIds = Array.from(new Set(opportunityRows.map((row) => String(row.primary_contact_id ?? '')).filter(Boolean)))
+  const siteIds = Array.from(new Set(opportunityRows.map((row) => String(row.site_id ?? '')).filter(Boolean)))
+  const [contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails] = await Promise.all([
+    contactIds.length > 0
+      ? db.from('clients').select('id, business_name, contact_name, email, phone, city').in('id', contactIds)
+      : Promise.resolve({ data: [], error: null }),
+    siteIds.length > 0
+      ? db.from('sites').select('id, address, suburb, postcode, city').in('id', siteIds)
+      : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length > 0
+      ? db.from('crm_opportunity_intakes').select('opportunity_id, lead_id, linked_at').in('opportunity_id', opportunityIds).order('linked_at', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length > 0
+      ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length > 0
     ? await db.from('crm_communications')
-      .select('id, lead_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
-      .in('lead_id', leadIds)
+      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
+      .in('opportunity_id', opportunityIds)
       .order('created_at', { ascending: false })
-    : { data: [], error: null }
-  if (emails.error) throw emails.error
+    : Promise.resolve({ data: [], error: null }),
+    contactIds.length > 0
+      ? db.from('crm_communications').select('contact_id').in('contact_id', contactIds).in('status', ['sending', 'unknown'])
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  for (const result of [contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails]) {
+    if (result.error) throw result.error
+  }
 
-  const normalizedEmails = Array.from(new Set(leadRows.map((row) => normalizeCrmEmail(row.email)).filter(Boolean)))
+  const intakeIds = Array.from(new Set((intakeLinks.data ?? []).map((row) => String(row.lead_id))))
+  const quoteIds = Array.from(new Set((quoteLinks.data ?? []).map((row) => String(row.quote_id))))
+  const [intakes, quotes] = await Promise.all([
+    intakeIds.length > 0
+      ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis').in('id', intakeIds)
+      : Promise.resolve({ data: [], error: null }),
+    quoteIds.length > 0
+      ? db.from('quotes').select('id, quote_ref, status, created_at').in('id', quoteIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (intakes.error) throw intakes.error
+  if (quotes.error) throw quotes.error
+
+  const contactsById = new Map((contacts.data ?? []).map((row) => [String(row.id), row]))
+  const sitesById = new Map((sites.data ?? []).map((row) => [String(row.id), row]))
+  const intakesById = new Map((intakes.data ?? []).map((row) => [String(row.id), row]))
+  const primaryIntakeByOpportunity = new Map<string, Record<string, unknown>>()
+  for (const link of intakeLinks.data ?? []) {
+    const opportunityId = String(link.opportunity_id)
+    if (!primaryIntakeByOpportunity.has(opportunityId)) {
+      const intake = intakesById.get(String(link.lead_id))
+      if (intake) primaryIntakeByOpportunity.set(opportunityId, intake)
+    }
+  }
+  const normalizedEmails = Array.from(new Set((contacts.data ?? []).map((row) => normalizeCrmEmail(row.email)).filter(Boolean)))
   const suppressions = normalizedEmails.length > 0
     ? await db.from('crm_email_suppressions').select('email_normalized').in('email_normalized', normalizedEmails)
     : { data: [], error: null }
   if (suppressions.error) throw suppressions.error
   const suppressedEmails = new Set((suppressions.data ?? []).map((row) => row.email_normalized))
+  const unresolvedContactIds = new Set((unresolvedEmails.data ?? []).map((row) => String(row.contact_id)))
   const agentNames = new Map(agents.map((agent) => [agent.id, agent.displayName]))
-  const communicationsByLead = new Map<string, CrmCommunication[]>()
+  const communicationsByOpportunity = new Map<string, CrmCommunication[]>()
   for (const row of (emails.data ?? []) as Array<Record<string, unknown>>) {
     const item = mapCommunication(row)
-    communicationsByLead.set(item.leadId, [...(communicationsByLead.get(item.leadId) ?? []), item])
+    communicationsByOpportunity.set(item.opportunityId, [...(communicationsByOpportunity.get(item.opportunityId) ?? []), item])
+  }
+  const quotesById = new Map((quotes.data ?? []).map((row) => [String(row.id), row]))
+  const quotesByOpportunity = new Map<string, CrmQuoteHistory[]>()
+  for (const link of quoteLinks.data ?? []) {
+    const quote = quotesById.get(String(link.quote_id))
+    if (!quote) continue
+    const opportunityId = String(link.opportunity_id)
+    quotesByOpportunity.set(opportunityId, [...(quotesByOpportunity.get(opportunityId) ?? []), {
+      id: String(quote.id),
+      quoteRef: String(quote.quote_ref ?? ''),
+      status: String(quote.status ?? ''),
+      sequenceNumber: Number(link.sequence_number),
+      createdAt: String(quote.created_at ?? ''),
+    }])
   }
 
-  const leads: CrmLead[] = leadRows.map((row) => {
+  const opportunities: CrmOpportunity[] = opportunityRows.map((row) => {
     const id = String(row.id)
+    const contactId = String(row.primary_contact_id ?? '')
+    const siteId = typeof row.site_id === 'string' ? row.site_id : null
+    const contact = contactsById.get(contactId)
+    const site = siteId ? sitesById.get(siteId) : null
+    const intake = primaryIntakeByOpportunity.get(id)
     const assignedStaffId = typeof row.assigned_staff_id === 'string' ? row.assigned_staff_id : null
     return {
       id,
       organisationId: typeof row.organisation_id === 'string' ? row.organisation_id : null,
-      contactId: typeof row.contact_id === 'string' ? row.contact_id : null,
-      siteId: typeof row.site_id === 'string' ? row.site_id : null,
-      quoteId: typeof row.quote_id === 'string' ? row.quote_id : null,
-      email: String(row.email ?? ''),
-      businessName: String(row.business_name ?? ''),
-      contactName: String(row.contact_name ?? ''),
-      phone: String(row.phone ?? ''),
-      address: String(row.address ?? ''),
-      suburb: String(row.suburb ?? ''),
-      postcode: String(row.postcode ?? ''),
-      city: cityFromInput(row.city),
-      state: String(row.state ?? ''),
-      sourceType: String(row.source ?? 'manual'),
-      sourceProvider: String(row.source_provider ?? ''),
-      sourceExplanation: String(row.source_explanation ?? ''),
-      contactBasis: String(row.contact_basis ?? ''),
-      stage: String(row.follow_up_status ?? 'new'),
-      notes: String(row.follow_up_notes ?? ''),
+      contactId: contactId || null,
+      siteId,
+      cycleNumber: Number(row.cycle_number ?? 1),
+      email: String(contact?.email ?? ''),
+      businessName: String(contact?.business_name ?? ''),
+      contactName: String(contact?.contact_name ?? ''),
+      phone: String(contact?.phone ?? ''),
+      address: String(site?.address ?? ''),
+      suburb: String(site?.suburb ?? ''),
+      postcode: String(site?.postcode ?? ''),
+      city: cityFromInput(site?.city ?? contact?.city),
+      state: (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : 'VIC',
+      sourceType: String(intake?.source ?? 'manual'),
+      sourceProvider: String(intake?.source_provider ?? ''),
+      sourceExplanation: String(intake?.source_explanation ?? ''),
+      contactBasis: String(intake?.contact_basis ?? ''),
+      stage: String(row.stage ?? 'new'),
+      notes: String(row.notes ?? ''),
       nextFollowUpAt: typeof row.next_follow_up_at === 'string' ? row.next_follow_up_at : null,
       assignedStaffId,
       assignedStaffName: assignedStaffId ? agentNames.get(assignedStaffId) ?? null : null,
       createdAt: String(row.created_at ?? ''),
       updatedAt: String(row.updated_at ?? row.created_at ?? ''),
-      suppressed: suppressedEmails.has(normalizeCrmEmail(row.email)),
-      communications: communicationsByLead.get(id) ?? [],
+      suppressed: suppressedEmails.has(normalizeCrmEmail(contact?.email)),
+      hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
+      quotes: quotesByOpportunity.get(id) ?? [],
+      communications: communicationsByOpportunity.get(id) ?? [],
     }
   })
 
@@ -301,13 +390,13 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     .map(mapTemplate)
     .filter((template) => (
       template.createdByStaffId === actor.id
-      || (template.visibility === 'shared' && (actor.role !== 'agent' || template.status === 'published'))
+      || template.visibility === 'shared'
     ))
 
-  return { leads, templates, agents, actor }
+  return { opportunities, templates, agents, actor }
 }
 
-export async function createManualCrmLead(actor: ClientCrmActor, input: Record<string, unknown>) {
+export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
   const businessName = clean(input.businessName, 200)
   const contactName = clean(input.contactName, 200)
   const email = normalizeCrmEmail(input.email)
@@ -328,7 +417,7 @@ export async function createManualCrmLead(actor: ClientCrmActor, input: Record<s
     throw new ClientCrmError('Provide the business, contact, valid email, city, postcode, and contact basis.')
   }
   if (requiresNamedSourceProvider(sourceType, contactBasis) && !sourceProvider) {
-    throw new ClientCrmError('Name the lead provider or public source before creating this outreach record.')
+    throw new ClientCrmError('Name the lead provider or public source before creating this opportunity.')
   }
 
   const candidates = await getCrmAssignmentCandidates({ address, suburb, postcode, city })
@@ -336,7 +425,7 @@ export async function createManualCrmLead(actor: ClientCrmActor, input: Record<s
   let assignmentMethod = 'unassigned'
   if (actor.role === 'agent') {
     if (!candidates.some((candidate) => candidate.id === actor.id)) {
-      throw new ClientCrmError('This postcode is outside your assigned service coverage. Ask an owner or manager to assign the lead.', 403)
+      throw new ClientCrmError('This postcode is outside your assigned service coverage. Ask an owner or manager to assign the opportunity.', 403)
     }
     assignedStaffId = actor.id
     assignmentMethod = 'agent_self'
@@ -352,7 +441,7 @@ export async function createManualCrmLead(actor: ClientCrmActor, input: Record<s
 
   const db = getAdminSupabase()
   const sourceExplanation = buildContactSourceExplanation({ sourceType, sourceProvider, customExplanation })
-  const { data: leadId, error: leadError } = await db.rpc('create_client_crm_lead', {
+  const { data: opportunityId, error: opportunityError } = await db.rpc('create_client_crm_opportunity', {
     p_business_name: businessName,
     p_contact_name: contactName,
     p_email: email,
@@ -372,37 +461,59 @@ export async function createManualCrmLead(actor: ClientCrmActor, input: Record<s
     p_actor_id: actor.id,
     p_actor_role: actor.role,
   })
-  if (leadError) {
-    if (leadError.code === '23505') throw new ClientCrmError('An active lead already exists for this email address.', 409)
-    if (leadError.code === '42501') throw new ClientCrmError('This email already belongs to another client record. Ask an owner or manager to reconcile it.', 409)
-    if (leadError.code === '23514') throw new ClientCrmError('The saved contact details differ from this lead. Reconcile the client record before adding another lead.', 409)
-    throw leadError
+  if (opportunityError) {
+    if (opportunityError.code === '23505') throw new ClientCrmError('An active opportunity already exists for this customer and site. Add future quotes to that opportunity, or close it before starting a new sales cycle.', 409)
+    if (opportunityError.code === '42501') throw new ClientCrmError('This contact belongs to another agent. Ask an owner or manager to reconcile it.', 409)
+    if (opportunityError.code === '23514') throw new ClientCrmError('The saved contact details differ from this entry. Reconcile the contact before starting another opportunity.', 409)
+    throw opportunityError
   }
-  return { id: String(leadId), candidates }
+  return { id: String(opportunityId), candidates }
 }
 
-export async function updateCrmLead(actor: ClientCrmActor, input: Record<string, unknown>) {
+export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
   const id = clean(input.id, 100)
-  if (!id) throw new ClientCrmError('Lead ID is required.')
+  if (!id) throw new ClientCrmError('Opportunity ID is required.')
   const db = getAdminSupabase()
-  const { data: current, error } = await db.from('leads').select('id, assigned_staff_id, source, contact_basis, source_provider, source_explanation').eq('id', id).maybeSingle()
+  const { data: current, error } = await db.from('crm_opportunities')
+    .select('id, assigned_staff_id, assignment_method, stage, closed_at, notes, next_follow_up_at, updated_at')
+    .eq('id', id)
+    .maybeSingle()
   if (error) throw error
-  if (!current || !canActorAccessAssignedLead(actor.role, actor.id, current.assigned_staff_id)) {
-    throw new ClientCrmError('Lead not found.', 404)
+  if (!current || !canActorAccessAssignedOpportunity(actor.role, actor.id, current.assigned_staff_id)) {
+    throw new ClientCrmError('Opportunity not found.', 404)
   }
 
+  const { data: intakeLink, error: intakeLinkError } = await db.from('crm_opportunity_intakes')
+    .select('lead_id')
+    .eq('opportunity_id', id)
+    .order('linked_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (intakeLinkError) throw intakeLinkError
+  const intake = intakeLink?.lead_id
+    ? await db.from('leads').select('id, source, contact_basis, source_provider, source_explanation').eq('id', intakeLink.lead_id).maybeSingle()
+    : { data: null, error: null }
+  if (intake.error) throw intake.error
+
   const update: Record<string, unknown> = {}
+  const intakeUpdate: Record<string, unknown> = {}
   const stage = input.stage === undefined ? undefined : normalizeCrmStage(input.stage)
-  if (input.stage !== undefined && !stage) throw new ClientCrmError('Select a valid lead stage.')
-  if (stage) update.follow_up_status = stage
-  if (input.notes !== undefined) update.follow_up_notes = clean(input.notes, 5000) || null
+  if (input.stage !== undefined && !stage) throw new ClientCrmError('Select a valid opportunity stage.')
+  if (stage && current.closed_at && stage !== current.stage) {
+    throw new ClientCrmError('Closed opportunities are retained as history. Start a new opportunity for a repeat sales cycle.', 409)
+  }
+  if (stage) {
+    update.stage = stage
+    if (['won', 'lost', 'cancelled'].includes(stage) && !current.closed_at) update.closed_at = new Date().toISOString()
+  }
+  if (input.notes !== undefined) update.notes = clean(input.notes, 5000) || null
   if (input.nextFollowUpAt !== undefined) {
     const date = clean(input.nextFollowUpAt, 100)
     if (date && Number.isNaN(new Date(date).getTime())) throw new ClientCrmError('Enter a valid follow-up date.')
     update.next_follow_up_at = date ? new Date(date).toISOString() : null
   }
   if (input.assignedStaffId !== undefined) {
-    if (actor.role === 'agent') throw new ClientCrmError('Only an owner or manager can reassign a lead.', 403)
+    if (actor.role === 'agent') throw new ClientCrmError('Only an owner or manager can reassign an opportunity.', 403)
     const assignedStaffId = clean(input.assignedStaffId, 100) || null
     if (assignedStaffId) {
       const allowed = (await getAllowedCrmAgents(actor)).some((agent) => agent.id === assignedStaffId)
@@ -413,28 +524,43 @@ export async function updateCrmLead(actor: ClientCrmActor, input: Record<string,
   }
   if (input.contactBasis !== undefined || input.sourceProvider !== undefined || input.sourceExplanation !== undefined) {
     const contactBasis = input.contactBasis === undefined
-      ? normalizeCrmContactBasis(current.contact_basis)
+      ? normalizeCrmContactBasis(intake.data?.contact_basis)
       : normalizeCrmContactBasis(input.contactBasis)
-    const sourceType = normalizeCrmSourceType(current.source) ?? 'manual'
+    const sourceType = normalizeCrmSourceType(intake.data?.source) ?? 'manual'
     const sourceProvider = input.sourceProvider === undefined
-      ? clean(current.source_provider, 200)
+      ? clean(intake.data?.source_provider, 200)
       : clean(input.sourceProvider, 200)
     const customExplanation = input.sourceExplanation === undefined
-      ? clean(current.source_explanation, 500)
+      ? clean(intake.data?.source_explanation, 500)
       : clean(input.sourceExplanation, 500)
     if (!contactBasis) throw new ClientCrmError('Select a valid contact basis.')
     if (requiresNamedSourceProvider(sourceType, contactBasis) && !sourceProvider) {
       throw new ClientCrmError('Name the lead provider or public source before enabling outreach.')
     }
-    update.contact_basis = contactBasis
-    update.source_provider = sourceProvider || null
-    update.source_explanation = buildContactSourceExplanation({ sourceType, sourceProvider, customExplanation })
+    intakeUpdate.contact_basis = contactBasis
+    intakeUpdate.source_provider = sourceProvider || null
+    intakeUpdate.source_explanation = buildContactSourceExplanation({ sourceType, sourceProvider, customExplanation })
   }
 
-  const { data, error: updateError } = await db.from('leads').update(update).eq('id', id).select('id').single()
+  const resolved = (field: string, fallback: unknown) => Object.prototype.hasOwnProperty.call(update, field) ? update[field] : fallback
+  const resolvedIntake = (field: string, fallback: unknown) => Object.prototype.hasOwnProperty.call(intakeUpdate, field) ? intakeUpdate[field] : fallback
+  const { data, error: updateError } = await db.rpc('update_client_crm_opportunity', {
+    p_opportunity_id: id,
+    p_expected_updated_at: current.updated_at,
+    p_stage: resolved('stage', current.stage),
+    p_notes: resolved('notes', current.notes),
+    p_next_follow_up_at: resolved('next_follow_up_at', current.next_follow_up_at),
+    p_assigned_staff_id: resolved('assigned_staff_id', current.assigned_staff_id),
+    p_assignment_method: resolved('assignment_method', current.assignment_method),
+    p_contact_basis: resolvedIntake('contact_basis', intake.data?.contact_basis ?? null),
+    p_source_provider: resolvedIntake('source_provider', intake.data?.source_provider ?? null),
+    p_source_explanation: resolvedIntake('source_explanation', intake.data?.source_explanation ?? null),
+    p_actor_id: actor.id,
+    p_actor_role: actor.role,
+  })
+  if (updateError?.code === '40001') throw new ClientCrmError('This opportunity changed while you were editing it. Reload the CRM record and apply your update again.', 409)
   if (updateError) throw updateError
-  await writeAuditLog('lead', id, 'crm.lead.updated', { actorId: actor.id, actorRole: actor.role, fields: Object.keys(update) })
-  return data
+  return { id: String(data) }
 }
 
 export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -447,10 +573,6 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
   const subject = clean(input.subject, 240)
   const body = clean(input.body, 10000)
   if (!name || !subject || !body) throw new ClientCrmError('Template name, subject, and message are required.')
-  if ((visibility === 'shared' || status === 'published') && actor.role === 'agent') {
-    throw new ClientCrmError('Regional agents can save personal draft templates. An owner or manager publishes shared templates.', 403)
-  }
-
   const db = getAdminSupabase()
   const { data, error } = await db.rpc('save_client_crm_template', {
     p_template_id: id || null,
@@ -475,7 +597,7 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
   return { id: String(saved.template_id), version: Number(saved.template_version) }
 }
 
-export async function upsertOnlineQuoteCrmLead(input: {
+export async function syncOnlineQuoteCrmOpportunity(input: {
   quoteId: string
   clientId: string | null
   businessName: string
@@ -487,57 +609,30 @@ export async function upsertOnlineQuoteCrmLead(input: {
   postcode: string
   city: 'melbourne' | 'sydney'
 }) {
+  if (!input.clientId) throw new ClientCrmError('A saved contact is required before linking the quote to the CRM.', 409)
   const db = getAdminSupabase()
   const candidates = await getCrmAssignmentCandidates(input)
   const assignedStaffId = candidates[0]?.id ?? null
-
-  let organisationId: string | null = null
-  let canonicalContact: { business_name: string; contact_name: string; email: string; phone: string | null } | null = null
-  if (input.clientId) {
-    const { data: contact } = await db.from('clients')
-      .select('organisation_id, business_name, contact_name, email, phone')
-      .eq('id', input.clientId)
-      .maybeSingle()
-    organisationId = contact?.organisation_id ?? null
-    canonicalContact = contact ?? null
-  }
-  if (!organisationId) {
-    const { data: organisation, error } = await db.from('crm_organisations').insert({ business_name: input.businessName }).select('id').single()
-    if (error) throw error
-    organisationId = organisation.id
-    if (input.clientId) {
-      await db.from('clients').update({ organisation_id: organisationId }).eq('id', input.clientId)
-    }
-  }
-
-  const payload = {
-    email: normalizeCrmEmail(canonicalContact?.email ?? input.email),
-    business_name: canonicalContact?.business_name ?? input.businessName,
-    contact_name: canonicalContact?.contact_name ?? input.contactName,
-    phone: canonicalContact?.phone ?? input.phone ?? null,
-    city: input.city,
-    source: 'online_quote',
-    converted_to_client_id: input.clientId,
-    organisation_id: organisationId,
-    contact_id: input.clientId,
-    quote_id: input.quoteId,
-    assigned_staff_id: assignedStaffId,
-    address: input.address || null,
-    suburb: input.suburb || null,
-    postcode: input.postcode,
-    state: stateForCity(input.city),
-    source_explanation: buildContactSourceExplanation({ sourceType: 'online_quote' }),
-    source_obtained_at: new Date().toISOString(),
-    contact_basis: 'enquiry',
-    assignment_method: assignedStaffId ? 'postcode_auto' : 'unassigned',
-    follow_up_status: 'new',
-  }
-  const { data, error } = await db.from('leads').upsert(payload, { onConflict: 'quote_id' }).select('id').single()
+  const { data, error } = await db.rpc('sync_client_crm_opportunity', {
+    p_quote_id: input.quoteId,
+    p_booking_id: null,
+    p_contact_id: input.clientId,
+    p_site_id: null,
+    p_address: input.address ?? '',
+    p_suburb: input.suburb ?? '',
+    p_postcode: input.postcode,
+    p_city: input.city,
+    p_source: 'online_quote',
+    p_source_explanation: buildContactSourceExplanation({ sourceType: 'online_quote' }),
+    p_assigned_staff_id: assignedStaffId,
+    p_assignment_method: assignedStaffId ? 'postcode_auto' : 'unassigned',
+  })
   if (error) throw error
-  return data
+  return { id: String(data) }
 }
 
-export async function syncBookingCrmLead(input: {
+export async function syncBookingCrmOpportunity(input: {
+  bookingId: string
   quoteId: string | null
   clientId: string
   siteId: string | null
@@ -558,51 +653,21 @@ export async function syncBookingCrmLead(input: {
     : null
   const candidates = linkedAgent ? [linkedAgent] : await getCrmAssignmentCandidates(input)
   const assignedStaffId = candidates[0]?.id ?? null
-  const { data: contact } = await db.from('clients')
-    .select('organisation_id, business_name, contact_name, email, phone')
-    .eq('id', input.clientId)
-    .maybeSingle()
-  let organisationId = contact?.organisation_id ?? null
-  if (!organisationId) {
-    const { data: organisation, error } = await db.from('crm_organisations').insert({ business_name: input.businessName }).select('id').single()
-    if (error) throw error
-    organisationId = organisation.id
-    await db.from('clients').update({ organisation_id: organisationId }).eq('id', input.clientId)
-  }
-
-  const values = {
-    email: normalizeCrmEmail(contact?.email ?? input.email),
-    business_name: contact?.business_name ?? input.businessName,
-    contact_name: contact?.contact_name ?? input.contactName,
-    phone: contact?.phone ?? input.phone ?? null,
-    city: input.city,
-    converted_to_client_id: input.clientId,
-    organisation_id: organisationId,
-    contact_id: input.clientId,
-    site_id: input.siteId,
-    assigned_staff_id: assignedStaffId,
-    address: input.address || null,
-    suburb: input.suburb || null,
-    postcode: input.postcode,
-    state: stateForCity(input.city),
-    contact_basis: 'enquiry',
-    assignment_method: assignedStaffId ? 'booking_assignee' : 'unassigned',
-    follow_up_status: 'qualified',
-  }
-
-  if (input.quoteId) {
-    const { data: updated, error } = await db.from('leads').update(values).eq('quote_id', input.quoteId).select('id').maybeSingle()
-    if (error) throw error
-    if (updated) return updated
-  }
-
-  const { data, error } = await db.from('leads').insert({
-    ...values,
-    quote_id: input.quoteId,
-    source: input.quoteId ? 'online_quote' : 'direct_booking',
-    source_explanation: buildContactSourceExplanation({ sourceType: input.quoteId ? 'online_quote' : 'direct_booking' }),
-    source_obtained_at: new Date().toISOString(),
-  }).select('id').single()
+  const sourceType = input.quoteId ? 'online_quote' : 'direct_booking'
+  const { data, error } = await db.rpc('sync_client_crm_opportunity', {
+    p_quote_id: input.quoteId,
+    p_booking_id: input.bookingId,
+    p_contact_id: input.clientId,
+    p_site_id: input.siteId,
+    p_address: input.address ?? '',
+    p_suburb: input.suburb ?? '',
+    p_postcode: input.postcode,
+    p_city: input.city,
+    p_source: sourceType,
+    p_source_explanation: buildContactSourceExplanation({ sourceType }),
+    p_assigned_staff_id: assignedStaffId,
+    p_assignment_method: assignedStaffId ? 'booking_assignee' : 'unassigned',
+  })
   if (error) throw error
-  return data
+  return { id: String(data) }
 }

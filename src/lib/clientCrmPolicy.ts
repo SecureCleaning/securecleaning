@@ -1,12 +1,12 @@
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
 
 export const CRM_ROLES = ['owner', 'manager', 'agent'] as const
-export const CRM_LEAD_STAGES = ['new', 'contacted', 'qualified', 'won', 'lost'] as const
+export const CRM_OPPORTUNITY_STAGES = ['new', 'contacted', 'qualified', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost', 'cancelled'] as const
 export const CRM_CONTACT_BASES = ['enquiry', 'purchased_lead', 'existing_relationship', 'inferred_business_interest'] as const
 export const CRM_SOURCE_TYPES = ['manual', 'online_quote', 'purchased_lead', 'cold_outreach', 'direct_booking'] as const
 
 export type CrmRole = (typeof CRM_ROLES)[number]
-export type CrmLeadStage = (typeof CRM_LEAD_STAGES)[number]
+export type CrmOpportunityStage = (typeof CRM_OPPORTUNITY_STAGES)[number]
 export type CrmContactBasis = (typeof CRM_CONTACT_BASES)[number]
 export type CrmSourceType = (typeof CRM_SOURCE_TYPES)[number]
 
@@ -50,9 +50,9 @@ export function normalizeCrmPostcode(value: unknown) {
   return /^\d{4}$/.test(postcode) ? postcode : ''
 }
 
-export function normalizeCrmStage(value: unknown): CrmLeadStage | null {
-  return typeof value === 'string' && CRM_LEAD_STAGES.includes(value as CrmLeadStage)
-    ? value as CrmLeadStage
+export function normalizeCrmStage(value: unknown): CrmOpportunityStage | null {
+  return typeof value === 'string' && CRM_OPPORTUNITY_STAGES.includes(value as CrmOpportunityStage)
+    ? value as CrmOpportunityStage
     : null
 }
 
@@ -96,7 +96,7 @@ export function applyCrmTemplateTokens(value: string, tokens: Record<string, str
   )
 }
 
-export function canActorAccessAssignedLead(role: AdminRole, actorId: string, assignedStaffId: string | null) {
+export function canActorAccessAssignedOpportunity(role: AdminRole, actorId: string, assignedStaffId: string | null) {
   if (role === 'owner' || role === 'manager') return true
   return role === 'agent' && Boolean(actorId && assignedStaffId === actorId)
 }
