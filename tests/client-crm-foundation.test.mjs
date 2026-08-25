@@ -259,6 +259,11 @@ test('online quote and booking workflows keep one connected CRM opportunity', ()
   assert.doesNotMatch(data, /\.ilike\('email'/)
 })
 
+test('the client CRM route is not intercepted by a legacy admin redirect', () => {
+  const nextConfig = source('next.config.js')
+  assert.doesNotMatch(nextConfig, /source:\s*['"]\/admin\/clients['"]/)
+})
+
 test('unsubscribe confirmation does not mutate on page load and suppression is server-side', () => {
   const page = source('src/app/unsubscribe/page.tsx')
   const form = source('src/components/UnsubscribeForm.tsx')
