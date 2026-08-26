@@ -7,8 +7,15 @@ import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availabili
 
 export const dynamic = 'force-dynamic'
 
-export default async function AvailabilityClientsPage({ params }: { params: Promise<{ assigneeId: string }> }) {
+export default async function AvailabilityClientsPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ assigneeId: string }>
+  searchParams?: Promise<{ opportunity?: string | string[] }>
+}) {
   const { assigneeId } = await params
+  const resolvedSearchParams = await searchParams
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
   if (!assignee?.active) return <div className="p-10 text-center">Agent not found.</div>
@@ -29,7 +36,10 @@ export default async function AvailabilityClientsPage({ params }: { params: Prom
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <AvailabilityAgentNav assigneeId={assigneeId} showLogout />
-        <ClientCrmWorkspace portal="agent" />
+        <ClientCrmWorkspace
+          portal="agent"
+          initialOpportunityId={typeof resolvedSearchParams?.opportunity === 'string' ? resolvedSearchParams.opportunity : ''}
+        />
       </div>
     </div>
   )

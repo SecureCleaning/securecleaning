@@ -54,7 +54,13 @@ function dateLabel(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'admin' | 'agent' }) {
+export default function ClientCrmWorkspace({
+  portal = 'admin',
+  initialOpportunityId = '',
+}: {
+  portal?: 'admin' | 'agent'
+  initialOpportunityId?: string
+}) {
   const [data, setData] = useState<WorkspaceData | null>(null)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
@@ -73,7 +79,10 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
     const next = result as WorkspaceData
     setData(next)
     setTemplateDraft((current) => current.id || current.name ? current : emptyTemplateDraft(next.actor.role))
-    const nextLeadId = preferredLeadId || selectedLeadId || next.opportunities[0]?.id || ''
+    const requestedLeadId = preferredLeadId || selectedLeadId || initialOpportunityId
+    const nextLeadId = next.opportunities.some((opportunity) => opportunity.id === requestedLeadId)
+      ? requestedLeadId
+      : next.opportunities[0]?.id || ''
     setSelectedLeadId(nextLeadId)
   }
 
@@ -317,9 +326,10 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Quote history</h2>
             <div className="mt-3 divide-y divide-gray-100">{selectedLead.quotes.map((quote) => {
+              const opportunityQuery = `opportunity=${encodeURIComponent(selectedLead.id)}`
               const quoteHref = portal === 'agent' && data.actor.availabilityAssigneeId
-                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}`
-                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}`
+                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
+                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>

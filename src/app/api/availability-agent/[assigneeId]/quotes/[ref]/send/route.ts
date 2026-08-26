@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig, locationMatchesServiceZones } from '@/lib/availability'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAuth'
+import { canAvailabilityAgentAccessQuote } from '@/lib/clientCrmQuoteAccess'
 import { getAdminSessionIdentityFromRequest } from '@/lib/adminAuth'
 import { getStaffAccountById } from '@/lib/staffAccounts'
 import { EmailProviderRejectedError, sendUpdatedQuoteEmail } from '@/lib/email'
@@ -26,8 +27,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     const assignee = getAvailabilityAssignee(config, params.assigneeId)
     const quote = await getQuoteWorkflowByRef(params.ref)
     if (!assignee || !quote) return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
-    const zones = getAssigneeServiceZones(config, params.assigneeId)
-    const allowed = quote.inputs.city === assignee.city && (zones.length === 0 || locationMatchesServiceZones(quote.inputs, quote.inputs.city, zones))
+    const allowed = await canAvailabilityAgentAccessQuote(config, params.assigneeId, quote)
     if (!allowed) return NextResponse.json({ success: false, error: 'This quote is outside your assigned service region.' }, { status: 403 })
     const readiness = getFinalQuoteReadiness(quote.firmQuoteDraft)
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {

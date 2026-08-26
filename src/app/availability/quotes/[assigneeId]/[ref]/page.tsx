@@ -1,8 +1,10 @@
+import Link from 'next/link'
 import AvailabilityAgentLogin from '@/components/availability/AvailabilityAgentLogin'
 import AvailabilityAgentNav from '@/components/availability/AvailabilityAgentNav'
 import QuoteWorkflowEditor from '@/components/admin/QuoteWorkflowEditor'
-import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig, locationMatchesServiceZones } from '@/lib/availability'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { hasAvailabilityAgentSession } from '@/lib/availabilityAgentAuth'
+import { canAvailabilityAgentAccessQuote, getCrmAssignedQuoteOpportunities } from '@/lib/clientCrmQuoteAccess'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
@@ -42,11 +44,23 @@ export default async function AvailabilityAgentQuotePage({
   const quote = await getQuoteWorkflowByRef(ref, roomTypeConfig)
   if (!quote) return <div className="p-10 text-center">Quote not found.</div>
 
-  const serviceZones = getAssigneeServiceZones(config, assigneeId)
-  const allowed = quote.inputs.city === assignee.city && (
-    serviceZones.length === 0 || locationMatchesServiceZones(quote.inputs, quote.inputs.city, serviceZones)
-  )
-  if (!allowed) return <div className="p-10 text-center">This quote is outside your assigned service region.</div>
+  const allowed = await canAvailabilityAgentAccessQuote(config, assigneeId, quote)
+  if (!allowed) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-10">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+          <AvailabilityAgentNav assigneeId={assignee.id} showLogout />
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-center">
+            <p className="text-amber-900">This quote is outside your assigned service region and has not been assigned to you.</p>
+            <Link href={`/availability/quotes/${encodeURIComponent(assigneeId)}`} className="mt-4 inline-flex rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-900">Back to my quotes</Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const crmAssignments = await getCrmAssignedQuoteOpportunities(assigneeId, [quote.id])
+  const opportunityId = crmAssignments.get(quote.id) ?? null
 
   const pricingConfig = await getQuotePricingConfig()
   const workflowApiPath = `/api/availability-agent/${encodeURIComponent(assigneeId)}/quotes/${encodeURIComponent(ref)}/workflow`
@@ -56,6 +70,11 @@ export default async function AvailabilityAgentQuotePage({
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <AvailabilityAgentNav assigneeId={assignee.id} showLogout />
+        {opportunityId ? (
+          <Link href={`/availability/clients/${encodeURIComponent(assigneeId)}?opportunity=${encodeURIComponent(opportunityId)}`} className="mb-3 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900"><span aria-hidden="true" className="mr-2 text-base">←</span>Back to client record</Link>
+        ) : (
+          <Link href={`/availability/quotes/${encodeURIComponent(assigneeId)}`} className="mb-3 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900"><span aria-hidden="true" className="mr-2 text-base">←</span>Back to my quotes</Link>
+        )}
         <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold" style={{ color: '#1a2744' }}>Quote Workbench</h1>

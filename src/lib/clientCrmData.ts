@@ -295,7 +295,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       ? db.from('crm_opportunity_intakes').select('opportunity_id, lead_id, linked_at').in('opportunity_id', opportunityIds).order('linked_at', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
-      ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: true })
+      ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
     ? await db.from('crm_communications')
@@ -399,7 +399,10 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       updatedAt: String(row.updated_at ?? row.created_at ?? ''),
       suppressed: suppressedEmails.has(normalizeCrmEmail(contact?.email)),
       hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
-      quotes: quotesByOpportunity.get(id) ?? [],
+      quotes: [...(quotesByOpportunity.get(id) ?? [])].sort((left, right) => (
+        right.sequenceNumber - left.sequenceNumber
+        || right.createdAt.localeCompare(left.createdAt)
+      )),
       communications: communicationsByOpportunity.get(id) ?? [],
     }
   })

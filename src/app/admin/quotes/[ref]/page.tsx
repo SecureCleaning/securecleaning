@@ -6,6 +6,7 @@ import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getAdminSessionIdentityFromCookies } from '@/lib/adminAuth'
 import DismissAlertButton from '@/components/admin/DismissAlertButton'
+import { getCrmOpportunityIdForQuote } from '@/lib/clientCrmQuoteAccess'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,11 +25,15 @@ export default async function AdminQuoteWorkflowPage({ params }: { params: { ref
       )
     }
 
+    const opportunityId = await getCrmOpportunityIdForQuote(quote.id)
+
     return (
       <div>
           <AdminPageHeader
             title="Quote Workbench"
             description="Start from the original remote quote, complete the inspection worksheet, then refine the inputs and client-facing scope into a firmer quotation."
+            backHref={opportunityId ? `/admin/clients?opportunity=${encodeURIComponent(opportunityId)}` : '/admin'}
+            backLabel={opportunityId ? 'Back to client record' : 'Back to overview'}
             meta={<div className="text-right text-sm text-gray-500"><div className="font-mono font-semibold text-gray-700">{quote.quoteRef}</div><div>Status: <span className="capitalize">{quote.status}</span></div></div>}
             actions={<DismissAlertButton alertId={`quote-${quote.quoteRef}`} />}
           />

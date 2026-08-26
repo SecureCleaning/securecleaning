@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig, locationMatchesServiceZones } from '@/lib/availability'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAuth'
+import { canAvailabilityAgentAccessQuote } from '@/lib/clientCrmQuoteAccess'
 import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
 import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
@@ -28,10 +29,7 @@ export async function POST(
 
     if (!assignee || !quote) return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
 
-    const serviceZones = getAssigneeServiceZones(config, params.assigneeId)
-    const allowed = quote.inputs.city === assignee.city && (
-      serviceZones.length === 0 || locationMatchesServiceZones(quote.inputs, quote.inputs.city, serviceZones)
-    )
+    const allowed = await canAvailabilityAgentAccessQuote(config, params.assigneeId, quote)
     if (!allowed) return NextResponse.json({ success: false, error: 'This quote is outside your assigned service region.' }, { status: 403 })
 
     if (!quote.workflowColumnsAvailable) {
