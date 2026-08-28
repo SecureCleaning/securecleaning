@@ -132,8 +132,8 @@ test('every signature detail shown to a client is mandatory for a sender', () =>
     'alex@securecleaning.com.au',
     'Secure Cleaning',
     'securecleaning.com.au',
-    'ABN 81 674 121 825',
   ]) assert.match(signature, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.doesNotMatch(signature, /ABN/)
 })
 
 test('source disclosure and template fields are deterministic and non-empty', () => {
@@ -157,7 +157,25 @@ test('the centrally generated footer includes disclosure and unsubscribe link', 
   const footer = buildCrmFooter('we received your details from Example Leads', 'https://securecleaning.com.au/unsubscribe?token=test')
   assert.match(footer, /we received your details from Example Leads/)
   assert.match(footer, /unsubscribe here: https:\/\/securecleaning\.com\.au\/unsubscribe\?token=test/)
-  assert.match(footer, /ABN 81 674 121 825/)
+  assert.doesNotMatch(footer, /ABN/)
+})
+
+test('CRM email details link to their canonical editors and omit the ABN', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const teamAccess = source('src/components/admin/StaffAccessAdmin.tsx')
+  const teamPage = source('src/app/admin/staff/page.tsx')
+  const email = source('src/lib/clientCrmEmail.ts')
+
+  assert.match(workspace, /Edit source wording/)
+  assert.match(workspace, /Edit sender details/)
+  assert.match(workspace, /\/admin\/staff\?account=/)
+  assert.match(workspace, /data\.actor\.role === 'owner'/)
+  assert.match(teamAccess, /initialAccountId/)
+  assert.match(teamAccess, /Back to client record/)
+  assert.match(teamPage, /\^\\\/admin\\\/clients/)
+  assert.doesNotMatch(workspace, /ABN 81 674 121 825/)
+  assert.doesNotMatch(teamAccess, /ABN 81 674 121 825/)
+  assert.doesNotMatch(email, /ABN 81 674 121 825/)
 })
 
 test('team account creation and editing enforce canonical signature fields', () => {
