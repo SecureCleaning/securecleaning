@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import AvailabilityAgentLogin from '@/components/availability/AvailabilityAgentLogin'
 import AvailabilityAgentNav from '@/components/availability/AvailabilityAgentNav'
+import AgentQuoteWinAction from '@/components/availability/AgentQuoteWinAction'
 import QuoteWorkflowEditor from '@/components/admin/QuoteWorkflowEditor'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { hasAvailabilityAgentSession } from '@/lib/availabilityAgentAuth'
-import { canAvailabilityAgentAccessQuote, getCrmAssignedQuoteOpportunities } from '@/lib/clientCrmQuoteAccess'
+import { canAvailabilityAgentAccessQuote, getCrmAssignedQuoteOpportunityContext } from '@/lib/clientCrmQuoteAccess'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
@@ -59,8 +60,7 @@ export default async function AvailabilityAgentQuotePage({
     )
   }
 
-  const crmAssignments = await getCrmAssignedQuoteOpportunities(assigneeId, [quote.id])
-  const opportunityId = crmAssignments.get(quote.id) ?? null
+  const opportunity = await getCrmAssignedQuoteOpportunityContext(assigneeId, quote.id)
 
   const pricingConfig = await getQuotePricingConfig()
   const workflowApiPath = `/api/availability-agent/${encodeURIComponent(assigneeId)}/quotes/${encodeURIComponent(ref)}/workflow`
@@ -70,8 +70,8 @@ export default async function AvailabilityAgentQuotePage({
     <div className="min-h-screen bg-gray-50 py-10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <AvailabilityAgentNav assigneeId={assignee.id} showLogout />
-        {opportunityId ? (
-          <Link href={`/availability/clients/${encodeURIComponent(assigneeId)}?opportunity=${encodeURIComponent(opportunityId)}`} className="mb-3 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900"><span aria-hidden="true" className="mr-2 text-base">←</span>Back to client record</Link>
+        {opportunity ? (
+          <Link href={`/availability/clients/${encodeURIComponent(assigneeId)}?opportunity=${encodeURIComponent(opportunity.id)}`} className="mb-3 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900"><span aria-hidden="true" className="mr-2 text-base">←</span>Back to client record</Link>
         ) : (
           <Link href={`/availability/quotes/${encodeURIComponent(assigneeId)}`} className="mb-3 inline-flex min-h-9 items-center text-sm font-semibold text-gray-600 hover:text-gray-900"><span aria-hidden="true" className="mr-2 text-base">←</span>Back to my quotes</Link>
         )}
@@ -85,6 +85,13 @@ export default async function AvailabilityAgentQuotePage({
             <div>Status: <span className="capitalize">{quote.status}</span></div>
           </div>
         </div>
+        <AgentQuoteWinAction
+          assigneeId={assigneeId}
+          quoteId={quote.id}
+          quoteRef={quote.quoteRef}
+          opportunity={opportunity}
+          hasFinalDocument={Boolean(quote.finalDocument)}
+        />
         <QuoteWorkflowEditor
           quote={quote}
           pricingConfig={pricingConfig}

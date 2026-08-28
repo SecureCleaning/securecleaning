@@ -103,6 +103,27 @@ test('won transition is atomic, evidence-based, idempotent, and cannot be bypass
   assert.match(migration, /p_actor_role = 'agent' AND source_state IS DISTINCT FROM p_actor_state/)
 })
 
+test('agent quote workbench exposes the protected won transition and existing product handoff', () => {
+  const page = source('src/app/availability/quotes/[assigneeId]/[ref]/page.tsx')
+  const action = source('src/components/availability/AgentQuoteWinAction.tsx')
+  const access = source('src/lib/clientCrmQuoteAccess.ts')
+  assert.match(page, /getCrmAssignedQuoteOpportunityContext\(assigneeId, quote\.id\)/)
+  assert.match(page, /<AgentQuoteWinAction/)
+  assert.match(page, /hasFinalDocument=\{Boolean\(quote\.finalDocument\)\}/)
+  assert.match(action, /Mark quote as won/)
+  assert.match(action, /action: 'opportunity\.close-won'/)
+  assert.match(action, /opportunityId: opportunity\.id/)
+  assert.match(action, /quoteId,/)
+  assert.match(action, /expectedUpdatedAt: opportunity\.updatedAt/)
+  assert.match(action, /acceptanceDate,/)
+  assert.match(action, /acceptanceMethod,/)
+  assert.match(action, /acceptanceNote: acceptanceNote\.trim\(\)/)
+  assert.match(action, /!hasFinalDocument/)
+  assert.match(action, /Open contract product/)
+  assert.match(access, /\.eq\('availability_assignee_id', assigneeId\)[\s\S]+\.eq\('role', 'agent'\)[\s\S]+\.eq\('active', true\)/)
+  assert.match(access, /\.from\('contract_products'\)[\s\S]+\.eq\('opportunity_id', opportunityId\)/)
+})
+
 test('migration is rerunnable and new product data remains service-role only', () => {
   const migration = source('supabase/contract_products_migration.sql')
   for (const pattern of [

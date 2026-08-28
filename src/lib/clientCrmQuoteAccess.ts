@@ -14,6 +14,14 @@ type QuoteForAgentAccess = {
   inputs: QuoteInputs
 }
 
+export type CrmAssignedQuoteOpportunityContext = {
+  id: string
+  stage: string
+  updatedAt: string
+  productId: string | null
+  productStatus: string | null
+}
+
 function unique(values: string[]) {
   return Array.from(new Set(values.filter(Boolean)))
 }
@@ -80,6 +88,38 @@ export async function getCrmOpportunityIdForQuote(quoteId: string) {
     .maybeSingle()
   if (error) throw error
   return data?.opportunity_id ? String(data.opportunity_id) : null
+}
+
+export async function getCrmAssignedQuoteOpportunityContext(
+  assigneeId: string,
+  quoteId: string,
+): Promise<CrmAssignedQuoteOpportunityContext | null> {
+  const assignments = await getCrmAssignedQuoteOpportunities(assigneeId, [quoteId])
+  const opportunityId = assignments.get(quoteId)
+  if (!opportunityId) return null
+
+  const db = getAdminSupabase()
+  const [{ data: opportunity, error: opportunityError }, { data: product, error: productError }] = await Promise.all([
+    db.from('crm_opportunities')
+      .select('id, stage, updated_at')
+      .eq('id', opportunityId)
+      .maybeSingle(),
+    db.from('contract_products')
+      .select('id, status')
+      .eq('opportunity_id', opportunityId)
+      .maybeSingle(),
+  ])
+  if (opportunityError) throw opportunityError
+  if (productError) throw productError
+  if (!opportunity) return null
+
+  return {
+    id: String(opportunity.id),
+    stage: String(opportunity.stage),
+    updatedAt: String(opportunity.updated_at),
+    productId: product?.id ? String(product.id) : null,
+    productStatus: product?.status ? String(product.status) : null,
+  }
 }
 
 export async function canAvailabilityAgentAccessQuote(
