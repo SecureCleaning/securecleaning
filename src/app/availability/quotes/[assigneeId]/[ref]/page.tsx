@@ -90,7 +90,6 @@ export default async function AvailabilityAgentQuotePage({
           quoteId={quote.id}
           quoteRef={quote.quoteRef}
           opportunity={opportunity}
-          hasFinalDocument={Boolean(quote.finalDocument)}
         />
         <QuoteWorkflowEditor
           quote={quote}

@@ -1,6 +1,8 @@
-import type { FinalQuoteDocument } from '@/lib/quoteWorkflowData'
+import type { FirmQuoteDisplayPrice, FirmQuoteDraft } from '@/lib/quoteWorkflow'
 import { getRoomTypeConfigById } from '@/lib/roomTypeConfig'
+import type { QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import type { AdminRole } from '@/lib/staffAccounts'
+import type { QuoteInputs, QuoteResult } from '@/lib/types'
 
 export const CONTRACT_PRODUCT_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'] as const
 export const CONTRACT_PRODUCT_STATUSES = ['draft', 'available', 'reserved', 'sold', 'withdrawn'] as const
@@ -28,6 +30,14 @@ export type CleanerScopeSnapshotV1 = {
     tasks: string[]
   }>
   selectedOptions: string[]
+}
+
+export type ContractProductQuoteSnapshot = {
+  inputs: QuoteInputs
+  result: QuoteResult
+  firmQuoteDraft: FirmQuoteDraft
+  displayPrice: FirmQuoteDisplayPrice
+  roomTypeConfig: QuoteRoomTypeConfig
 }
 
 const ANNUAL_VISITS: Record<string, number> = {
@@ -107,7 +117,7 @@ export function canTransitionContractProduct(from: ContractProductStatus, to: Co
   return transitions[from].includes(to)
 }
 
-function selectedOptions(document: FinalQuoteDocument) {
+function selectedOptions(document: ContractProductQuoteSnapshot) {
   const addOns = document.inputs.addOns
   return [
     addOns.glassCleaningRequired ? 'Glass cleaning required' : '',
@@ -117,10 +127,10 @@ function selectedOptions(document: FinalQuoteDocument) {
   ].filter(Boolean)
 }
 
-export function buildCleanerScopeSnapshot(document: FinalQuoteDocument): CleanerScopeSnapshotV1 {
+export function buildCleanerScopeSnapshot(document: ContractProductQuoteSnapshot): CleanerScopeSnapshotV1 {
   const state = getContractProductStateForCity(document.inputs.city)
   const suburb = document.inputs.suburb?.trim()
-  if (!state || !suburb) throw new Error('The final quote needs a supported city and suburb before a product can be created.')
+  if (!state || !suburb) throw new Error('The saved quote needs a supported city and suburb before a product can be created.')
 
   const premisesLabel = PREMISES_LABELS[document.inputs.premisesType] ?? 'commercial'
   return {

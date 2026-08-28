@@ -10,10 +10,20 @@ import {
   isPublishableCleanerScope,
   normalizeContractProductState,
   type CleanerScopeSnapshotV1,
+  type ContractProductQuoteSnapshot,
   type ContractProductState,
   type ContractProductStatus,
 } from '@/lib/contractProductPolicy'
+import { getQuotePricingConfig } from '@/lib/pricing'
+import {
+  applyFirmQuoteDisplayPrice,
+  buildFirmQuotePreview,
+  getFirmQuoteDisplayPrice,
+  parseFirmQuoteDraft,
+} from '@/lib/quoteWorkflow'
 import type { FinalQuoteDocument } from '@/lib/quoteWorkflowData'
+import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import type { QuoteInputs } from '@/lib/types'
 
 export class ContractProductError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -166,6 +176,33 @@ async function getAuthorizedProduct(actor: ContractProductActor, productId: stri
   return data as ProductRow
 }
 
+async function getContractProductQuoteSnapshot(quote: ProductRow): Promise<ContractProductQuoteSnapshot> {
+  const finalDocument = quote.final_quote_document as FinalQuoteDocument | null
+  if (finalDocument) {
+    if (finalDocument.variant !== 'final' || !(Number(finalDocument.displayPrice?.low) > 0)) {
+      throw new ContractProductError('The saved final quote does not contain a valid price.', 409)
+    }
+    return finalDocument
+  }
+
+  const inputs = quote.inputs as QuoteInputs
+  const [pricingConfig, roomTypeConfig] = await Promise.all([
+    getQuotePricingConfig(),
+    getQuoteRoomTypeConfig(),
+  ])
+  const firmQuoteDraft = parseFirmQuoteDraft(quote.firm_quote_workflow, inputs, roomTypeConfig)
+  const pricingPreview = buildFirmQuotePreview(firmQuoteDraft, pricingConfig, roomTypeConfig)
+  const displayPrice = getFirmQuoteDisplayPrice(firmQuoteDraft, pricingPreview)
+  if (!(displayPrice.low > 0)) throw new ContractProductError('Save a quote version with a valid price before recording the win.', 409)
+  return {
+    inputs: firmQuoteDraft.revisedInputs,
+    result: applyFirmQuoteDisplayPrice(pricingPreview.calculated, displayPrice),
+    firmQuoteDraft,
+    displayPrice,
+    roomTypeConfig,
+  }
+}
+
 export async function closeOpportunityWonAndCreateProduct(actor: ContractProductActor, input: Record<string, unknown>) {
   const opportunityId = clean(input.opportunityId, 100)
   const quoteId = clean(input.quoteId, 100)
@@ -176,7 +213,7 @@ export async function closeOpportunityWonAndCreateProduct(actor: ContractProduct
   if (!opportunityId || !quoteId || !expectedUpdatedAt || !/^\d{4}-\d{2}-\d{2}$/.test(acceptanceDate)
       || !['email', 'signed_agreement', 'phone', 'other'].includes(acceptanceMethod)
       || acceptanceNote.length < 3) {
-    throw new ContractProductError('Select the winning final quote and record the acceptance date, method, and evidence.')
+    throw new ContractProductError('Select the winning saved quote and record the acceptance date, method, and evidence.')
   }
 
   const db = getAdminSupabase()
@@ -191,20 +228,22 @@ export async function closeOpportunityWonAndCreateProduct(actor: ContractProduct
   if (linkError) throw linkError
   if (!link) throw new ContractProductError('The selected quote is not part of this opportunity.', 409)
   const { data: quote, error: quoteError } = await db.from('quotes')
-    .select('id, final_quote_document').eq('id', quoteId).maybeSingle()
+    .select('id, inputs, result, firm_quote_workflow, final_quote_document').eq('id', quoteId).maybeSingle()
   if (quoteError) throw quoteError
-  if (!quote?.final_quote_document) throw new ContractProductError('Review and publish a final quote before closing this opportunity as won.', 409)
-
-  const finalDocument = quote.final_quote_document as FinalQuoteDocument
-  if (finalDocument.variant !== 'final' || !(Number(finalDocument.displayPrice?.low) > 0)) {
-    throw new ContractProductError('The selected quote does not contain a valid reviewed final document.', 409)
-  }
-  const cleanerScopeSnapshot = buildCleanerScopeSnapshot(finalDocument)
+  if (!quote) throw new ContractProductError('The selected quote is no longer available.', 409)
+  const sourceSnapshot = await getContractProductQuoteSnapshot(quote as ProductRow)
+  const cleanerScopeSnapshot = buildCleanerScopeSnapshot(sourceSnapshot)
   if (!isPublishableCleanerScope(cleanerScopeSnapshot)) {
-    throw new ContractProductError('The final quote could not be converted into a privacy-safe cleaner scope.', 409)
+    throw new ContractProductError('The saved quote could not be converted into a privacy-safe cleaner scope.', 409)
   }
   if (actor.role === 'agent' && cleanerScopeSnapshot.state !== actor.productState) {
     throw new ContractProductError('Agents can only create products in their assigned state.', 403)
+  }
+  const rpcCleanerScopeSnapshot = {
+    ...cleanerScopeSnapshot,
+    sourcePricing: {
+      clientPricePerVisitExGstCents: Math.round(sourceSnapshot.displayPrice.low * 100),
+    },
   }
 
   const { data, error } = await db.rpc('close_crm_opportunity_won_and_create_product', {
@@ -214,7 +253,7 @@ export async function closeOpportunityWonAndCreateProduct(actor: ContractProduct
     p_acceptance_date: acceptanceDate,
     p_acceptance_method: acceptanceMethod,
     p_acceptance_note: acceptanceNote,
-    p_cleaner_scope_snapshot: cleanerScopeSnapshot,
+    p_cleaner_scope_snapshot: rpcCleanerScopeSnapshot,
     p_actor_id: actor.id,
     p_actor_role: actor.role,
     p_actor_state: actor.productState,

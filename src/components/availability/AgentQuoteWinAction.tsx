@@ -22,13 +22,11 @@ export default function AgentQuoteWinAction({
   quoteId,
   quoteRef,
   opportunity,
-  hasFinalDocument,
 }: {
   assigneeId: string
   quoteId: string
   quoteRef: string
   opportunity: CrmAssignedQuoteOpportunityContext | null
-  hasFinalDocument: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -73,15 +71,6 @@ export default function AgentQuoteWinAction({
     )
   }
 
-  if (!hasFinalDocument) {
-    return (
-      <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-        <p className="font-semibold">Ready to record the sale?</p>
-        <p className="mt-1">Review and save the final quote first. A won opportunity must use a published final quote to create its draft contract product.</p>
-      </div>
-    )
-  }
-
   async function closeAsWon() {
     if (!opportunity || acceptanceNote.trim().length < 3) return
     setBusy(true)
@@ -116,13 +105,13 @@ export default function AgentQuoteWinAction({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="font-semibold">Has the client accepted {quoteRef}?</p>
-          <p className="mt-1">Record the win here. This closes the client opportunity and creates one editable draft contract product.</p>
+          <p className="mt-1">Record the win from the latest saved quote version. This closes the client opportunity and creates one editable draft contract product.</p>
         </div>
         {!open ? <button type="button" onClick={() => setOpen(true)} className="rounded-lg bg-green-700 px-4 py-2.5 font-semibold text-white">Mark quote as won</button> : null}
       </div>
       {open ? (
         <div className="mt-4 border-t border-green-200 pt-4">
-          <p className="mb-4 text-green-900">Quote status and a sales win are separate: this confirmation records how the client accepted the final quote.</p>
+          <p className="mb-4 text-green-900">Quote status and a sales win are separate: this confirmation records how the client accepted the latest saved quote version.</p>
           <div className="grid gap-4 md:grid-cols-3">
             <label className="font-medium">Acceptance date<input type="date" max={melbourneToday()} value={acceptanceDate} onChange={(event) => setAcceptanceDate(event.target.value)} className="mt-1 block w-full rounded-lg border border-green-200 bg-white px-3 py-2.5" /></label>
             <label className="font-medium">Acceptance method<select value={acceptanceMethod} onChange={(event) => setAcceptanceMethod(event.target.value)} className="mt-1 block w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="email">Email</option><option value="signed_agreement">Signed agreement</option><option value="phone">Phone</option><option value="other">Other</option></select></label>
