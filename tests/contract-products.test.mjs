@@ -18,6 +18,14 @@ const {
   isPublishableCleanerScope,
 } = await import('../src/lib/contractProductPolicy.ts')
 const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG } = await import('../src/lib/roomTypeConfig.ts')
+const {
+  formatContractProductHours,
+  formatContractProductStartDate,
+  getContractProductStartDateDraft,
+  isValidContractProductHours,
+  normalizeContractProductHours,
+  resolveContractProductStartDate,
+} = await import('../src/lib/contractProductListingDetails.ts')
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 const source = (path) => readFileSync(`${projectRoot}/${path}`, 'utf8')
@@ -56,6 +64,49 @@ test('contract product financial defaults use expected annual visits and editabl
     suggestedPurchasePriceExGstCents: 520_000,
     gstRate: 0.1,
   })
+})
+
+test('contract product start dates support an explicit TBC workflow', () => {
+  assert.deepEqual(getContractProductStartDateDraft('2026-09-15'), {
+    startDate: '2026-09-15',
+    startDateTbc: false,
+  })
+  assert.deepEqual(getContractProductStartDateDraft(''), { startDate: '', startDateTbc: true })
+  assert.equal(resolveContractProductStartDate('2026-09-15', true), '')
+  assert.equal(resolveContractProductStartDate(' 2026-09-15 ', false), '2026-09-15')
+  assert.equal(formatContractProductStartDate(''), 'TBC')
+  assert.equal(formatContractProductStartDate('2026-09-15'), '2026-09-15')
+
+  const workspace = source('src/components/admin/ContractProductsWorkspace.tsx')
+  const products = source('src/lib/contractProducts.ts')
+  assert.match(workspace, /checked=\{draft\.startDateTbc\}/)
+  assert.match(workspace, /disabled=\{draft\.startDateTbc\}/)
+  assert.match(workspace, /productUpdatePayload\(draft\)/)
+  assert.match(products, /start_date: startDate \|\| null/)
+})
+
+test('estimated hours support cleaner-facing ranges without affecting pricing', () => {
+  assert.equal(normalizeContractProductHours('  1.5   -   2 hours  '), '1.5 - 2 hours')
+  assert.equal(isValidContractProductHours('1.5 - 2 hours'), true)
+  assert.equal(isValidContractProductHours('1.5 to 2 hrs'), true)
+  assert.equal(isValidContractProductHours('2'), true)
+  assert.equal(isValidContractProductHours('2 - 1 hours'), false)
+  assert.equal(isValidContractProductHours('about two hours'), false)
+  assert.equal(formatContractProductHours('1.5 - 2'), '1.5 - 2 hours')
+  assert.equal(formatContractProductHours('1.5 - 2 hrs'), '1.5 - 2 hrs')
+  assert.equal(formatContractProductHours(''), 'TBC')
+
+  const workspace = source('src/components/admin/ContractProductsWorkspace.tsx')
+  const products = source('src/lib/contractProducts.ts')
+  const migration = source('supabase/contract_product_estimated_hours_text_migration.sql')
+  assert.match(workspace, /type="text" inputMode="decimal" maxLength=\{40\}/)
+  assert.match(workspace, /placeholder="e\.g\. 1\.5 - 2 hours"/)
+  assert.match(products, /estimated_hours_per_visit: estimatedHours \|\| null/)
+  assert.doesNotMatch(products, /Number\(input\.estimatedHoursPerVisit\)/)
+  assert.match(migration, /ALTER COLUMN estimated_hours_per_visit TYPE TEXT/)
+  assert.match(migration, /ELSIF column_type <> 'text'/)
+  assert.match(migration, /REGEXP_REPLACE\(estimated_hours_per_visit::TEXT, '\(\\\.\\d\*\?\)0\+\$'/)
+  assert.doesNotMatch(migration, /TRIM\(TRAILING '0'/)
 })
 
 test('cleaner scope is a privacy-safe immutable projection of the reviewed final quote', () => {

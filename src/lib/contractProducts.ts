@@ -24,6 +24,7 @@ import {
 import type { FinalQuoteDocument } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import type { QuoteInputs } from '@/lib/types'
+import { isValidContractProductHours, normalizeContractProductHours } from '@/lib/contractProductListingDetails'
 
 export class ContractProductError extends Error {
   constructor(message: string, readonly status = 400) {
@@ -48,7 +49,7 @@ export type ContractProduct = {
   frequency: string
   annualVisits: number
   timePreference: string
-  estimatedHoursPerVisit: number | null
+  estimatedHoursPerVisit: string
   keyedJob: 'unknown' | 'keyed' | 'not_keyed'
   formalContract: boolean
   freeInitialClean: boolean
@@ -142,8 +143,7 @@ function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0): Contract
     frequency: String(row.frequency ?? ''),
     annualVisits: Number(row.annual_visits ?? 0),
     timePreference: String(row.time_preference ?? ''),
-    estimatedHoursPerVisit: row.estimated_hours_per_visit === null || row.estimated_hours_per_visit === undefined
-      ? null : Number(row.estimated_hours_per_visit),
+    estimatedHoursPerVisit: normalizeContractProductHours(row.estimated_hours_per_visit),
     keyedJob: String(row.keyed_job ?? 'unknown') as ContractProduct['keyedJob'],
     formalContract: Boolean(row.formal_contract),
     freeInitialClean: Boolean(row.free_initial_clean),
@@ -302,7 +302,7 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   const description = clean(input.description, 3000)
   const annualVisits = Math.round(Number(input.annualVisits))
   const startDate = clean(input.startDate, 20)
-  const estimatedHours = input.estimatedHoursPerVisit === '' ? null : Number(input.estimatedHoursPerVisit)
+  const estimatedHours = normalizeContractProductHours(input.estimatedHoursPerVisit)
   const keyedJob = clean(input.keyedJob, 20)
   const pricingMethod = input.pricingMethod === 'manual' ? 'manual' : 'default_50_percent'
   const manualPurchaseCents = parseMoneyToCents(input.purchasePriceExGst)
@@ -310,8 +310,8 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
     throw new ContractProductError('Provide a heading, description, and annual visit count between 1 and 366.')
   }
   if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new ContractProductError('Enter a valid proposed start date.')
-  if (estimatedHours !== null && (!Number.isFinite(estimatedHours) || estimatedHours <= 0 || estimatedHours > 168)) {
-    throw new ContractProductError('Estimated hours per visit must be between 0 and 168.')
+  if (!isValidContractProductHours(estimatedHours)) {
+    throw new ContractProductError('Enter estimated hours as one duration or a range, such as 1.5 - 2 hours.')
   }
   if (!['unknown', 'keyed', 'not_keyed'].includes(keyedJob)) throw new ContractProductError('Select a valid keyed-job option.')
   if (pricingMethod === 'manual' && !manualPurchaseCents) throw new ContractProductError('Enter a valid manual purchase price.')
@@ -324,7 +324,7 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
     description,
     start_date: startDate || null,
     annual_visits: annualVisits,
-    estimated_hours_per_visit: estimatedHours,
+    estimated_hours_per_visit: estimatedHours || null,
     keyed_job: keyedJob,
     formal_contract: input.formalContract === true,
     free_initial_clean: input.freeInitialClean === true,

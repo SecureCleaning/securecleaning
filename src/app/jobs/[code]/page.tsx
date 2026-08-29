@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import { unstable_noStore as noStore } from 'next/cache'
 import ContractProductInterestForm from '@/components/products/ContractProductInterestForm'
 import { CLEANER_JOBS_SESSION_COOKIE, verifyCleanerJobsSessionToken } from '@/lib/cleanerJobsAccess'
+import { formatContractProductHours, formatContractProductStartDate } from '@/lib/contractProductListingDetails'
 import { getAvailableCleanerJobs, getJobsAccessLink } from '@/lib/contractProducts'
 
 export const dynamic = 'force-dynamic'
@@ -27,9 +28,9 @@ export default async function AvailableJobDetailPage({ params }: { params: { cod
       <h1 className="mt-3 text-3xl font-bold text-gray-900">{job.heading}</h1><p className="mt-3 leading-7 text-gray-600">{job.description}</p>
       <div className="mt-6 grid gap-4 rounded-xl bg-gray-50 p-4 sm:grid-cols-3"><div><p className="text-xs font-bold uppercase text-gray-500">Annual value</p><p className="mt-1 text-xl font-bold">{money(Math.round(job.annualContractValueExGstCents * 1.1))}</p><p className="text-xs text-gray-500">including GST</p></div><div><p className="text-xs font-bold uppercase text-gray-500">Purchase price</p><p className="mt-1 text-xl font-bold">{money(Math.round(job.purchasePriceExGstCents * 1.1))}</p><p className="text-xs text-gray-500">including GST</p></div><div><p className="text-xs font-bold uppercase text-gray-500">Expected schedule</p><p className="mt-1 font-bold">{job.frequency.replaceAll('_', ' ')}</p><p className="text-xs text-gray-500">{job.annualVisits} visits annually</p></div></div>
       <div className="mt-4 grid gap-3 rounded-xl border border-gray-200 p-4 text-sm sm:grid-cols-3">
-        <div><span className="block text-xs font-bold uppercase text-gray-500">Proposed start</span>{job.startDate || 'To be confirmed'}</div>
+        <div><span className="block text-xs font-bold uppercase text-gray-500">Proposed start</span>{formatContractProductStartDate(job.startDate)}</div>
         <div><span className="block text-xs font-bold uppercase text-gray-500">Timing</span>{job.timePreference.replaceAll('_', ' ')}</div>
-        <div><span className="block text-xs font-bold uppercase text-gray-500">Hours per visit</span>{job.estimatedHoursPerVisit ? `${job.estimatedHoursPerVisit} hours` : 'To be confirmed'}</div>
+        <div><span className="block text-xs font-bold uppercase text-gray-500">Hours per visit</span>{formatContractProductHours(job.estimatedHoursPerVisit)}</div>
         <div><span className="block text-xs font-bold uppercase text-gray-500">Key access</span>{job.keyedJob.replaceAll('_', ' ')}</div>
         <div><span className="block text-xs font-bold uppercase text-gray-500">Formal contract</span>{job.formalContract ? 'Yes' : 'No'}</div>
         <div><span className="block text-xs font-bold uppercase text-gray-500">Initial clean</span>{job.freeInitialClean ? 'Included at no charge' : 'Standard arrangement'}</div>
