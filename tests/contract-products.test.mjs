@@ -150,6 +150,18 @@ test('won transition accepts the latest saved quote snapshot without weakening a
   assert.doesNotMatch(workspace, /selectedLead\.quotes\.filter\(\(quote\) => quote\.hasFinalDocument\)/)
 })
 
+test('won transition uses the built-in UUID generator under its restricted search path', () => {
+  const migration = source('supabase/contract_product_uuid_generation_fix_migration.sql')
+  assert.match(migration, /to_regprocedure\([\s\S]+close_crm_opportunity_won_and_create_product/)
+  assert.match(migration, /legacy_call_count = 1[\s\S]+gen_random_uuid\(\)/)
+  assert.match(migration, /legacy_call_count = 0[\s\S]+POSITION\('gen_random_uuid\(\)'/)
+  assert.match(migration, /ALTER FUNCTION close_crm_opportunity_won_and_create_product[\s\S]+SECURITY DEFINER/)
+  assert.match(migration, /SET search_path = public, pg_temp/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION close_crm_opportunity_won_and_create_product[\s\S]+FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION close_crm_opportunity_won_and_create_product[\s\S]+TO service_role/)
+  assert.doesNotMatch(migration, /CREATE EXTENSION|SET search_path = public, extensions/)
+})
+
 test('migration is rerunnable and new product data remains service-role only', () => {
   const migration = source('supabase/contract_products_migration.sql')
   for (const pattern of [
