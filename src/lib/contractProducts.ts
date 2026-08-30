@@ -318,6 +318,9 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
 
   const pricing = calculateContractProductPricing(Number(current.client_price_per_visit_ex_gst_cents), annualVisits)
   const purchasePrice = pricingMethod === 'manual' ? manualPurchaseCents! : pricing.suggestedPurchasePriceExGstCents
+  if (Math.round(purchasePrice * 1.1) <= 50_000) {
+    throw new ContractProductError('The cleaner purchase price must be greater than the $500 GST-inclusive deposit.')
+  }
   const db = getAdminSupabase()
   const { data, error } = await db.from('contract_products').update({
     heading,

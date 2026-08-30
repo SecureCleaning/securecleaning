@@ -9,3 +9,15 @@ For the final quote workflow, apply:
 3. `final_quote_scope_workflow_migration.sql`
 
 The final migration is authoritative for the service-role-only claim, finalization, and privileged reconciliation RPCs because those functions depend on the audit table created by the first migration. The baseline schema includes the tables, constraints, indexes, RLS, and immutable-document trigger needed before those RPCs are installed.
+
+For contract product sales, start from `schema.sql`, then apply `audit_log_migration.sql`,
+`sites_migration.sql`, `staff_accounts_migration.sql`, the cleaner migrations,
+`client_crm_foundation_migration.sql`, and the existing quote workflow migrations before this ordered product sequence:
+
+1. `contract_products_migration.sql`
+2. `contract_product_uuid_generation_fix_migration.sql`
+3. `contract_product_saved_quote_won_migration.sql`
+4. `contract_product_estimated_hours_text_migration.sql`
+5. `contract_product_sales_migration.sql`
+
+The sales migration is additive. It creates the product-sale ledger, GST-inclusive invoices, pending/confirmed payments, payment plans, three-party inspections, versioned agreements, a private signed-agreement bucket, and cleaner-to-site handovers. Apply it before deploying application code that calls `/api/admin/contract-sales`.
