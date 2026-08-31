@@ -56,6 +56,7 @@ test('agreement snapshots record conditional rights and the complete instalment 
 
 test('migration is additive, idempotent, service-role only, and protects critical transitions', () => {
   const sql = source('supabase/contract_product_sales_migration.sql')
+  const approvedCleanersSql = source('supabase/contract_sale_approved_cleaners_migration.sql')
   for (const pattern of [
     /CREATE SEQUENCE IF NOT EXISTS contract_sale_code_seq/,
     /CREATE TABLE IF NOT EXISTS contract_product_sales/,
@@ -71,6 +72,7 @@ test('migration is additive, idempotent, service-role only, and protects critica
   ]) assert.match(sql, pattern)
   assert.match(sql, /deposit_inc_gst_cents INTEGER NOT NULL DEFAULT 50000[\s\S]+CHECK \(deposit_inc_gst_cents = 50000\)/)
   assert.match(sql, /cleaner_row\.status <> 'approved'/)
+  assert.doesNotMatch(sql, /cleaner_row\.compliance_status/)
   assert.match(sql, /product_row\.status <> 'available'/)
   assert.match(sql, /idx_contract_product_sales_one_active[\s\S]+status <> 'cancelled'/)
   assert.match(sql, /idempotency_key UUID NOT NULL UNIQUE,[\s\S]+intended_invoice_id UUID NOT NULL/)
@@ -97,6 +99,14 @@ test('migration is additive, idempotent, service-role only, and protects critica
   assert.match(sql, /SECURITY DEFINER\s+SET search_path = public, pg_temp/g)
   assert.match(sql, /contract-sale-agreements[\s\S]+FALSE[\s\S]+application\/pdf/)
   assert.match(sql, /BEGIN;[\s\S]+COMMIT;\s*$/)
+  assert.match(approvedCleanersSql, /CREATE OR REPLACE FUNCTION create_contract_product_sale/)
+  assert.match(approvedCleanersSql, /CREATE OR REPLACE FUNCTION complete_contract_sale_handover/)
+  assert.match(approvedCleanersSql, /cleaner_row\.status <> 'approved'/)
+  assert.doesNotMatch(approvedCleanersSql, /cleaner_row\.compliance_status/)
+  assert.match(approvedCleanersSql, /SECURITY DEFINER\s+SET search_path = public, pg_temp/g)
+  assert.match(approvedCleanersSql, /REVOKE ALL ON FUNCTION create_contract_product_sale[\s\S]+FROM PUBLIC, anon, authenticated/)
+  assert.match(approvedCleanersSql, /GRANT EXECUTE ON FUNCTION complete_contract_sale_handover[\s\S]+TO service_role/)
+  assert.match(approvedCleanersSql, /BEGIN;[\s\S]+COMMIT;\s*$/)
 })
 
 test('server actions recheck assignment, state, invoice amounts, recipient, and workflow gates', () => {
@@ -107,6 +117,7 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(domain, /product\.state !== actor\.productState/)
   assert.match(domain, /CONTRACT_SALE_DEPOSIT_INC_GST_CENTS/)
   assert.match(domain, /context\.cleaner\.status !== 'approved'/)
+  assert.doesNotMatch(domain, /context\.cleaner\.compliance_status !== 'current'/)
   assert.match(domain, /normalizeInvoiceEmail\(context\.cleaner\.email\)/)
   assert.match(domain, /deposit[\s\S]+inspection[\s\S]+agreement[\s\S]+before issuing the balance/)
   assert.match(domain, /The \$500 deposit must be confirmed before booking the inspection/)
@@ -123,6 +134,8 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
 
 test('workbench keeps connected records together and exposes the complete gated workflow', () => {
   const workspace = source('src/components/admin/ContractSalesWorkspace.tsx')
+  const agentCleaners = source('src/components/availability/AgentCleaners.tsx')
+  const cleanerDomain = source('src/lib/cleaners.ts')
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/components/admin/AdminNav.tsx')
   const agentNav = source('src/components/availability/AvailabilityAgentNav.tsx')
@@ -133,6 +146,12 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, />New sale<\/button>/)
   assert.match(workspace, /paymentRequestId/)
   assert.match(workspace, /cleaner\.status !== 'approved'/)
+  assert.doesNotMatch(workspace, /disabled=\{cleaner\.status !== 'approved' \|\| cleaner\.complianceStatus/)
+  assert.match(workspace, /This is a warning only; the approved cleaner status controls sale eligibility/)
+  assert.match(agentCleaners, /CLEANER_COMPLIANCE_STATUSES\.map/)
+  assert.match(agentCleaners, /Informational only\. Approved status controls sale eligibility/)
+  assert.match(cleanerDomain, /Select a valid compliance status/)
+  assert.match(cleanerDomain, /complianceStatus: isCleanerComplianceStatus\(record\.complianceStatus\) \? record\.complianceStatus : 'not_checked'/)
   assert.match(workspace, /\['owner', 'manager'\]\.includes\(data\.actor\.role\)/)
   assert.match(products, />Product sale<\/Link>/)
   assert.match(adminNav, /Product Sales/)

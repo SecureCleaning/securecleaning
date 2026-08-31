@@ -19,5 +19,7 @@ For contract product sales, start from `schema.sql`, then apply `audit_log_migra
 3. `contract_product_saved_quote_won_migration.sql`
 4. `contract_product_estimated_hours_text_migration.sql`
 5. `contract_product_sales_migration.sql`
+6. `contract_sale_approved_cleaners_migration.sql`
 
 The sales migration is additive. It creates the product-sale ledger, GST-inclusive invoices, pending/confirmed payments, payment plans, three-party inspections, versioned agreements, a private signed-agreement bucket, and cleaner-to-site handovers. Apply it before deploying application code that calls `/api/admin/contract-sales`.
+The approved-cleaner migration updates the protected sale and handover functions so cleaner workflow approval controls eligibility while compliance remains a separately visible operational status.

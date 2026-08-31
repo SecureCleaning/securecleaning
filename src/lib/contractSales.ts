@@ -359,7 +359,7 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const invoiceType = input.invoiceType === 'balance' ? 'balance' : 'deposit'
   const context = await loadSaleContext(sale)
-  if (context.cleaner.status !== 'approved' || context.cleaner.compliance_status !== 'current') throw new ContractProductError('The cleaner must be approved and compliance-current before an invoice can be issued.', 409)
+  if (context.cleaner.status !== 'approved') throw new ContractProductError('The cleaner must remain approved before an invoice can be issued.', 409)
   if (sale.handover_at || ['completed', 'cancelled', 'active_payment_plan'].includes(String(sale.status))) throw new ContractProductError('An invoice cannot be issued for this sale state.', 409)
   const recipientEmail = normalizeInvoiceEmail(context.cleaner.email)
   if (!recipientEmail) throw new ContractProductError('The cleaner needs a valid email address.', 409)

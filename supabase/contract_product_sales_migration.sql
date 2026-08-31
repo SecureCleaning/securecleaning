@@ -292,8 +292,8 @@ BEGIN
   END IF;
 
   SELECT * INTO cleaner_row FROM cleaners WHERE id = p_cleaner_id FOR SHARE;
-  IF NOT FOUND OR cleaner_row.status <> 'approved' OR cleaner_row.compliance_status IS DISTINCT FROM 'current' THEN
-    RAISE EXCEPTION 'The cleaner must be approved and compliance-current before a sale can begin.';
+  IF NOT FOUND OR cleaner_row.status <> 'approved' THEN
+    RAISE EXCEPTION 'The cleaner must be approved before a sale can begin.';
   END IF;
   IF UPPER(COALESCE(cleaner_row.state, '')) <> product_row.state THEN
     RAISE EXCEPTION 'The cleaner must belong to the product state.';
@@ -565,9 +565,8 @@ BEGIN
   IF sale_row.handover_at IS NOT NULL THEN RETURN sale_row.status; END IF;
   SELECT * INTO product_row FROM contract_products WHERE id = sale_row.product_id FOR SHARE;
   SELECT * INTO cleaner_row FROM cleaners WHERE id = sale_row.cleaner_id FOR SHARE;
-  IF cleaner_row.status <> 'approved' OR cleaner_row.compliance_status IS DISTINCT FROM 'current'
-     OR cleaner_row.state IS DISTINCT FROM product_row.state THEN
-    RAISE EXCEPTION 'The cleaner must remain approved, compliance-current, and in the product state.';
+  IF cleaner_row.status <> 'approved' OR cleaner_row.state IS DISTINCT FROM product_row.state THEN
+    RAISE EXCEPTION 'The cleaner must remain approved and in the product state.';
   END IF;
   IF sale_row.site_id IS NULL THEN RAISE EXCEPTION 'The client site must be linked before handover.'; END IF;
   SELECT EXISTS (SELECT 1 FROM contract_sale_invoices WHERE sale_id = p_sale_id AND invoice_type = 'deposit' AND status = 'paid') INTO deposit_paid;

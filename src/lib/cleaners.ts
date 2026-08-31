@@ -6,6 +6,8 @@ import { toAgentCleanerEmailHistory } from '@/lib/cleanerAgentPolicy'
 import { cleanerServiceAreasForImportUpdate, cleanServiceAreas, normaliseCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
 
 export type CleanerStatus = 'lead' | 'pending_approval' | 'approved' | 'paused' | 'rejected' | 'inactive'
+export const CLEANER_COMPLIANCE_STATUSES = ['current', 'docs_due', 'expired', 'not_checked'] as const
+export type CleanerComplianceStatus = (typeof CLEANER_COMPLIANCE_STATUSES)[number]
 export type CleanerEmailStatus = 'draft' | 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced'
 export type CleanerDocumentType = 'insurance' | 'police_check' | 'induction' | 'contract' | 'other'
 
@@ -243,6 +245,10 @@ function isCleanerStatus(value: unknown): value is CleanerStatus {
   return ['lead', 'pending_approval', 'approved', 'paused', 'rejected', 'inactive'].includes(String(value))
 }
 
+export function isCleanerComplianceStatus(value: unknown): value is CleanerComplianceStatus {
+  return CLEANER_COMPLIANCE_STATUSES.includes(String(value) as CleanerComplianceStatus)
+}
+
 function isCleanerDocumentType(value: unknown): value is CleanerDocumentType {
   return ['insurance', 'police_check', 'induction', 'contract', 'other'].includes(String(value))
 }
@@ -252,6 +258,9 @@ function formatDateOnly(date: Date) {
 }
 
 function toDbPayload(payload: Partial<CleanerPayload>) {
+  if (payload.complianceStatus !== undefined && payload.complianceStatus !== null && !isCleanerComplianceStatus(payload.complianceStatus)) {
+    throw new Error('Select a valid compliance status.')
+  }
   const status = isCleanerStatus(payload.status) ? payload.status : undefined
   const firstName = payload.firstName !== undefined ? cleanString(payload.firstName, 80) : undefined
   const lastName = payload.lastName !== undefined ? cleanString(payload.lastName, 80) : undefined
@@ -310,7 +319,7 @@ function normaliseCleanerImportPayload(record: Partial<CleanerPayload>): Cleaner
     services: cleanArray(record.services),
     serviceAreas: normaliseCleanerServiceAreas(record.serviceAreas, record.suburb),
     preferredWork: nullableString(record.preferredWork, 800),
-    complianceStatus: nullableString(record.complianceStatus, 80),
+    complianceStatus: isCleanerComplianceStatus(record.complianceStatus) ? record.complianceStatus : 'not_checked',
     insuranceExpiry: record.insuranceExpiry || null,
     policeCheckExpiry: record.policeCheckExpiry || null,
     inductionExpiry: record.inductionExpiry || null,
