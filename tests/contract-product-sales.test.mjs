@@ -48,11 +48,18 @@ test('agents can manage assigned sales and approve plans but cannot confirm clea
 test('agreement snapshots record conditional rights and the complete instalment schedule', () => {
   const instalments = buildMonthlyInstalments({ balanceCents: 90_000, count: 3, firstDueOn: '2026-09-01' })
   const terms = buildPaymentPlanTerms({ saleCode: 'PS-2026-01000', cleanerBusiness: 'Example Cleaner', balanceCents: 90_000, instalments })
-  const agreement = buildContractSaleAgreement({ saleCode: 'PS-2026-01000', productCode: 'C001000', cleanerName: 'Alex Cleaner', cleanerBusiness: 'Example Cleaner', suburb: 'Richmond', state: 'VIC', purchasePriceIncGstCents: 140_000, depositIncGstCents: 50_000, paymentPlanTerms: terms })
-  assert.match(agreement, /Deposit: \$500\.00 including GST, due on receipt and before the site inspection/)
-  assert.match(agreement, /retains the contractual sale and assignment rights until the purchase price is paid in full/)
-  assert.match(agreement, /The cleaner will invoice the client directly after the operational handover/)
+  const agreement = buildContractSaleAgreement({ saleCode: 'PS-2026-01000', productCode: 'C001000', cleanerName: 'Alex Cleaner', cleanerBusiness: 'Example Cleaner', cleanerAbn: '12 345 678 901', cleanerAddress: '1 Example Street, Richmond, VIC, 3121', suburb: 'Richmond', state: 'VIC', purchasePriceIncGstCents: 140_000, depositIncGstCents: 50_000, paymentPlanTerms: terms })
+  assert.match(agreement, /Deposit payable now: \$500\.00 including GST/)
+  assert.match(agreement, /Balance after deposit: \$900\.00 including GST/)
+  assert.match(agreement, /retains the benefit of, and all sale and assignment rights in, the Contract/)
+  assert.match(agreement, /After handover, the Purchaser invoices the client directly/)
   assert.match(agreement, /1\. \$300\.00 due 2026-09-01/)
+  for (const heading of ['PURPOSE AND TRANSACTION', 'DEPOSIT AND SITE INSPECTION', 'RETAINED RIGHTS', 'OPERATIONAL HANDOVER', 'CONFIDENTIALITY, PRIVACY AND NON-CIRCUMVENTION', 'DEFAULT, CANCELLATION AND REMEDIES', 'DISPUTES, NOTICES AND GENERAL TERMS', 'ACCEPTANCE AND EXECUTION']) assert.match(agreement, new RegExp(heading))
+  assert.match(agreement, /does not guarantee the duration, renewal, profitability or future revenue/)
+  assert.match(agreement, /cannot change this signed Agreement unilaterally/)
+  assert.match(agreement, /Paying a deposit or attending an inspection alone does not replace that acceptance/)
+  assert.doesNotMatch(agreement, /no refunds will be provided/i)
+  assert.doesNotMatch(agreement, /terms and conditions may change periodically/i)
 })
 
 test('tax invoice PDF identifies the supplier, recipient, GST, full price, deposit and issuing agent', () => {
@@ -208,6 +215,8 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, /Download PDF/)
   assert.match(workspace, /Save invoice template/)
   assert.match(workspace, /Issued invoices remain unchanged/)
+  assert.match(workspace, /Secure online acceptance is recorded as a later enhancement/)
+  assert.match(workspace, /Create updated agreement version/)
   assert.match(workspace, /cleaner\.status !== 'approved'/)
   assert.doesNotMatch(workspace, /disabled=\{cleaner\.status !== 'approved' \|\| cleaner\.complianceStatus/)
   assert.match(workspace, /This is a warning only; the approved cleaner status controls sale eligibility/)
@@ -219,4 +228,9 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(products, />Product sale<\/Link>/)
   assert.match(adminNav, /Product Sales/)
   assert.match(agentNav, /Product sales/)
+})
+
+test('electronic acceptance is explicitly deferred until identity and immutable-version evidence exist', () => {
+  const backlog = source('docs/contract-sale-electronic-acceptance-backlog.md')
+  for (const requirement of ['single-use, expiring cleaner link', 'immutable agreement version', 'identity, authority and intent', 'agreement hash', 'Do not infer acceptance merely from payment']) assert.match(backlog, new RegExp(requirement))
 })
