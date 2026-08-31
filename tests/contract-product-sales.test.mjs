@@ -14,6 +14,7 @@ const {
   canConfirmContractSalePayment,
   canManageContractSale,
 } = await import('../src/lib/contractSalePolicy.ts')
+const { buildContractSaleTaxInvoicePdf, renderContractSaleInvoiceTemplateText } = await import('../src/lib/contractSaleInvoicePdf.ts')
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 const source = (path) => readFileSync(`${projectRoot}/${path}`, 'utf8')
@@ -54,9 +55,37 @@ test('agreement snapshots record conditional rights and the complete instalment 
   assert.match(agreement, /1\. \$300\.00 due 2026-09-01/)
 })
 
+test('tax invoice PDF identifies the supplier, recipient, GST, full price, deposit and issuing agent', () => {
+  const pdf = buildContractSaleTaxInvoicePdf({
+    invoiceTitle: 'TAX INVOICE',
+    invoiceNumber: 'SCINV-2026-01001', issuedOn: '2026-08-31', dueOn: null,
+    supplierName: 'Secure Cleaning', supplierAbn: '81 674 121 825', supplierEmail: 'info@securecleaning.com.au',
+    recipientName: 'Alex Cleaner', recipientBusiness: 'Example Cleaning Pty Ltd', recipientAbn: '12 345 678 901',
+    recipientAddress: '1 Example Street, Richmond VIC 3121', description: 'Contract sale for C001001 - Richmond, VIC',
+    productCode: 'C001001', saleCode: 'PS-2026-01001', totalIncGstCents: 514_800, gstComponentCents: 46_800,
+    depositRequiredIncGstCents: 50_000, paidCents: 0,
+    paymentTerms: '$500.00 deposit including GST is due on receipt and before the site inspection.',
+    senderName: 'Melbourne Agent', senderTitle: 'Customer Relationship Manager', senderEmail: 'agent@securecleaning.com.au',
+    footerNote: 'This document is a tax invoice. All amounts are in Australian dollars and include GST.',
+  })
+  const text = pdf.toString('latin1')
+  assert.match(text, /^%PDF-1\.4/)
+  for (const value of ['TAX INVOICE', 'Secure Cleaning', 'ABN 81 674 121 825', 'SCINV-2026-01001', 'Example Cleaning Pty Ltd', 'TOTAL INC GST', 'Deposit payable now', 'Melbourne Agent']) assert.match(text, new RegExp(value))
+})
+
+test('editable invoice templates render only supported sale and agent tokens', () => {
+  const rendered = renderContractSaleInvoiceTemplateText(
+    '{invoice_number}: {product_code} for {cleaner_business}; deposit {deposit_inc_gst}; sent by {agent_name}',
+    { invoiceNumber: 'SCINV-1', productCode: 'C001', saleCode: 'PS-1', cleanerName: 'Alex', cleanerBusiness: 'Example Cleaning', suburb: 'Richmond', state: 'VIC', totalIncGst: '$5,500.00', depositIncGst: '$500.00', balanceIncGst: '$5,000.00', agentName: 'Melbourne Agent', agentTitle: 'Manager' },
+  )
+  assert.equal(rendered, 'SCINV-1: C001 for Example Cleaning; deposit $500.00; sent by Melbourne Agent')
+  assert.equal(renderContractSaleInvoiceTemplateText('Unknown {not_supported}', { invoiceNumber: '', productCode: '', saleCode: '', cleanerName: '', cleanerBusiness: '', suburb: '', state: '', totalIncGst: '', depositIncGst: '', balanceIncGst: '', agentName: '', agentTitle: '' }), 'Unknown {not_supported}')
+})
+
 test('migration is additive, idempotent, service-role only, and protects critical transitions', () => {
   const sql = source('supabase/contract_product_sales_migration.sql')
   const approvedCleanersSql = source('supabase/contract_sale_approved_cleaners_migration.sql')
+  const taxInvoiceSql = source('supabase/contract_sale_tax_invoice_workflow_migration.sql')
   for (const pattern of [
     /CREATE SEQUENCE IF NOT EXISTS contract_sale_code_seq/,
     /CREATE TABLE IF NOT EXISTS contract_product_sales/,
@@ -107,19 +136,44 @@ test('migration is additive, idempotent, service-role only, and protects critica
   assert.match(approvedCleanersSql, /REVOKE ALL ON FUNCTION create_contract_product_sale[\s\S]+FROM PUBLIC, anon, authenticated/)
   assert.match(approvedCleanersSql, /GRANT EXECUTE ON FUNCTION complete_contract_sale_handover[\s\S]+TO service_role/)
   assert.match(approvedCleanersSql, /BEGIN;[\s\S]+COMMIT;\s*$/)
+  assert.match(taxInvoiceSql, /invoice_type IN \('sale', 'deposit', 'balance'\)/)
+  assert.match(taxInvoiceSql, /deposit_required_inc_gst_cents/)
+  assert.match(taxInvoiceSql, /supplier_abn_snapshot TEXT NOT NULL DEFAULT '81 674 121 825'/)
+  assert.match(taxInvoiceSql, /sender_title_snapshot TEXT/)
+  assert.match(taxInvoiceSql, /CREATE TABLE IF NOT EXISTS contract_sale_invoice_templates/)
+  assert.match(taxInvoiceSql, /ALTER TABLE contract_sale_invoice_templates ENABLE ROW LEVEL SECURITY/)
+  assert.match(taxInvoiceSql, /REVOKE ALL ON TABLE contract_sale_invoice_templates FROM PUBLIC, anon, authenticated/)
+  assert.match(taxInvoiceSql, /ON CONFLICT \(id\) DO NOTHING/)
+  assert.match(taxInvoiceSql, /email_subject_template_snapshot/)
+  assert.match(taxInvoiceSql, /CREATE OR REPLACE FUNCTION confirm_contract_sale_payment/)
+  assert.match(taxInvoiceSql, /CREATE OR REPLACE FUNCTION complete_contract_sale_handover/)
+  assert.match(taxInvoiceSql, /SECURITY DEFINER\s+SET search_path = public, pg_temp/g)
+  assert.match(taxInvoiceSql, /REVOKE ALL ON FUNCTION confirm_contract_sale_payment[\s\S]+FROM PUBLIC, anon, authenticated/)
+  assert.match(taxInvoiceSql, /GRANT EXECUTE ON FUNCTION complete_contract_sale_handover[\s\S]+TO service_role/)
+  assert.match(taxInvoiceSql, /BEGIN;[\s\S]+COMMIT;\s*$/)
 })
 
 test('server actions recheck assignment, state, invoice amounts, recipient, and workflow gates', () => {
   const domain = source('src/lib/contractSales.ts')
   const productsDomain = source('src/lib/contractProducts.ts')
   const route = source('src/app/api/admin/contract-sales/route.ts')
+  const invoiceRoute = source('src/app/api/admin/contract-sales/invoices/route.ts')
   assert.match(domain, /canManageContractSale\(actor\.role, actor\.id, data\.assigned_staff_id\)/)
   assert.match(domain, /product\.state !== actor\.productState/)
   assert.match(domain, /CONTRACT_SALE_DEPOSIT_INC_GST_CENTS/)
   assert.match(domain, /context\.cleaner\.status !== 'approved'/)
   assert.doesNotMatch(domain, /context\.cleaner\.compliance_status !== 'current'/)
   assert.match(domain, /normalizeInvoiceEmail\(context\.cleaner\.email\)/)
-  assert.match(domain, /deposit[\s\S]+inspection[\s\S]+agreement[\s\S]+before issuing the balance/)
+  assert.match(domain, /const invoiceType = 'sale'/)
+  assert.match(domain, /sale agreement must be signed before the tax invoice is issued/)
+  assert.match(domain, /supplier_abn_snapshot: invoiceTemplate\.supplierAbn/)
+  assert.match(domain, /Only an owner or manager can edit the invoice template/)
+  assert.match(domain, /contract_sale_invoice_templates/)
+  assert.match(domain, /invoice_title_snapshot: invoiceTemplate\.invoiceTitle/)
+  assert.match(domain, /renderContractSaleInvoiceTemplateText/)
+  assert.match(domain, /sender_name_snapshot: actor\.displayName, sender_title_snapshot: actor\.jobTitle/)
+  assert.match(domain, /attachments: \[\{ filename: fileName, content: pdf\.toString\('base64'\) \}\]/)
+  assert.match(domain, /\{deposit_inc_gst\} deposit including GST is due on receipt[\s\S]+\{balance_inc_gst\} is due before cleaning commences/)
   assert.match(domain, /The \$500 deposit must be confirmed before booking the inspection/)
   assert.match(domain, /idempotency_key: idempotencyKey, sale_id: sale\.id, intended_invoice_id: invoiceId/)
   assert.doesNotMatch(domain, /invoice\.invoice_type\) === 'deposit' \? 'deposit_due' : 'balance_due'/)
@@ -130,6 +184,10 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(route, /rejectLargePayload/)
   assert.match(route, /rateLimit/)
   assert.match(route, /getContractProductActor/)
+  assert.match(route, /invoice-template\.update/)
+  assert.match(invoiceRoute, /getContractProductActor/)
+  assert.match(invoiceRoute, /downloadContractSaleInvoice/)
+  assert.match(invoiceRoute, /Cache-Control': 'private, no-store'/)
 })
 
 test('workbench keeps connected records together and exposes the complete gated workflow', () => {
@@ -139,12 +197,17 @@ test('workbench keeps connected records together and exposes the complete gated 
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/components/admin/AdminNav.tsx')
   const agentNav = source('src/components/availability/AvailabilityAgentNav.tsx')
-  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Issue $500 deposit', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Approve plan', 'Complete handover']) {
+  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Issue full tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Approve plan', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.match(workspace, /Create pending cleaner/)
   assert.match(workspace, />New sale<\/button>/)
   assert.match(workspace, /paymentRequestId/)
+  assert.match(workspace, /\['overview', 'agreement', 'invoices', 'inspection', 'activity'\]/)
+  assert.match(workspace, /Full sale tax invoice/)
+  assert.match(workspace, /Download PDF/)
+  assert.match(workspace, /Save invoice template/)
+  assert.match(workspace, /Issued invoices remain unchanged/)
   assert.match(workspace, /cleaner\.status !== 'approved'/)
   assert.doesNotMatch(workspace, /disabled=\{cleaner\.status !== 'approved' \|\| cleaner\.complianceStatus/)
   assert.match(workspace, /This is a warning only; the approved cleaner status controls sale eligibility/)
@@ -152,7 +215,7 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(agentCleaners, /Informational only\. Approved status controls sale eligibility/)
   assert.match(cleanerDomain, /Select a valid compliance status/)
   assert.match(cleanerDomain, /complianceStatus: isCleanerComplianceStatus\(record\.complianceStatus\) \? record\.complianceStatus : 'not_checked'/)
-  assert.match(workspace, /\['owner', 'manager'\]\.includes\(data\.actor\.role\)/)
+  assert.match(workspace, /data\.actor\.role === 'owner' \|\| data\.actor\.role === 'manager'/)
   assert.match(products, />Product sale<\/Link>/)
   assert.match(adminNav, /Product Sales/)
   assert.match(agentNav, /Product sales/)

@@ -9,6 +9,12 @@ import { getContractProducts, ContractProductError } from '@/lib/contractProduct
 import { createCleanerForState, type CleanerPayload } from '@/lib/cleaners'
 import { getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import {
+  buildContractSaleTaxInvoicePdf,
+  renderContractSaleInvoiceTemplateText,
+  type ContractSaleInvoiceTemplateTokens,
+  type ContractSaleTaxInvoicePdfInput,
+} from '@/lib/contractSaleInvoicePdf'
+import {
   CONTRACT_SALE_DEPOSIT_INC_GST_CENTS,
   buildContractSaleAgreement,
   buildMonthlyInstalments,
@@ -25,10 +31,11 @@ type Row = Record<string, unknown>
 export type ContractSaleInvoice = {
   id: string
   invoiceNumber: string
-  invoiceType: 'deposit' | 'balance'
+  invoiceType: 'sale' | 'deposit' | 'balance'
   status: string
   totalIncGstCents: number
   gstComponentCents: number
+  depositRequiredIncGstCents: number
   dueOn: string | null
   paymentTerms: string
   deliveryStatus: string
@@ -115,12 +122,83 @@ export type ContractSaleCleanerOption = {
   complianceStatus: string
 }
 
+export type ContractSaleInvoiceTemplate = {
+  supplierName: string
+  supplierAbn: string
+  supplierEmail: string
+  invoiceTitle: string
+  lineItemTemplate: string
+  emailSubjectTemplate: string
+  emailIntroTemplate: string
+  paymentTermsTemplate: string
+  footerNote: string
+  updatedAt: string | null
+}
+
 const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
-const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
+const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
+const SECURE_CLEANING_NAME = 'Secure Cleaning'
+const SECURE_CLEANING_ABN = '81 674 121 825'
+const SECURE_CLEANING_EMAIL = 'info@securecleaning.com.au'
+const INVOICE_TEMPLATE_ID = 'default'
+export const DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE: ContractSaleInvoiceTemplate = {
+  supplierName: SECURE_CLEANING_NAME,
+  supplierAbn: SECURE_CLEANING_ABN,
+  supplierEmail: SECURE_CLEANING_EMAIL,
+  invoiceTitle: 'TAX INVOICE',
+  lineItemTemplate: 'Contract sale for {product_code} - {suburb}, {state}',
+  emailSubjectTemplate: '{invoice_number} - Tax invoice for {product_code}',
+  emailIntroTemplate: 'Please find attached the full tax invoice for contract product {product_code}.',
+  paymentTermsTemplate: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
+  footerNote: 'This document is a tax invoice. All amounts are in Australian dollars and the total amount payable includes GST.',
+  updatedAt: null,
+}
+
+const ALLOWED_INVOICE_TEMPLATE_TOKENS = new Set([
+  'invoice_number', 'product_code', 'sale_code', 'cleaner_name', 'cleaner_business', 'suburb', 'state',
+  'total_inc_gst', 'deposit_inc_gst', 'balance_inc_gst', 'agent_name', 'agent_title',
+])
 
 function clean(value: unknown, max = 500) {
   return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+function normalizeAustralianAbn(value: unknown) {
+  const digits = clean(value, 32).replace(/\D/g, '')
+  if (digits.length !== 11) return ''
+  const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+  const numbers = digits.split('').map(Number)
+  numbers[0] -= 1
+  if (numbers.reduce((sum, number, index) => sum + number * weights[index], 0) % 89 !== 0) return ''
+  return `${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`
+}
+
+function validateInvoiceTemplateText(value: unknown, label: string, min: number, max: number) {
+  const text = clean(value, max)
+  if (text.length < min) throw new ContractProductError(`${label} must be between ${min} and ${max} characters.`)
+  const tokens = text.matchAll(/\{([^{}]+)\}/g)
+  for (const token of tokens) {
+    if (!ALLOWED_INVOICE_TEMPLATE_TOKENS.has(token[1])) throw new ContractProductError(`${label} contains the unsupported token {${token[1]}}.`)
+  }
+  return text
+}
+
+function mapInvoiceTemplate(row: Row | null | undefined): ContractSaleInvoiceTemplate {
+  if (!row) return { ...DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE }
+  return {
+    supplierName: String(row.supplier_name), supplierAbn: String(row.supplier_abn), supplierEmail: String(row.supplier_email),
+    invoiceTitle: String(row.invoice_title), lineItemTemplate: String(row.line_item_template),
+    emailSubjectTemplate: String(row.email_subject_template), emailIntroTemplate: String(row.email_intro_template),
+    paymentTermsTemplate: String(row.payment_terms_template), footerNote: String(row.footer_note),
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  }
+}
+
+async function loadInvoiceTemplate() {
+  const { data, error } = await getAdminSupabase().from('contract_sale_invoice_templates').select('*').eq('id', INVOICE_TEMPLATE_ID).maybeSingle()
+  if (error) throw error
+  return mapInvoiceTemplate(data as Row | null)
 }
 
 function assertDate(value: unknown, required = true) {
@@ -162,7 +240,7 @@ async function loadSaleContext(sale: Row) {
   const db = getAdminSupabase()
   const [product, cleaner, opportunity, quote, staff] = await Promise.all([
     db.from('contract_products').select('id, product_code, state, suburb').eq('id', sale.product_id).single(),
-    db.from('cleaners').select('id, business_name, contact_name, email, address, suburb, postcode, state, status, compliance_status').eq('id', sale.cleaner_id).single(),
+    db.from('cleaners').select('id, business_name, contact_name, email, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
     db.from('crm_opportunities').select('primary_contact_id, site_id').eq('id', sale.opportunity_id).single(),
     db.from('quotes').select('quote_ref').eq('id', sale.source_quote_id).single(),
     sale.assigned_staff_id
@@ -186,7 +264,7 @@ async function loadSaleContext(sale: Row) {
 
 export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const db = getAdminSupabase()
-  const products = await getContractProducts(actor)
+  const [products, invoiceTemplate] = await Promise.all([getContractProducts(actor), loadInvoiceTemplate()])
   const productIds = products.map((product) => product.id)
   let saleRows: Row[] = []
   if (productIds.length) {
@@ -274,8 +352,9 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       commencementDate: String(sale.commencement_date ?? ''), notes: String(sale.internal_notes ?? ''),
       handoverAt: typeof sale.handover_at === 'string' ? sale.handover_at : null, createdAt: String(sale.created_at), updatedAt: String(sale.updated_at),
       invoices: ((invoicesResult.data ?? []).filter((row) => String(row.sale_id) === String(sale.id))).map((row) => ({
-        id: String(row.id), invoiceNumber: String(row.invoice_number), invoiceType: row.invoice_type as 'deposit' | 'balance', status: String(row.status),
+        id: String(row.id), invoiceNumber: String(row.invoice_number), invoiceType: row.invoice_type as 'sale' | 'deposit' | 'balance', status: String(row.status),
         totalIncGstCents: Number(row.total_inc_gst_cents), gstComponentCents: Number(row.gst_component_cents),
+        depositRequiredIncGstCents: Number(row.deposit_required_inc_gst_cents ?? (row.invoice_type === 'deposit' ? row.total_inc_gst_cents : 0)),
         dueOn: typeof row.due_on === 'string' ? row.due_on : null, paymentTerms: String(row.payment_terms_snapshot), deliveryStatus: String(row.delivery_status),
         issuedAt: String(row.issued_at), paidCents: allocationsByInvoice.get(String(row.id)) ?? 0,
       })),
@@ -301,9 +380,40 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   return {
     products,
     sales,
+    invoiceTemplate,
     cleaners: (cleanerOptions ?? []).map((row) => ({ id: String(row.id), businessName: String(row.business_name), contactName: String(row.contact_name), email: String(row.email), state: String(row.state ?? ''), status: String(row.status), complianceStatus: String(row.compliance_status ?? '') })) as ContractSaleCleanerOption[],
     actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
   }
+}
+
+export async function updateContractSaleInvoiceTemplate(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (actor.role !== 'owner' && actor.role !== 'manager') {
+    throw new ContractProductError('Only an owner or manager can edit the invoice template.', 403)
+  }
+  const supplierName = validateInvoiceTemplateText(input.supplierName, 'Supplier name', 2, 160)
+  const supplierAbn = normalizeAustralianAbn(input.supplierAbn)
+  if (!supplierAbn) throw new ContractProductError('Enter a valid Australian ABN.')
+  const supplierEmail = normalizeInvoiceEmail(input.supplierEmail)
+  if (!supplierEmail) throw new ContractProductError('Enter a valid supplier email address.')
+  const invoiceTitle = validateInvoiceTemplateText(input.invoiceTitle, 'Invoice title', 3, 40)
+  if (!/tax invoice/i.test(invoiceTitle)) throw new ContractProductError('The invoice title must include Tax Invoice.')
+  const lineItemTemplate = validateInvoiceTemplateText(input.lineItemTemplate, 'Line-item template', 10, 500)
+  const emailSubjectTemplate = validateInvoiceTemplateText(input.emailSubjectTemplate, 'Email subject template', 5, 200)
+  const emailIntroTemplate = validateInvoiceTemplateText(input.emailIntroTemplate, 'Email introduction template', 10, 1500)
+  const paymentTermsTemplate = validateInvoiceTemplateText(input.paymentTermsTemplate, 'Payment terms template', 20, 1500)
+  const footerNote = validateInvoiceTemplateText(input.footerNote, 'Invoice footer', 20, 500)
+  const values = {
+    supplier_name: supplierName, supplier_abn: supplierAbn, supplier_email: supplierEmail,
+    invoice_title: invoiceTitle, line_item_template: lineItemTemplate,
+    email_subject_template: emailSubjectTemplate, email_intro_template: emailIntroTemplate,
+    payment_terms_template: paymentTermsTemplate, footer_note: footerNote,
+    updated_by_staff_id: actor.id, updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await getAdminSupabase().from('contract_sale_invoice_templates')
+    .upsert({ id: INVOICE_TEMPLATE_ID, ...values }, { onConflict: 'id' }).select('*').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale_invoice_template', INVOICE_TEMPLATE_ID, 'contract_sale.invoice_template.updated', actorAudit(actor))
+  return { invoiceTemplate: mapInvoiceTemplate(data as Row) }
 }
 
 export async function createCleanerInsideContractSale(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -344,61 +454,102 @@ export async function updateContractSale(actor: ContractProductActor, input: Rec
   return { saleId: String(sale.id) }
 }
 
+function invoiceTemplateTokens(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>): ContractSaleInvoiceTemplateTokens {
+  const total = Number(invoice.total_inc_gst_cents)
+  const deposit = Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS)
+  return {
+    invoiceNumber: String(invoice.invoice_number), productCode: String(context.product.product_code), saleCode: String(sale.sale_code),
+    cleanerName: String(invoice.recipient_name_snapshot), cleanerBusiness: String(invoice.recipient_business_snapshot),
+    suburb: String(context.product.suburb), state: String(context.product.state), totalIncGst: money(total),
+    depositIncGst: money(deposit), balanceIncGst: money(Math.max(0, total - deposit)),
+    agentName: String(invoice.sender_name_snapshot), agentTitle: String(invoice.sender_title_snapshot ?? ''),
+  }
+}
+
+function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>): ContractSaleTaxInvoicePdfInput {
+  const tokens = invoiceTemplateTokens(invoice, sale, context)
+  return {
+    invoiceTitle: String(invoice.invoice_title_snapshot ?? 'TAX INVOICE'),
+    invoiceNumber: String(invoice.invoice_number),
+    issuedOn: String(invoice.issued_at ?? new Date().toISOString()),
+    dueOn: typeof invoice.due_on === 'string' ? invoice.due_on : null,
+    supplierName: String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME),
+    supplierAbn: String(invoice.supplier_abn_snapshot ?? SECURE_CLEANING_ABN),
+    supplierEmail: String(invoice.supplier_email_snapshot ?? SECURE_CLEANING_EMAIL),
+    recipientName: String(invoice.recipient_name_snapshot),
+    recipientBusiness: String(invoice.recipient_business_snapshot),
+    recipientAbn: typeof invoice.recipient_abn_snapshot === 'string' ? invoice.recipient_abn_snapshot : null,
+    recipientAddress: typeof invoice.recipient_address_snapshot === 'string' ? invoice.recipient_address_snapshot : null,
+    description: renderContractSaleInvoiceTemplateText(String(invoice.description_snapshot), tokens),
+    productCode: String(context.product.product_code),
+    saleCode: String(sale.sale_code),
+    totalIncGstCents: Number(invoice.total_inc_gst_cents),
+    gstComponentCents: Number(invoice.gst_component_cents),
+    depositRequiredIncGstCents: Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS),
+    paidCents: Number(invoice.paid_cents ?? 0),
+    paymentTerms: renderContractSaleInvoiceTemplateText(String(invoice.payment_terms_snapshot), tokens),
+    senderName: String(invoice.sender_name_snapshot),
+    senderTitle: typeof invoice.sender_title_snapshot === 'string' ? invoice.sender_title_snapshot : null,
+    senderEmail: String(invoice.sender_email_snapshot),
+    footerNote: renderContractSaleInvoiceTemplateText(String(invoice.footer_note_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.footerNote), tokens),
+  }
+}
+
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
+  const pdfInput = invoicePdfInput(invoice, sale, context)
+  const tokens = invoiceTemplateTokens(invoice, sale, context)
+  const pdf = buildContractSaleTaxInvoicePdf(pdfInput)
+  const fileName = `${pdfInput.invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`
   const result = await sendEmailOrThrow({
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
-    subject: `${invoice.invoice_number} — ${invoice.description_snapshot}`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">Secure Cleaning</h1><h2>Invoice ${escapeHtml(String(invoice.invoice_number))}</h2><p>To: <strong>${escapeHtml(String(invoice.recipient_business_snapshot))}</strong><br>${escapeHtml(String(invoice.recipient_name_snapshot))}</p><p>${escapeHtml(String(invoice.description_snapshot))}</p><p style="font-size:28px;font-weight:bold">${money(Number(invoice.total_inc_gst_cents))} inc GST</p><p>GST included: ${money(Number(invoice.gst_component_cents))}</p><p><strong>Payment terms:</strong> ${escapeHtml(String(invoice.payment_terms_snapshot))}</p><hr><p>Contract product: ${escapeHtml(String(context.product.product_code))}<br>Product sale: ${escapeHtml(String(sale.sale_code))}</p><p>Please use the invoice number as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}<br>Secure Cleaning</p></div>`,
+    subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p><p>${escapeHtml(renderContractSaleInvoiceTemplateText(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), tokens)).replaceAll('\n', '<br>')}</p><div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>Deposit payable now:</strong> ${money(Number(invoice.deposit_required_inc_gst_cents))} including GST</p><p style="margin:0"><strong>Remaining balance:</strong> ${money(Number(invoice.total_inc_gst_cents) - Number(invoice.deposit_required_inc_gst_cents))}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
 }
 
 export async function issueContractSaleInvoice(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
-  const invoiceType = input.invoiceType === 'balance' ? 'balance' : 'deposit'
-  const context = await loadSaleContext(sale)
+  const invoiceType = 'sale'
+  const [context, invoiceTemplate] = await Promise.all([loadSaleContext(sale), loadInvoiceTemplate()])
   if (context.cleaner.status !== 'approved') throw new ContractProductError('The cleaner must remain approved before an invoice can be issued.', 409)
   if (sale.handover_at || ['completed', 'cancelled', 'active_payment_plan'].includes(String(sale.status))) throw new ContractProductError('An invoice cannot be issued for this sale state.', 409)
   const recipientEmail = normalizeInvoiceEmail(context.cleaner.email)
   if (!recipientEmail) throw new ContractProductError('The cleaner needs a valid email address.', 409)
   if (!normalizeInvoiceEmail(actor.email)) throw new ContractProductError('Your staff account needs a valid email address before sending invoices.', 409)
+  if (!clean(actor.displayName, 160)) throw new ContractProductError('Your staff account needs a display name before sending invoices.', 409)
   const db = getAdminSupabase()
   const idempotencyKey = clean(input.idempotencyKey, 80)
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('A valid invoice request ID is required.')
-  const { data: existing, error: existingError } = await db.from('contract_sale_invoices').select('id, idempotency_key').eq('sale_id', sale.id).eq('invoice_type', invoiceType).neq('status', 'void').maybeSingle()
+  const [{ data: existing, error: existingError }, { data: signedAgreement, error: agreementError }] = await Promise.all([
+    db.from('contract_sale_invoices').select('id, idempotency_key, invoice_type').eq('sale_id', sale.id).in('invoice_type', ['sale', 'deposit']).neq('status', 'void').limit(1).maybeSingle(),
+    db.from('contract_sale_agreements').select('id').eq('sale_id', sale.id).eq('status', 'signed').limit(1).maybeSingle(),
+  ])
   if (existingError) throw existingError
+  if (agreementError) throw agreementError
+  if (!signedAgreement) throw new ContractProductError('The sale agreement must be signed before the tax invoice is issued.', 409)
   if (existing) {
     if (existing.idempotency_key === idempotencyKey) return { invoiceId: String(existing.id), replayed: true }
-    throw new ContractProductError(`An active ${invoiceType} invoice already exists.`, 409)
+    throw new ContractProductError(existing.invoice_type === 'deposit' ? 'This sale already has a legacy deposit invoice.' : 'An active sale tax invoice already exists.', 409)
   }
-  let total = CONTRACT_SALE_DEPOSIT_INC_GST_CENTS
-  let dueOn: string | null = new Date().toISOString().slice(0, 10)
-  let terms = 'Due on receipt and must be paid in cleared funds before the site inspection.'
-  let description = `Deposit for ${context.product.product_code}`
-  if (invoiceType === 'balance') {
-    const [{ data: deposit, error: depositError }, { data: inspection, error: inspectionError }] = await Promise.all([
-      db.from('contract_sale_invoices').select('status, total_inc_gst_cents').eq('sale_id', sale.id).eq('invoice_type', 'deposit').eq('status', 'paid').maybeSingle(),
-      db.from('contract_sale_inspections').select('status').eq('sale_id', sale.id).eq('status', 'completed').maybeSingle(),
-    ])
-    if (depositError) throw depositError
-    if (inspectionError) throw inspectionError
-    if (!deposit || !inspection) throw new ContractProductError('Confirm the deposit and complete the inspection before issuing the balance.', 409)
-    total = Number(sale.agreed_purchase_price_inc_gst_cents) - Number(deposit.total_inc_gst_cents)
-    if (total <= 0) throw new ContractProductError('There is no remaining balance to invoice.', 409)
-    dueOn = assertDate(input.dueOn, false) || (sale.commencement_date ? String(sale.commencement_date) : null)
-    terms = dueOn ? `Due by ${dueOn} and before cleaning commences.` : 'Due in cleared funds at any time before cleaning commences.'
-    description = `Balance for ${context.product.product_code}`
-  }
+  const total = Number(sale.agreed_purchase_price_inc_gst_cents)
+  const dueOn = sale.commencement_date ? String(sale.commencement_date) : null
   const { data: invoice, error } = await db.from('contract_sale_invoices').insert({
-    idempotency_key: idempotencyKey, sale_id: sale.id, invoice_type: invoiceType, description_snapshot: description,
-    total_inc_gst_cents: total, gst_component_cents: calculateInclusiveGstComponent(total), due_on: dueOn,
-    payment_terms_snapshot: terms, recipient_name_snapshot: context.cleaner.contact_name,
+    idempotency_key: idempotencyKey, sale_id: sale.id, invoice_type: invoiceType, description_snapshot: invoiceTemplate.lineItemTemplate,
+    total_inc_gst_cents: total, gst_component_cents: calculateInclusiveGstComponent(total), deposit_required_inc_gst_cents: CONTRACT_SALE_DEPOSIT_INC_GST_CENTS, due_on: dueOn,
+    payment_terms_snapshot: invoiceTemplate.paymentTermsTemplate, recipient_name_snapshot: context.cleaner.contact_name,
     recipient_business_snapshot: context.cleaner.business_name, recipient_email_snapshot: recipientEmail,
     recipient_address_snapshot: [context.cleaner.address, context.cleaner.suburb, context.cleaner.postcode].filter(Boolean).join(', ') || null,
-    sender_name_snapshot: actor.displayName, sender_email_snapshot: actor.email, issued_by_staff_id: actor.id,
-  }).select('id, invoice_number, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, payment_terms_snapshot').single()
+    recipient_abn_snapshot: context.cleaner.abn || null, supplier_name_snapshot: invoiceTemplate.supplierName,
+    supplier_abn_snapshot: invoiceTemplate.supplierAbn, supplier_email_snapshot: invoiceTemplate.supplierEmail,
+    invoice_title_snapshot: invoiceTemplate.invoiceTitle, email_subject_template_snapshot: invoiceTemplate.emailSubjectTemplate,
+    email_intro_template_snapshot: invoiceTemplate.emailIntroTemplate, footer_note_snapshot: invoiceTemplate.footerNote,
+    sender_name_snapshot: actor.displayName, sender_title_snapshot: actor.jobTitle || null,
+    sender_email_snapshot: actor.email, issued_by_staff_id: actor.id,
+  }).select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at').single()
   if (error?.code === '23505') {
     const { data: replay } = await db.from('contract_sale_invoices').select('id, sale_id, invoice_type, total_inc_gst_cents').eq('idempotency_key', idempotencyKey).maybeSingle()
     if (replay && String(replay.sale_id) === String(sale.id) && replay.invoice_type === invoiceType && Number(replay.total_inc_gst_cents) === total) {
@@ -428,7 +579,7 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   const invoiceId = clean(input.invoiceId, 100)
   const context = await loadSaleContext(sale)
   const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
-    .select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, payment_terms_snapshot, status, delivery_status')
+    .select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status')
     .eq('id', invoiceId).eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
@@ -445,6 +596,21 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   }
   await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.invoice.resent', { ...actorAudit(actor), invoiceId })
   return { invoiceId }
+}
+
+export async function downloadContractSaleInvoice(actor: ContractProductActor, saleId: string, invoiceId: string) {
+  const sale = await getAuthorizedSale(actor, clean(saleId, 100))
+  const context = await loadSaleContext(sale)
+  const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
+    .select('id, invoice_number, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status')
+    .eq('id', clean(invoiceId, 100)).eq('sale_id', sale.id).maybeSingle()
+  if (error) throw error
+  if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
+  const { data: allocations, error: allocationError } = await getAdminSupabase().from('contract_sale_payment_allocations').select('amount_cents').eq('invoice_id', invoice.id)
+  if (allocationError) throw allocationError
+  const paidCents = (allocations ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
+  const pdf = buildContractSaleTaxInvoicePdf(invoicePdfInput({ ...invoice, paid_cents: paidCents }, sale, context))
+  return { pdf, fileName: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf` }
 }
 
 export async function recordContractSalePayment(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -504,13 +670,20 @@ function inspectionIcs(input: { uid: string; startsAt: Date; durationMinutes: nu
 export async function scheduleContractSaleInspection(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const db = getAdminSupabase()
-  const [{ data: deposit, error: depositError }, { data: existingInspection, error: inspectionReadError }] = await Promise.all([
-    db.from('contract_sale_invoices').select('id').eq('sale_id', sale.id).eq('invoice_type', 'deposit').eq('status', 'paid').maybeSingle(),
+  const [{ data: invoiceRows, error: depositError }, { data: existingInspection, error: inspectionReadError }] = await Promise.all([
+    db.from('contract_sale_invoices').select('id, invoice_type, status, total_inc_gst_cents, deposit_required_inc_gst_cents').eq('sale_id', sale.id).in('invoice_type', ['sale', 'deposit']).neq('status', 'void'),
     db.from('contract_sale_inspections').select('status, starts_at, provider_message_ids').eq('sale_id', sale.id).maybeSingle(),
   ])
   if (depositError) throw depositError
   if (inspectionReadError) throw inspectionReadError
-  if (!deposit) throw new ContractProductError('The $500 deposit must be confirmed before booking the inspection.', 409)
+  const invoice = invoiceRows?.find((item) => item.invoice_type === 'sale') ?? invoiceRows?.find((item) => item.invoice_type === 'deposit')
+  const { data: depositAllocations, error: depositAllocationError } = invoice
+    ? await db.from('contract_sale_payment_allocations').select('amount_cents').eq('invoice_id', invoice.id)
+    : { data: [], error: null }
+  if (depositAllocationError) throw depositAllocationError
+  const confirmedCents = (depositAllocations ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
+  const depositRequired = invoice?.invoice_type === 'sale' ? Number(invoice.deposit_required_inc_gst_cents) : Number(invoice?.total_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS)
+  if (!invoice || confirmedCents < depositRequired) throw new ContractProductError('The $500 deposit must be confirmed before booking the inspection.', 409)
   if (existingInspection?.status === 'completed') throw new ContractProductError('A completed inspection cannot be rescheduled.', 409)
   const date = assertDate(input.date)
   const time = clean(input.time, 10)
@@ -585,10 +758,18 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
 
 export async function completeContractSaleInspection(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
-  const { data, error } = await getAdminSupabase().from('contract_sale_inspections').update({ status: 'completed', completed_by_staff_id: actor.id, completed_at: new Date().toISOString(), notes: clean(input.notes, 1000) || null }).eq('sale_id', sale.id).eq('status', 'scheduled').select('id').maybeSingle()
+  const db = getAdminSupabase()
+  const { data, error } = await db.from('contract_sale_inspections').update({ status: 'completed', completed_by_staff_id: actor.id, completed_at: new Date().toISOString(), notes: clean(input.notes, 1000) || null }).eq('sale_id', sale.id).eq('status', 'scheduled').select('id').maybeSingle()
   if (error) throw error
   if (!data) throw new ContractProductError('A scheduled inspection was not found.', 409)
-  const { error: saleUpdateError } = await getAdminSupabase().from('contract_product_sales').update({ status: 'agreement_pending', updated_by_staff_id: actor.id }).eq('id', sale.id)
+  const [{ data: fullInvoice, error: invoiceError }, { data: activePlan, error: planError }] = await Promise.all([
+    db.from('contract_sale_invoices').select('status').eq('sale_id', sale.id).eq('invoice_type', 'sale').neq('status', 'void').maybeSingle(),
+    db.from('contract_sale_payment_plans').select('id').eq('sale_id', sale.id).eq('status', 'active').maybeSingle(),
+  ])
+  if (invoiceError) throw invoiceError
+  if (planError) throw planError
+  const nextStatus = fullInvoice?.status === 'paid' ? 'ready_for_handover' : activePlan ? 'active_payment_plan' : 'balance_due'
+  const { error: saleUpdateError } = await db.from('contract_product_sales').update({ status: nextStatus, updated_by_staff_id: actor.id }).eq('id', sale.id)
   if (saleUpdateError) throw saleUpdateError
   await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.inspection.completed', { ...actorAudit(actor), inspectionId: data.id })
   return { inspectionId: String(data.id) }
@@ -643,9 +824,10 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
 export async function createContractSalePaymentPlan(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const db = getAdminSupabase()
-  const { data: invoice, error: invoiceError } = await db.from('contract_sale_invoices').select('id, total_inc_gst_cents, status').eq('sale_id', sale.id).eq('invoice_type', 'balance').neq('status', 'void').maybeSingle()
+  const { data: invoiceRows, error: invoiceError } = await db.from('contract_sale_invoices').select('id, invoice_type, total_inc_gst_cents, status').eq('sale_id', sale.id).in('invoice_type', ['sale', 'balance']).neq('status', 'void')
   if (invoiceError) throw invoiceError
-  if (!invoice || invoice.status === 'paid') throw new ContractProductError('Issue an unpaid balance invoice before creating a payment plan.', 409)
+  const invoice = invoiceRows?.find((item) => item.invoice_type === 'sale') ?? invoiceRows?.find((item) => item.invoice_type === 'balance')
+  if (!invoice || invoice.status === 'paid') throw new ContractProductError('Issue the full tax invoice before creating a payment plan.', 409)
   const { data: existing, error: existingError } = await db.from('contract_sale_payment_plans').select('id').eq('sale_id', sale.id).eq('status', 'active').maybeSingle()
   if (existingError) throw existingError
   if (existing) throw new ContractProductError('An active payment plan already exists for this sale.', 409)

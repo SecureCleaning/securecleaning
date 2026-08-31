@@ -6,7 +6,7 @@ export const CONTRACT_SALE_STATUSES = [
 ] as const
 
 export type ContractSaleStatus = (typeof CONTRACT_SALE_STATUSES)[number]
-export type ContractSaleInvoiceType = 'deposit' | 'balance'
+export type ContractSaleInvoiceType = 'sale' | 'deposit' | 'balance'
 export type ContractSaleInvoiceStatus = 'issued' | 'part_paid' | 'paid' | 'overdue' | 'void'
 export type ContractSalePaymentStatus = 'pending' | 'confirmed' | 'rejected'
 
