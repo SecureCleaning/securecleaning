@@ -15,6 +15,10 @@ import {
   type ContractSaleTaxInvoicePdfInput,
 } from '@/lib/contractSaleInvoicePdf'
 import {
+  buildContractSaleAgreementPdf,
+  renderContractSaleAgreementEmailHtml,
+} from '@/lib/contractSaleAgreementDocument'
+import {
   CONTRACT_SALE_DEPOSIT_INC_GST_CENTS,
   buildContractSaleAgreement,
   buildMonthlyInstalments,
@@ -77,6 +81,7 @@ export type ContractSale = {
   clientEmail: string
   agreedPurchasePriceIncGstCents: number
   depositIncGstCents: number
+  priceFinalised: boolean
   commencementDate: string
   notes: string
   handoverAt: string | null
@@ -135,8 +140,9 @@ export type ContractSaleInvoiceTemplate = {
   updatedAt: string | null
 }
 
-const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
+const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
 const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
+const INVOICE_DOCUMENT_SELECT = 'id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
 const SECURE_CLEANING_NAME = 'Secure Cleaning'
 const SECURE_CLEANING_ABN = '81 674 121 825'
@@ -348,7 +354,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       status: String(sale.status) as ContractSaleStatus, state: String(productSnapshot.state ?? product?.state ?? ''), suburb: String(productSnapshot.suburb ?? product?.suburb ?? ''),
       siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteAddress: String(siteSnapshot.address ?? site?.address ?? ''),
       clientName: String(clientSnapshot.contact_name ?? contact?.contact_name ?? ''), clientEmail: String(clientSnapshot.email ?? contact?.email ?? ''),
-      agreedPurchasePriceIncGstCents: Number(sale.agreed_purchase_price_inc_gst_cents), depositIncGstCents: Number(sale.deposit_inc_gst_cents),
+      agreedPurchasePriceIncGstCents: Number(sale.agreed_purchase_price_inc_gst_cents), depositIncGstCents: Number(sale.deposit_inc_gst_cents), priceFinalised: typeof sale.price_finalised_at === 'string',
       commencementDate: String(sale.commencement_date ?? ''), notes: String(sale.internal_notes ?? ''),
       handoverAt: typeof sale.handover_at === 'string' ? sale.handover_at : null, createdAt: String(sale.created_at), updatedAt: String(sale.updated_at),
       invoices: ((invoicesResult.data ?? []).filter((row) => String(row.sale_id) === String(sale.id))).map((row) => ({
@@ -445,12 +451,19 @@ export async function updateContractSale(actor: ContractProductActor, input: Rec
     throw new ContractProductError('A completed, handed-over, or cancelled sale cannot be edited.', 409)
   }
   const commencementDate = assertDate(input.commencementDate, false)
-  const { error } = await getAdminSupabase().from('contract_product_sales').update({
-    commencement_date: commencementDate || null, internal_notes: clean(input.notes, 2000) || null,
-    updated_by_staff_id: actor.id,
-  }).eq('id', sale.id)
-  if (error) throw error
-  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.updated', actorAudit(actor))
+  const priceText = clean(input.finalPrice, 30)
+  if (!/^\d+(?:\.\d{1,2})?$/.test(priceText)) throw new ContractProductError('Enter the final GST-inclusive purchase price with no more than two decimal places.')
+  const finalPriceIncGstCents = Math.round(Number(priceText) * 100)
+  if (!Number.isSafeInteger(finalPriceIncGstCents) || finalPriceIncGstCents <= CONTRACT_SALE_DEPOSIT_INC_GST_CENTS) {
+    throw new ContractProductError('The final purchase price must be greater than the $500 GST-inclusive deposit.')
+  }
+  const { error } = await getAdminSupabase().rpc('update_contract_sale_overview', {
+    p_sale_id: sale.id, p_price_inc_gst_cents: finalPriceIncGstCents,
+    p_commencement_date: commencementDate || null, p_notes: clean(input.notes, 2000) || null,
+    p_actor_id: actor.id, p_actor_role: actor.role, p_actor_state: actor.productState,
+  })
+  if (error?.code === '42501') throw new ContractProductError('You cannot update this product sale.', 403)
+  if (error) throw new ContractProductError(error.message, 409)
   return { saleId: String(sale.id) }
 }
 
@@ -517,6 +530,7 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
   const [context, invoiceTemplate] = await Promise.all([loadSaleContext(sale), loadInvoiceTemplate()])
   if (context.cleaner.status !== 'approved') throw new ContractProductError('The cleaner must remain approved before an invoice can be issued.', 409)
   if (sale.handover_at || ['completed', 'cancelled', 'active_payment_plan'].includes(String(sale.status))) throw new ContractProductError('An invoice cannot be issued for this sale state.', 409)
+  if (!sale.price_finalised_at) throw new ContractProductError('Save and finalise the GST-inclusive purchase price before preparing the tax invoice.', 409)
   const recipientEmail = normalizeInvoiceEmail(context.cleaner.email)
   if (!recipientEmail) throw new ContractProductError('The cleaner needs a valid email address.', 409)
   if (!normalizeInvoiceEmail(actor.email)) throw new ContractProductError('Your staff account needs a valid email address before sending invoices.', 409)
@@ -524,13 +538,8 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
   const db = getAdminSupabase()
   const idempotencyKey = clean(input.idempotencyKey, 80)
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('A valid invoice request ID is required.')
-  const [{ data: existing, error: existingError }, { data: signedAgreement, error: agreementError }] = await Promise.all([
-    db.from('contract_sale_invoices').select('id, idempotency_key, invoice_type').eq('sale_id', sale.id).in('invoice_type', ['sale', 'deposit']).neq('status', 'void').limit(1).maybeSingle(),
-    db.from('contract_sale_agreements').select('id').eq('sale_id', sale.id).eq('status', 'signed').limit(1).maybeSingle(),
-  ])
+  const { data: existing, error: existingError } = await db.from('contract_sale_invoices').select('id, idempotency_key, invoice_type').eq('sale_id', sale.id).in('invoice_type', ['sale', 'deposit']).neq('status', 'void').limit(1).maybeSingle()
   if (existingError) throw existingError
-  if (agreementError) throw agreementError
-  if (!signedAgreement) throw new ContractProductError('The sale agreement must be signed before the tax invoice is issued.', 409)
   if (existing) {
     if (existing.idempotency_key === idempotencyKey) return { invoiceId: String(existing.id), replayed: true }
     throw new ContractProductError(existing.invoice_type === 'deposit' ? 'This sale already has a legacy deposit invoice.' : 'An active sale tax invoice already exists.', 409)
@@ -558,19 +567,7 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
     throw new ContractProductError('That invoice request ID was already used for different invoice details.', 409)
   }
   if (error) throw error
-  try {
-    const providerMessageId = await sendInvoiceEmail(invoice as Row, sale, context)
-    const { error: deliveryError } = await db.from('contract_sale_invoices').update({ provider_message_id: providerMessageId || null, delivery_status: providerMessageId ? 'sent' : 'unknown' }).eq('id', invoice.id)
-    if (deliveryError) throw deliveryError
-  } catch (sendError) {
-    const rejected = sendError instanceof EmailProviderRejectedError
-    const { error: outcomeError } = await db.from('contract_sale_invoices').update({ delivery_status: rejected ? 'failed' : 'unknown', delivery_error: clean(sendError instanceof Error ? sendError.message : 'Provider outcome unknown', 500) }).eq('id', invoice.id)
-    if (outcomeError) throw outcomeError
-    throw new ContractProductError(rejected
-      ? 'The invoice was created, but the provider rejected the email. Correct the recipient details before resending.'
-      : 'The invoice was created, but delivery could not be confirmed. Verify the activity before resending to avoid a duplicate email.', 502)
-  }
-  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.invoice.issued', { ...actorAudit(actor), invoiceId: invoice.id, invoiceType, totalIncGstCents: total })
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.invoice.prepared', { ...actorAudit(actor), invoiceId: invoice.id, invoiceType, totalIncGstCents: total })
   return { invoiceId: String(invoice.id) }
 }
 
@@ -684,6 +681,10 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
   const confirmedCents = (depositAllocations ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
   const depositRequired = invoice?.invoice_type === 'sale' ? Number(invoice.deposit_required_inc_gst_cents) : Number(invoice?.total_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS)
   if (!invoice || confirmedCents < depositRequired) throw new ContractProductError('The $500 deposit must be confirmed before booking the inspection.', 409)
+  const { data: signedAgreement, error: agreementError } = await db.from('contract_sale_agreements')
+    .select('id').eq('sale_id', sale.id).eq('status', 'signed').limit(1).maybeSingle()
+  if (agreementError) throw agreementError
+  if (!signedAgreement) throw new ContractProductError('Upload the signed agreement before booking the inspection.', 409)
   if (existingInspection?.status === 'completed') throw new ContractProductError('A completed inspection cannot be rescheduled.', 409)
   const date = assertDate(input.date)
   const time = clean(input.time, 10)
@@ -777,6 +778,7 @@ export async function completeContractSaleInspection(actor: ContractProductActor
 
 export async function createContractSaleAgreement(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  if (!sale.price_finalised_at) throw new ContractProductError('Save and finalise the GST-inclusive purchase price before creating the agreement.', 409)
   const context = await loadSaleContext(sale)
   const db = getAdminSupabase()
   const { data: latest, error: latestError } = await db.from('contract_sale_agreements').select('version').eq('sale_id', sale.id).order('version', { ascending: false }).limit(1).maybeSingle()
@@ -794,32 +796,87 @@ export async function createContractSaleAgreement(actor: ContractProductActor, i
 export async function sendContractSaleAgreement(actor: ContractProductActor, input: Record<string, unknown>) {
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const agreementId = clean(input.agreementId, 100)
-  const { data: agreement, error } = await getAdminSupabase().from('contract_sale_agreements').select('id, status, content_snapshot, cleaner_email_snapshot').eq('id', agreementId).eq('sale_id', sale.id).maybeSingle()
+  const db = getAdminSupabase()
+  const [{ data: agreement, error }, { data: preparedInvoice, error: invoiceError }] = await Promise.all([
+    db.from('contract_sale_agreements').select('id, version, status, content_snapshot, cleaner_email_snapshot, cleaner_business_snapshot, created_at').eq('id', agreementId).eq('sale_id', sale.id).maybeSingle(),
+    db.from('contract_sale_invoices').select(INVOICE_DOCUMENT_SELECT).eq('sale_id', sale.id).eq('invoice_type', 'sale').neq('status', 'void').maybeSingle(),
+  ])
   if (error) throw error
+  if (invoiceError) throw invoiceError
   if (!agreement || agreement.status !== 'draft') throw new ContractProductError('Only an unsent draft agreement can be sent. Create a new version for a deliberate resend.', 409)
+  if (!preparedInvoice) throw new ContractProductError('Prepare the full tax invoice before sending the document bundle.', 409)
+  if (preparedInvoice.delivery_status === 'unknown') throw new ContractProductError('Invoice delivery is unresolved. Verify provider activity before sending another document bundle.', 409)
+  const senderEmail = normalizeInvoiceEmail(actor.email)
+  if (!senderEmail || !clean(actor.displayName, 160)) throw new ContractProductError('Your staff account needs a display name and valid email before sending documents.', 409)
   const email = normalizeInvoiceEmail(agreement.cleaner_email_snapshot)
   if (!email) throw new ContractProductError('The cleaner needs a valid email address.', 409)
-  const db = getAdminSupabase()
+  if (email !== normalizeInvoiceEmail(preparedInvoice.recipient_email_snapshot)) throw new ContractProductError('The agreement and tax invoice recipients do not match. Prepare new documents after correcting the cleaner record.', 409)
+  const context = await loadSaleContext(sale)
+  const currentEmail = normalizeInvoiceEmail(context.cleaner.email)
+  if (!currentEmail || currentEmail !== email) throw new ContractProductError('The cleaner email changed after these documents were prepared. Create new document versions for the current recipient.', 409)
+  let invoice = preparedInvoice
+  if (['pending', 'failed'].includes(String(preparedInvoice.delivery_status))) {
+    const { data: senderInvoice, error: senderSnapshotError } = await db.from('contract_sale_invoices').update({
+      sender_name_snapshot: actor.displayName, sender_title_snapshot: actor.jobTitle || null,
+      sender_email_snapshot: senderEmail,
+    }).eq('id', preparedInvoice.id).in('delivery_status', ['pending', 'failed']).select(INVOICE_DOCUMENT_SELECT).maybeSingle()
+    if (senderSnapshotError) throw senderSnapshotError
+    if (!senderInvoice) throw new ContractProductError('The tax invoice sender changed while this document bundle was being prepared.', 409)
+    invoice = senderInvoice
+  } else if (preparedInvoice.delivery_status !== 'sent'
+    || normalizeInvoiceEmail(preparedInvoice.sender_email_snapshot) !== senderEmail
+    || clean(preparedInvoice.sender_name_snapshot, 160) !== clean(actor.displayName, 160)) {
+    throw new ContractProductError('The tax invoice sender is locked by an earlier delivery. The same sender must send any replacement agreement bundle.', 409)
+  }
   const sentAt = new Date().toISOString()
   const { data: claimed, error: claimError } = await db.from('contract_sale_agreements').update({ status: 'sent', sent_at: sentAt })
     .eq('id', agreement.id).eq('status', 'draft').select('id').maybeSingle()
   if (claimError) throw claimError
   if (!claimed) throw new ContractProductError('This agreement was already sent or changed.', 409)
+  const invoiceInput = invoicePdfInput(invoice as Row, sale, context)
+  const agreementInput = {
+    content: String(agreement.content_snapshot), saleCode: String(sale.sale_code),
+    productCode: String(context.product.product_code), cleanerBusiness: String(agreement.cleaner_business_snapshot),
+    preparedBy: actor.displayName, preparedOn: String(agreement.created_at),
+  }
+  const invoicePdf = buildContractSaleTaxInvoicePdf(invoiceInput)
+  const agreementPdf = buildContractSaleAgreementPdf(agreementInput)
   let result: { id?: string } | null = null
   try {
-    result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: email, replyTo: actor.email, subject: `Contract sale agreement — ${sale.sale_code}`, html: `<div style="font-family:Arial,sans-serif;max-width:720px;margin:auto"><h1>Secure Cleaning</h1><p>Please review the agreement below, sign it, and return the signed PDF to Secure Cleaning.</p><pre style="white-space:pre-wrap;font-family:Arial,sans-serif;border:1px solid #ddd;padding:20px">${escapeHtml(agreement.content_snapshot)}</pre></div>` }) as { id?: string } | null
+    result = await sendEmailOrThrow({
+      from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: email, replyTo: actor.email,
+      subject: `Contract sale documents — ${context.product.product_code}`,
+      html: renderContractSaleAgreementEmailHtml(agreementInput),
+      attachments: [
+        { filename: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`, content: invoicePdf.toString('base64') },
+        { filename: `agreement-${String(sale.sale_code).replace(/[^A-Za-z0-9_-]/g, '-')}-v${agreement.version}.pdf`, content: agreementPdf.toString('base64') },
+      ],
+    }) as { id?: string } | null
   } catch (sendError) {
     if (sendError instanceof EmailProviderRejectedError) {
-      const { error: releaseError } = await db.from('contract_sale_agreements').update({ status: 'draft', sent_at: null }).eq('id', agreement.id).eq('status', 'sent').is('provider_message_id', null)
-      if (releaseError) throw releaseError
-      throw new ContractProductError('The provider rejected the agreement email. Correct the cleaner email before trying again.', 502)
+      const [release, invoiceOutcome] = await Promise.all([
+        db.from('contract_sale_agreements').update({ status: 'draft', sent_at: null }).eq('id', agreement.id).eq('status', 'sent').is('provider_message_id', null),
+        db.from('contract_sale_invoices').update({ delivery_status: 'failed', delivery_error: clean(sendError.message, 500) }).eq('id', invoice.id),
+      ])
+      if (release.error) throw release.error
+      if (invoiceOutcome.error) throw invoiceOutcome.error
+      throw new ContractProductError('The provider rejected the document email. Correct the cleaner email before trying again.', 502)
     }
-    throw new ContractProductError('Agreement delivery is unresolved. Create a new version only after checking provider activity.', 502)
+    const { error: outcomeError } = await db.from('contract_sale_invoices').update({ delivery_status: 'unknown', delivery_error: clean(sendError instanceof Error ? sendError.message : 'Provider outcome unknown', 500) }).eq('id', invoice.id)
+    if (outcomeError) throw outcomeError
+    throw new ContractProductError('Document delivery is unresolved. Verify provider activity before sending again.', 502)
   }
-  const { error: sentError } = await db.from('contract_sale_agreements').update({ provider_message_id: result?.id ?? null }).eq('id', agreement.id).eq('status', 'sent')
-  if (sentError) throw sentError
-  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.agreement.sent', { ...actorAudit(actor), agreementId })
-  return { agreementId }
+  const providerMessageId = result?.id ?? null
+  const [agreementUpdate, invoiceUpdate, saleUpdate] = await Promise.all([
+    db.from('contract_sale_agreements').update({ provider_message_id: providerMessageId }).eq('id', agreement.id).eq('status', 'sent'),
+    db.from('contract_sale_invoices').update({ provider_message_id: providerMessageId, delivery_status: providerMessageId ? 'sent' : 'unknown', delivery_error: null }).eq('id', invoice.id),
+    db.from('contract_product_sales').update({ status: 'deposit_due', updated_by_staff_id: actor.id }).eq('id', sale.id).eq('status', 'draft'),
+  ])
+  if (agreementUpdate.error) throw agreementUpdate.error
+  if (invoiceUpdate.error) throw invoiceUpdate.error
+  if (saleUpdate.error) throw saleUpdate.error
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.documents.sent', { ...actorAudit(actor), agreementId, invoiceId: invoice.id, providerMessageId })
+  return { agreementId, invoiceId: String(invoice.id) }
 }
 
 export async function createContractSalePaymentPlan(actor: ContractProductActor, input: Record<string, unknown>) {

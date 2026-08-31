@@ -15,6 +15,7 @@ const {
   canManageContractSale,
 } = await import('../src/lib/contractSalePolicy.ts')
 const { buildContractSaleTaxInvoicePdf, renderContractSaleInvoiceTemplateText } = await import('../src/lib/contractSaleInvoicePdf.ts')
+const { buildContractSaleAgreementPdf, renderContractSaleAgreementEmailHtml } = await import('../src/lib/contractSaleAgreementDocument.ts')
 
 const projectRoot = fileURLToPath(new URL('..', import.meta.url))
 const source = (path) => readFileSync(`${projectRoot}/${path}`, 'utf8')
@@ -80,6 +81,20 @@ test('tax invoice PDF identifies the supplier, recipient, GST, full price, depos
   for (const value of ['TAX INVOICE', 'Secure Cleaning', 'ABN 81 674 121 825', 'SCINV-2026-01001', 'Example Cleaning Pty Ltd', 'TOTAL INC GST', 'Deposit payable now', 'Melbourne Agent']) assert.match(text, new RegExp(value))
 })
 
+test('agreement is rendered as a branded PDF and structured email instead of a plain text block', () => {
+  const content = buildContractSaleAgreement({ saleCode: 'PS-2026-01001', productCode: 'C001001', cleanerName: 'Alex <Cleaner>', cleanerBusiness: 'Example & Cleaning', cleanerAbn: '12 345 678 901', cleanerAddress: '1 Example Street, Richmond VIC 3121', suburb: 'Richmond', state: 'VIC', purchasePriceIncGstCents: 514_800, depositIncGstCents: 50_000 })
+  const input = { content, saleCode: 'PS-2026-01001', productCode: 'C001001', cleanerBusiness: 'Example & Cleaning', preparedBy: 'Melbourne Agent', preparedOn: '2026-08-31T01:00:00Z' }
+  const pdf = buildContractSaleAgreementPdf(input).toString('latin1')
+  assert.match(pdf, /^%PDF-1\.4/)
+  for (const value of ['Secure Cleaning', 'Cleaning contract purchase agreement', 'PS-2026-01001', 'C001001', 'PARTIES', 'Total purchase price']) assert.match(pdf, new RegExp(value))
+  assert.match(pdf, /\/Count [2-9]/)
+  const html = renderContractSaleAgreementEmailHtml(input)
+  assert.match(html, /Contract sale document bundle/)
+  assert.match(html, /tax invoice/)
+  assert.match(html, /Example &amp; Cleaning/)
+  assert.doesNotMatch(html, /<pre/)
+})
+
 test('editable invoice templates render only supported sale and agent tokens', () => {
   const rendered = renderContractSaleInvoiceTemplateText(
     '{invoice_number}: {product_code} for {cleaner_business}; deposit {deposit_inc_gst}; sent by {agent_name}',
@@ -93,6 +108,7 @@ test('migration is additive, idempotent, service-role only, and protects critica
   const sql = source('supabase/contract_product_sales_migration.sql')
   const approvedCleanersSql = source('supabase/contract_sale_approved_cleaners_migration.sql')
   const taxInvoiceSql = source('supabase/contract_sale_tax_invoice_workflow_migration.sql')
+  const documentBundleSql = source('supabase/contract_sale_document_bundle_workflow_migration.sql')
   for (const pattern of [
     /CREATE SEQUENCE IF NOT EXISTS contract_sale_code_seq/,
     /CREATE TABLE IF NOT EXISTS contract_product_sales/,
@@ -158,6 +174,18 @@ test('migration is additive, idempotent, service-role only, and protects critica
   assert.match(taxInvoiceSql, /REVOKE ALL ON FUNCTION confirm_contract_sale_payment[\s\S]+FROM PUBLIC, anon, authenticated/)
   assert.match(taxInvoiceSql, /GRANT EXECUTE ON FUNCTION complete_contract_sale_handover[\s\S]+TO service_role/)
   assert.match(taxInvoiceSql, /BEGIN;[\s\S]+COMMIT;\s*$/)
+  assert.match(documentBundleSql, /ADD COLUMN IF NOT EXISTS price_finalised_at TIMESTAMPTZ/)
+  assert.match(documentBundleSql, /CREATE OR REPLACE FUNCTION update_contract_sale_overview/)
+  assert.match(documentBundleSql, /SECURITY DEFINER\s+SET search_path = public, pg_temp/)
+  assert.match(documentBundleSql, /REVOKE ALL ON FUNCTION update_contract_sale_overview[\s\S]+FROM PUBLIC, anon, authenticated/)
+  assert.match(documentBundleSql, /GRANT EXECUTE ON FUNCTION update_contract_sale_overview[\s\S]+TO service_role/)
+  assert.match(documentBundleSql, /purchase price cannot change after a tax invoice or agreement snapshot exists/i)
+  assert.match(documentBundleSql, /invoice sender is immutable after its first delivery/i)
+  assert.match(documentBundleSql, /OLD\.delivery_status NOT IN \('pending', 'failed'\)/)
+  assert.match(documentBundleSql, /sale_row\.price_finalised_at IS NULL/)
+  assert.doesNotMatch(documentBundleSql, /signed sale agreement is required before invoicing/i)
+  assert.match(documentBundleSql, /UPDATE contract_product_sales sale[\s\S]+price_finalised_at IS NULL[\s\S]+contract_sale_invoices[\s\S]+contract_sale_agreements/)
+  assert.match(documentBundleSql, /BEGIN;[\s\S]+COMMIT;\s*$/)
 })
 
 test('server actions recheck assignment, state, invoice amounts, recipient, and workflow gates', () => {
@@ -172,7 +200,8 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.doesNotMatch(domain, /context\.cleaner\.compliance_status !== 'current'/)
   assert.match(domain, /normalizeInvoiceEmail\(context\.cleaner\.email\)/)
   assert.match(domain, /const invoiceType = 'sale'/)
-  assert.match(domain, /sale agreement must be signed before the tax invoice is issued/)
+  assert.doesNotMatch(domain, /sale agreement must be signed before the tax invoice is issued/)
+  assert.match(domain, /Save and finalise the GST-inclusive purchase price before preparing the tax invoice/)
   assert.match(domain, /supplier_abn_snapshot: invoiceTemplate\.supplierAbn/)
   assert.match(domain, /Only an owner or manager can edit the invoice template/)
   assert.match(domain, /contract_sale_invoice_templates/)
@@ -180,8 +209,14 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(domain, /renderContractSaleInvoiceTemplateText/)
   assert.match(domain, /sender_name_snapshot: actor\.displayName, sender_title_snapshot: actor\.jobTitle/)
   assert.match(domain, /attachments: \[\{ filename: fileName, content: pdf\.toString\('base64'\) \}\]/)
+  assert.match(domain, /agreement-[\s\S]+agreementPdf\.toString\('base64'\)/)
+  assert.match(domain, /contract_sale\.documents\.sent/)
+  assert.match(domain, /sender_name_snapshot: actor\.displayName, sender_title_snapshot: actor\.jobTitle/)
+  assert.match(domain, /same sender must send any replacement agreement bundle/)
+  assert.match(domain, /The agreement and tax invoice recipients do not match/)
   assert.match(domain, /\{deposit_inc_gst\} deposit including GST is due on receipt[\s\S]+\{balance_inc_gst\} is due before cleaning commences/)
   assert.match(domain, /The \$500 deposit must be confirmed before booking the inspection/)
+  assert.match(domain, /Upload the signed agreement before booking the inspection/)
   assert.match(domain, /idempotency_key: idempotencyKey, sale_id: sale\.id, intended_invoice_id: invoiceId/)
   assert.doesNotMatch(domain, /invoice\.invoice_type\) === 'deposit' \? 'deposit_due' : 'balance_due'/)
   assert.match(productsDomain, /purchasePrice \* 1\.1\) <= 50_000/)
@@ -204,19 +239,22 @@ test('workbench keeps connected records together and exposes the complete gated 
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/components/admin/AdminNav.tsx')
   const agentNav = source('src/components/availability/AvailabilityAgentNav.tsx')
-  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Issue full tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Approve plan', 'Complete handover']) {
+  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Approve plan', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.match(workspace, /Create pending cleaner/)
   assert.match(workspace, />New sale<\/button>/)
   assert.match(workspace, /paymentRequestId/)
-  assert.match(workspace, /\['overview', 'agreement', 'invoices', 'inspection', 'activity'\]/)
+  assert.match(workspace, /\['overview', 'invoices', 'agreement', 'inspection', 'activity'\]/)
   assert.match(workspace, /Full sale tax invoice/)
   assert.match(workspace, /Download PDF/)
   assert.match(workspace, /Save invoice template/)
   assert.match(workspace, /Issued invoices remain unchanged/)
-  assert.match(workspace, /Secure online acceptance is recorded as a later enhancement/)
+  assert.match(workspace, /Secure online acceptance remains a later enhancement/)
   assert.match(workspace, /Create updated agreement version/)
+  assert.match(workspace, /Final purchase price \(inc GST\)/)
+  assert.match(workspace, /AgreementPreview content=/)
+  assert.doesNotMatch(workspace, /<pre className=/)
   assert.match(workspace, /cleaner\.status !== 'approved'/)
   assert.doesNotMatch(workspace, /disabled=\{cleaner\.status !== 'approved' \|\| cleaner\.complianceStatus/)
   assert.match(workspace, /This is a warning only; the approved cleaner status controls sale eligibility/)
