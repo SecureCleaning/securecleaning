@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { City } from '@/lib/types'
 import { limitString, rateLimit } from '@/lib/abuseProtection'
-
-type NominatimResult = {
-  address?: {
-    postcode?: string
-    suburb?: string
-    town?: string
-    city?: string
-    village?: string
-    hamlet?: string
-    state?: string
-  }
-}
-
-function normalizeText(value: string) {
-  return value.trim().toLowerCase()
-}
+import {
+  australianStateNames,
+  getAustralianLocalitySuggestions,
+  getNominatimLocalitySuggestions,
+  type AustralianLocalitySearchResult,
+} from '@/lib/australianLocalities'
 
 export async function GET(request: NextRequest) {
   const blocked =
@@ -40,8 +30,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Search value is too long.' }, { status: 400 })
   }
 
-  const cityLabel = city === 'melbourne' ? 'Melbourne' : 'Sydney'
-  const boundedQuery = `${query}, ${cityLabel}, Australia`
+  const state = city === 'melbourne' ? 'VIC' : 'NSW'
+  const localSuggestions = getAustralianLocalitySuggestions({ query, state, limit: 10 })
+  const formatLocalSuggestions = () => localSuggestions.map((suggestion) => ({
+    label: `${suggestion.suburb} ${suggestion.postcode}`,
+    suburb: suggestion.suburb,
+    postcode: suggestion.postcode,
+    state: australianStateNames[suggestion.state] ?? suggestion.state,
+  }))
+  const boundedQuery = `${query}, ${australianStateNames[state]}, Australia`
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', boundedQuery)
   url.searchParams.set('format', 'jsonv2')
@@ -59,41 +56,31 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ suggestions: [] })
+      return NextResponse.json({ suggestions: formatLocalSuggestions() })
     }
 
-    const results = (await response.json()) as NominatimResult[]
+    const remoteSuggestions = getNominatimLocalitySuggestions(
+      (await response.json()) as AustralianLocalitySearchResult[],
+      { query, state, limit: 10 },
+    )
     const seen = new Set<string>()
-
-    const suggestions = results
-      .map((result) => {
-        const suburb =
-          result.address?.suburb ??
-          result.address?.town ??
-          result.address?.city ??
-          result.address?.village ??
-          result.address?.hamlet ??
-          ''
-        const postcode = result.address?.postcode ?? ''
-        const state = result.address?.state ?? null
-
-        if (!suburb || !postcode) return null
-
-        const key = `${normalizeText(suburb)}|${postcode}`
-        if (seen.has(key)) return null
+    const suggestions = [...localSuggestions, ...remoteSuggestions]
+      .filter((suggestion) => {
+        const key = `${suggestion.suburb.toLowerCase()}|${suggestion.postcode}|${suggestion.state}`
+        if (seen.has(key)) return false
         seen.add(key)
-
-        return {
-          label: `${suburb} ${postcode}`,
-          suburb,
-          postcode,
-          state,
-        }
+        return true
       })
-      .filter(Boolean)
+      .slice(0, 10)
+      .map((suggestion) => ({
+        label: `${suggestion.suburb} ${suggestion.postcode}`,
+        suburb: suggestion.suburb,
+        postcode: suggestion.postcode,
+        state: australianStateNames[suggestion.state] ?? suggestion.state,
+      }))
 
     return NextResponse.json({ suggestions })
   } catch {
-    return NextResponse.json({ suggestions: [] })
+    return NextResponse.json({ suggestions: formatLocalSuggestions() })
   }
 }

@@ -11,9 +11,9 @@ interface StepOneProps {
   errors: Partial<Record<keyof QuoteInputs, string>>
 }
 
-const cityOptions = [
-  { value: 'melbourne', label: 'Melbourne' },
-  { value: 'sydney', label: 'Sydney' },
+const stateOptions = [
+  { value: 'melbourne', label: 'Victoria' },
+  { value: 'sydney', label: 'New South Wales' },
 ]
 
 const premisesOptions = [
@@ -80,11 +80,11 @@ export default function StepOne({ data, onChange, errors }: StepOneProps) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Select
-          label="City"
-          options={cityOptions}
-          placeholder="Select a city…"
+          label="State"
+          options={stateOptions}
+          placeholder="Select a state…"
           value={data.city ?? ''}
-          onChange={(e) => onChange({ city: e.target.value as City })}
+          onChange={(e) => onChange({ city: e.target.value as City, suburb: '', postcode: '' })}
           error={errors.city}
           required
         />

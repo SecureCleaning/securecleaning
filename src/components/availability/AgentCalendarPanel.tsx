@@ -254,7 +254,7 @@ export default function AgentCalendarPanel({
                             className={`block w-full rounded-lg border px-2 py-2 text-left text-[11px] transition hover:brightness-95 ${eventTone(event.kind)} ${event.kind === 'availability' ? 'border-dashed opacity-80' : ''}`}
                           >
                             <div className="font-semibold uppercase tracking-wide">{eventLabel(event.kind)}</div>
-                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'booking' ? `${formatTimeRange(event.startsAt, event.endsAt)} · ${event.title}` : `${formatTimeRange(event.startsAt, event.endsAt)}`}</div>
+                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatTimeRange(event.startsAt, event.endsAt) : `${formatTimeRange(event.startsAt, event.endsAt)} · ${event.title}`}</div>
                             {event.kind === 'booking' ? <div className="mt-0.5 truncate opacity-80">{event.title}</div> : null}
                           </button>
                         ))

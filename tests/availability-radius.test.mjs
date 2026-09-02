@@ -7,7 +7,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL ??= 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??= 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY ??= 'test-service-role-key'
 
-const { matchServiceZones, validateAvailabilityZoneConfig } = await import('../src/lib/availability.ts')
+const { DEFAULT_AVAILABILITY_CONFIG, matchServiceZones, mergeAvailabilityConfig, validateAvailabilityZoneConfig } = await import('../src/lib/availability.ts')
 const root = fileURLToPath(new URL('..', import.meta.url))
 
 const anchor = { id: 'cbd', label: 'Sydney CBD', latitude: -33.8688, longitude: 151.2093, radiusKm: 10 }
@@ -63,6 +63,57 @@ test('malformed or missing coordinates do not trigger radius matching and city r
   assert.equal(matchServiceZones({ suburb: 'Unlisted' }, 'sydney', [baseZone]).method, 'none')
   assert.equal(matchServiceZones({ suburb: 'Unlisted', latitude: Number.NaN, longitude: 151.2 }, 'sydney', [baseZone]).method, 'none')
   assert.equal(matchServiceZones({ suburb: 'Surry Hills', postcode: '2000' }, 'melbourne', [baseZone]).method, 'none')
+})
+
+test('Preston maps to the northern run instead of an address-level Melbourne false positive', () => {
+  const result = matchServiceZones({
+    address: '90 High Street, Preston, Melbourne, Victoria 3072',
+    suburb: 'Preston',
+    postcode: '3072',
+  }, 'melbourne', DEFAULT_AVAILABILITY_CONFIG.zones)
+
+  assert.equal(result.method, 'postcode')
+  assert.deepEqual(result.zones.map((zone) => zone.id), ['melb_north_west'])
+  const matchedZoneIds = new Set(result.zones.map((zone) => zone.id))
+  assert.deepEqual(
+    DEFAULT_AVAILABILITY_CONFIG.weeklySlots
+      .filter((slot) => slot.active && slot.zoneIds.some((zoneId) => matchedZoneIds.has(zoneId)))
+      .map((slot) => slot.day),
+    ['tuesday', 'thursday'],
+  )
+
+  const withoutPostcode = matchServiceZones({
+    address: '90 High Street, Preston, Melbourne, Victoria',
+    suburb: 'Preston',
+  }, 'melbourne', DEFAULT_AVAILABILITY_CONFIG.zones)
+  assert.equal(withoutPostcode.method, 'suburb')
+  assert.deepEqual(withoutPostcode.zones.map((zone) => zone.id), ['melb_north_west'])
+})
+
+test('every default Melbourne zone has a bounded 10 km fallback radius', () => {
+  const melbourneZones = DEFAULT_AVAILABILITY_CONFIG.zones.filter((zone) => zone.city === 'melbourne')
+  assert.ok(melbourneZones.length > 0)
+  for (const zone of melbourneZones) {
+    assert.ok((zone.anchors ?? []).length > 0, `${zone.name} needs at least one radius anchor`)
+    assert.ok((zone.anchors ?? []).every((anchor) => anchor.radiusKm === 10))
+  }
+})
+
+test('persisted default zones inherit corrected baseline coverage without losing saved entries', () => {
+  const persisted = structuredClone(DEFAULT_AVAILABILITY_CONFIG)
+  const northernZone = persisted.zones.find((zone) => zone.id === 'melb_north_west')
+  northernZone.matchTerms = ['custom northern suburb']
+  northernZone.postcodes = ['3999']
+  northernZone.anchors = []
+
+  const merged = mergeAvailabilityConfig(persisted)
+  const mergedNorthern = merged.zones.find((zone) => zone.id === 'melb_north_west')
+
+  assert.ok(mergedNorthern.matchTerms.includes('preston'))
+  assert.ok(mergedNorthern.matchTerms.includes('custom northern suburb'))
+  assert.ok(mergedNorthern.postcodes.includes('3072'))
+  assert.ok(mergedNorthern.postcodes.includes('3999'))
+  assert.ok(mergedNorthern.anchors.some((anchor) => anchor.id === 'preston-10km' && anchor.radiusKm === 10))
 })
 
 test('zone configuration rejects malformed anchors and accepts bounded Australian anchors', () => {

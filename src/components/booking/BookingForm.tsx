@@ -22,9 +22,9 @@ const defaultAddOns: QuoteAddOns = {
   carpetSteam: false,
 }
 
-const cityOptions = [
-  { value: 'melbourne', label: 'Melbourne' },
-  { value: 'sydney', label: 'Sydney' },
+const stateOptions = [
+  { value: 'melbourne', label: 'Victoria' },
+  { value: 'sydney', label: 'New South Wales' },
 ]
 
 const premisesOptions = [
@@ -388,6 +388,10 @@ export default function BookingForm() {
         <h2 className="text-lg font-bold mb-5" style={{ color: '#1a2744' }}>Premises Details</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="sm:col-span-2">
+            <Select label="State" options={stateOptions} placeholder="Select state…" required
+              value={formData.city ?? ''} onChange={(e) => update({ city: e.target.value as City, address: '', suburb: '', postcode: '', latitude: undefined, longitude: undefined })} error={errors.city} />
+          </div>
+          <div className="sm:col-span-2">
             <AddressAutocomplete
               required
               city={formData.city}
@@ -405,8 +409,6 @@ export default function BookingForm() {
               error={errors.address}
             />
           </div>
-          <Select label="City" options={cityOptions} placeholder="Select city…" required
-            value={formData.city ?? ''} onChange={(e) => update({ city: e.target.value as City })} error={errors.city} />
           <Select label="Premises Type" options={premisesOptions} placeholder="Select type…" required
             value={formData.premisesType ?? ''} onChange={(e) => update({ premisesType: e.target.value as PremisesType })} error={errors.premisesType} />
           <Input label="Floor Area (sqm)" type="number" min={0} required

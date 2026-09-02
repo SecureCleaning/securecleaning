@@ -91,7 +91,7 @@ export default function AddressAutocomplete({
   }, [city, value])
 
   const helpText = useMemo(() => {
-    if (!city) return 'Select a city first to enable address suggestions.'
+    if (!city) return 'Select a state first to enable address suggestions.'
     if (isLoading) return 'Searching addresses…'
     return 'Start typing your street address and choose a suggested match.'
   }, [city, isLoading])
@@ -114,7 +114,7 @@ export default function AddressAutocomplete({
         id="street-address"
         type="text"
         autoComplete="street-address"
-        placeholder={city ? 'Start typing your address…' : 'Select city first'}
+        placeholder={city ? 'Start typing your address…' : 'Select state first'}
         value={value}
         onChange={(e) => {
           onChange(e.target.value)

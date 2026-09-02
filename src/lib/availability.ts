@@ -151,6 +151,12 @@ export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
         'templestowe', 'ringwood', 'croydon', 'vermont', 'burwood', 'surrey hills'
       ],
       postcodes: ['3004', '3121', '3122', '3123', '3124', '3141', '3142', '3143', '3144', '3145', '3161', '3162', '3163', '3165', '3181', '3182', '3183', '3184', '3186', '3192', '3194', '3204'],
+      anchors: [
+        { id: 'brighton-10km', label: 'Brighton', latitude: -37.906, longitude: 145.001, radiusKm: 10 },
+        { id: 'glen-waverley-10km', label: 'Glen Waverley', latitude: -37.879, longitude: 145.164, radiusKm: 10 },
+        { id: 'box-hill-10km', label: 'Box Hill', latitude: -37.819, longitude: 145.125, radiusKm: 10 },
+        { id: 'ringwood-10km', label: 'Ringwood', latitude: -37.814, longitude: 145.229, radiusKm: 10 },
+      ],
       notes: 'Default zone for Monday inspection runs.',
     },
     {
@@ -163,7 +169,13 @@ export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
         'keysborough', 'mentone', 'cheltenham', 'moorabbin', 'bentleigh', 'mordialloc',
         'brighton', 'glen waverley', 'mount waverley', 'wheelers hill', 'berwick', 'narre warren'
       ],
-      postcodes: ['3141', '3142', '3143', '3144', '3145', '3161', '3162', '3163', '3165', '3170', '3171', '3172', '3173', '3174', '3175', '3177', '3178', '3186', '3192', '3194', '3204'],
+      postcodes: ['3141', '3142', '3143', '3144', '3145', '3146', '3147', '3148', '3149', '3150', '3151', '3152', '3153', '3154', '3155', '3156', '3161', '3162', '3163', '3165', '3166', '3167', '3168', '3169', '3170', '3171', '3172', '3173', '3174', '3175', '3177', '3178', '3185', '3186', '3187', '3188', '3189', '3190', '3191', '3192', '3193', '3194', '3195', '3196', '3197', '3198', '3199', '3200', '3201', '3204', '3802', '3803', '3804', '3805', '3806', '3807', '3808', '3809', '3810'],
+      anchors: [
+        { id: 'south-yarra-10km', label: 'South Yarra', latitude: -37.839, longitude: 144.992, radiusKm: 10 },
+        { id: 'clayton-10km', label: 'Clayton', latitude: -37.925, longitude: 145.12, radiusKm: 10 },
+        { id: 'dandenong-10km', label: 'Dandenong', latitude: -37.987, longitude: 145.215, radiusKm: 10 },
+        { id: 'berwick-10km', label: 'Berwick', latitude: -38.033, longitude: 145.344, radiusKm: 10 },
+      ],
       notes: 'Primary Wednesday and Friday inspection zone.',
     },
     {
@@ -175,7 +187,10 @@ export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
         'south wharf', 'docklands', 'carlton', 'carlton north', 'fitzroy', 'collingwood',
         'richmond', 'abbotsford', 'flemington', 'parkville'
       ],
-      postcodes: ['3000', '3002', '3003', '3005', '3006', '3008', '3051', '3052', '3065', '3066', '3121'],
+      postcodes: ['3000', '3002', '3003', '3004', '3005', '3006', '3008', '3051', '3052', '3053', '3054', '3065', '3066', '3067', '3068', '3121', '3205', '3206', '3207'],
+      anchors: [
+        { id: 'melbourne-cbd-10km', label: 'Melbourne CBD', latitude: -37.8136, longitude: 144.9631, radiusKm: 10 },
+      ],
       notes: 'Added to Wednesday run alongside South East Melbourne.',
     },
     {
@@ -187,11 +202,23 @@ export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
         'yarraville', 'spotswood', 'altona', 'altona north', 'sunshine', 'sunshine west',
         'braybrook', 'maidstone', 'maribyrnong', 'essendon', 'moonee ponds', 'ascot vale',
         'brunswick', 'brunswick east', 'brunswick west', 'coburg', 'pascoe vale', 'glenroy',
+        'preston', 'reservoir', 'thornbury', 'northcote', 'fairfield', 'alphington', 'ivanhoe',
+        'heidelberg', 'bellfield', 'bundoora', 'macleod', 'watsonia', 'greensborough',
+        'thomastown', 'lalor', 'epping', 'mill park', 'fawkner', 'campbellfield',
+        'broadmeadows', 'coolaroo', 'meadow heights', 'craigieburn', 'roxburgh park',
         'airport west', 'keilor', 'keilor east', 'keilor park', 'taylors lakes', 'sydenham',
         'caroline springs', 'deer park', 'point cook', 'laverton', 'hoppers crossing',
         'werribee', 'tarneit', 'truganina', 'melton'
       ],
-      postcodes: ['3003', '3011', '3012', '3013', '3015', '3016', '3018', '3019', '3020', '3021', '3023', '3024', '3025', '3026', '3027', '3029', '3030', '3032', '3039', '3040', '3042', '3044', '3046', '3055', '3056'],
+      postcodes: ['3003', '3011', '3012', '3013', '3015', '3016', '3018', '3019', '3020', '3021', '3022', '3023', '3024', '3025', '3026', '3027', '3028', '3029', '3030', '3031', '3032', '3033', '3034', '3036', '3037', '3038', '3039', '3040', '3041', '3042', '3043', '3044', '3045', '3046', '3047', '3048', '3049', '3055', '3056', '3057', '3058', '3059', '3060', '3061', '3062', '3063', '3064', '3070', '3071', '3072', '3073', '3074', '3075', '3076', '3078', '3079', '3081', '3082', '3083', '3084', '3085', '3087', '3088', '3089', '3090', '3091', '3093', '3094', '3095', '3096', '3097', '3099'],
+      anchors: [
+        { id: 'preston-10km', label: 'Preston', latitude: -37.739, longitude: 145.001, radiusKm: 10 },
+        { id: 'essendon-10km', label: 'Essendon', latitude: -37.75, longitude: 144.911, radiusKm: 10 },
+        { id: 'footscray-10km', label: 'Footscray', latitude: -37.8, longitude: 144.9, radiusKm: 10 },
+        { id: 'sunshine-10km', label: 'Sunshine', latitude: -37.783, longitude: 144.833, radiusKm: 10 },
+        { id: 'werribee-10km', label: 'Werribee', latitude: -37.9, longitude: 144.66, radiusKm: 10 },
+        { id: 'melton-10km', label: 'Melton', latitude: -37.683, longitude: 144.583, radiusKm: 10 },
+      ],
       notes: 'Default Tuesday and Thursday run.',
     },
     {
@@ -204,6 +231,10 @@ export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
         'lara', 'corio', 'norlane', 'bell park', 'bell post hill', 'belmont', 'torquay'
       ],
       postcodes: ['3214', '3215', '3216', '3217', '3218', '3219', '3220', '3221', '3222', '3228'],
+      anchors: [
+        { id: 'geelong-10km', label: 'Geelong', latitude: -38.15, longitude: 144.362, radiusKm: 10 },
+        { id: 'torquay-10km', label: 'Torquay', latitude: -38.332, longitude: 144.323, radiusKm: 10 },
+      ],
       notes: 'Included on Thursday with north/west suburbs.',
     },
   ],
@@ -282,6 +313,16 @@ function sanitizeList(value: unknown): string[] {
     : []
 }
 
+function mergeUniqueList(...lists: string[][]) {
+  return [...new Set(lists.flat().map((item) => item.trim()).filter(Boolean))]
+}
+
+function mergeDefaultZoneAnchors(defaultAnchors: ServiceZoneAnchor[], savedAnchors: ServiceZoneAnchor[]) {
+  const anchors = new Map(defaultAnchors.map((anchor) => [anchor.id, anchor]))
+  for (const anchor of savedAnchors) anchors.set(anchor.id, anchor)
+  return [...anchors.values()].slice(0, 40)
+}
+
 function sanitizeCoordinate(value: unknown, minimum: number, maximum: number): number | null {
   const parsed = typeof value === 'number' ? value : Number(value)
   return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum ? parsed : null
@@ -333,7 +374,7 @@ export function validateAvailabilityZoneConfig(candidate: unknown): string | nul
   return null
 }
 
-function mergeConfig(candidate: unknown): AvailabilityConfig {
+export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig {
   const fallback = cloneDefaultConfig()
 
   if (!candidate || typeof candidate !== 'object') {
@@ -349,15 +390,17 @@ function mergeConfig(candidate: unknown): AvailabilityConfig {
     zones: Array.isArray(source.zones)
       ? source.zones.map((zone, index) => {
           const zoneId = String(zone?.id ?? `zone-${index + 1}`)
+          const defaultZone = fallback.zones.find((candidate) => candidate.id === zoneId)
+          const savedAnchors = sanitizeZoneAnchors(zone?.anchors, zoneId)
           return {
             id: zoneId,
             name: String(zone?.name ?? `Zone ${index + 1}`),
             city: zone?.city === 'sydney' ? 'sydney' : 'melbourne',
-            matchTerms: sanitizeList(zone?.matchTerms),
-            postcodes: sanitizeList(zone?.postcodes),
+            matchTerms: mergeUniqueList(defaultZone?.matchTerms ?? [], sanitizeList(zone?.matchTerms)),
+            postcodes: mergeUniqueList(defaultZone?.postcodes ?? [], sanitizeList(zone?.postcodes)),
             excludedMatchTerms: sanitizeList(zone?.excludedMatchTerms),
             excludedPostcodes: sanitizeList(zone?.excludedPostcodes),
-            anchors: sanitizeZoneAnchors(zone?.anchors, zoneId),
+            anchors: mergeDefaultZoneAnchors(defaultZone?.anchors ?? [], savedAnchors),
             notes: typeof zone?.notes === 'string' ? zone.notes : '',
           }
         })
@@ -443,7 +486,7 @@ export function matchServiceZones(
   zones: ServiceZone[],
 ): { zones: ServiceZone[]; method: AvailabilityMatchMethod; distanceKm?: number } {
   const searchText = [location.address, location.suburb, location.postcode].filter(Boolean).join(' ')
-  const normalizedAddress = normalizeText(searchText)
+  const normalizedLocality = normalizeText(location.suburb || location.address || '')
   const postcode = location.postcode?.match(/^\d{4}$/)?.[0] ?? extractPostcode(searchText)
   const latitude = sanitizeCoordinate(location.latitude, -44, -10)
   const longitude = sanitizeCoordinate(location.longitude, 112, 154)
@@ -456,7 +499,7 @@ export function matchServiceZones(
     const excludedByPostcode = Boolean(postcode && (zone.excludedPostcodes ?? []).includes(postcode))
     const excludedByTerm = (zone.excludedMatchTerms ?? []).some((term) => {
       const normalizedTerm = normalizeText(term)
-      return normalizedTerm.length > 0 && normalizedAddress.includes(normalizedTerm)
+      return normalizedTerm.length > 0 && normalizedLocality.includes(normalizedTerm)
     })
     if (excludedByPostcode || excludedByTerm) continue
     if (postcode && zone.postcodes.includes(postcode)) {
@@ -465,7 +508,7 @@ export function matchServiceZones(
     }
     const termMatch = zone.matchTerms.some((term) => {
       const normalizedTerm = normalizeText(term)
-      return normalizedTerm.length > 0 && normalizedAddress.includes(normalizedTerm)
+      return normalizedTerm.length > 0 && normalizedLocality.includes(normalizedTerm)
     })
     if (termMatch) {
       exactTerm.push(zone)
@@ -730,7 +773,7 @@ export async function getAvailabilityConfig(): Promise<AvailabilityConfig> {
       return cloneDefaultConfig()
     }
 
-    return mergeConfig(JSON.parse(data.content))
+    return mergeAvailabilityConfig(JSON.parse(data.content))
   } catch (error) {
     console.error('[availability] Unexpected error loading config:', error)
     return cloneDefaultConfig()
@@ -739,7 +782,7 @@ export async function getAvailabilityConfig(): Promise<AvailabilityConfig> {
 
 export async function saveAvailabilityConfig(config: AvailabilityConfig): Promise<AvailabilityConfig> {
   const db = getAdminSupabase()
-  const merged = mergeConfig(config)
+  const merged = mergeAvailabilityConfig(config)
 
   const { error } = await db
     .from('site_content')

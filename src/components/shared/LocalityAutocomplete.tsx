@@ -91,7 +91,7 @@ export default function LocalityAutocomplete({
   }, [city, query])
 
   const helpText = useMemo(() => {
-    if (!city) return 'Select a city first to search by suburb or postcode.'
+    if (!city) return 'Select a state first to search by suburb or postcode.'
     if (isLoading) return 'Searching suburbs and postcodes…'
     return 'Type a suburb or postcode and select the correct locality.'
   }, [city, isLoading])
@@ -120,7 +120,7 @@ export default function LocalityAutocomplete({
         <input
           id="locality-search"
           type="text"
-          placeholder={city ? 'Start typing a suburb or postcode…' : 'Select city first'}
+          placeholder={city ? 'Start typing a suburb or postcode…' : 'Select state first'}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)

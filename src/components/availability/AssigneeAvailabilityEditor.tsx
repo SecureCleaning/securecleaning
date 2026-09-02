@@ -8,6 +8,7 @@ import type {
   Weekday,
 } from '@/lib/availability'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
+import { replaceCalendarBlockoutEvents } from '@/lib/availabilityCalendarClient'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import AgentCalendarPanel from './AgentCalendarPanel'
 import AvailabilityAgentNav from './AvailabilityAgentNav'
@@ -66,6 +67,7 @@ export default function AssigneeAvailabilityEditor({
 }) {
   const [weeklySlots, setWeeklySlots] = useState(initialWeeklySlots)
   const [oneOffBlocks, setOneOffBlocks] = useState(initialOneOffBlocks)
+  const [calendarEvents, setCalendarEvents] = useState(initialCalendarEvents)
   const calendarViewUrl = getCalendarViewUrl(assignee)
   const calendarSubscriptionUrl = getCalendarSubscriptionUrl(assignee)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
@@ -146,8 +148,11 @@ export default function AssigneeAvailabilityEditor({
         throw new Error(result.error || 'Save failed.')
       }
 
-      setWeeklySlots((result.weeklySlots as WeeklyAvailabilitySlot[]) ?? weeklySlots)
-      setOneOffBlocks((result.oneOffBlocks as OneOffAvailabilityBlock[]) ?? oneOffBlocks)
+      const savedWeeklySlots = (result.weeklySlots as WeeklyAvailabilitySlot[]) ?? weeklySlots
+      const savedOneOffBlocks = (result.oneOffBlocks as OneOffAvailabilityBlock[]) ?? oneOffBlocks
+      setWeeklySlots(savedWeeklySlots)
+      setOneOffBlocks(savedOneOffBlocks)
+      setCalendarEvents((current) => replaceCalendarBlockoutEvents(current, savedOneOffBlocks))
       setStatus({ type: 'success', message: 'Availability saved successfully.' })
     } catch (error) {
       setStatus({
@@ -232,7 +237,7 @@ export default function AssigneeAvailabilityEditor({
           </section>
 
           <AgentCalendarPanel
-            events={initialCalendarEvents}
+            events={calendarEvents}
             bookingApiPath={`${apiPath}/bookings`}
             timeZone={assignee.city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'}
           />
