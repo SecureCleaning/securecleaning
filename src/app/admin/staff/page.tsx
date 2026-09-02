@@ -4,7 +4,10 @@ import { withAdminPage } from '@/lib/adminPage'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminStaffPage() {
+export default async function AdminStaffPage({ searchParams }: { searchParams?: { account?: string | string[]; returnTo?: string | string[] } }) {
+  const initialAccountId = typeof searchParams?.account === 'string' ? searchParams.account : ''
+  const requestedReturnHref = typeof searchParams?.returnTo === 'string' ? searchParams.returnTo : ''
+  const returnHref = /^\/admin\/clients(?:[?#]|$)/.test(requestedReturnHref) ? requestedReturnHref : ''
   return withAdminPage(async () => (
     await (async () => {
       const identity = await getAdminSessionIdentityFromCookies()
@@ -14,7 +17,7 @@ export default async function AdminStaffPage() {
         )
       }
 
-      return <StaffAccessAdmin />
+      return <StaffAccessAdmin initialAccountId={initialAccountId} returnHref={returnHref} />
     })()
   ), 'Staff login required', 'Sign in with an individual staff account to continue.')
 }

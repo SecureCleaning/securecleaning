@@ -12,6 +12,8 @@ type CleanerForm = {
 }
 
 const statuses: CleanerStatus[] = ['lead', 'pending_approval', 'approved', 'paused', 'rejected', 'inactive']
+const CLEANER_COMPLIANCE_STATUSES = ['current', 'docs_due', 'expired', 'not_checked'] as const
+const isCleanerComplianceStatus = (value: unknown): value is (typeof CLEANER_COMPLIANCE_STATUSES)[number] => CLEANER_COMPLIANCE_STATUSES.includes(String(value) as (typeof CLEANER_COMPLIANCE_STATUSES)[number])
 const nameOf = (cleaner: AgentCleanerSummary | AgentCleanerRecord) => [cleaner.first_name, cleaner.last_name].filter(Boolean).join(' ') || cleaner.contact_name
 const dateOf = (value?: string | null) => value ? new Date(value).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const csv = (values?: string[] | null) => values?.join(', ') ?? ''
@@ -22,7 +24,7 @@ function blankForm(state: string): CleanerForm {
 }
 
 function formOf(cleaner: AgentCleanerRecord): CleanerForm {
-  return { businessName: cleaner.business_name ?? '', firstName: cleaner.first_name ?? '', lastName: cleaner.last_name ?? '', email: cleaner.email ?? '', phone: cleaner.phone ?? '', alternatePhone: cleaner.alternate_phone ?? '', address: cleaner.address ?? '', suburb: cleaner.suburb ?? '', postcode: cleaner.postcode ?? '', city: cleaner.city ?? '', state: cleaner.state ?? '', abn: cleaner.abn ?? '', status: cleaner.status, services: csv(cleaner.services), serviceAreas: csv(cleaner.service_areas), preferredWork: cleaner.preferred_work ?? '', complianceStatus: cleaner.compliance_status ?? 'not_checked', insuranceExpiry: cleaner.insurance_expiry ?? '', policeCheckExpiry: cleaner.police_check_expiry ?? '', inductionExpiry: cleaner.induction_expiry ?? '', workingWithChildrenCheck: Boolean(cleaner.working_with_children_check), internalOwner: cleaner.internal_owner ?? '', rating: cleaner.rating == null ? '' : String(cleaner.rating), notes: cleaner.notes ?? '' }
+  return { businessName: cleaner.business_name ?? '', firstName: cleaner.first_name ?? '', lastName: cleaner.last_name ?? '', email: cleaner.email ?? '', phone: cleaner.phone ?? '', alternatePhone: cleaner.alternate_phone ?? '', address: cleaner.address ?? '', suburb: cleaner.suburb ?? '', postcode: cleaner.postcode ?? '', city: cleaner.city ?? '', state: cleaner.state ?? '', abn: cleaner.abn ?? '', status: cleaner.status, services: csv(cleaner.services), serviceAreas: csv(cleaner.service_areas), preferredWork: cleaner.preferred_work ?? '', complianceStatus: isCleanerComplianceStatus(cleaner.compliance_status) ? cleaner.compliance_status : 'not_checked', insuranceExpiry: cleaner.insurance_expiry ?? '', policeCheckExpiry: cleaner.police_check_expiry ?? '', inductionExpiry: cleaner.induction_expiry ?? '', workingWithChildrenCheck: Boolean(cleaner.working_with_children_check), internalOwner: cleaner.internal_owner ?? '', rating: cleaner.rating == null ? '' : String(cleaner.rating), notes: cleaner.notes ?? '' }
 }
 
 function applyTokens(value: string, cleaner: AgentCleanerRecord) {
@@ -116,7 +118,12 @@ export default function AgentCleaners({ assigneeId, agentName, state, initialCle
   }
 
   const noticeBox = notice ? <div role={notice.type === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-4 py-3 text-sm ${notice.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-green-200 bg-green-50 text-green-800'}`}>{notice.message}</div> : null
-  const field = (key: keyof CleanerForm, label: string, options?: { type?: string; wide?: boolean; readOnly?: boolean }) => <label className={`text-sm ${options?.wide ? 'sm:col-span-2' : ''}`}><span className="mb-1 block font-medium text-gray-700">{label}</span><input type={options?.type ?? 'text'} value={String(form[key] ?? '')} readOnly={options?.readOnly} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 read-only:bg-gray-100" /></label>
+  const field = (key: keyof CleanerForm, label: string, options?: { type?: string; wide?: boolean; readOnly?: boolean }) => {
+    if (key === 'complianceStatus') {
+      return <label className="text-sm"><span className="mb-1 block font-medium text-gray-700">{label}</span><select value={form.complianceStatus} onChange={(event) => setForm({ ...form, complianceStatus: event.target.value })} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2">{CLEANER_COMPLIANCE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select><span className="mt-1 block text-xs text-gray-500">Informational only. Approved status controls sale eligibility.</span></label>
+    }
+    return <label className={`text-sm ${options?.wide ? 'sm:col-span-2' : ''}`}><span className="mb-1 block font-medium text-gray-700">{label}</span><input type={options?.type ?? 'text'} value={String(form[key] ?? '')} readOnly={options?.readOnly} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2 read-only:bg-gray-100" /></label>
+  }
 
   return <div className="space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-3xl font-bold text-[#1a2744]">{state} Cleaner Database</h1><p className="mt-2 text-gray-600">{agentName} can create and manage all cleaner record details for {state}. Access is enforced to this region.</p></div><button type="button" onClick={startCreate} className="rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white">Add cleaner</button></div>

@@ -62,7 +62,6 @@ export function buildCrmSignature(account: Pick<ClientCrmActor, 'displayName' | 
     account.phone,
     account.email,
     'securecleaning.com.au',
-    'ABN 81 674 121 825',
   ].join('\n')
 }
 
@@ -70,7 +69,7 @@ export function buildCrmFooter(sourceExplanation: string, unsubscribeUrl: string
   return [
     `You are receiving this email because ${sourceExplanation}.`,
     `To stop receiving marketing emails from Secure Cleaning, unsubscribe here: ${unsubscribeUrl}`,
-    'Secure Cleaning | securecleaning.com.au | ABN 81 674 121 825',
+    'Secure Cleaning | securecleaning.com.au',
   ].join('\n')
 }
 
@@ -237,7 +236,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
           <div style="border-top: 1px solid #e5e7eb; padding: 18px 24px; color: #6b7280; font-size: 12px;">
             <p style="margin: 0 0 10px;">You are receiving this email because ${escapeHtml(sourceExplanation)}.</p>
             <p style="margin: 0 0 10px;"><a href="${escapeHtml(unsubscribeUrl)}" style="color: #0f766e;">Unsubscribe from marketing emails</a></p>
-            <p style="margin: 0;">Secure Cleaning | securecleaning.com.au | ABN 81 674 121 825</p>
+            <p style="margin: 0;">Secure Cleaning | securecleaning.com.au</p>
           </div>
         </div>
       `,

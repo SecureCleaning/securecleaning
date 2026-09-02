@@ -54,7 +54,21 @@ function dateLabel(value: string | null | undefined) {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'admin' | 'agent' }) {
+function melbourneToday() {
+  const parts = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Melbourne', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${value.year}-${value.month}-${value.day}`
+}
+
+export default function ClientCrmWorkspace({
+  portal = 'admin',
+  initialOpportunityId = '',
+}: {
+  portal?: 'admin' | 'agent'
+  initialOpportunityId?: string
+}) {
   const [data, setData] = useState<WorkspaceData | null>(null)
   const [selectedLeadId, setSelectedLeadId] = useState('')
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
@@ -62,6 +76,8 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '' })
   const [leadEdit, setLeadEdit] = useState({ stage: 'new', notes: '', nextFollowUpAt: '', assignedStaffId: '', contactBasis: '', sourceProvider: '', sourceExplanation: '' })
+  const [wonOpen, setWonOpen] = useState(false)
+  const [wonDraft, setWonDraft] = useState({ quoteId: '', acceptanceDate: melbourneToday(), acceptanceMethod: 'email', acceptanceNote: '' })
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
@@ -73,7 +89,10 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
     const next = result as WorkspaceData
     setData(next)
     setTemplateDraft((current) => current.id || current.name ? current : emptyTemplateDraft(next.actor.role))
-    const nextLeadId = preferredLeadId || selectedLeadId || next.opportunities[0]?.id || ''
+    const requestedLeadId = preferredLeadId || selectedLeadId || initialOpportunityId
+    const nextLeadId = next.opportunities.some((opportunity) => opportunity.id === requestedLeadId)
+      ? requestedLeadId
+      : next.opportunities[0]?.id || ''
     setSelectedLeadId(nextLeadId)
   }
 
@@ -107,6 +126,13 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       data?.senders.map((sender) => sender.id) ?? [],
     )
     setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '' })
+    setWonOpen(false)
+    setWonDraft({
+      quoteId: selectedLead.quotes.find((quote) => quote.hasFinalDocument)?.id ?? selectedLead.quotes[0]?.id ?? '',
+      acceptanceDate: melbourneToday(),
+      acceptanceMethod: 'email',
+      acceptanceNote: '',
+    })
   }, [data?.actor.id, data?.senders, selectedLead])
 
   async function post(body: Record<string, unknown>) {
@@ -169,6 +195,33 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       setStatus({ type: 'success', message: 'Opportunity workflow updated.' })
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update the opportunity.' })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function closeWon() {
+    if (!selectedLead) return
+    setBusy('close-won')
+    setStatus(null)
+    try {
+      const result = await post({
+        action: 'opportunity.close-won',
+        opportunityId: selectedLead.id,
+        expectedUpdatedAt: selectedLead.updatedAt,
+        ...wonDraft,
+      })
+      await loadWorkspace(selectedLead.id)
+      setWonOpen(false)
+      setStatus({ type: 'success', message: 'Opportunity closed as won and a draft contract product was created.' })
+      const productId = result.result?.productId
+      if (productId) {
+        window.location.assign(portal === 'agent' && data?.actor.availabilityAssigneeId
+          ? `/availability/products/${encodeURIComponent(data.actor.availabilityAssigneeId)}?product=${encodeURIComponent(productId)}`
+          : `/admin/products?product=${encodeURIComponent(productId)}`)
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to close this opportunity as won.' })
     } finally {
       setBusy('')
     }
@@ -288,7 +341,20 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search business, contact, email or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" /><div className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto">{filteredLeads.map((lead) => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className={`block w-full rounded-xl border p-3 text-left ${lead.id === selectedLeadId ? 'border-teal-500 bg-teal-50' : 'border-gray-200 bg-white'}`}><span className="block font-semibold text-gray-900">{lead.businessName || lead.email}</span><span className="block text-sm text-gray-600">{lead.contactName} - {lead.stage} - cycle {lead.cycleNumber}</span><span className="mt-1 block text-xs text-gray-500">{lead.assignedStaffName || 'Unassigned'} - {lead.postcode || 'Site to confirm'} - {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>{lead.suppressed ? <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Email suppressed</span> : null}</button>)}{filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}</div></section>
         {selectedLead ? <div className="space-y-5">
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">{selectedLead.businessName}</h2><p className="text-sm text-gray-600">{selectedLead.contactName} - {selectedLead.email} - {selectedLead.phone || 'No phone'}</p><p className="mt-1 text-sm text-gray-500">{[selectedLead.address, selectedLead.suburb, selectedLead.postcode, selectedLead.state].filter(Boolean).join(', ')}</p></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span></div><div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4"><label className="text-sm font-medium text-gray-700">Stage<select value={leadEdit.stage} onChange={(event) => setLeadEdit({ ...leadEdit, stage: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}</select></label><label className="text-sm font-medium text-gray-700">Next follow-up<input type="datetime-local" value={leadEdit.nextFollowUpAt} onChange={(event) => setLeadEdit({ ...leadEdit, nextFollowUpAt: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>{canManageShared ? <label className="text-sm font-medium text-gray-700">Assigned agent<select value={leadEdit.assignedStaffId} onChange={(event) => setLeadEdit({ ...leadEdit, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Unassigned</option>{data.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label> : null}<label className={`text-sm font-medium text-gray-700 ${canManageShared ? '' : 'md:col-span-2'}`}>Internal notes<textarea rows={2} value={leadEdit.notes} onChange={(event) => setLeadEdit({ ...leadEdit, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Contact basis<select value={leadEdit.contactBasis} onChange={(event) => setLeadEdit({ ...leadEdit, contactBasis: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select basis</option>{basisOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadEdit.sourceProvider} onChange={(event) => setLeadEdit({ ...leadEdit, sourceProvider: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation<textarea rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div><button type="button" onClick={() => void updateLead()} disabled={busy === 'lead-update'} className="mt-4 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'lead-update' ? 'Saving...' : 'Save workflow'}</button></section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">{selectedLead.businessName}</h2><p className="text-sm text-gray-600">{selectedLead.contactName} - {selectedLead.email} - {selectedLead.phone || 'No phone'}</p><p className="mt-1 text-sm text-gray-500">{[selectedLead.address, selectedLead.suburb, selectedLead.postcode, selectedLead.state].filter(Boolean).join(', ')}</p></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span></div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <label className="text-sm font-medium text-gray-700">Stage<select value={leadEdit.stage} disabled={Boolean(selectedLead.productId)} onChange={(event) => { if (event.target.value === 'won') { setWonOpen(true); return } setLeadEdit({ ...leadEdit, stage: event.target.value }) }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100">{stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Next follow-up<input type="datetime-local" value={leadEdit.nextFollowUpAt} onChange={(event) => setLeadEdit({ ...leadEdit, nextFollowUpAt: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              {canManageShared ? <label className="text-sm font-medium text-gray-700">Assigned agent<select value={leadEdit.assignedStaffId} onChange={(event) => setLeadEdit({ ...leadEdit, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Unassigned</option>{data.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label> : null}
+              <label className={`text-sm font-medium text-gray-700 ${canManageShared ? '' : 'md:col-span-2'}`}>Internal notes<textarea rows={2} value={leadEdit.notes} onChange={(event) => setLeadEdit({ ...leadEdit, notes: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Contact basis<select value={leadEdit.contactBasis} onChange={(event) => setLeadEdit({ ...leadEdit, contactBasis: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select basis</option>{basisOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadEdit.sourceProvider} onChange={(event) => setLeadEdit({ ...leadEdit, sourceProvider: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label id="crm-source-details" className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation<textarea id="crm-source-explanation" rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void updateLead()} disabled={busy === 'lead-update' || Boolean(selectedLead.productId)} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'lead-update' ? 'Saving...' : 'Save workflow'}</button>{!selectedLead.productId && !['won', 'lost', 'cancelled'].includes(selectedLead.stage) ? <button type="button" onClick={() => setWonOpen(true)} className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white">Close as won & create product</button> : null}{selectedLead.productId ? <Link href={portal === 'agent' && data.actor.availabilityAssigneeId ? `/availability/products/${encodeURIComponent(data.actor.availabilityAssigneeId)}?product=${encodeURIComponent(selectedLead.productId)}` : `/admin/products?product=${encodeURIComponent(selectedLead.productId)}`} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">Open {selectedLead.productStatus} product</Link> : null}</div>
+            {wonOpen ? <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold text-green-950">Confirm the accepted contract</h3><p className="mt-1 text-sm text-green-900">This closes the opportunity and creates one editable draft product from the selected saved quote. The quote’s ordinary accepted status is not used because it can represent a site-inspection booking.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">Winning saved quote<select value={wonDraft.quoteId} onChange={(event) => setWonDraft({ ...wonDraft, quoteId: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="">Select saved quote</option>{selectedLead.quotes.map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteRef} · {dateLabel(quote.createdAt)}{quote.finalQuoteSentAt ? ' · sent final' : quote.hasFinalDocument ? ' · reviewed final' : ' · saved quote'}</option>)}</select></label><label className="text-sm font-medium">Acceptance date<input type="date" max={melbourneToday()} value={wonDraft.acceptanceDate} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceDate: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label><label className="text-sm font-medium">Acceptance method<select value={wonDraft.acceptanceMethod} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceMethod: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="email">Email</option><option value="signed_agreement">Signed agreement</option><option value="phone">Phone</option><option value="other">Other</option></select></label><label className="text-sm font-medium">Acceptance evidence or note<input value={wonDraft.acceptanceNote} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceNote: event.target.value })} placeholder="e.g. Accepted by email on 28 August" className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label></div><div className="mt-4 flex gap-3"><button type="button" onClick={() => void closeWon()} disabled={busy === 'close-won' || !wonDraft.quoteId || wonDraft.acceptanceNote.trim().length < 3} className="rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'close-won' ? 'Creating product...' : 'Confirm win & create draft product'}</button><button type="button" onClick={() => setWonOpen(false)} className="rounded-lg border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-900">Cancel</button></div>{selectedLead.quotes.length === 0 ? <p className="mt-3 text-sm font-semibold text-amber-800">Save a quote before closing this opportunity as won.</p> : null}</div> : null}
+          </section>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Email client</h2>
             <p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. Sender access, recipient details, contact source, signature, unsubscribe state, and unresolved sends are verified again when you send.</p>
@@ -306,10 +372,16 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
               <label className="text-sm font-medium text-gray-700 md:col-span-2 lg:col-span-3">Message<textarea rows={9} value={compose.body} onChange={(event) => setCompose({ ...compose, body: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
             </div>
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
-              <div className="font-semibold text-gray-900">Email details</div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="font-semibold text-gray-900">Email details</div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { document.getElementById('crm-source-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('crm-source-explanation')?.focus() }} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Edit source wording</button>
+                  {data.actor.role === 'owner' && selectedSender ? <Link href={`/admin/staff?account=${encodeURIComponent(selectedSender.id)}&returnTo=${encodeURIComponent(`/admin/clients?opportunity=${selectedLead.id}`)}`} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Edit sender details</Link> : null}
+                </div>
+              </div>
               <p className="mt-1 text-gray-600">Source: {selectedLead.sourceExplanation || 'Missing - sending blocked'}</p>
-              {selectedSender ? <p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${selectedSender.displayName}\n${selectedSender.jobTitle}\nSecure Cleaning\n${selectedSender.phone}\n${selectedSender.email}\nsecurecleaning.com.au\nABN 81 674 121 825`}</p> : null}
-              <p className="mt-2 text-xs text-gray-500">The unsubscribe link and company footer are appended after this signature.</p>
+              {selectedSender ? <p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${selectedSender.displayName}\n${selectedSender.jobTitle}\nSecure Cleaning\n${selectedSender.phone}\n${selectedSender.email}\nsecurecleaning.com.au`}</p> : null}
+              <p className="mt-2 text-xs text-gray-500">Source wording is saved with this client workflow. Sender details come from Team Access. The unsubscribe link and company footer are added automatically.</p>
             </div>
             <button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="mt-4 rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button>
             <p className="mt-2 text-xs text-gray-500">The system automatically checks sender permission, recipient consistency, contact source, unsubscribe status, signature completeness, and any unresolved prior send.</p>
@@ -317,9 +389,10 @@ export default function ClientCrmWorkspace({ portal = 'admin' }: { portal?: 'adm
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Quote history</h2>
             <div className="mt-3 divide-y divide-gray-100">{selectedLead.quotes.map((quote) => {
+              const opportunityQuery = `opportunity=${encodeURIComponent(selectedLead.id)}`
               const quoteHref = portal === 'agent' && data.actor.availabilityAssigneeId
-                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}`
-                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}`
+                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
+                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>

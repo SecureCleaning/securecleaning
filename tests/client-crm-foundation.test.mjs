@@ -132,8 +132,8 @@ test('every signature detail shown to a client is mandatory for a sender', () =>
     'alex@securecleaning.com.au',
     'Secure Cleaning',
     'securecleaning.com.au',
-    'ABN 81 674 121 825',
   ]) assert.match(signature, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  assert.doesNotMatch(signature, /ABN/)
 })
 
 test('source disclosure and template fields are deterministic and non-empty', () => {
@@ -157,7 +157,25 @@ test('the centrally generated footer includes disclosure and unsubscribe link', 
   const footer = buildCrmFooter('we received your details from Example Leads', 'https://securecleaning.com.au/unsubscribe?token=test')
   assert.match(footer, /we received your details from Example Leads/)
   assert.match(footer, /unsubscribe here: https:\/\/securecleaning\.com\.au\/unsubscribe\?token=test/)
-  assert.match(footer, /ABN 81 674 121 825/)
+  assert.doesNotMatch(footer, /ABN/)
+})
+
+test('CRM email details link to their canonical editors and omit the ABN', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const teamAccess = source('src/components/admin/StaffAccessAdmin.tsx')
+  const teamPage = source('src/app/admin/staff/page.tsx')
+  const email = source('src/lib/clientCrmEmail.ts')
+
+  assert.match(workspace, /Edit source wording/)
+  assert.match(workspace, /Edit sender details/)
+  assert.match(workspace, /\/admin\/staff\?account=/)
+  assert.match(workspace, /data\.actor\.role === 'owner'/)
+  assert.match(teamAccess, /initialAccountId/)
+  assert.match(teamAccess, /Back to client record/)
+  assert.match(teamPage, /\^\\\/admin\\\/clients/)
+  assert.doesNotMatch(workspace, /ABN 81 674 121 825/)
+  assert.doesNotMatch(teamAccess, /ABN 81 674 121 825/)
+  assert.doesNotMatch(email, /ABN 81 674 121 825/)
 })
 
 test('team account creation and editing enforce canonical signature fields', () => {
@@ -232,10 +250,38 @@ test('owner and manager sender selection is explicit while agents remain locked 
 })
 
 test('quote history links to the correct admin or regional-agent editor', () => {
+  const data = source('src/lib/clientCrmData.ts')
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
-  assert.match(workspace, /`\/admin\/quotes\/\$\{encodeURIComponent\(quote\.quoteRef\)\}`/)
-  assert.match(workspace, /`\/availability\/quotes\/\$\{encodeURIComponent\(data\.actor\.availabilityAssigneeId\)\}\/\$\{encodeURIComponent\(quote\.quoteRef\)\}`/)
+  const adminQuote = source('src/app/admin/quotes/[ref]/page.tsx')
+  const agentQuote = source('src/app/availability/quotes/[assigneeId]/[ref]/page.tsx')
+  assert.match(data, /order\('sequence_number', \{ ascending: false \}\)/)
+  assert.match(data, /right\.sequenceNumber - left\.sequenceNumber/)
+  assert.match(workspace, /`\/admin\/quotes\/\$\{encodeURIComponent\(quote\.quoteRef\)\}\?\$\{opportunityQuery\}`/)
+  assert.match(workspace, /`\/availability\/quotes\/\$\{encodeURIComponent\(data\.actor\.availabilityAssigneeId\)\}\/\$\{encodeURIComponent\(quote\.quoteRef\)\}\?\$\{opportunityQuery\}`/)
   assert.match(workspace, />Open quote</)
+  assert.match(adminQuote, /Back to client record/)
+  assert.match(agentQuote, /Back to client record/)
+  assert.match(workspace, /initialOpportunityId/)
+})
+
+test('explicit CRM ownership extends regional quote access without rewriting quote locations', () => {
+  const access = source('src/lib/clientCrmQuoteAccess.ts')
+  const quotePage = source('src/app/availability/quotes/[assigneeId]/[ref]/page.tsx')
+  const quoteList = source('src/app/availability/quotes/[assigneeId]/page.tsx')
+  const workflow = source('src/app/api/availability-agent/[assigneeId]/quotes/[ref]/workflow/route.ts')
+  const send = source('src/app/api/availability-agent/[assigneeId]/quotes/[ref]/send/route.ts')
+
+  assert.match(access, /\.eq\('availability_assignee_id', assigneeId\)/)
+  assert.match(access, /\.eq\('role', 'agent'\)/)
+  assert.match(access, /\.eq\('active', true\)/)
+  assert.match(access, /\.from\('crm_opportunities'\)[\s\S]*\.in\('assigned_staff_id', staffIds\)/)
+  assert.match(access, /\.from\('crm_opportunity_quotes'\)[\s\S]*\.in\('quote_id', ids\)/)
+  assert.match(access, /quoteMatchesAgentServiceRegion[\s\S]*getCrmAssignedQuoteOpportunities/)
+  assert.match(quotePage, /canAvailabilityAgentAccessQuote/)
+  assert.match(workflow, /canAvailabilityAgentAccessQuote/)
+  assert.match(send, /canAvailabilityAgentAccessQuote/)
+  assert.match(quoteList, /quoteMatchesAgentServiceRegion[\s\S]*crmAssignments\.has/)
+  assert.doesNotMatch(access, /\.from\('quotes'\)\.update/)
 })
 
 test('current website copy uses the Secure Cleaning text brand consistently', () => {

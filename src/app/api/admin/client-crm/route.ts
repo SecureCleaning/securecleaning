@@ -9,6 +9,8 @@ import {
   updateCrmOpportunity,
 } from '@/lib/clientCrmData'
 import { sendClientCrmEmail } from '@/lib/clientCrmEmail'
+import { getContractProductActor } from '@/lib/contractProductAuth'
+import { closeOpportunityWonAndCreateProduct, ContractProductError } from '@/lib/contractProducts'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,6 +40,11 @@ export async function POST(request: NextRequest) {
     if (action === 'opportunity.update') {
       return NextResponse.json({ success: true, result: await updateCrmOpportunity(actor, body) })
     }
+    if (action === 'opportunity.close-won') {
+      const productActor = await getContractProductActor(request)
+      if (!productActor) return NextResponse.json({ success: false, error: 'Contract product access required.' }, { status: 403 })
+      return NextResponse.json({ success: true, result: await closeOpportunityWonAndCreateProduct(productActor, body) })
+    }
     if (action === 'template.save') {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })
     }
@@ -48,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ success: false, error: 'Select a valid Client CRM action.' }, { status: 400 })
   } catch (error) {
-    if (error instanceof ClientCrmError) {
+    if (error instanceof ClientCrmError || error instanceof ContractProductError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status })
     }
     console.error('[api/admin/client-crm] Operation failed:', error)

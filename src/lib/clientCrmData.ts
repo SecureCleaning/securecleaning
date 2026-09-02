@@ -26,6 +26,9 @@ export type CrmQuoteHistory = {
   status: string
   sequenceNumber: number
   createdAt: string
+  hasFinalDocument: boolean
+  finalDocumentVersion: number | null
+  finalQuoteSentAt: string | null
 }
 
 export type CrmOpportunity = {
@@ -56,6 +59,8 @@ export type CrmOpportunity = {
   updatedAt: string
   suppressed: boolean
   hasContactUnresolvedEmail: boolean
+  productId: string | null
+  productStatus: string | null
   quotes: CrmQuoteHistory[]
   communications: CrmCommunication[]
 }
@@ -295,7 +300,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       ? db.from('crm_opportunity_intakes').select('opportunity_id, lead_id, linked_at').in('opportunity_id', opportunityIds).order('linked_at', { ascending: true })
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
-      ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: true })
+      ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
     ? await db.from('crm_communications')
@@ -313,16 +318,20 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
 
   const intakeIds = Array.from(new Set((intakeLinks.data ?? []).map((row) => String(row.lead_id))))
   const quoteIds = Array.from(new Set((quoteLinks.data ?? []).map((row) => String(row.quote_id))))
-  const [intakes, quotes] = await Promise.all([
+  const [intakes, quotes, products] = await Promise.all([
     intakeIds.length > 0
       ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis').in('id', intakeIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length > 0
-      ? db.from('quotes').select('id, quote_ref, status, created_at').in('id', quoteIds)
+      ? db.from('quotes').select('id, quote_ref, status, created_at, final_quote_document, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
+      : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length > 0
+      ? db.from('contract_products').select('id, opportunity_id, status').in('opportunity_id', opportunityIds)
       : Promise.resolve({ data: [], error: null }),
   ])
   if (intakes.error) throw intakes.error
   if (quotes.error) throw quotes.error
+  if (products.error) throw products.error
 
   const contactsById = new Map((contacts.data ?? []).map((row) => [String(row.id), row]))
   const sitesById = new Map((sites.data ?? []).map((row) => [String(row.id), row]))
@@ -349,6 +358,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     communicationsByOpportunity.set(item.opportunityId, [...(communicationsByOpportunity.get(item.opportunityId) ?? []), item])
   }
   const quotesById = new Map((quotes.data ?? []).map((row) => [String(row.id), row]))
+  const productsByOpportunity = new Map((products.data ?? []).map((row) => [String(row.opportunity_id), row]))
   const quotesByOpportunity = new Map<string, CrmQuoteHistory[]>()
   for (const link of quoteLinks.data ?? []) {
     const quote = quotesById.get(String(link.quote_id))
@@ -360,6 +370,9 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       status: String(quote.status ?? ''),
       sequenceNumber: Number(link.sequence_number),
       createdAt: String(quote.created_at ?? ''),
+      hasFinalDocument: Boolean(quote.final_quote_document),
+      finalDocumentVersion: typeof quote.final_quote_document_version === 'number' ? quote.final_quote_document_version : null,
+      finalQuoteSentAt: typeof quote.final_quote_sent_at === 'string' ? quote.final_quote_sent_at : null,
     }])
   }
 
@@ -371,6 +384,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     const site = siteId ? sitesById.get(siteId) : null
     const intake = primaryIntakeByOpportunity.get(id)
     const assignedStaffId = typeof row.assigned_staff_id === 'string' ? row.assigned_staff_id : null
+    const product = productsByOpportunity.get(id)
     return {
       id,
       organisationId: typeof row.organisation_id === 'string' ? row.organisation_id : null,
@@ -399,7 +413,12 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       updatedAt: String(row.updated_at ?? row.created_at ?? ''),
       suppressed: suppressedEmails.has(normalizeCrmEmail(contact?.email)),
       hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
-      quotes: quotesByOpportunity.get(id) ?? [],
+      productId: product?.id ? String(product.id) : null,
+      productStatus: product?.status ? String(product.status) : null,
+      quotes: [...(quotesByOpportunity.get(id) ?? [])].sort((left, right) => (
+        right.sequenceNumber - left.sequenceNumber
+        || right.createdAt.localeCompare(left.createdAt)
+      )),
       communications: communicationsByOpportunity.get(id) ?? [],
     }
   })
@@ -517,6 +536,9 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
   const intakeUpdate: Record<string, unknown> = {}
   const stage = input.stage === undefined ? undefined : normalizeCrmStage(input.stage)
   if (input.stage !== undefined && !stage) throw new ClientCrmError('Select a valid opportunity stage.')
+  if (stage === 'won' && current.stage !== 'won') {
+    throw new ClientCrmError('Use Close as won so the winning final quote and contract product are created together.', 409)
+  }
   if (stage && current.closed_at && stage !== current.stage) {
     throw new ClientCrmError('Closed opportunities are retained as history. Start a new opportunity for a repeat sales cycle.', 409)
   }

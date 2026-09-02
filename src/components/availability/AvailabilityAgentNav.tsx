@@ -47,6 +47,16 @@ export default function AvailabilityAgentNav({
           </a>
         ) : null}
         {assigneeId ? (
+          <a href={`/availability/products/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
+            Contract products
+          </a>
+        ) : null}
+        {assigneeId ? (
+          <a href={`/availability/sales/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
+            Product sales
+          </a>
+        ) : null}
+        {assigneeId ? (
           <a href={`/availability/cleaners/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
             Cleaners
           </a>

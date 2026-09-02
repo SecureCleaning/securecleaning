@@ -4,6 +4,8 @@ const tabs = [
   { href: '/admin', label: 'Overview' },
   { href: '/admin/sites', label: 'Sites' },
   { href: '/admin/clients', label: 'Clients' },
+  { href: '/admin/products', label: 'Contract Products' },
+  { href: '/admin/sales', label: 'Product Sales' },
   { href: '/admin/content', label: 'Content' },
   { href: '/admin/pricing', label: 'Pricing' },
   { href: '/admin/room-types', label: 'Room Types' },

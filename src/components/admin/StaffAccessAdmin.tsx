@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
 import { canAccessClientCrm } from '@/lib/clientCrmPolicy'
@@ -29,7 +29,7 @@ function emptyDraft(): AccountDraft {
   return { displayName: '', email: '', jobTitle: '', phone: '', role: 'agent', active: true, password: '', availabilityAssigneeId: '' }
 }
 
-export default function StaffAccessAdmin() {
+export default function StaffAccessAdmin({ initialAccountId = '', returnHref = '' }: { initialAccountId?: string; returnHref?: string }) {
   const [accounts, setAccounts] = useState<StaffAccount[]>([])
   const [username, setUsername] = useState('')
   const [draft, setDraft] = useState<AccountDraft>(emptyDraft)
@@ -39,14 +39,25 @@ export default function StaffAccessAdmin() {
   const [isSaving, setIsSaving] = useState(false)
   const [isMigrating, setIsMigrating] = useState(false)
   const [profiles, setProfiles] = useState<Array<{ id: string; name: string; city: string; active: boolean }>>([])
+  const initialSelectionApplied = useRef(false)
 
-  async function loadAccounts() {
+  const loadAccounts = useCallback(async () => {
     setIsLoading(true)
     try {
       const response = await fetch('/api/admin/staff')
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to load staff accounts.')
-      setAccounts(result.accounts as StaffAccount[])
+      const loadedAccounts = result.accounts as StaffAccount[]
+      setAccounts(loadedAccounts)
+      if (!initialSelectionApplied.current && initialAccountId) {
+        const requestedAccount = loadedAccounts.find((account) => account.id === initialAccountId)
+        if (requestedAccount) {
+          setEditingId(requestedAccount.id)
+          setUsername(requestedAccount.username)
+          setDraft({ displayName: requestedAccount.displayName, email: requestedAccount.email, jobTitle: requestedAccount.jobTitle, phone: requestedAccount.phone, role: requestedAccount.role, active: requestedAccount.active, password: '', availabilityAssigneeId: requestedAccount.availabilityAssigneeId ?? '' })
+        }
+        initialSelectionApplied.current = true
+      }
       const availabilityResponse = await fetch('/api/admin/availability')
       if (availabilityResponse.ok) {
         const availabilityResult = await availabilityResponse.json()
@@ -62,9 +73,9 @@ export default function StaffAccessAdmin() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [initialAccountId])
 
-  useEffect(() => { void loadAccounts() }, [])
+  useEffect(() => { void loadAccounts() }, [loadAccounts])
 
   function resetForm() {
     setUsername('')
@@ -122,7 +133,7 @@ export default function StaffAccessAdmin() {
 
   return (
     <div>
-      <AdminPageHeader title="Team access" description="Create team logins, link regional agents to their service profile, and maintain the contact details used in client email signatures." />
+      <AdminPageHeader title="Team access" description="Create team logins, link regional agents to their service profile, and maintain the contact details used in client email signatures." backHref={returnHref || '/admin'} backLabel={returnHref ? 'Back to client record' : 'Back to overview'} />
 
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-teal-100 bg-teal-50 p-5">
           <div>
@@ -144,7 +155,7 @@ export default function StaffAccessAdmin() {
             {draft.role === 'agent' ? <div><label className="mb-1 block text-sm font-medium text-gray-700">Linked regional profile</label><select value={draft.availabilityAssigneeId} onChange={(event) => setDraft({ ...draft, availabilityAssigneeId: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" required><option value="">Select a profile</option>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} ({profile.city}){profile.active ? '' : ' - inactive'}</option>)}</select><p className="mt-1 text-xs text-gray-500">This controls which quotes, bookings, and calendar the agent can access.</p></div> : null}
             <div><label className="mb-1 block text-sm font-medium text-gray-700">{editingId ? 'New password (optional)' : 'Password'}</label><input type="password" minLength={12} value={draft.password} onChange={(event) => setDraft({ ...draft, password: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" required={!editingId} autoComplete="new-password" /><p className="mt-1 text-xs text-gray-500">Use at least 12 characters.</p></div>
           </div>
-          {canAccessClientCrm(draft.role) ? <div className="rounded-xl border border-teal-100 bg-teal-50 p-4"><div className="text-sm font-semibold text-teal-900">Client email signature preview</div><div className="mt-2 whitespace-pre-line text-sm leading-6 text-teal-950">{`Kind regards,\n\n${draft.displayName || 'Full name'}\n${draft.jobTitle || 'Position title'}\nSecure Cleaning\n${draft.phone || 'Work phone'}\n${draft.email || 'Work email'}\nsecurecleaning.com.au\nABN 81 674 121 825`}</div><p className="mt-2 text-xs text-teal-800">The verified Secure Cleaning mailbox sends the email. Replies go directly to this work email.</p></div> : null}
+          {canAccessClientCrm(draft.role) ? <div className="rounded-xl border border-teal-100 bg-teal-50 p-4"><div className="text-sm font-semibold text-teal-900">Client email signature preview</div><div className="mt-2 whitespace-pre-line text-sm leading-6 text-teal-950">{`Kind regards,\n\n${draft.displayName || 'Full name'}\n${draft.jobTitle || 'Position title'}\nSecure Cleaning\n${draft.phone || 'Work phone'}\n${draft.email || 'Work email'}\nsecurecleaning.com.au`}</div><p className="mt-2 text-xs text-teal-800">The verified Secure Cleaning mailbox sends the email. Replies go directly to this work email.</p></div> : null}
           {editingId ? <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /> Active account</label> : null}
           <div className="flex flex-wrap gap-3"><button type="submit" disabled={isSaving} className="rounded-lg px-5 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1fb56c' }}>{isSaving ? 'Saving...' : editingId ? 'Save account' : 'Create account'}</button>{editingId ? <button type="button" onClick={resetForm} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">Cancel</button> : null}</div>
           {status.message ? <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-700'}`}>{status.message}</p> : null}

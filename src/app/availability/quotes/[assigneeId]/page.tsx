@@ -1,8 +1,9 @@
 import AgentQuoteDashboard, { type AgentQuoteRow } from '@/components/availability/AgentQuoteDashboard'
 import AvailabilityAgentLogin from '@/components/availability/AvailabilityAgentLogin'
 import AvailabilityAgentNav from '@/components/availability/AvailabilityAgentNav'
-import { getAssigneeServiceZones, getAvailabilityAssignee, getAvailabilityConfig, locationMatchesServiceZones } from '@/lib/availability'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { hasAvailabilityAgentSession } from '@/lib/availabilityAgentAuth'
+import { getCrmAssignedQuoteOpportunities, quoteMatchesAgentServiceRegion } from '@/lib/clientCrmQuoteAccess'
 import { getAdminSupabase } from '@/lib/supabase'
 import type { QuoteInputs } from '@/lib/types'
 
@@ -23,18 +24,17 @@ export default async function AvailabilityQuotesPage({ params }: { params: Promi
 
   const { data, error } = await getAdminSupabase()
     .from('quotes')
-    .select('quote_ref, status, created_at, inputs')
+    .select('id, quote_ref, status, created_at, inputs')
     .order('created_at', { ascending: false })
     .limit(500)
 
   if (error) console.error('[availabilityQuotes] quote load failed:', error)
 
-  const serviceZones = getAssigneeServiceZones(config, assigneeId)
-  const hasConfiguredZones = serviceZones.length > 0
+  const crmAssignments = await getCrmAssignedQuoteOpportunities(assigneeId, (data ?? []).map((row) => String(row.id)))
   const quotes: AgentQuoteRow[] = (data ?? []).flatMap((row) => {
     const inputs = row.inputs as QuoteInputs | undefined
-    if (!inputs || inputs.city !== assignee.city) return []
-    if (hasConfiguredZones && !locationMatchesServiceZones(inputs, inputs.city, serviceZones)) return []
+    if (!inputs) return []
+    if (!quoteMatchesAgentServiceRegion(config, assigneeId, inputs) && !crmAssignments.has(String(row.id))) return []
     return [{
       quoteRef: row.quote_ref,
       status: row.status,
