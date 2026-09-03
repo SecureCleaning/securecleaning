@@ -166,7 +166,7 @@ export interface BookingInputs {
   latitude?: number
   longitude?: number
   premisesType: PremisesType
-  floorArea: number
+  floorArea?: number
   frequency: CleaningFrequency
   timePreference: TimePreference
   preferredStartDate: string  // ISO date string

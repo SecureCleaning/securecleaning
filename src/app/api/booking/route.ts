@@ -58,6 +58,16 @@ export async function POST(request: NextRequest) {
 
     const rawInputs = body as BookingInputs
     const { latitude: _browserLatitude, longitude: _browserLongitude, ...inputs } = rawInputs
+
+    if (
+      inputs.floorArea !== undefined
+      && (!Number.isFinite(inputs.floorArea) || inputs.floorArea <= 0 || inputs.floorArea > 10_000_000)
+    ) {
+      return NextResponse.json(
+        { success: false, error: 'Floor area must be a positive number when provided.' },
+        { status: 400 },
+      )
+    }
     const businessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
     const identityLimit =
       rateLimitValue(inputs.email, { key: 'booking:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
@@ -75,7 +85,6 @@ export async function POST(request: NextRequest) {
       'suburb',
       'postcode',
       'premisesType',
-      'floorArea',
       'frequency',
       'timePreference',
       'preferredStartDate',

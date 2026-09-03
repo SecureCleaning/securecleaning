@@ -53,7 +53,7 @@ export async function createSiteFromBooking(inputs: BookingInputs, clientId?: st
       postcode: inputs.postcode ?? null,
       city: inputs.city,
       premises_type: inputs.premisesType,
-      floor_area: inputs.floorArea,
+      floor_area: inputs.floorArea ?? null,
       access_notes: inputs.notes ?? null,
       is_active: true,
     })

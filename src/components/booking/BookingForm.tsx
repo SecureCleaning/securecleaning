@@ -11,6 +11,7 @@ import LocalityAutocomplete from '@/components/shared/LocalityAutocomplete'
 import type { BookingInputs, City, PremisesType, CleaningFrequency, TimePreference, QuoteAddOns } from '@/lib/types'
 import { getBookingPrefillFromQuote } from '@/lib/quoteSession'
 import { buildBookingPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
+import { getTomorrowDateString, parseOptionalFloorArea } from '@/lib/bookingFormPolicy'
 
 const defaultAddOns: QuoteAddOns = {
   bathrooms: 0,
@@ -51,19 +52,6 @@ const timeOptions = [
   { value: 'after_hours', label: 'After Hours (sometimes cheaper!)' },
   { value: 'weekend', label: 'Weekend (sometimes cheaper!)' },
 ]
-
-// Get 14 days from now as default start
-function getDefaultStart(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 14)
-  return d.toISOString().split('T')[0]
-}
-
-function getTomorrowStr(): string {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
 
 type FormErrors = Partial<Record<keyof BookingInputs, string>>
 
@@ -107,8 +95,9 @@ function validate(data: Partial<BookingInputs>, hasAvailabilityOptions: boolean)
   if (!data.postcode?.trim()) errors.postcode = 'Required'
   else if (!/^\d{4}$/.test(data.postcode)) errors.postcode = 'Invalid postcode'
   if (!data.premisesType) errors.premisesType = 'Required'
-  if (!data.floorArea || data.floorArea <= 0) errors.floorArea = 'Required'
-  else if (data.floorArea <= 0) errors.floorArea = 'Enter a floor area greater than 0 sqm'
+  if (data.floorArea !== undefined && (!Number.isFinite(data.floorArea) || data.floorArea <= 0)) {
+    errors.floorArea = 'Enter a floor area greater than 0 sqm'
+  }
   if (!data.frequency) errors.frequency = 'Required'
   if (!data.timePreference) errors.timePreference = 'Required'
   if (!data.preferredStartDate) errors.preferredStartDate = 'Please select a start date'
@@ -127,9 +116,8 @@ export default function BookingForm() {
 
   const [formData, setFormData] = useState<Partial<BookingInputs>>({
     quoteRef,
-    preferredStartDate: getDefaultStart(),
+    preferredStartDate: getTomorrowDateString(),
     addOns: defaultAddOns,
-    floorArea: 0,
     suburb: '',
     postcode: '',
     formStartedAt: Date.now(),
@@ -161,7 +149,7 @@ export default function BookingForm() {
         ...quotePrefill,
         quoteRef: quotePrefill.quoteRef ?? quoteRef,
         preferredStartDate:
-          quotePrefill.preferredStartDate ?? current.preferredStartDate ?? getDefaultStart(),
+          quotePrefill.preferredStartDate ?? current.preferredStartDate ?? getTomorrowDateString(),
         addOns: quotePrefill.addOns ?? current.addOns ?? defaultAddOns,
         floorArea: quotePrefill.floorArea ?? current.floorArea,
         formStartedAt: current.formStartedAt ?? Date.now(),
@@ -198,7 +186,7 @@ export default function BookingForm() {
           ...current,
           ...remotePrefill,
           quoteRef,
-          preferredStartDate: remotePrefill.preferredStartDate ?? current.preferredStartDate ?? getDefaultStart(),
+          preferredStartDate: remotePrefill.preferredStartDate ?? current.preferredStartDate ?? getTomorrowDateString(),
           addOns: remotePrefill.addOns ?? current.addOns ?? defaultAddOns,
           floorArea: remotePrefill.floorArea ?? current.floorArea,
           formStartedAt: current.formStartedAt ?? Date.now(),
@@ -411,8 +399,8 @@ export default function BookingForm() {
           </div>
           <Select label="Premises Type" options={premisesOptions} placeholder="Select type…" required
             value={formData.premisesType ?? ''} onChange={(e) => update({ premisesType: e.target.value as PremisesType })} error={errors.premisesType} />
-          <Input label="Floor Area (sqm)" type="number" min={0} required
-            value={formData.floorArea || ''} onChange={(e) => update({ floorArea: Number(e.target.value) })} error={errors.floorArea} />
+          <Input label="Floor Area (sqm)" type="number" min={1} placeholder="100"
+            value={formData.floorArea ?? ''} onChange={(e) => update({ floorArea: parseOptionalFloorArea(e.target.value) })} error={errors.floorArea} />
         </div>
 
         <div className="mt-4">
@@ -585,9 +573,9 @@ export default function BookingForm() {
         {!contactMeSelected ? (
           <CalendarPicker
             label="Preferred inspection date"
-            value={formData.preferredStartDate ?? getDefaultStart()}
+            value={formData.preferredStartDate ?? getTomorrowDateString()}
             onChange={(date) => update({ preferredStartDate: date })}
-            minDate={getTomorrowStr()}
+            minDate={getTomorrowDateString()}
             availableDates={availabilityDates}
             error={errors.preferredStartDate}
           />
