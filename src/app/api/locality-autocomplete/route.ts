@@ -37,6 +37,8 @@ export async function GET(request: NextRequest) {
     suburb: suggestion.suburb,
     postcode: suggestion.postcode,
     state: australianStateNames[suggestion.state] ?? suggestion.state,
+    latitude: suggestion.latitude,
+    longitude: suggestion.longitude,
   }))
   const boundedQuery = `${query}, ${australianStateNames[state]}, Australia`
   const url = new URL('https://nominatim.openstreetmap.org/search')
@@ -77,6 +79,8 @@ export async function GET(request: NextRequest) {
         suburb: suggestion.suburb,
         postcode: suggestion.postcode,
         state: australianStateNames[suggestion.state] ?? suggestion.state,
+        latitude: suggestion.latitude,
+        longitude: suggestion.longitude,
       }))
 
     return NextResponse.json({ suggestions })

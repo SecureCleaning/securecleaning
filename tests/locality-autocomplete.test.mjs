@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  australianLocalities,
   getAustralianLocalitySuggestions,
   getNominatimLocalitySuggestions,
 } from '../src/lib/australianLocalities.ts'
@@ -18,15 +19,45 @@ test('Parramatta search returns the actual NSW suburb and postcode', () => {
     postcode: '2150',
     city: 'Sydney',
     state: 'NSW',
+    latitude: -33.82,
+    longitude: 151.01,
   })
+})
+
+test('bundled locality coverage includes every delivery area in the approved NSW and VIC snapshot', () => {
+  assert.equal(australianLocalities.length, 7896)
+  assert.equal(australianLocalities.filter(({ state }) => state === 'NSW').length, 4750)
+  assert.equal(australianLocalities.filter(({ state }) => state === 'VIC').length, 3146)
+  assert.ok(australianLocalities.every(({ postcode }) => /^\d{4}$/.test(postcode)))
+})
+
+test('locality matches include coordinates when the source provides them and preserve missing values safely', () => {
+  const [preston] = getAustralianLocalitySuggestions({ query: 'preston', state: 'VIC' })
+  assert.deepEqual(preston, {
+    suburb: 'Preston',
+    postcode: '3072',
+    city: 'Melbourne',
+    state: 'VIC',
+    latitude: -37.74,
+    longitude: 145.03,
+  })
+  assert.equal(australianLocalities.filter(({ latitude, longitude }) => latitude === undefined || longitude === undefined).length, 247)
 })
 
 test('postcode search remains bounded to the selected state', () => {
   const suggestions = getAustralianLocalitySuggestions({ query: '3121', state: 'VIC' })
 
-  assert.deepEqual(suggestions.map(({ suburb, postcode, state }) => ({ suburb, postcode, state })), [
-    { suburb: 'Richmond', postcode: '3121', state: 'VIC' },
+  assert.deepEqual(suggestions.map(({ suburb }) => suburb), [
+    'Burnley',
+    'Burnley North',
+    'Cremorne',
+    'Richmond',
+    'Richmond East',
+    'Richmond North',
+    'Richmond South',
   ])
+  assert.ok(suggestions.every(({ postcode, state }) => postcode === '3121' && state === 'VIC'))
+  assert.equal(getAustralianLocalitySuggestions({ query: '3121', state: 'NSW' }).length, 0)
 })
 
 test('remote locality parsing does not substitute the metropolitan city for the suburb', () => {

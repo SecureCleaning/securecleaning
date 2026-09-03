@@ -8,6 +8,8 @@ export type LocalitySuggestion = {
   suburb: string
   postcode: string
   state?: string | null
+  latitude?: number
+  longitude?: number
 }
 
 interface LocalityAutocompleteProps {
@@ -17,7 +19,7 @@ interface LocalityAutocompleteProps {
   suburbError?: string
   postcodeError?: string
   required?: boolean
-  onChange: (updates: { suburb: string; postcode: string }) => void
+  onChange: (updates: { suburb: string; postcode: string; latitude?: number; longitude?: number }) => void
 }
 
 export default function LocalityAutocomplete({
@@ -97,7 +99,12 @@ export default function LocalityAutocomplete({
   }, [city, isLoading])
 
   const applySuggestion = (suggestion: LocalitySuggestion) => {
-    onChange({ suburb: suggestion.suburb, postcode: suggestion.postcode })
+    onChange({
+      suburb: suggestion.suburb,
+      postcode: suggestion.postcode,
+      latitude: suggestion.latitude,
+      longitude: suggestion.longitude,
+    })
     setQuery(suggestion.label)
     setSuggestions([])
     setIsOpen(false)

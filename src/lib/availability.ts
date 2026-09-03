@@ -121,6 +121,7 @@ const DAY_ORDER: Weekday[] = [
 // is reserved for travel to the next appointment.
 const INSPECTION_DURATION_MINUTES = 10
 const INSPECTION_BUFFER_MINUTES = 50
+const BLOCKOUT_BUFFER_MINUTES = 60
 
 export const DEFAULT_AVAILABILITY_CONFIG: AvailabilityConfig = {
   settings: {
@@ -559,26 +560,6 @@ function getWeekdayForDate(dateString: string): Weekday | null {
   return dayNames[date.getDay()] ?? null
 }
 
-function buildSlotWindow(dateString: string, startTime: string, endTime: string, city: City) {
-  const timeZone = getCityTimeZone(city)
-  const start = getDateTimeInTimeZone(dateString, startTime, timeZone)
-  const end = getDateTimeInTimeZone(dateString, endTime, timeZone)
-  return { start, end }
-}
-
-function slotIsBlocked(slot: WeeklyAvailabilitySlot, dateString: string, blocks: OneOffAvailabilityBlock[], city: City) {
-  if (!dateString) return false
-  const { start, end } = buildSlotWindow(dateString, slot.startTime, slot.endTime, city)
-
-  return blocks.some((block) => {
-    if (!block.active || block.assigneeId !== slot.assigneeId) return false
-    const blockStart = new Date(block.startsAt)
-    const blockEnd = new Date(block.endsAt)
-    if (Number.isNaN(blockStart.getTime()) || Number.isNaN(blockEnd.getTime())) return false
-    return start < blockEnd && end > blockStart
-  })
-}
-
 function formatDateForAvailability(date: Date): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
 }
@@ -619,6 +600,23 @@ function appointmentOverlapsReservation(
   return start.getTime() < reservation.end.getTime() + bufferMs && end.getTime() + bufferMs > reservation.start.getTime()
 }
 
+export function appointmentStartConflictsWithBlock(
+  appointmentStart: Date,
+  blockStart: Date,
+  blockEnd: Date,
+): boolean {
+  if (
+    Number.isNaN(appointmentStart.getTime())
+    || Number.isNaN(blockStart.getTime())
+    || Number.isNaN(blockEnd.getTime())
+    || blockEnd <= blockStart
+  ) return false
+
+  const bufferMs = BLOCKOUT_BUFFER_MINUTES * 60 * 1000
+  return appointmentStart.getTime() >= blockStart.getTime() - bufferMs
+    && appointmentStart.getTime() < blockEnd.getTime() + bufferMs
+}
+
 export function getInspectionAppointmentWindows(
   startTime: string,
   endTime: string,
@@ -646,6 +644,7 @@ function getAvailableAppointments(
   dateString: string,
   city: City,
   reservations: ReservedInspection[],
+  blocks: OneOffAvailabilityBlock[],
 ): Array<{ startTime: string; endTime: string }> {
   return getInspectionAppointmentWindows(slot.startTime, slot.endTime).filter((appointment) => {
     const start = getDateTimeInTimeZone(dateString, appointment.startTime, getCityTimeZone(city))
@@ -657,7 +656,12 @@ function getAvailableAppointments(
         (reservation.assigneeId === '' || reservation.assigneeId === slot.assigneeId) &&
         appointmentOverlapsReservation(start, end, reservation),
     )
-    return !blocked
+    if (blocked) return false
+
+    return !blocks.some((block) => {
+      if (!block.active || block.assigneeId !== slot.assigneeId) return false
+      return appointmentStartConflictsWithBlock(start, new Date(block.startsAt), new Date(block.endsAt))
+    })
   })
 }
 
@@ -723,14 +727,13 @@ function getAvailabilitySuggestionsForConfig(
       const assignee = assigneeMap.get(slot.assigneeId)
       if (!assignee || !assignee.active) return false
       if (targetDay && slot.day !== targetDay) return false
-      if (preferredDate && slotIsBlocked(slot, preferredDate, config.oneOffBlocks, city)) return false
       return true
     })
     .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.startTime.localeCompare(b.startTime))
     .flatMap((slot) => {
       const assignee = assigneeMap.get(slot.assigneeId)
       const appointments = preferredDate
-        ? getAvailableAppointments(slot, preferredDate, city, reservations)
+        ? getAvailableAppointments(slot, preferredDate, city, reservations, config.oneOffBlocks)
         : [{ startTime: slot.startTime, endTime: timeFromMinutes(minutesFromTime(slot.startTime) + INSPECTION_DURATION_MINUTES) }]
 
       return appointments.map((appointment) => ({

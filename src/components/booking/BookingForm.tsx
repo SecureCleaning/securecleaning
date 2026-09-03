@@ -423,7 +423,7 @@ export default function BookingForm() {
             suburbError={errors.suburb}
             postcodeError={errors.postcode}
             required
-            onChange={({ suburb, postcode }) => update({ suburb, postcode, latitude: undefined, longitude: undefined })}
+            onChange={({ suburb, postcode, latitude, longitude }) => update({ suburb, postcode, latitude, longitude })}
           />
         </div>
       </section>
