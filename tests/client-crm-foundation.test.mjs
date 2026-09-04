@@ -443,3 +443,58 @@ test('CRM migration normalizes opportunities, preserves history, and locks new t
   assert.doesNotMatch(migration, /'transactional', 'shared', 'published'/)
   assert.doesNotMatch(migration, /DROP TABLE|TRUNCATE|DELETE FROM/)
 })
+
+test('client CRM presents structured business, contact, and site editing', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const data = source('src/lib/clientCrmData.ts')
+  const route = source('src/app/api/admin/client-crm/route.ts')
+
+  for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address', 'Suburb', 'Postcode']) {
+    assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  }
+  assert.match(workspace, /action: 'client-record\.update'/)
+  assert.match(route, /action === 'client-record\.update'/)
+  assert.match(data, /db\.rpc\('update_client_crm_profile'/)
+  assert.match(data, /actor\.role === 'agent'[\s\S]*Only an owner or manager can change shared client and site details/)
+})
+
+test('client CRM notes are append-only, internal, attributed, and duplicate-safe', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const data = source('src/lib/clientCrmData.ts')
+  const route = source('src/app/api/admin/client-crm/route.ts')
+  const migration = source('supabase/client_crm_profile_notes_migration.sql')
+
+  assert.match(workspace, /Internal CRM notes/)
+  assert.match(workspace, /never appear in client emails, quotes, or scopes/)
+  assert.match(workspace, /action: 'opportunity-note\.add'/)
+  assert.match(route, /client-crm-note:\$\{actor\.id\}/)
+  assert.match(data, /\.from\('crm_opportunity_notes'\)/)
+  assert.match(data, /db\.rpc\('add_client_crm_note'/)
+  assert.match(data, /export async function getCrmOpportunityNotes/)
+  assert.match(data, /\.limit\(51\)/)
+  assert.match(workspace, /Load older notes/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS crm_opportunity_notes/)
+  assert.match(migration, /author_staff_id UUID REFERENCES admin_staff_accounts/)
+  assert.match(migration, /author_name_snapshot TEXT NOT NULL/)
+  assert.match(migration, /idempotency_key UUID UNIQUE/)
+  assert.match(migration, /ALTER TABLE crm_opportunity_notes ENABLE ROW LEVEL SECURITY/)
+  assert.match(migration, /REVOKE ALL ON TABLE crm_opportunity_notes FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /p_actor_role = 'agent' AND opportunity_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.doesNotMatch(migration, /DELETE FROM crm_opportunity_notes/)
+})
+
+test('CRM profile writes are transactional, concurrent-safe, scoped, and audited', () => {
+  const migration = source('supabase/client_crm_profile_notes_migration.sql')
+  assert.match(migration, /CREATE OR REPLACE FUNCTION update_client_crm_profile/)
+  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager'\)/)
+  assert.match(migration, /SECURITY DEFINER/)
+  assert.match(migration, /FOR UPDATE/)
+  assert.match(migration, /opportunity_row\.updated_at IS DISTINCT FROM p_expected_opportunity_updated_at/)
+  assert.match(migration, /organisation_row\.updated_at IS DISTINCT FROM p_expected_organisation_updated_at/)
+  assert.match(migration, /contact_row\.updated_at IS DISTINCT FROM p_expected_contact_updated_at/)
+  assert.match(migration, /site_row\.updated_at IS DISTINCT FROM p_expected_site_updated_at/)
+  assert.match(migration, /p_actor_role = 'agent' AND opportunity_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.match(migration, /'crm\.profile\.updated'/)
+  assert.match(migration, /'crm\.note\.added'/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION update_client_crm_profile[\s\S]*FROM PUBLIC, anon, authenticated/)
+})

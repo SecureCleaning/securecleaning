@@ -40,7 +40,11 @@ export type CrmOpportunity = {
   email: string
   businessName: string
   contactName: string
+  firstName: string
+  lastName: string
+  positionTitle: string
   phone: string
+  siteName: string
   address: string
   suburb: string
   postcode: string
@@ -57,12 +61,23 @@ export type CrmOpportunity = {
   assignedStaffName: string | null
   createdAt: string
   updatedAt: string
+  organisationUpdatedAt: string
+  contactUpdatedAt: string
+  siteUpdatedAt: string | null
   suppressed: boolean
   hasContactUnresolvedEmail: boolean
   productId: string | null
   productStatus: string | null
   quotes: CrmQuoteHistory[]
   communications: CrmCommunication[]
+  internalNotes: CrmInternalNote[]
+}
+
+export type CrmInternalNote = {
+  id: string
+  body: string
+  authorName: string
+  createdAt: string
 }
 
 export type CrmEmailTemplate = {
@@ -289,12 +304,16 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   const opportunityIds = opportunityRows.map((row) => String(row.id))
   const contactIds = Array.from(new Set(opportunityRows.map((row) => String(row.primary_contact_id ?? '')).filter(Boolean)))
   const siteIds = Array.from(new Set(opportunityRows.map((row) => String(row.site_id ?? '')).filter(Boolean)))
-  const [contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails] = await Promise.all([
+  const organisationIds = Array.from(new Set(opportunityRows.map((row) => String(row.organisation_id ?? '')).filter(Boolean)))
+  const [organisations, contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails] = await Promise.all([
+    organisationIds.length > 0
+      ? db.from('crm_organisations').select('id, business_name, updated_at').in('id', organisationIds)
+      : Promise.resolve({ data: [], error: null }),
     contactIds.length > 0
-      ? db.from('clients').select('id, business_name, contact_name, email, phone, city').in('id', contactIds)
+      ? db.from('clients').select('id, business_name, contact_name, first_name, last_name, position_title, email, phone, city, updated_at').in('id', contactIds)
       : Promise.resolve({ data: [], error: null }),
     siteIds.length > 0
-      ? db.from('sites').select('id, address, suburb, postcode, city').in('id', siteIds)
+      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, updated_at').in('id', siteIds)
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
       ? db.from('crm_opportunity_intakes').select('opportunity_id, lead_id, linked_at').in('opportunity_id', opportunityIds).order('linked_at', { ascending: true })
@@ -312,7 +331,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       ? db.from('crm_communications').select('contact_id').in('contact_id', contactIds).in('status', ['sending', 'unknown'])
       : Promise.resolve({ data: [], error: null }),
   ])
-  for (const result of [contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails]) {
+  for (const result of [organisations, contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails]) {
     if (result.error) throw result.error
   }
 
@@ -333,6 +352,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   if (quotes.error) throw quotes.error
   if (products.error) throw products.error
 
+  const organisationsById = new Map((organisations.data ?? []).map((row) => [String(row.id), row]))
   const contactsById = new Map((contacts.data ?? []).map((row) => [String(row.id), row]))
   const sitesById = new Map((sites.data ?? []).map((row) => [String(row.id), row]))
   const intakesById = new Map((intakes.data ?? []).map((row) => [String(row.id), row]))
@@ -382,6 +402,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     const siteId = typeof row.site_id === 'string' ? row.site_id : null
     const contact = contactsById.get(contactId)
     const site = siteId ? sitesById.get(siteId) : null
+    const organisation = organisationsById.get(String(row.organisation_id ?? ''))
     const intake = primaryIntakeByOpportunity.get(id)
     const assignedStaffId = typeof row.assigned_staff_id === 'string' ? row.assigned_staff_id : null
     const product = productsByOpportunity.get(id)
@@ -392,14 +413,18 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       siteId,
       cycleNumber: Number(row.cycle_number ?? 1),
       email: String(contact?.email ?? ''),
-      businessName: String(contact?.business_name ?? ''),
+      businessName: String(organisation?.business_name ?? contact?.business_name ?? ''),
       contactName: String(contact?.contact_name ?? ''),
+      firstName: String(contact?.first_name ?? '').trim() || String(contact?.contact_name ?? '').trim().split(/\s+/)[0] || '',
+      lastName: String(contact?.last_name ?? '').trim() || String(contact?.contact_name ?? '').trim().split(/\s+/).slice(1).join(' '),
+      positionTitle: String(contact?.position_title ?? ''),
       phone: String(contact?.phone ?? ''),
+      siteName: String(site?.site_name ?? ''),
       address: String(site?.address ?? ''),
       suburb: String(site?.suburb ?? ''),
       postcode: String(site?.postcode ?? ''),
       city: cityFromInput(site?.city ?? contact?.city),
-      state: (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : 'VIC',
+      state: (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : (site?.city ?? contact?.city) === 'melbourne' ? 'VIC' : '',
       sourceType: String(intake?.source ?? 'manual'),
       sourceProvider: String(intake?.source_provider ?? ''),
       sourceExplanation: String(intake?.source_explanation ?? ''),
@@ -411,6 +436,9 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       assignedStaffName: assignedStaffId ? agentNames.get(assignedStaffId) ?? null : null,
       createdAt: String(row.created_at ?? ''),
       updatedAt: String(row.updated_at ?? row.created_at ?? ''),
+      organisationUpdatedAt: String(organisation?.updated_at ?? ''),
+      contactUpdatedAt: String(contact?.updated_at ?? ''),
+      siteUpdatedAt: site?.updated_at ? String(site.updated_at) : null,
       suppressed: suppressedEmails.has(normalizeCrmEmail(contact?.email)),
       hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
       productId: product?.id ? String(product.id) : null,
@@ -420,6 +448,12 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
         || right.createdAt.localeCompare(left.createdAt)
       )),
       communications: communicationsByOpportunity.get(id) ?? [],
+      internalNotes: String(row.notes ?? '').trim() ? [{
+        id: `legacy-${id}`,
+        body: String(row.notes).trim(),
+        authorName: 'Imported CRM note',
+        createdAt: String(row.created_at ?? ''),
+      }] : [],
     }
   })
 
@@ -431,6 +465,152 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     ))
 
   return { opportunities, templates, agents, senders, actor }
+}
+
+export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
+  if (actor.role === 'agent') {
+    throw new ClientCrmError('Only an owner or manager can change shared client and site details.', 403)
+  }
+  const opportunityId = clean(input.opportunityId, 100)
+  const businessName = clean(input.businessName, 200)
+  const firstName = clean(input.firstName, 100)
+  const lastName = clean(input.lastName, 100)
+  const positionTitle = clean(input.positionTitle, 160)
+  const email = normalizeCrmEmail(input.email)
+  const phone = clean(input.phone, 40)
+  const siteName = clean(input.siteName, 200)
+  const address = clean(input.address, 300)
+  const suburb = clean(input.suburb, 120)
+  const postcode = normalizeCrmPostcode(input.postcode)
+  if (!opportunityId || !businessName || (!firstName && !lastName) || !isValidCrmEmail(email)) {
+    throw new ClientCrmError('Provide the business, contact name, and a valid email.')
+  }
+
+  const db = getAdminSupabase()
+  const { data: current, error: currentError } = await db.from('crm_opportunities')
+    .select('id, assigned_staff_id, primary_contact_id, site_id')
+    .eq('id', opportunityId)
+    .maybeSingle()
+  if (currentError) throw currentError
+  if (!current || !canActorAccessAssignedOpportunity(actor.role, actor.id, current.assigned_staff_id)) {
+    throw new ClientCrmError('Opportunity not found.', 404)
+  }
+  if (current.site_id && (!address || !postcode)) throw new ClientCrmError('Enter the site street address and four-digit postcode.')
+  const { data: emailMatches, error: emailMatchError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
+  if (emailMatchError) throw emailMatchError
+  if (((emailMatches ?? []) as Array<Record<string, unknown>>).some((row) => String(row.id) !== String(current.primary_contact_id))) {
+    throw new ClientCrmError('That email belongs to another CRM contact. Reconcile the records before saving.', 409)
+  }
+
+  const { data, error } = await db.rpc('update_client_crm_profile', {
+    p_opportunity_id: opportunityId,
+    p_expected_opportunity_updated_at: clean(input.expectedOpportunityUpdatedAt, 100),
+    p_expected_organisation_updated_at: clean(input.expectedOrganisationUpdatedAt, 100),
+    p_expected_contact_updated_at: clean(input.expectedContactUpdatedAt, 100),
+    p_expected_site_updated_at: clean(input.expectedSiteUpdatedAt, 100) || null,
+    p_business_name: businessName,
+    p_first_name: firstName,
+    p_last_name: lastName,
+    p_position_title: positionTitle,
+    p_email: email,
+    p_phone: phone,
+    p_site_name: siteName,
+    p_address: address,
+    p_suburb: suburb,
+    p_postcode: postcode,
+    p_actor_id: actor.id,
+    p_actor_role: actor.role,
+  })
+  if (error?.code === '40001') throw new ClientCrmError('These client details changed while you were editing. Reload and apply your update again.', 409)
+  if (error?.code === '23505') throw new ClientCrmError('That email or site already belongs to another CRM record. Reconcile the records before saving.', 409)
+  if (error?.code === '42501') throw new ClientCrmError('You do not have access to update this client record.', 403)
+  if (error) throw error
+  return { id: String(data) }
+}
+
+export async function getCrmOpportunityNotes(actor: ClientCrmActor, opportunityIdInput: unknown, beforeInput?: unknown) {
+  const opportunityId = clean(opportunityIdInput, 100)
+  const before = clean(beforeInput, 100)
+  if (!opportunityId) throw new ClientCrmError('Opportunity ID is required.')
+  const [beforeCreatedAt = '', beforeId = ''] = before.split('|')
+  if (before && (Number.isNaN(new Date(beforeCreatedAt).getTime()) || !/^[0-9a-f-]{36}$/i.test(beforeId))) {
+    throw new ClientCrmError('Invalid notes cursor.')
+  }
+
+  const db = getAdminSupabase()
+  const { data: opportunity, error: opportunityError } = await db.from('crm_opportunities')
+    .select('id, assigned_staff_id, notes, created_at')
+    .eq('id', opportunityId)
+    .maybeSingle()
+  if (opportunityError) throw opportunityError
+  if (!opportunity || !canActorAccessAssignedOpportunity(actor.role, actor.id, opportunity.assigned_staff_id)) {
+    throw new ClientCrmError('Opportunity not found.', 404)
+  }
+
+  let query = db.from('crm_opportunity_notes')
+    .select('id, body, author_name_snapshot, source, created_at')
+    .eq('opportunity_id', opportunityId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(51)
+  if (before) query = query.or(`created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${beforeId})`)
+  const { data, error } = await query
+  if (error) throw error
+  const rows = (data ?? []) as Array<Record<string, unknown>>
+  const hasMore = rows.length > 50
+  const pageRows = rows.slice(0, 50)
+  const notes: CrmInternalNote[] = pageRows.map((row) => ({
+    id: String(row.id),
+    body: String(row.body ?? ''),
+    authorName: String(row.author_name_snapshot ?? 'Secure Cleaning team'),
+    createdAt: String(row.created_at ?? ''),
+  }))
+  let hasStoredLegacyNote = false
+  if (!before && String(opportunity.notes ?? '').trim()) {
+    const { data: legacyNote, error: legacyError } = await db.from('crm_opportunity_notes')
+      .select('id')
+      .eq('opportunity_id', opportunityId)
+      .eq('source', 'legacy_summary')
+      .limit(1)
+      .maybeSingle()
+    if (legacyError) throw legacyError
+    hasStoredLegacyNote = Boolean(legacyNote)
+  }
+  if (!before && String(opportunity.notes ?? '').trim() && !hasStoredLegacyNote) {
+    notes.push({
+      id: `legacy-${opportunityId}`,
+      body: String(opportunity.notes).trim(),
+      authorName: 'Imported CRM note',
+      createdAt: String(opportunity.created_at ?? ''),
+    })
+  }
+  return {
+    notes,
+    nextCursor: hasMore
+      ? `${String(pageRows[pageRows.length - 1]?.created_at ?? '')}|${String(pageRows[pageRows.length - 1]?.id ?? '')}`
+      : null,
+  }
+}
+
+export async function addCrmOpportunityNote(actor: ClientCrmActor, input: Record<string, unknown>) {
+  const opportunityId = clean(input.opportunityId, 100)
+  const body = clean(input.body, 4000)
+  const idempotencyKey = clean(input.idempotencyKey, 100)
+  if (!opportunityId || !body || !/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
+    throw new ClientCrmError('Enter a note before adding it.')
+  }
+  const db = getAdminSupabase()
+  const { data, error } = await db.rpc('add_client_crm_note', {
+    p_opportunity_id: opportunityId,
+    p_body: body,
+    p_idempotency_key: idempotencyKey,
+    p_actor_id: actor.id,
+    p_actor_role: actor.role,
+  })
+  if (error?.code === 'P0002') throw new ClientCrmError('Opportunity not found.', 404)
+  if (error?.code === '42501') throw new ClientCrmError('You do not have access to add a note to this opportunity.', 403)
+  if (error) throw error
+  return { id: String(data) }
 }
 
 export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {

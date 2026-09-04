@@ -15,12 +15,49 @@ type NominatimResult = {
   lat?: string
   lon?: string
   address?: {
+    house_number?: string
+    road?: string
     postcode?: string
     suburb?: string
     town?: string
     city?: string
     state?: string
   }
+}
+
+function normalizeStreet(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\b(rd|rd\.)\b/g, 'road')
+    .replace(/\b(st|st\.)\b/g, 'street')
+    .replace(/\b(ave|ave\.)\b/g, 'avenue')
+    .replace(/\b(hwy|hwy\.)\b/g, 'highway')
+    .replace(/\b(pde|pde\.)\b/g, 'parade')
+    .replace(/\b(dr|dr\.)\b/g, 'drive')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+export function preserveTypedStreetNumber(
+  query: string,
+  label: string,
+  address?: Pick<NonNullable<NominatimResult['address']>, 'house_number' | 'road'>,
+) {
+  if (address?.house_number || /^\s*\d/.test(label)) return label
+
+  const match = query.trim().match(/^(\d+[a-z]?(?:\s*[-/]\s*\d+[a-z]?)?)\s+(.+)$/i)
+  if (!match) return label
+
+  const [, streetNumber, typedStreet] = match
+  const suggestedStreet = address?.road ?? label.split(',')[0] ?? ''
+  const normalizedTypedStreet = normalizeStreet(typedStreet)
+  const normalizedSuggestedStreet = normalizeStreet(suggestedStreet)
+  const streetsMatch = normalizedTypedStreet.length >= 3
+    && normalizedSuggestedStreet.length >= 3
+    && (normalizedTypedStreet.startsWith(normalizedSuggestedStreet)
+      || normalizedSuggestedStreet.startsWith(normalizedTypedStreet))
+
+  return streetsMatch ? `${streetNumber.replace(/\s+/g, '')} ${label}` : label
 }
 
 export async function searchAustralianAddresses(query: string, city: City, limit = 5): Promise<AddressSuggestion[]> {
@@ -43,8 +80,9 @@ export async function searchAustralianAddresses(query: string, city: City, limit
 
   const results = (await response.json()) as NominatimResult[]
   return results.flatMap((result) => {
-    const label = result.display_name?.replace(/, Australia$/i, '').trim()
-    if (!label) return []
+    const providerLabel = result.display_name?.replace(/, Australia$/i, '').trim()
+    if (!providerLabel) return []
+    const label = preserveTypedStreetNumber(query, providerLabel, result.address)
     return [{
       label,
       value: label,
