@@ -8,7 +8,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
 const { getRoomMetricExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
-const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG } = await import('../src/lib/roomTypeConfig.ts')
+const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeDefaultDirectCharge } = await import('../src/lib/roomTypeConfig.ts')
 const {
   deriveQuoteAddOnCountsFromRoomScope,
   defaultMoppingRequiredForType,
@@ -101,6 +101,18 @@ test('quote engine prices a standard bathroom at the configured base charge', ()
 
   assert.equal(result.breakdown.addOnsDetail.bathroomsTotal, 8)
   assert.equal(result.addOnsTotal, 8)
+})
+
+test('room type admin default direct charge matches quote room and default field charges', () => {
+  const bathroom = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'bathroom')
+  const maleBathroom = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'male_bathroom')
+  const kitchen = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'kitchen')
+  const office = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'office')
+
+  assert.equal(getRoomTypeDefaultDirectCharge(bathroom, DEFAULT_QUOTE_PRICING_CONFIG), 8)
+  assert.equal(getRoomTypeDefaultDirectCharge(maleBathroom, DEFAULT_QUOTE_PRICING_CONFIG), 10.5)
+  assert.equal(getRoomTypeDefaultDirectCharge(kitchen, DEFAULT_QUOTE_PRICING_CONFIG), 50)
+  assert.equal(getRoomTypeDefaultDirectCharge(office, DEFAULT_QUOTE_PRICING_CONFIG), 0)
 })
 
 test('quote room fields can exclude saved fields and price quote-specific blank fields', () => {

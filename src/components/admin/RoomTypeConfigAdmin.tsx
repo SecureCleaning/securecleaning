@@ -1,11 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import type { QuoteRoomTypeConfig, RoomMetricFieldConfig, RoomMetricInputType, RoomTypeConfig } from '@/lib/roomTypeConfig'
+import type { QuotePricingConfig } from '@/lib/pricing'
+import { getRoomTypeDefaultDirectCharge, type QuoteRoomTypeConfig, type RoomMetricFieldConfig, type RoomMetricInputType, type RoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
 
 const INPUT_TYPES: RoomMetricInputType[] = ['integer', 'number', 'boolean']
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+  }).format(value)
+}
 
 function createRoomType(): RoomTypeConfig {
   return {
@@ -34,7 +43,13 @@ function createField(): RoomMetricFieldConfig {
   }
 }
 
-export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: QuoteRoomTypeConfig }) {
+export default function RoomTypeConfigAdmin({
+  initialConfig,
+  pricingConfig,
+}: {
+  initialConfig: QuoteRoomTypeConfig
+  pricingConfig: QuotePricingConfig
+}) {
   const [config, setConfig] = useState<QuoteRoomTypeConfig>(initialConfig)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
@@ -160,7 +175,7 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
     <div>
         <AdminPageHeader title="Room Type Master Control" description="Control Quote Workbench room types, client-facing scope inclusions, mopping defaults, room pricing rules, and extra pricing fields." actions={<><button type="button" onClick={addRoomType} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Add room type</button><button type="submit" form="room-type-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save room types'}</button></>} />
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Use field prices as internal pricing rules. A toilet field set to <strong>$3.00</strong> adds <strong>$3.00 per visit</strong> to the working quote.
+          <strong>Default direct charge</strong> includes active room charges, fixed room pricing, and chargeable default field quantities. Labour is calculated separately from the complete quote and then adjusted by the percentage shown.
         </div>
 
         <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
@@ -173,7 +188,11 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
           </div>
 
           <div className="space-y-6">
-            {config.roomTypes.map((roomType, roomTypeIndex) => (
+            {config.roomTypes.map((roomType, roomTypeIndex) => {
+              const defaultDirectCharge = getRoomTypeDefaultDirectCharge(roomType, pricingConfig)
+              const labourAdjustment = Number(roomType.pricingAdjustmentPercent || 0)
+
+              return (
               <section key={`room-type-row-${roomTypeIndex}`} className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
                 <button
                   type="button"
@@ -186,10 +205,22 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
                     <span className="block text-xl font-bold" style={{ color: '#1a2744' }}>{roomType.label}</span>
                     <span className="block text-sm text-gray-600">{roomType.id}</span>
                   </span>
-                  <span
-                    aria-hidden="true"
-                    className={`mr-1 h-3 w-3 shrink-0 rotate-45 border-b-2 border-r-2 border-gray-500 transition-transform ${expandedRoomIndexes.has(roomTypeIndex) ? 'translate-y-1 rotate-[225deg]' : ''}`}
-                  />
+                  <span className="flex shrink-0 items-center gap-5">
+                    <span className="text-right">
+                      <span className="block text-sm font-bold text-indigo-900">
+                        Default direct: {formatCurrency(defaultDirectCharge)} / visit
+                      </span>
+                      <span className="block text-xs text-gray-500">
+                        {labourAdjustment === 0
+                          ? 'Standard allocated labour'
+                          : `Allocated labour ${labourAdjustment > 0 ? '+' : ''}${labourAdjustment}%`}
+                      </span>
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className={`mr-1 h-3 w-3 shrink-0 rotate-45 border-b-2 border-r-2 border-gray-500 transition-transform ${expandedRoomIndexes.has(roomTypeIndex) ? 'translate-y-1 rotate-[225deg]' : ''}`}
+                    />
+                  </span>
                 </button>
 
                 {expandedRoomIndexes.has(roomTypeIndex) ? <div id={`room-type-panel-${roomTypeIndex}`} className="border-t border-gray-100 px-6 pb-6 pt-5">
@@ -425,7 +456,8 @@ export default function RoomTypeConfigAdmin({ initialConfig }: { initialConfig: 
                 </div>
                 </div> : null}
               </section>
-            ))}
+              )
+            })}
           </div>
 
           {status.message ? (

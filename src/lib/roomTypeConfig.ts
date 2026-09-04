@@ -1,4 +1,5 @@
 import { getAdminSupabase } from '@/lib/supabase'
+import type { QuotePricingConfig } from '@/lib/pricing'
 
 export type RoomMetricInputType = 'integer' | 'number' | 'boolean'
 
@@ -27,6 +28,34 @@ export type RoomTypeConfig = {
 
 export type QuoteRoomTypeConfig = {
   roomTypes: RoomTypeConfig[]
+}
+
+const BATHROOM_ROOM_TYPE_IDS = new Set(['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'])
+
+function getDefaultMetricCharge(field: RoomMetricFieldConfig) {
+  const pricePerUnit = Number(field.pricePerUnit ?? 0)
+  if (field.inputType === 'boolean') {
+    return field.defaultValue === true ? pricePerUnit : 0
+  }
+
+  const defaultValue = Math.max(0, Number(field.defaultValue ?? 0))
+  const includedUnits = Math.max(0, Number(field.includedUnits ?? 0))
+  return Math.max(0, defaultValue - includedUnits) * pricePerUnit
+}
+
+export function getRoomTypeDefaultDirectCharge(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig) {
+  const pricingItemCode = BATHROOM_ROOM_TYPE_IDS.has(roomType.id)
+    ? 'bathrooms'
+    : roomType.id === 'kitchen' ? 'kitchens' : null
+  const configuredRoomCharge = pricingItemCode
+    ? pricingConfig.items.find((item) => item.code === pricingItemCode && item.active)?.rate ?? 0
+    : 0
+  const defaultMetricCharges = roomType.fields.reduce(
+    (total, field) => total + getDefaultMetricCharge(field),
+    0
+  )
+
+  return Math.max(0, roomType.fixedPricePerVisit) + configuredRoomCharge + defaultMetricCharges
 }
 
 const ROOM_TYPE_CONTENT_KEY = 'quote_room_types.config'
