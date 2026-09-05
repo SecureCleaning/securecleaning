@@ -5,6 +5,7 @@ import ScopePrintButton from '@/components/scope/ScopePrintButton'
 import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+import { getRoomTaskCadenceLabel } from '@/lib/roomTypeConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -124,8 +125,8 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                         {room.description ? <p className="mt-1.5 max-w-2xl text-sm leading-5 text-slate-700">{room.description}</p> : null}
                       </div>
                     </div>
-                    <ul className="mt-3 grid gap-x-6 gap-y-1.5 text-[13px] leading-5 text-slate-700 sm:grid-cols-2">
-                      {room.tasks.map((task) => <li key={task} className="scope-task">{task}</li>)}
+                    <ul className="mt-3 space-y-1.5 text-[13px] leading-5 text-slate-700">
+                      {room.tasks.map((task, taskIndex) => <li key={`${task.label}-${taskIndex}`} className="scope-task grid gap-1 sm:grid-cols-[minmax(0,1fr)_120px]"><span>{task.label}</span><strong className="font-semibold text-slate-600">{getRoomTaskCadenceLabel(task.cadence)}</strong></li>)}
                     </ul>
                     {room.selectedOptions.length > 0 ? (
                       <div className="mt-2 border-t border-slate-100 pt-2 text-xs leading-5 text-slate-700">

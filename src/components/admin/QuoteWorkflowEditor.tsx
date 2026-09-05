@@ -17,7 +17,14 @@ import {
   type WorkflowRoomItem,
   type WorkflowRoomType,
 } from '@/lib/quoteWorkflow'
-import { getRoomTypeConfigById, type QuoteRoomTypeConfig, type RoomMetricFieldConfig } from '@/lib/roomTypeConfig'
+import {
+  getRoomTaskCadenceLabel,
+  getRoomTypeConfigById,
+  ROOM_TASK_CADENCE_OPTIONS,
+  type QuoteRoomTypeConfig,
+  type RoomMetricFieldConfig,
+  type RoomTaskCadence,
+} from '@/lib/roomTypeConfig'
 
 type Props = {
   quote: QuoteWorkflowRecord
@@ -345,6 +352,7 @@ export default function QuoteWorkflowEditor({
         defaultValue: 0,
         includedUnits: 0,
         pricePerUnit: 0,
+        cadence: 'every_clean',
         helpText: '',
       }],
       metrics: { ...(room.metrics ?? {}), [id]: 0 },
@@ -1120,12 +1128,13 @@ export default function QuoteWorkflowEditor({
                               />
                             )}
                             {isCustom ? (
-                              <div className="mt-2 grid grid-cols-2 gap-2">
+                              <div className="mt-2 grid grid-cols-3 gap-2">
                                 <label className="text-xs text-gray-500">Price / unit<input type="number" min="0" step="0.1" value={field.pricePerUnit ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { pricePerUnit: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
                                 <label className="text-xs text-gray-500">Included<input type="number" min="0" step="1" value={field.includedUnits ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { includedUnits: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
+                                <label className="text-xs text-gray-500">Frequency<select value={field.cadence ?? 'every_clean'} onChange={(event) => updateCustomMetricField(room, field.id, { cadence: event.target.value as RoomTaskCadence })} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5">{ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                               </div>
                             ) : null}
-                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() ? field.helpText : describeFieldPricing(field.label, field.pricePerUnit)}</span>
+                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() ? field.helpText : describeFieldPricing(field.label, field.pricePerUnit)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
                           </div>
                         )})}
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}
@@ -1182,6 +1191,12 @@ export default function QuoteWorkflowEditor({
                   <div className="text-sm text-gray-500">Room field extras</div>
                   <div className="mt-1 text-2xl font-bold text-green-700">
                     {formatCurrency(preview.roomFieldExtraTotal)}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500">Scheduled task extras (amortised)</div>
+                  <div className="mt-1 text-2xl font-bold text-green-700">
+                    {formatCurrency(preview.scheduledTaskExtraTotal)}
                   </div>
                 </div>
                 <div>

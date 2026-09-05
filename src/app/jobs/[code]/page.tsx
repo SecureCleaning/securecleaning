@@ -6,11 +6,16 @@ import ContractProductInterestForm from '@/components/products/ContractProductIn
 import { CLEANER_JOBS_SESSION_COOKIE, verifyCleanerJobsSessionToken } from '@/lib/cleanerJobsAccess'
 import { formatContractProductHours, formatContractProductStartDate } from '@/lib/contractProductListingDetails'
 import { getAvailableCleanerJobs, getJobsAccessLink } from '@/lib/contractProducts'
+import { getRoomTaskCadenceLabel } from '@/lib/roomTypeConfig'
 
 export const dynamic = 'force-dynamic'
 
 function money(cents: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(cents / 100)
+}
+
+function taskDisplay(task: string | { label: string; cadence: Parameters<typeof getRoomTaskCadenceLabel>[0] }) {
+  return typeof task === 'string' ? { label: task, cadence: 'Every clean' } : { label: task.label, cadence: getRoomTaskCadenceLabel(task.cadence) }
 }
 
 export default async function AvailableJobDetailPage({ params }: { params: { code: string } }) {
@@ -38,7 +43,7 @@ export default async function AvailableJobDetailPage({ params }: { params: { cod
       <section className="mt-7"><h2 className="text-xl font-bold">Scope overview</h2><p className="mt-2 text-gray-600">{job.cleanerScopeSnapshot.summary}</p>
         <p className="mt-2 text-sm text-gray-600">Approx. {job.cleanerScopeSnapshot.floorArea} sqm across {job.cleanerScopeSnapshot.floors} floor{job.cleanerScopeSnapshot.floors === 1 ? '' : 's'}.</p>
         {job.cleanerScopeSnapshot.selectedOptions.length > 0 ? <div className="mt-4"><h3 className="font-bold">Selected options</h3><ul className="mt-2 list-disc pl-5 text-sm text-gray-600">{job.cleanerScopeSnapshot.selectedOptions.map((option) => <li key={option}>{option}</li>)}</ul></div> : null}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">{job.cleanerScopeSnapshot.rooms.map((room, index) => <div key={`${room.type}-${index}`} className="rounded-xl border border-gray-200 p-4"><h3 className="font-bold">{room.label} · Qty {room.quantity}</h3><p className="mt-1 text-xs text-gray-500">{room.size > 0 ? `${room.size} sqm each · ` : ''}Floor {room.floor}</p><ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-600">{room.tasks.map((task) => <li key={task}>{task}</li>)}</ul></div>)}</div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">{job.cleanerScopeSnapshot.rooms.map((room, index) => <div key={`${room.type}-${index}`} className="rounded-xl border border-gray-200 p-4"><h3 className="font-bold">{room.label} · Qty {room.quantity}</h3><p className="mt-1 text-xs text-gray-500">{room.size > 0 ? `${room.size} sqm each · ` : ''}Floor {room.floor}</p><ul className="mt-2 space-y-1 text-sm text-gray-600">{room.tasks.map((task, taskIndex) => { const display = taskDisplay(task); return <li key={`${display.label}-${taskIndex}`} className="flex justify-between gap-3"><span>{display.label}</span><strong className="shrink-0 text-xs">{display.cadence}</strong></li> })}</ul></div>)}</div>
       </section>
       <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Client identity, exact address, contact details, and site-security information are shared only after Secure Cleaning approves the next stage.</p>
     </article><div className="mt-5"><ContractProductInterestForm productCode={job.productCode} /></div>

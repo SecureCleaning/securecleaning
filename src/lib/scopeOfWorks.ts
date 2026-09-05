@@ -8,7 +8,13 @@ import {
   type WorkflowRoomItem,
   type WorkflowRoomType,
 } from '@/lib/quoteWorkflow'
-import { getRoomTypeConfigById, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import {
+  getRoomScopeTaskSchedule,
+  getRoomTaskCadenceLabel,
+  getRoomTypeConfigById,
+  type QuoteRoomTypeConfig,
+  type RoomScopeTaskSchedule,
+} from '@/lib/roomTypeConfig'
 
 export type ClientScopeRoom = {
   id: string
@@ -18,7 +24,7 @@ export type ClientScopeRoom = {
   quantity: number
   size?: number
   floor: number
-  tasks: string[]
+  tasks: RoomScopeTaskSchedule[]
   selectedOptions: string[]
 }
 
@@ -101,7 +107,7 @@ function getRoomSelectedOptions(room: WorkflowRoomItem, roomTypeConfig: QuoteRoo
   const options: string[] = []
 
   if (room.moppingEnabled && !STANDARD_MOPPING_ROOM_TYPES.has(room.type)) {
-    options.push('Mopping included')
+    options.push(`Mopping — ${getRoomTaskCadenceLabel(typeConfig?.moppingCadence ?? 'every_clean')}`)
   }
 
   for (const field of typeConfig?.fields ?? []) {
@@ -139,7 +145,9 @@ function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeCon
       ? Math.round(((allocatedArea ?? 0) / Math.max(1, room.quantity)) * 10) / 10
       : undefined,
     floor: room.floor,
-    tasks: typeConfig?.scopeTasks ?? FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other,
+    tasks: typeConfig
+      ? getRoomScopeTaskSchedule(typeConfig)
+      : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' })),
     selectedOptions: getRoomSelectedOptions(room, roomTypeConfig),
   }
 }

@@ -1,6 +1,6 @@
 import type { FirmQuoteDisplayPrice, FirmQuoteDraft } from '@/lib/quoteWorkflow'
-import { getRoomTypeConfigById } from '@/lib/roomTypeConfig'
-import type { QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
+import { getRoomScopeTaskSchedule, getRoomTypeConfigById } from '@/lib/roomTypeConfig'
+import type { QuoteRoomTypeConfig, RoomScopeTaskSchedule } from '@/lib/roomTypeConfig'
 import type { AdminRole } from '@/lib/staffAccounts'
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
 
@@ -9,6 +9,7 @@ export const CONTRACT_PRODUCT_STATUSES = ['draft', 'available', 'reserved', 'sol
 
 export type ContractProductState = (typeof CONTRACT_PRODUCT_STATES)[number]
 export type ContractProductStatus = (typeof CONTRACT_PRODUCT_STATUSES)[number]
+export type CleanerScopeTask = string | RoomScopeTaskSchedule
 
 export type CleanerScopeSnapshotV1 = {
   formatVersion: 1
@@ -27,7 +28,7 @@ export type CleanerScopeSnapshotV1 = {
     quantity: number
     size: number
     floor: number
-    tasks: string[]
+    tasks: CleanerScopeTask[]
   }>
   selectedOptions: string[]
 }
@@ -152,7 +153,7 @@ export function buildCleanerScopeSnapshot(document: ContractProductQuoteSnapshot
         quantity: Math.max(1, Math.round(Number(room.quantity) || 1)),
         size: Math.max(0, Number(room.size) || 0),
         floor: Math.max(1, Math.round(Number(room.floor) || 1)),
-        tasks: [...(config?.scopeTasks ?? [])],
+        tasks: config ? getRoomScopeTaskSchedule(config) : [],
       }
     }),
     selectedOptions: selectedOptions(document),

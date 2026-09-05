@@ -24,7 +24,7 @@ function isCurrencyKey(key: string) {
   return key === 'hourlyRate' || key === 'minimumInvoice'
 }
 
-export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePricingConfig }) {
+export default function PricingAdmin({ initialConfig, embedded = false }: { initialConfig: QuotePricingConfig; embedded?: boolean }) {
   const [config, setConfig] = useState<QuotePricingConfig>(initialConfig)
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
@@ -125,22 +125,25 @@ export default function PricingAdmin({ initialConfig }: { initialConfig: QuotePr
   }
 
   const knownCodes = ['bathrooms', 'kitchens', 'windows', 'consumables', 'highTouchDisinfection', 'carpetSteam']
+  const formId = embedded ? 'quote-wide-pricing-editor-form' : 'pricing-editor-form'
 
   return (
     <div>
-      <AdminPageHeader
+      {!embedded ? <AdminPageHeader
         title="Pricing Editor"
         description="Manage quote calculator settings, multipliers, and pricing items. Changes affect future remote quote calculations."
-        actions={<button type="submit" form="pricing-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save pricing'}</button>}
-      />
+        actions={<button type="submit" form={formId} disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save pricing'}</button>}
+      /> : null}
 
-        <form id="pricing-editor-form" onSubmit={handleSave} className="space-y-5">
+        <form id={formId} onSubmit={handleSave} className="space-y-5">
             <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote pricing configuration</h2>
-                <p className="text-sm text-gray-600">Save once you&apos;ve finished adjusting rates and multipliers.</p>
+                <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>{embedded ? 'Quote-wide pricing rules' : 'Quote pricing configuration'}</h2>
+                <p className="text-sm text-gray-600">Hourly labour, minimum invoice, multipliers, and global add-ons used across all rooms.</p>
               </div>
-              <span className="text-xs text-gray-500">Changes apply to future quotes.</span>
+              {embedded
+                ? <button type="submit" form={formId} disabled={isSubmitting} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? 'Saving…' : 'Save quote-wide rules'}</button>
+                : <span className="text-xs text-gray-500">Changes apply to future quotes.</span>}
             </div>
 
             <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">

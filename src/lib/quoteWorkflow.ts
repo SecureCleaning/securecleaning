@@ -2,7 +2,16 @@ import { calculateQuote } from '@/lib/quoteEngine'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRoomScope'
 import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePreference } from '@/lib/types'
-import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeConfigById, type QuoteRoomTypeConfig, type RoomMetricFieldConfig } from '@/lib/roomTypeConfig'
+import {
+  DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+  getRoomScopeTaskCadence,
+  getRoomScopeTaskPrice,
+  getRoomTaskAmortizationFactor,
+  getRoomTypeConfigById,
+  type QuoteRoomTypeConfig,
+  type RoomMetricFieldConfig,
+  type RoomTaskCadence,
+} from '@/lib/roomTypeConfig'
 import { isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 export { getFinalQuoteReadiness, isEditableFirmQuoteStatus, isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 
@@ -85,6 +94,7 @@ export type FirmQuotePreview = {
   adjustedHigh: number
   suggestedPrice: number | null
   roomFieldExtraTotal: number
+  scheduledTaskExtraTotal: number
   moppingExtraTotal: number
   roomPricingExtraLow: number
   roomPricingExtraHigh: number
@@ -108,16 +118,21 @@ function safePositiveNumber(value: unknown, fallback: number) {
   return Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback
 }
 
-function getMetricExtra(field: { inputType: string; pricePerUnit?: number; includedUnits?: number }, value: unknown) {
+function getMetricExtra(
+  field: { inputType: string; pricePerUnit?: number; includedUnits?: number; cadence?: RoomTaskCadence },
+  value: unknown,
+  frequency: CleaningFrequency
+) {
+  const cadenceFactor = getRoomTaskAmortizationFactor(field.cadence ?? 'every_clean', frequency)
   if (field.inputType === 'boolean') {
-    return value === true ? field.pricePerUnit ?? 0 : 0
+    return value === true ? (field.pricePerUnit ?? 0) * cadenceFactor : 0
   }
 
   const numericValue = Number(value ?? 0)
   if (!Number.isFinite(numericValue)) return 0
 
   const includedUnits = Math.max(0, Number(field.includedUnits ?? 0))
-  return Math.max(0, numericValue - includedUnits) * (field.pricePerUnit ?? 0)
+  return Math.max(0, numericValue - includedUnits) * (field.pricePerUnit ?? 0) * cadenceFactor
 }
 
 function createRoomId(prefix: string, index: number) {
@@ -149,6 +164,9 @@ function sanitizeCustomMetricFields(value: unknown): RoomMetricFieldConfig[] {
       defaultValue: inputType === 'boolean' ? Boolean(source.defaultValue) : safePositiveNumber(source.defaultValue, 0),
       includedUnits: safePositiveNumber(source.includedUnits, 0),
       pricePerUnit: safePositiveNumber(source.pricePerUnit, 0),
+      cadence: ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually'].includes(String(source.cadence))
+        ? source.cadence as RoomTaskCadence
+        : 'every_clean',
       helpText: typeof source.helpText === 'string' ? source.helpText.trim().slice(0, 120) : '',
     }]
   })
@@ -526,16 +544,32 @@ export function getRoomAreaAllocations(
 }
 
 export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
+  const frequency = draft.revisedInputs?.frequency ?? 'weekly'
   return draft.roomItems.reduce((sum, room) => {
     const fields = getWorkflowRoomMetricFields(room, roomTypeConfig)
     if (!fields.length) return sum
 
     const roomTotal = fields.reduce((fieldSum, field) => {
       const value = room.metrics?.[field.id]
-      return fieldSum + getMetricExtra(field, value ?? field.defaultValue)
+      return fieldSum + getMetricExtra(field, value ?? field.defaultValue, frequency)
     }, 0)
 
     return sum + roomTotal * room.quantity
+  }, 0)
+}
+
+export function getRoomScheduledTaskExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
+  const frequency = draft.revisedInputs?.frequency ?? 'weekly'
+  return draft.roomItems.reduce((total, room) => {
+    const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+    if (!roomType) return total
+    const perRoom = roomType.scopeTasks.reduce((taskTotal, _, taskIndex) => (
+      taskTotal + getRoomScopeTaskPrice(roomType, taskIndex) * getRoomTaskAmortizationFactor(
+        getRoomScopeTaskCadence(roomType, taskIndex),
+        frequency
+      )
+    ), 0)
+    return total + perRoom * Math.max(0, room.quantity)
   }, 0)
 }
 
@@ -555,7 +589,8 @@ export function getRoomMoppingExtraTotal(
     const minutesPerSqm = safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM)
     const roomMinutes = roomArea * minutesPerSqm
     const roomCost = (roomMinutes / 60) * pricingConfig.settings.hourlyRate
-    return sum + roomCost
+    const cadenceFactor = getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
+    return sum + roomCost * cadenceFactor
   }, 0)
 }
 
@@ -622,10 +657,19 @@ export function getRoomPricingBreakdown(
     const rule = getRoomPricingRule(room, roomTypeConfig)
     const roomMetricExtra = (roomType?.fields ?? []).reduce((sum, field) => {
       const value = room.metrics?.[field.id]
-      return sum + getMetricExtra(field, value ?? field.defaultValue)
+      return sum + getMetricExtra(field, value ?? field.defaultValue, draft.revisedInputs.frequency)
     }, 0) * Math.max(0, room.quantity)
+    const roomScheduledTaskExtra = roomType
+      ? roomType.scopeTasks.reduce((sum, _, taskIndex) => (
+          sum + getRoomScopeTaskPrice(roomType, taskIndex) * getRoomTaskAmortizationFactor(
+            getRoomScopeTaskCadence(roomType, taskIndex),
+            draft.revisedInputs.frequency
+          )
+        ), 0) * Math.max(0, room.quantity)
+      : 0
     const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize
-      ? (roomArea * safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM) / 60) * pricingConfig.settings.hourlyRate
+      ? (roomArea * safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM) / 60) * pricingConfig.settings.hourlyRate *
+        getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
       : 0
     const roomPricingItemCode = ['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'].includes(room.type)
       ? 'bathrooms'
@@ -642,8 +686,8 @@ export function getRoomPricingBreakdown(
     return [room.id, {
       // Allocate base labour to rooms; add only charges that belong to this room.
       // Global add-ons and minimum call-out remain in the overall working range.
-      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
-      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
+      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
+      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
     }]
   }))
 }
@@ -655,6 +699,7 @@ export function buildFirmQuotePreview(
 ): FirmQuotePreview {
   const calculated = calculateQuote(deriveQuoteInputsFromRooms(draft, roomTypeConfig), pricingConfig)
   const roomFieldExtra = getRoomMetricExtraTotal(draft, roomTypeConfig)
+  const scheduledTaskExtra = getRoomScheduledTaskExtraTotal(draft, roomTypeConfig)
   const moppingExtra = getRoomMoppingExtraTotal(draft, pricingConfig, roomTypeConfig)
   const roomPricingExtra = getRoomPricingExtraTotal(draft, calculated, roomTypeConfig)
   const factor = 1 + (draft.pricingAdjustmentPercent || 0) / 100
@@ -667,10 +712,10 @@ export function buildFirmQuotePreview(
     calculated.breakdown.frequencyMultiplier *
     calculated.breakdown.cityMultiplier
   const rawLow = roundCurrency(
-    (baseLabourAdjusted + calculated.addOnsTotal) * rangeLow + roomFieldExtra + moppingExtra + roomPricingExtra.low
+    (baseLabourAdjusted + calculated.addOnsTotal) * rangeLow + roomFieldExtra + scheduledTaskExtra + moppingExtra + roomPricingExtra.low
   )
   const rawHigh = roundCurrency(
-    (baseLabourAdjusted + calculated.addOnsTotal) * rangeHigh + roomFieldExtra + moppingExtra + roomPricingExtra.high
+    (baseLabourAdjusted + calculated.addOnsTotal) * rangeHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra + roomPricingExtra.high
   )
   // Assess the complete job against the minimum only after every charge is included.
   const calculatedLow = roundCurrency(rawLow * factor)
@@ -684,17 +729,18 @@ export function buildFirmQuotePreview(
   return {
     calculated: {
       ...calculated,
-      addOnsTotal: roundCurrency(calculated.addOnsTotal + roomFieldExtra + moppingExtra),
-      totalLow: roundCurrency(calculated.totalLow + roomFieldExtra + moppingExtra),
-      totalHigh: roundCurrency(calculated.totalHigh + roomFieldExtra + moppingExtra),
-      perVisitLow: roundCurrency(calculated.perVisitLow + roomFieldExtra + moppingExtra),
-      perVisitHigh: roundCurrency(calculated.perVisitHigh + roomFieldExtra + moppingExtra),
+      addOnsTotal: roundCurrency(calculated.addOnsTotal + roomFieldExtra + scheduledTaskExtra + moppingExtra),
+      totalLow: roundCurrency(calculated.totalLow + roomFieldExtra + scheduledTaskExtra + moppingExtra),
+      totalHigh: roundCurrency(calculated.totalHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra),
+      perVisitLow: roundCurrency(calculated.perVisitLow + roomFieldExtra + scheduledTaskExtra + moppingExtra),
+      perVisitHigh: roundCurrency(calculated.perVisitHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra),
     },
     calculatedLow,
     calculatedHigh,
     adjustedLow,
     adjustedHigh,
     roomFieldExtraTotal: roundCurrency(roomFieldExtra),
+    scheduledTaskExtraTotal: roundCurrency(scheduledTaskExtra),
     moppingExtraTotal: roundCurrency(moppingExtra),
     roomPricingExtraLow: roundCurrency(roomPricingExtra.low),
     roomPricingExtraHigh: roundCurrency(roomPricingExtra.high),

@@ -7,8 +7,14 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { getRoomMetricExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
-const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getRoomTypeDefaultDirectCharge } = await import('../src/lib/roomTypeConfig.ts')
+const { getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const {
+  applySuggestedRoomTypePrices,
+  DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+  getRoomScopeTaskSchedule,
+  getRoomTaskAmortizationFactor,
+  getRoomTypeDefaultDirectCharge,
+} = await import('../src/lib/roomTypeConfig.ts')
 const {
   deriveQuoteAddOnCountsFromRoomScope,
   defaultMoppingRequiredForType,
@@ -126,6 +132,45 @@ test('quote room fields can exclude saved fields and price quote-specific blank 
   }
 
   assert.equal(getRoomMetricExtraTotal(draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), 16)
+})
+
+test('periodic task prices are amortised across the configured cleaning frequency', () => {
+  assert.equal(getRoomTaskAmortizationFactor('weekly', 'daily'), 0.2)
+  assert.equal(getRoomTaskAmortizationFactor('monthly', 'weekly'), 12 / 52)
+  assert.equal(getRoomTaskAmortizationFactor('weekly', 'fortnightly'), 1)
+  assert.equal(getRoomTaskAmortizationFactor('monthly', 'once_off'), 1)
+
+  const config = {
+    roomTypes: [{
+      id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
+      defaultMopping: false, scopeTasks: ['Dust desks', 'Remove cobwebs'],
+      scopeTaskCadences: ['weekly', 'monthly'], scopeTaskPrices: [10, 26],
+      pricingAdjustmentPercent: 0, fixedPricePerVisit: 3, fields: [],
+    }],
+  }
+  const draft = {
+    revisedInputs: { frequency: 'daily' },
+    roomItems: [{ id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1 }],
+  }
+
+  assert.equal(getRoomScheduledTaskExtraTotal(draft, config), 6.4)
+})
+
+test('scope task schedules expose the task cadence and suggested prices remove zero room bases', () => {
+  const office = {
+    id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
+    defaultMopping: false, scopeTasks: ['Dust desks', 'Remove cobwebs'],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+  }
+  assert.deepEqual(getRoomScopeTaskSchedule(office), [
+    { label: 'Dust desks', cadence: 'weekly' },
+    { label: 'Remove cobwebs', cadence: 'monthly' },
+  ])
+
+  const suggested = applySuggestedRoomTypePrices({ roomTypes: [{ ...office, scopeTasks: ['Dust desks'] }] }, DEFAULT_QUOTE_PRICING_CONFIG)
+  assert.equal(getRoomTypeDefaultDirectCharge(suggested.roomTypes[0], DEFAULT_QUOTE_PRICING_CONFIG), 3)
+  assert.equal(suggested.roomTypes[0].scopeTasks[0], 'Remove visible cobwebs from ceilings and corners')
+  assert.equal(suggested.roomTypes[0].scopeTaskCadences[0], 'monthly')
 })
 
 test('room scope derives bathroom and kitchen counts from selected rooms', () => {

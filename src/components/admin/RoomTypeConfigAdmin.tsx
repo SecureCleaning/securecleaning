@@ -2,7 +2,18 @@
 
 import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
-import { getRoomTypeDefaultDirectCharge, type QuoteRoomTypeConfig, type RoomMetricFieldConfig, type RoomMetricInputType, type RoomTypeConfig } from '@/lib/roomTypeConfig'
+import {
+  applySuggestedRoomTypePrices,
+  getRoomScopeTaskCadence,
+  getRoomScopeTaskPrice,
+  getRoomTypeDefaultDirectCharge,
+  ROOM_TASK_CADENCE_OPTIONS,
+  type QuoteRoomTypeConfig,
+  type RoomMetricFieldConfig,
+  type RoomMetricInputType,
+  type RoomTaskCadence,
+  type RoomTypeConfig,
+} from '@/lib/roomTypeConfig'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
 
@@ -24,7 +35,10 @@ function createRoomType(): RoomTypeConfig {
     tracksSize: true,
     defaultSize: 20,
     defaultMopping: false,
+    moppingCadence: 'every_clean',
     scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided'],
+    scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean'],
+    scopeTaskPrices: [0, 0, 0],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
     fields: [],
@@ -39,7 +53,19 @@ function createField(): RoomMetricFieldConfig {
     defaultValue: 0,
     includedUnits: 0,
     pricePerUnit: 0,
+    cadence: 'every_clean',
     helpText: '',
+  }
+}
+
+function fillMissingSuggestedPrices(config: QuoteRoomTypeConfig, pricingConfig: QuotePricingConfig) {
+  const suggested = applySuggestedRoomTypePrices(config, pricingConfig)
+  return {
+    roomTypes: config.roomTypes.map((roomType, index) => (
+      getRoomTypeDefaultDirectCharge(roomType, pricingConfig) > 0
+        ? roomType
+        : suggested.roomTypes[index] ?? roomType
+    )),
   }
 }
 
@@ -50,7 +76,8 @@ export default function RoomTypeConfigAdmin({
   initialConfig: QuoteRoomTypeConfig
   pricingConfig: QuotePricingConfig
 }) {
-  const [config, setConfig] = useState<QuoteRoomTypeConfig>(initialConfig)
+  const hasMissingBasePrices = initialConfig.roomTypes.some((roomType) => getRoomTypeDefaultDirectCharge(roomType, pricingConfig) <= 0)
+  const [config, setConfig] = useState<QuoteRoomTypeConfig>(() => fillMissingSuggestedPrices(initialConfig, pricingConfig))
   const [status, setStatus] = useState<{ type: 'success' | 'error' | 'idle'; message: string }>({
     type: 'idle',
     message: '',
@@ -171,18 +198,73 @@ export default function RoomTypeConfigAdmin({
     }))
   }
 
+  function addScopeTask(roomId: string) {
+    setConfig((current) => ({
+      roomTypes: current.roomTypes.map((roomType) => roomType.id === roomId
+        ? {
+            ...roomType,
+            scopeTasks: [...roomType.scopeTasks, 'New scope task'],
+            scopeTaskCadences: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index)), 'every_clean'],
+            scopeTaskPrices: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index)), 0],
+          }
+        : roomType),
+    }))
+  }
+
+  function updateScopeTask(
+    roomId: string,
+    taskIndex: number,
+    patch: { label?: string; cadence?: RoomTaskCadence; price?: number }
+  ) {
+    setConfig((current) => ({
+      roomTypes: current.roomTypes.map((roomType) => {
+        if (roomType.id !== roomId) return roomType
+        const scopeTasks = [...roomType.scopeTasks]
+        const scopeTaskCadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
+        const scopeTaskPrices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
+        if (patch.label !== undefined) scopeTasks[taskIndex] = patch.label
+        if (patch.cadence !== undefined) scopeTaskCadences[taskIndex] = patch.cadence
+        if (patch.price !== undefined) scopeTaskPrices[taskIndex] = Math.max(0, patch.price)
+        return { ...roomType, scopeTasks, scopeTaskCadences, scopeTaskPrices }
+      }),
+    }))
+  }
+
+  function removeScopeTask(roomId: string, taskIndex: number) {
+    setConfig((current) => ({
+      roomTypes: current.roomTypes.map((roomType) => roomType.id === roomId
+        ? {
+            ...roomType,
+            scopeTasks: roomType.scopeTasks.filter((_, index) => index !== taskIndex),
+            scopeTaskCadences: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskCadence(roomType, index))
+              .filter((_, index) => index !== taskIndex),
+            scopeTaskPrices: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskPrice(roomType, index))
+              .filter((_, index) => index !== taskIndex),
+          }
+        : roomType),
+    }))
+  }
+
+  function applySuggestedPrices() {
+    setConfig((current) => applySuggestedRoomTypePrices(current, pricingConfig))
+    setStatus({ type: 'idle', message: 'Suggested base prices applied. Review them, then save room pricing.' })
+  }
+
   return (
     <div>
-        <AdminPageHeader title="Room Type Master Control" description="Control Quote Workbench room types, client-facing scope inclusions, mopping defaults, room pricing rules, and extra pricing fields." actions={<><button type="button" onClick={addRoomType} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Add room type</button><button type="submit" form="room-type-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save room types'}</button></>} />
+        <AdminPageHeader title="Pricing & Rooms" description="Set each room's base price, scope frequency, and priced extras in one place." actions={<><button type="button" onClick={applySuggestedPrices} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900">Apply suggested prices</button><button type="button" onClick={addRoomType} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Add room</button><button type="submit" form="room-type-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save room pricing'}</button></>} />
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>Default direct charge</strong> includes active room charges, fixed room pricing, and chargeable default field quantities. Labour is calculated separately from the complete quote and then adjusted by the percentage shown.
+          <strong>How pricing works:</strong> allocated labour + room base prices + amortised task and field extras, followed by quote-wide multipliers and the minimum invoice. Weekly or monthly work is spread across the scheduled cleans.
+          {hasMissingBasePrices ? <span className="mt-1 block font-medium">Rooms that had no base price have been prefilled with the suggested amount. Save room pricing to activate them.</span> : null}
         </div>
 
         <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
           <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quote room type configuration</h2>
-              <p className="text-sm text-gray-600">Scope and mopping defaults apply to new rooms and when an agent changes a room type.</p>
+              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Room pricing and client scope</h2>
+              <p className="text-sm text-gray-600">Every room has a base charge; scheduled tasks and extras can add an amortised amount.</p>
             </div>
             <span className="text-xs text-gray-500">Defaults apply to new Quote Workbench rooms.</span>
           </div>
@@ -208,7 +290,7 @@ export default function RoomTypeConfigAdmin({
                   <span className="flex shrink-0 items-center gap-5">
                     <span className="text-right">
                       <span className="block text-sm font-bold text-indigo-900">
-                        Default direct: {formatCurrency(defaultDirectCharge)} / visit
+                        Base room charge: {formatCurrency(defaultDirectCharge)} / visit
                       </span>
                       <span className="block text-xs text-gray-500">
                         {labourAdjustment === 0
@@ -280,39 +362,68 @@ export default function RoomTypeConfigAdmin({
                   Track sqm for this room type
                 </label>
 
-                <div className="mb-5 grid gap-4 rounded-xl border border-teal-100 bg-teal-50/60 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:items-start">
-                  <label className="flex items-start gap-3 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={roomType.defaultMopping}
-                      onChange={(event) => updateRoomType(roomType.id, { defaultMopping: event.target.checked })}
-                      className="mt-1 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
-                    />
-                    <span>
-                      <span className="block font-medium text-gray-800">Mopping included by default</span>
-                      <span className="mt-1 block text-xs text-gray-500">Agents can still change this for an individual quote room.</span>
-                    </span>
-                  </label>
-                  <label className="text-sm">
-                    <span className="mb-1 block font-medium text-gray-700">Client-facing scope inclusions</span>
-                    <textarea
-                      value={roomType.scopeTasks.join('\n')}
-                      onChange={(event) => updateRoomType(roomType.id, {
-                        // Preserve the raw textarea value while typing so spaces do not reset the caret.
-                        scopeTasks: event.target.value.split('\n'),
-                      })}
-                      rows={5}
-                      placeholder="One inclusion per line, for example: Wipe reachable surfaces"
-                      className="w-full rounded-lg border border-gray-300 px-4 py-3"
-                    />
-                    <span className="mt-1 block text-xs text-gray-500">These lines appear under this room on the client scope of works.</span>
-                  </label>
+                <div className="mb-5 rounded-xl border border-teal-100 bg-teal-50/60 p-4">
+                  <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-end">
+                    <label className="flex items-start gap-3 text-sm text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={roomType.defaultMopping}
+                        onChange={(event) => updateRoomType(roomType.id, { defaultMopping: event.target.checked })}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
+                      />
+                      <span>
+                        <span className="block font-medium text-gray-800">Mopping included by default</span>
+                        <span className="mt-1 block text-xs text-gray-500">Its calculated time cost follows the cadence selected here.</span>
+                      </span>
+                    </label>
+                    <label className="text-sm">
+                      <span className="mb-1 block font-medium text-gray-700">Mopping frequency</span>
+                      <select
+                        value={roomType.moppingCadence ?? 'every_clean'}
+                        onChange={(event) => updateRoomType(roomType.id, { moppingCadence: event.target.value as RoomTaskCadence })}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                      >
+                        {ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="mt-5 border-t border-teal-100 pt-4">
+                    <div className="mb-3 flex items-center justify-between gap-4">
+                      <div>
+                        <h4 className="font-semibold text-gray-800">Client scope tasks</h4>
+                        <p className="text-xs text-gray-600">The task and frequency both appear on the client scope. A price above $0 is amortised across visits.</p>
+                      </div>
+                      <button type="button" onClick={() => addScopeTask(roomType.id)} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add task</button>
+                    </div>
+                    <div className="space-y-2">
+                      {roomType.scopeTasks.map((task, taskIndex) => (
+                        <div key={`scope-task-${roomTypeIndex}-${taskIndex}`} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_170px_145px_auto] md:items-end">
+                          <label className="text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Task shown on scope</span>
+                            <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                          </label>
+                          <label className="text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Frequency</span>
+                            <select value={getRoomScopeTaskCadence(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { cadence: event.target.value as RoomTaskCadence })} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2">
+                              {ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                          </label>
+                          <label className="text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Price when done</span>
+                            <input type="number" min="0" step="0.01" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                          </label>
+                          <button type="button" onClick={() => removeScopeTask(roomType.id, taskIndex)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600">Remove</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                   <div className="mb-3">
-                    <h4 className="font-semibold" style={{ color: '#1a2744' }}>Default pricing rule</h4>
-                    <p className="text-sm text-gray-600">Percentage applies to this room type&apos;s floor-area share of labour. Fixed cost is per room unit, per visit.</p>
+                    <h4 className="font-semibold" style={{ color: '#1a2744' }}>Base room price</h4>
+                    <p className="text-sm text-gray-600">The base charge is per room, per visit. The optional percentage adjusts this room&apos;s allocated labour.</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="text-sm">
@@ -327,7 +438,7 @@ export default function RoomTypeConfigAdmin({
                       <span className="mt-1 block text-xs text-gray-500">Example: 20 adds 20% to this room type&apos;s labour share.</span>
                     </label>
                     <label className="text-sm">
-                      <span className="mb-1 block font-medium text-gray-700">Fixed cost per room / visit</span>
+                      <span className="mb-1 block font-medium text-gray-700">Base price per room / visit</span>
                       <input
                         type="number"
                         min="0"
@@ -336,7 +447,7 @@ export default function RoomTypeConfigAdmin({
                         onChange={(event) => updateRoomType(roomType.id, { fixedPricePerVisit: Math.max(0, Number(event.target.value || 0)) })}
                         className="w-full rounded-lg border border-gray-300 px-4 py-3"
                       />
-                      <span className="mt-1 block text-xs text-gray-500">Example: 8 adds $8 for each room unit on every visit.</span>
+                      <span className="mt-1 block text-xs text-gray-500">This combines with any active bathroom or kitchen charge.</span>
                     </label>
                   </div>
                 </div>
@@ -344,8 +455,8 @@ export default function RoomTypeConfigAdmin({
                 <div className="rounded-xl border border-gray-200 p-4">
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <div>
-                      <h4 className="font-semibold" style={{ color: '#1a2744' }}>Extra fields</h4>
-                      <p className="text-sm text-gray-600">These appear when this room type is chosen in the Quote Workbench.</p>
+                      <h4 className="font-semibold" style={{ color: '#1a2744' }}>Priced extras</h4>
+                      <p className="text-sm text-gray-600">Extras appear in the Quote Workbench and can run every clean or on a periodic schedule.</p>
                     </div>
                     <button
                       type="button"
@@ -359,7 +470,7 @@ export default function RoomTypeConfigAdmin({
                   <div className="space-y-4">
                     {roomType.fields.map((field, fieldIndex) => (
                       <div key={`room-field-row-${roomTypeIndex}-${fieldIndex}`} className="rounded-xl border border-gray-200 p-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-7 gap-3">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Field ID</span>
                             <input
@@ -403,7 +514,7 @@ export default function RoomTypeConfigAdmin({
                             />
                           </label>
                           <label className="text-sm">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Price / unit / visit</span>
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Price when done</span>
                             <input
                               type="number"
                               step="0.1"
@@ -412,6 +523,16 @@ export default function RoomTypeConfigAdmin({
                               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                               placeholder="$0.00"
                             />
+                          </label>
+                          <label className="text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Frequency</span>
+                            <select
+                              value={field.cadence ?? 'every_clean'}
+                              onChange={(event) => updateField(roomType.id, field.id, { cadence: event.target.value as RoomTaskCadence })}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                            >
+                              {ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
                           </label>
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Included units</span>
