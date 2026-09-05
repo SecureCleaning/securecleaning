@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import {
   applySuggestedRoomTypePrices,
+  DEFAULT_WEEKLY_DUSTING_TASK,
   getRoomScopeTaskCadence,
   getRoomScopeTaskPrice,
   getRoomTypeDefaultDirectCharge,
@@ -36,9 +37,9 @@ function createRoomType(): RoomTypeConfig {
     defaultSize: 20,
     defaultMopping: false,
     moppingCadence: 'every_clean',
-    scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided'],
-    scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean'],
-    scopeTaskPrices: [0, 0, 0],
+    scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
+    scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean', 'weekly'],
+    scopeTaskPrices: [0, 0, 0, 0],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
     fields: [],

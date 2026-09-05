@@ -11,6 +11,8 @@ const { getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import
 const {
   applySuggestedRoomTypePrices,
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+  DEFAULT_WEEKLY_DUSTING_TASK,
+  ensureWeeklyPerimeterSurfaceDusting,
   getRoomScopeTaskSchedule,
   getRoomTaskAmortizationFactor,
   getRoomTypeDefaultDirectCharge,
@@ -171,6 +173,28 @@ test('scope task schedules expose the task cadence and suggested prices remove z
   assert.equal(getRoomTypeDefaultDirectCharge(suggested.roomTypes[0], DEFAULT_QUOTE_PRICING_CONFIG), 3)
   assert.equal(suggested.roomTypes[0].scopeTasks[0], 'Remove visible cobwebs from ceilings and corners')
   assert.equal(suggested.roomTypes[0].scopeTaskCadences[0], 'monthly')
+})
+
+test('every room includes weekly perimeter and surface dusting without duplicates', () => {
+  for (const roomType of DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes) {
+    const dustingTasks = getRoomScopeTaskSchedule(roomType).filter(({ label }) => (
+      label.toLowerCase().includes('dust')
+      && (label.toLowerCase().includes('perimeter') || label.toLowerCase().includes('surface'))
+    ))
+    assert.equal(dustingTasks.length, 1, `${roomType.id} should have one perimeter/surface dusting task`)
+    assert.equal(dustingTasks[0].cadence, 'weekly')
+  }
+
+  const legacyRoom = {
+    id: 'legacy', label: 'Legacy room', defaultLabel: 'Legacy room', tracksSize: true, defaultSize: 20,
+    defaultMopping: false, scopeTasks: ['Vacuum floors'], scopeTaskCadences: ['every_clean'], scopeTaskPrices: [0],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 5, fields: [],
+  }
+  const upgraded = ensureWeeklyPerimeterSurfaceDusting(legacyRoom)
+  assert.equal(upgraded.scopeTasks.at(-1), DEFAULT_WEEKLY_DUSTING_TASK)
+  assert.equal(upgraded.scopeTaskCadences.at(-1), 'weekly')
+  assert.equal(upgraded.scopeTaskPrices.at(-1), 0)
+  assert.equal(ensureWeeklyPerimeterSurfaceDusting(upgraded).scopeTasks.length, upgraded.scopeTasks.length)
 })
 
 test('room scope derives bathroom and kitchen counts from selected rooms', () => {

@@ -68,6 +68,7 @@ export type QuoteRoomTypeConfig = {
 }
 
 const BATHROOM_ROOM_TYPE_IDS = new Set(['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'])
+export const DEFAULT_WEEKLY_DUSTING_TASK = 'Dust perimeter edges and reachable surfaces'
 
 function isRoomTaskCadence(value: unknown): value is RoomTaskCadence {
   return ROOM_TASK_CADENCE_OPTIONS.some((option) => option.value === value)
@@ -106,6 +107,29 @@ export function getRoomScopeTaskSchedule(roomType: RoomTypeConfig): RoomScopeTas
     label,
     cadence: getRoomScopeTaskCadence(roomType, index),
   }))
+}
+
+function isPerimeterSurfaceDustingTask(label: string) {
+  const normalized = label.trim().toLowerCase()
+  return normalized.includes('dust') && (normalized.includes('perimeter') || normalized.includes('surface'))
+}
+
+export function ensureWeeklyPerimeterSurfaceDusting(roomType: RoomTypeConfig): RoomTypeConfig {
+  const existingIndex = roomType.scopeTasks.findIndex(isPerimeterSurfaceDustingTask)
+  const cadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
+  const prices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
+
+  if (existingIndex >= 0) {
+    cadences[existingIndex] = 'weekly'
+    return { ...roomType, scopeTaskCadences: cadences, scopeTaskPrices: prices }
+  }
+
+  return {
+    ...roomType,
+    scopeTasks: [...roomType.scopeTasks, DEFAULT_WEEKLY_DUSTING_TASK],
+    scopeTaskCadences: [...cadences, 'weekly'],
+    scopeTaskPrices: [...prices, 0],
+  }
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
@@ -242,7 +266,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 20,
       defaultMopping: false,
-      scopeTasks: ['Vacuum carpeted areas', 'Mop hard floors', 'Wipe reachable surfaces', 'Empty bins', 'Clean high-touch points'],
+      scopeTasks: ['Vacuum carpeted areas', 'Mop hard floors', 'Wipe reachable surfaces', 'Empty bins', 'Clean high-touch points', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 15,
       fixedPricePerVisit: 0,
       fields: [
@@ -264,7 +288,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 18,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop floors', 'Wipe tables and reachable surfaces', 'Empty bins', 'Clean high-touch points'],
+      scopeTasks: ['Vacuum or mop floors', 'Wipe tables and reachable surfaces', 'Empty bins', 'Clean high-touch points', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -276,7 +300,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 25,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop entry and waiting areas', 'Wipe reception counters and reachable surfaces', 'Empty bins', 'Clean high-touch points'],
+      scopeTasks: ['Vacuum or mop entry and waiting areas', 'Wipe reception counters and reachable surfaces', 'Empty bins', 'Clean high-touch points', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -288,7 +312,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 12,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop circulation areas', 'Spot clean visible marks', 'Clean high-touch points'],
+      scopeTasks: ['Vacuum or mop circulation areas', 'Spot clean visible marks', 'Clean high-touch points', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -300,7 +324,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: false,
       defaultSize: 0,
       defaultMopping: true,
-      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins'],
+      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [
@@ -318,7 +342,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: false,
       defaultSize: 0,
       defaultMopping: true,
-      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins'],
+      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [
@@ -336,7 +360,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: false,
       defaultSize: 0,
       defaultMopping: true,
-      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins'],
+      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [
@@ -354,7 +378,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: false,
       defaultSize: 0,
       defaultMopping: true,
-      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins'],
+      scopeTasks: ['Clean and disinfect toilets, basins and fixtures', 'Wipe mirrors and reachable surfaces', 'Mop floors', 'Empty sanitary and general waste bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [
@@ -372,7 +396,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: false,
       defaultSize: 0,
       defaultMopping: true,
-      scopeTasks: ['Wipe benches, tables and splashbacks', 'Clean sinks and taps', 'Wipe appliance exteriors', 'Mop floors', 'Empty bins'],
+      scopeTasks: ['Wipe benches, tables and splashbacks', 'Clean sinks and taps', 'Wipe appliance exteriors', 'Mop floors', 'Empty bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -384,7 +408,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 15,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop floors', 'Wipe tables, benches and reachable surfaces', 'Clean high-touch points', 'Empty bins'],
+      scopeTasks: ['Vacuum or mop floors', 'Wipe tables, benches and reachable surfaces', 'Clean high-touch points', 'Empty bins', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -396,7 +420,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 8,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop steps and landings', 'Wipe reachable rails', 'Spot clean visible marks'],
+      scopeTasks: ['Vacuum or mop steps and landings', 'Wipe reachable rails', 'Spot clean visible marks', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -408,7 +432,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 10,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided'],
+      scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -420,7 +444,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 60,
       defaultMopping: false,
-      scopeTasks: ['Sweep or mop accessible hard floors', 'Spot clean visible marks', 'Empty bins where provided'],
+      scopeTasks: ['Sweep or mop accessible hard floors', 'Spot clean visible marks', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -432,7 +456,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 14,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop floors', 'Wipe reachable surfaces', 'Clean high-touch points', 'Empty bins where provided'],
+      scopeTasks: ['Vacuum or mop floors', 'Wipe reachable surfaces', 'Clean high-touch points', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 20,
       fixedPricePerVisit: 0,
       fields: [],
@@ -444,7 +468,7 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
       tracksSize: true,
       defaultSize: 15,
       defaultMopping: false,
-      scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Clean high-touch points', 'Empty bins where provided'],
+      scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Clean high-touch points', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
       pricingAdjustmentPercent: 0,
       fixedPricePerVisit: 0,
       fields: [],
@@ -488,7 +512,7 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
   const fallbackCadences = fallback.scopeTaskCadences ?? []
   const fallbackPrices = fallback.scopeTaskPrices ?? []
 
-  return {
+  const normalized: RoomTypeConfig = {
     id: sourceId || fallback.id,
     label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 100) : fallback.label,
     defaultLabel:
@@ -514,6 +538,8 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
       : fallback.fixedPricePerVisit,
     fields: Array.isArray(source.fields) ? source.fields.slice(0, 50).map(normalizeField) : fallback.fields,
   }
+
+  return ensureWeeklyPerimeterSurfaceDusting(normalized)
 }
 
 function mergeConfig(candidate: unknown): QuoteRoomTypeConfig {
