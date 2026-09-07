@@ -146,8 +146,8 @@ function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeCon
       : undefined,
     floor: room.floor,
     tasks: typeConfig
-      ? getRoomScopeTaskSchedule(typeConfig)
-      : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' })),
+      ? getRoomScopeTaskSchedule(typeConfig, room.scopeTaskSelections, true)
+      : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' as const })),
     selectedOptions: getRoomSelectedOptions(room, roomTypeConfig),
   }
 }

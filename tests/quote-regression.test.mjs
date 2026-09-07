@@ -10,9 +10,14 @@ const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
 const { getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
 const {
   applySuggestedRoomTypePrices,
+  DEFAULT_MONTHLY_COBWEB_TASK,
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+  DEFAULT_VACUUM_TASK,
   DEFAULT_WEEKLY_DUSTING_TASK,
+  ensureStandardRoomTasks,
   ensureWeeklyPerimeterSurfaceDusting,
+  getDefaultRoomScopeTaskSelections,
+  getRoomScopeTaskDefinitions,
   getRoomScopeTaskSchedule,
   getRoomTaskAmortizationFactor,
   getRoomTypeDefaultDirectCharge,
@@ -156,6 +161,31 @@ test('periodic task prices are amortised across the configured cleaning frequenc
   }
 
   assert.equal(getRoomScheduledTaskExtraTotal(draft, config), 6.4)
+
+  const roomType = config.roomTypes[0]
+  const selections = getDefaultRoomScopeTaskSelections(roomType)
+  selections[getRoomScopeTaskDefinitions(roomType)[0].id] = false
+  assert.ok(Math.abs(getRoomScheduledTaskExtraTotal({
+    ...draft,
+    roomItems: [{ ...draft.roomItems[0], scopeTaskSelections: selections }],
+  }, config) - 2.4) < 0.000001)
+})
+
+test('selected area tasks use square metres and fixed tasks use room quantity', () => {
+  const config = {
+    roomTypes: [{
+      id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
+      defaultMopping: false, scopeTasks: ['Vacuum floors', 'Empty bins'],
+      scopeTaskCadences: ['every_clean', 'every_clean'], scopeTaskPrices: [0.12, 0.75],
+      scopeTaskDefaults: [true, true], pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+    }],
+  }
+  const draft = {
+    revisedInputs: { frequency: 'weekly' },
+    roomItems: [{ id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1 }],
+  }
+
+  assert.equal(getRoomScheduledTaskExtraTotal(draft, config), 6.3)
 })
 
 test('scope task schedules expose the task cadence and suggested prices remove zero room bases', () => {
@@ -167,6 +197,11 @@ test('scope task schedules expose the task cadence and suggested prices remove z
   assert.deepEqual(getRoomScopeTaskSchedule(office), [
     { label: 'Dust desks', cadence: 'weekly' },
     { label: 'Remove cobwebs', cadence: 'monthly' },
+  ])
+  const selections = getDefaultRoomScopeTaskSelections(office)
+  selections[getRoomScopeTaskDefinitions(office)[1].id] = false
+  assert.deepEqual(getRoomScopeTaskSchedule(office, selections, true), [
+    { label: 'Dust desks', cadence: 'weekly' },
   ])
 
   const suggested = applySuggestedRoomTypePrices({ roomTypes: [{ ...office, scopeTasks: ['Dust desks'] }] }, DEFAULT_QUOTE_PRICING_CONFIG)
@@ -183,6 +218,8 @@ test('every room includes weekly perimeter and surface dusting without duplicate
     ))
     assert.equal(dustingTasks.length, 1, `${roomType.id} should have one perimeter/surface dusting task`)
     assert.equal(dustingTasks[0].cadence, 'weekly')
+    assert.equal(roomType.scopeTasks.some((task) => task.toLowerCase().includes('vacuum')), true, `${roomType.id} should include vacuuming`)
+    assert.equal(roomType.scopeTasks.some((task) => task.toLowerCase().includes('cobweb')), true, `${roomType.id} should include cobweb removal`)
   }
 
   const legacyRoom = {
@@ -195,6 +232,12 @@ test('every room includes weekly perimeter and surface dusting without duplicate
   assert.equal(upgraded.scopeTaskCadences.at(-1), 'weekly')
   assert.equal(upgraded.scopeTaskPrices.at(-1), 0)
   assert.equal(ensureWeeklyPerimeterSurfaceDusting(upgraded).scopeTasks.length, upgraded.scopeTasks.length)
+
+  const standard = ensureStandardRoomTasks({ ...legacyRoom, scopeTaskPrices: [1.25] })
+  assert.equal(standard.scopeTasks.includes(DEFAULT_VACUUM_TASK), false, 'existing vacuum task should be reused')
+  assert.equal(standard.scopeTasks.includes(DEFAULT_MONTHLY_COBWEB_TASK), true)
+  assert.equal(standard.scopeTaskPrices[0], 1.25)
+  assert.equal(ensureStandardRoomTasks(standard).scopeTasks.length, standard.scopeTasks.length)
 })
 
 test('room scope derives bathroom and kitchen counts from selected rooms', () => {

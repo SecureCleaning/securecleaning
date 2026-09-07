@@ -18,8 +18,11 @@ import {
   type WorkflowRoomType,
 } from '@/lib/quoteWorkflow'
 import {
+  getDefaultRoomScopeTaskSelections,
+  getRoomScopeTaskDefinitions,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
+  isMoppingOnlyTask,
   ROOM_TASK_CADENCE_OPTIONS,
   type QuoteRoomTypeConfig,
   type RoomMetricFieldConfig,
@@ -903,6 +906,7 @@ export default function QuoteWorkflowEditor({
                               metrics: Object.fromEntries((nextTypeConfig?.fields ?? []).map((field) => [field.id, field.defaultValue])),
                               customMetricFields: [],
                               excludedMetricFieldIds: [],
+                              scopeTaskSelections: nextTypeConfig ? getDefaultRoomScopeTaskSelections(nextTypeConfig) : {},
                               moppingEnabled: nextTypeConfig?.defaultMopping ?? false,
                               pricingOverride: false,
                               pricingAdjustmentPercent: nextTypeConfig?.pricingAdjustmentPercent ?? 0,
@@ -990,13 +994,69 @@ export default function QuoteWorkflowEditor({
                         className="w-full rounded-xl border border-gray-300 px-3 py-3"
                       />
                     </label>
-                    {canPriceMopping ? (
+                    {typeConfig ? (
+                      <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
+                        <div className="mb-3">
+                          <div className="text-sm font-semibold text-gray-800">Tasks included in this room</div>
+                          <div className="mt-1 text-xs text-gray-500">Tick or untick tasks for this quote. Fixed task charges and scheduled frequency update the working price automatically.</div>
+                        </div>
+                        <div className="grid gap-2 md:grid-cols-2">
+                          {getRoomScopeTaskDefinitions(typeConfig).map((task) => {
+                            const selected = isMoppingOnlyTask(task.label)
+                              ? Boolean(room.moppingEnabled)
+                              : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
+                            return (
+                              <label key={task.id} className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <span className="flex min-w-0 items-start gap-3">
+                                  <input
+                                    type="checkbox"
+                                    checked={selected}
+                                    onChange={(event) => updateRoom(room.id, {
+                                      scopeTaskSelections: {
+                                        ...(room.scopeTaskSelections ?? getDefaultRoomScopeTaskSelections(typeConfig)),
+                                        [task.id]: event.target.checked,
+                                      },
+                                      ...(isMoppingOnlyTask(task.label) ? { moppingEnabled: event.target.checked } : {}),
+                                    })}
+                                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-medium text-gray-800">{task.label}</span>
+                                    <span className="mt-1 block text-xs text-gray-500">{getRoomTaskCadenceLabel(task.cadence)}</span>
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-right text-xs font-semibold text-teal-800">
+                                  {task.pricingMode === 'area'
+                                    ? task.price > 0 ? `${formatCurrency(task.price)} / sqm` : 'Area labour'
+                                    : task.price > 0 ? `${formatCurrency(task.price)} when done` : 'Included'}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                    {canPriceMopping && typeConfig ? (
                       <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/60 p-4">
                         <label className="flex items-start gap-3 text-sm">
                           <input
                             type="checkbox"
                             checked={room.moppingEnabled ?? false}
-                            onChange={(event) => updateRoom(room.id, { moppingEnabled: event.target.checked })}
+                            onChange={(event) => {
+                              const checked = event.target.checked
+                              const moppingSelections = Object.fromEntries(
+                                getRoomScopeTaskDefinitions(typeConfig)
+                                  .filter((task) => isMoppingOnlyTask(task.label))
+                                  .map((task) => [task.id, checked])
+                              )
+                              updateRoom(room.id, {
+                                moppingEnabled: checked,
+                                scopeTaskSelections: {
+                                  ...(room.scopeTaskSelections ?? getDefaultRoomScopeTaskSelections(typeConfig)),
+                                  ...moppingSelections,
+                                },
+                              })
+                            }}
                             className="mt-1 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
                           />
                           <span>

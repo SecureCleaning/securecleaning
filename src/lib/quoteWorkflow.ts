@@ -4,10 +4,15 @@ import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRo
 import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePreference } from '@/lib/types'
 import {
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+  getDefaultRoomScopeTaskSelections,
   getRoomScopeTaskCadence,
+  getRoomScopeTaskId,
   getRoomScopeTaskPrice,
   getRoomTaskAmortizationFactor,
   getRoomTypeConfigById,
+  isAreaPricedRoomTask,
+  isMoppingOnlyTask,
+  isRoomScopeTaskSelected,
   type QuoteRoomTypeConfig,
   type RoomMetricFieldConfig,
   type RoomTaskCadence,
@@ -43,6 +48,7 @@ export type WorkflowRoomItem = {
   metrics?: Record<string, number | boolean>
   customMetricFields?: RoomMetricFieldConfig[]
   excludedMetricFieldIds?: string[]
+  scopeTaskSelections?: Record<string, boolean>
   moppingEnabled?: boolean
   moppingMinutesPerSqm?: number
   pricingOverride?: boolean
@@ -204,6 +210,7 @@ export function createRoomItem(
     metrics: buildDefaultMetrics(type, roomTypeConfig),
     customMetricFields: [],
     excludedMetricFieldIds: [],
+    scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
     moppingEnabled: roomType?.defaultMopping ?? false,
     moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
     pricingOverride: false,
@@ -248,6 +255,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
         metrics: isBathroomRoomScopeType(room.type)
           ? buildPublicBathroomMetrics(room.type, metrics)
           : metrics,
+        scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
         moppingEnabled: room.moppingRequired ?? roomType?.defaultMopping ?? false,
         moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
         pricingOverride: false,
@@ -271,6 +279,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
     size: inputs.floorArea,
     floor: 1,
     metrics: buildDefaultMetrics(mainType, roomTypeConfig),
+    scopeTaskSelections: mainRoomType ? getDefaultRoomScopeTaskSelections(mainRoomType) : {},
     moppingEnabled: mainRoomType?.defaultMopping ?? false,
     moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
     pricingOverride: false,
@@ -290,6 +299,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       size: 0,
       floor: 1,
       metrics: buildDefaultMetrics('bathroom', roomTypeConfig),
+      scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'bathroom')!),
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.defaultMopping ?? false,
       moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
       pricingOverride: false,
@@ -308,6 +318,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       size: 0,
       floor: 1,
       metrics: buildDefaultMetrics('kitchen', roomTypeConfig),
+      scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'kitchen')!),
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.defaultMopping ?? false,
       moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
       pricingOverride: false,
@@ -339,6 +350,20 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
       // A generic bathroom is not a male bathroom. Use the dedicated male type
       // when a urinal should be included in the room schedule.
       if (type === 'bathroom') metrics.urinals = 0
+      const roomType = getRoomTypeConfigById(roomTypeConfig, type)
+      const sourceSelections = source.scopeTaskSelections && typeof source.scopeTaskSelections === 'object'
+        ? source.scopeTaskSelections
+        : {}
+      const scopeTaskSelections = roomType
+        ? Object.fromEntries(roomType.scopeTasks.map((_, taskIndex) => {
+            const taskId = getRoomScopeTaskId(roomType, taskIndex)
+            const saved = sourceSelections[taskId]
+            const legacyMoppingSelection = isMoppingOnlyTask(roomType.scopeTasks[taskIndex] ?? '')
+              ? (typeof source.moppingEnabled === 'boolean' ? source.moppingEnabled : roomType.defaultMopping)
+              : isRoomScopeTaskSelected(roomType, taskIndex)
+            return [taskId, typeof saved === 'boolean' ? saved : legacyMoppingSelection]
+          }))
+        : {}
 
       return {
         id: typeof source.id === 'string' && source.id.trim() ? source.id : createRoomId('room', index),
@@ -355,6 +380,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         excludedMetricFieldIds: Array.isArray(source.excludedMetricFieldIds)
           ? source.excludedMetricFieldIds.filter((id): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 30)
           : [],
+        scopeTaskSelections,
         moppingEnabled: typeof source.moppingEnabled === 'boolean'
           ? source.moppingEnabled
           : getRoomTypeConfigById(roomTypeConfig, type)?.defaultMopping ?? false,
@@ -560,17 +586,24 @@ export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: Q
 
 export function getRoomScheduledTaskExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
   const frequency = draft.revisedInputs?.frequency ?? 'weekly'
-  return draft.roomItems.reduce((total, room) => {
+  const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
+  return roundCurrency(draft.roomItems.reduce((total, room) => {
     const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
     if (!roomType) return total
-    const perRoom = roomType.scopeTasks.reduce((taskTotal, _, taskIndex) => (
-      taskTotal + getRoomScopeTaskPrice(roomType, taskIndex) * getRoomTaskAmortizationFactor(
+    const perRoom = roomType.scopeTasks.reduce((taskTotal, task, taskIndex) => {
+      if (!isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)) return taskTotal
+      const cadenceFactor = getRoomTaskAmortizationFactor(
         getRoomScopeTaskCadence(roomType, taskIndex),
         frequency
       )
-    ), 0)
-    return total + perRoom * Math.max(0, room.quantity)
-  }, 0)
+      const rate = getRoomScopeTaskPrice(roomType, taskIndex)
+      if (isAreaPricedRoomTask(task)) {
+        return taskTotal + rate * (roomAreas.get(room.id) ?? 0) * cadenceFactor
+      }
+      return taskTotal + rate * Math.max(0, room.quantity) * cadenceFactor
+    }, 0)
+    return total + perRoom
+  }, 0))
 }
 
 export function getRoomMoppingExtraTotal(
@@ -585,6 +618,12 @@ export function getRoomMoppingExtraTotal(
     if (!room.moppingEnabled || !roomType?.tracksSize || roomArea <= 0 || room.quantity <= 0) {
       return sum
     }
+    const usesConfiguredAreaRate = roomType.scopeTasks.some((task, taskIndex) => (
+      isMoppingOnlyTask(task)
+      && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+      && getRoomScopeTaskPrice(roomType, taskIndex) > 0
+    ))
+    if (usesConfiguredAreaRate) return sum
 
     const minutesPerSqm = safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM)
     const roomMinutes = roomArea * minutesPerSqm
@@ -660,14 +699,24 @@ export function getRoomPricingBreakdown(
       return sum + getMetricExtra(field, value ?? field.defaultValue, draft.revisedInputs.frequency)
     }, 0) * Math.max(0, room.quantity)
     const roomScheduledTaskExtra = roomType
-      ? roomType.scopeTasks.reduce((sum, _, taskIndex) => (
-          sum + getRoomScopeTaskPrice(roomType, taskIndex) * getRoomTaskAmortizationFactor(
+      ? roomType.scopeTasks.reduce((sum, task, taskIndex) => {
+          if (!isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)) return sum
+          const cadenceFactor = getRoomTaskAmortizationFactor(
             getRoomScopeTaskCadence(roomType, taskIndex),
             draft.revisedInputs.frequency
           )
-        ), 0) * Math.max(0, room.quantity)
+          const rate = getRoomScopeTaskPrice(roomType, taskIndex)
+          return sum + (isAreaPricedRoomTask(task)
+            ? rate * roomArea * cadenceFactor
+            : rate * Math.max(0, room.quantity) * cadenceFactor)
+        }, 0)
       : 0
-    const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize
+    const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
+      isMoppingOnlyTask(task)
+      && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+      && getRoomScopeTaskPrice(roomType, taskIndex) > 0
+    ))
+    const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize && !usesConfiguredMoppingAreaRate
       ? (roomArea * safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM) / 60) * pricingConfig.settings.hourlyRate *
         getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
       : 0

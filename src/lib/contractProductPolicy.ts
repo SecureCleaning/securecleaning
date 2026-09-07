@@ -153,7 +153,7 @@ export function buildCleanerScopeSnapshot(document: ContractProductQuoteSnapshot
         quantity: Math.max(1, Math.round(Number(room.quantity) || 1)),
         size: Math.max(0, Number(room.size) || 0),
         floor: Math.max(1, Math.round(Number(room.floor) || 1)),
-        tasks: config ? getRoomScopeTaskSchedule(config) : [],
+        tasks: config ? getRoomScopeTaskSchedule(config, room.scopeTaskSelections, true) : [],
       }
     }),
     selectedOptions: selectedOptions(document),

@@ -56,8 +56,10 @@ export type RoomTypeConfig = {
   defaultMopping: boolean
   moppingCadence?: RoomTaskCadence
   scopeTasks: string[]
+  scopeTaskIds?: string[]
   scopeTaskCadences?: RoomTaskCadence[]
   scopeTaskPrices?: number[]
+  scopeTaskDefaults?: boolean[]
   pricingAdjustmentPercent: number
   fixedPricePerVisit: number
   fields: RoomMetricFieldConfig[]
@@ -69,6 +71,8 @@ export type QuoteRoomTypeConfig = {
 
 const BATHROOM_ROOM_TYPE_IDS = new Set(['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'])
 export const DEFAULT_WEEKLY_DUSTING_TASK = 'Dust perimeter edges and reachable surfaces'
+export const DEFAULT_VACUUM_TASK = 'Vacuum accessible floor areas'
+export const DEFAULT_MONTHLY_COBWEB_TASK = 'Remove visible cobwebs from ceilings and corners'
 
 function isRoomTaskCadence(value: unknown): value is RoomTaskCadence {
   return ROOM_TASK_CADENCE_OPTIONS.some((option) => option.value === value)
@@ -97,16 +101,86 @@ export function getRoomScopeTaskPrice(roomType: RoomTypeConfig, index: number) {
   return Number.isFinite(price) ? Math.max(0, price) : 0
 }
 
+function taskSlug(label: string) {
+  return label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'task'
+}
+
+export function getRoomScopeTaskId(roomType: RoomTypeConfig, index: number) {
+  const configured = roomType.scopeTaskIds?.[index]
+  return typeof configured === 'string' && configured.trim()
+    ? configured.trim()
+    : `${roomType.id}-${taskSlug(roomType.scopeTasks[index] ?? '')}-${index + 1}`
+}
+
+export function getRoomScopeTaskDefault(roomType: RoomTypeConfig, index: number) {
+  const configured = roomType.scopeTaskDefaults?.[index]
+  if (typeof configured === 'boolean') return configured
+  const label = roomType.scopeTasks[index] ?? ''
+  return !isMoppingOnlyTask(label) || roomType.defaultMopping
+}
+
+export function isAreaPricedRoomTask(label: string) {
+  const normalized = label.trim().toLowerCase()
+  return normalized.includes('vacuum') || normalized.includes('mop') || normalized.includes('sweep')
+}
+
+export function isMoppingOnlyTask(label: string) {
+  const normalized = label.trim().toLowerCase()
+  return normalized.includes('mop') && !normalized.includes('vacuum') && !normalized.includes('sweep')
+}
+
+export function getDefaultRoomScopeTaskSelections(roomType: RoomTypeConfig) {
+  return Object.fromEntries(roomType.scopeTasks.map((_, index) => [
+    getRoomScopeTaskId(roomType, index),
+    getRoomScopeTaskDefault(roomType, index),
+  ]))
+}
+
+export function isRoomScopeTaskSelected(
+  roomType: RoomTypeConfig,
+  index: number,
+  selections?: Record<string, boolean>
+) {
+  const selected = selections?.[getRoomScopeTaskId(roomType, index)]
+  return typeof selected === 'boolean' ? selected : getRoomScopeTaskDefault(roomType, index)
+}
+
 export type RoomScopeTaskSchedule = {
   label: string
   cadence: RoomTaskCadence
 }
 
-export function getRoomScopeTaskSchedule(roomType: RoomTypeConfig): RoomScopeTaskSchedule[] {
-  return roomType.scopeTasks.map((label, index) => ({
-    label,
-    cadence: getRoomScopeTaskCadence(roomType, index),
-  }))
+export type RoomScopeTaskDefinition = RoomScopeTaskSchedule & {
+  id: string
+  price: number
+  defaultSelected: boolean
+  pricingMode: 'area' | 'fixed'
+}
+
+export function getRoomScopeTaskDefinitions(
+  roomType: RoomTypeConfig,
+  selections?: Record<string, boolean>,
+  selectedOnly = false
+): RoomScopeTaskDefinition[] {
+  return roomType.scopeTasks.flatMap((label, index) => {
+    if (selectedOnly && !isRoomScopeTaskSelected(roomType, index, selections)) return []
+    return [{
+      id: getRoomScopeTaskId(roomType, index),
+      label,
+      cadence: getRoomScopeTaskCadence(roomType, index),
+      price: getRoomScopeTaskPrice(roomType, index),
+      defaultSelected: getRoomScopeTaskDefault(roomType, index),
+      pricingMode: isAreaPricedRoomTask(label) ? 'area' as const : 'fixed' as const,
+    }]
+  })
+}
+
+export function getRoomScopeTaskSchedule(
+  roomType: RoomTypeConfig,
+  selections?: Record<string, boolean>,
+  selectedOnly = false
+): RoomScopeTaskSchedule[] {
+  return getRoomScopeTaskDefinitions(roomType, selections, selectedOnly).map(({ label, cadence }) => ({ label, cadence }))
 }
 
 function isPerimeterSurfaceDustingTask(label: string) {
@@ -130,6 +204,50 @@ export function ensureWeeklyPerimeterSurfaceDusting(roomType: RoomTypeConfig): R
     scopeTaskCadences: [...cadences, 'weekly'],
     scopeTaskPrices: [...prices, 0],
   }
+}
+
+function isVacuumTask(label: string) {
+  return label.trim().toLowerCase().includes('vacuum')
+}
+
+function isCobwebTask(label: string) {
+  return label.trim().toLowerCase().includes('cobweb')
+}
+
+export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfig {
+  let next = ensureWeeklyPerimeterSurfaceDusting(roomType)
+  const required: Array<{ label: string; cadence: RoomTaskCadence; matches: (label: string) => boolean }> = [
+    { label: DEFAULT_VACUUM_TASK, cadence: 'every_clean', matches: isVacuumTask },
+    { label: DEFAULT_MONTHLY_COBWEB_TASK, cadence: 'monthly', matches: isCobwebTask },
+  ]
+
+  for (const task of required) {
+    const taskIndex = next.scopeTasks.findIndex(task.matches)
+    const ids = next.scopeTasks.map((_, index) => getRoomScopeTaskId(next, index))
+    const cadences = next.scopeTasks.map((_, index) => getRoomScopeTaskCadence(next, index))
+    const prices = next.scopeTasks.map((_, index) => getRoomScopeTaskPrice(next, index))
+    const defaults = next.scopeTasks.map((_, index) => getRoomScopeTaskDefault(next, index))
+
+    if (taskIndex >= 0) {
+      cadences[taskIndex] = task.cadence
+      next = { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskDefaults: defaults }
+    } else {
+      next = {
+        ...next,
+        scopeTasks: [...next.scopeTasks, task.label],
+        scopeTaskIds: [...ids, `${next.id}-${taskSlug(task.label)}-${ids.length + 1}`],
+        scopeTaskCadences: [...cadences, task.cadence],
+        scopeTaskPrices: [...prices, 0],
+        scopeTaskDefaults: [...defaults, true],
+      }
+    }
+  }
+
+  const ids = next.scopeTasks.map((_, index) => getRoomScopeTaskId(next, index))
+  const cadences = next.scopeTasks.map((_, index) => getRoomScopeTaskCadence(next, index))
+  const prices = next.scopeTasks.map((_, index) => getRoomScopeTaskPrice(next, index))
+  const defaults = next.scopeTasks.map((_, index) => getRoomScopeTaskDefault(next, index))
+  return { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskDefaults: defaults }
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
@@ -222,9 +340,8 @@ export function applySuggestedRoomTypePrices(
   return {
     roomTypes: config.roomTypes.map((roomType) => {
       const target = suggestedRoomPrice(roomType)
-      const isWetArea = BATHROOM_ROOM_TYPE_IDS.has(roomType.id) || roomType.id === 'kitchen'
       const hasCobwebTask = roomType.scopeTasks.some((task) => task.toLowerCase().includes('cobweb'))
-      const scopeTasks = !isWetArea && !hasCobwebTask
+      const scopeTasks = !hasCobwebTask
         ? ['Remove visible cobwebs from ceilings and corners', ...roomType.scopeTasks]
         : [...roomType.scopeTasks]
       const fields = roomType.fields.map((field) => ({
@@ -239,10 +356,18 @@ export function applySuggestedRoomTypePrices(
         ...roomType,
         fields,
         scopeTasks,
+        scopeTaskIds: scopeTasks.map((task, taskIndex) => {
+          const existingIndex = roomType.scopeTasks.indexOf(task)
+          return existingIndex >= 0 ? getRoomScopeTaskId(roomType, existingIndex) : `${roomType.id}-${taskSlug(task)}-${taskIndex + 1}`
+        }),
         scopeTaskCadences: scopeTasks.map((task) => suggestedScopeCadence(roomType, task)),
         scopeTaskPrices: scopeTasks.map((task) => {
           const existingIndex = roomType.scopeTasks.indexOf(task)
           return existingIndex >= 0 ? getRoomScopeTaskPrice(roomType, existingIndex) : 0
+        }),
+        scopeTaskDefaults: scopeTasks.map((task) => {
+          const existingIndex = roomType.scopeTasks.indexOf(task)
+          return existingIndex >= 0 ? getRoomScopeTaskDefault(roomType, existingIndex) : true
         }),
         fixedPricePerVisit: 0,
       }
@@ -257,7 +382,7 @@ export function applySuggestedRoomTypePrices(
 const ROOM_TYPE_CONTENT_KEY = 'quote_room_types.config'
 const ROOM_TYPE_CONTENT_TITLE = 'Quote room type configuration'
 
-export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
+const RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
   roomTypes: [
     {
       id: 'office',
@@ -476,8 +601,16 @@ export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
   ],
 }
 
+export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
+  roomTypes: RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.map(ensureStandardRoomTasks),
+}
+
+function cloneRawDefaultConfig(): QuoteRoomTypeConfig {
+  return JSON.parse(JSON.stringify(RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG)) as QuoteRoomTypeConfig
+}
+
 function cloneDefaultConfig(): QuoteRoomTypeConfig {
-  return JSON.parse(JSON.stringify(DEFAULT_QUOTE_ROOM_TYPE_CONFIG)) as QuoteRoomTypeConfig
+  return { roomTypes: cloneRawDefaultConfig().roomTypes.map(ensureStandardRoomTasks) }
 }
 
 function normalizeField(candidate: unknown, index: number): RoomMetricFieldConfig {
@@ -500,7 +633,7 @@ function normalizeField(candidate: unknown, index: number): RoomMetricFieldConfi
 }
 
 function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
-  const defaults = cloneDefaultConfig().roomTypes
+  const defaults = cloneRawDefaultConfig().roomTypes
   const source = candidate && typeof candidate === 'object' ? candidate as Partial<RoomTypeConfig> : {}
   const sourceId = typeof source.id === 'string' ? source.id.trim() : ''
   const fallback = defaults.find((roomType) => roomType.id === sourceId) ?? defaults[index] ?? defaults.at(-1)!
@@ -509,6 +642,8 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     : fallback.scopeTasks
   const sourceCadences = Array.isArray(source.scopeTaskCadences) ? source.scopeTaskCadences : []
   const sourcePrices = Array.isArray(source.scopeTaskPrices) ? source.scopeTaskPrices : []
+  const sourceIds = Array.isArray(source.scopeTaskIds) ? source.scopeTaskIds : []
+  const sourceDefaults = Array.isArray(source.scopeTaskDefaults) ? source.scopeTaskDefaults : []
   const fallbackCadences = fallback.scopeTaskCadences ?? []
   const fallbackPrices = fallback.scopeTaskPrices ?? []
 
@@ -522,6 +657,10 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     defaultMopping: typeof source.defaultMopping === 'boolean' ? source.defaultMopping : fallback.defaultMopping,
     moppingCadence: isRoomTaskCadence(source.moppingCadence) ? source.moppingCadence : fallback.moppingCadence ?? 'every_clean',
     scopeTasks,
+    scopeTaskIds: scopeTasks.map((task, taskIndex) => {
+      const id = sourceIds[taskIndex]
+      return typeof id === 'string' && id.trim() ? id.trim().slice(0, 100) : `${sourceId || fallback.id}-${taskSlug(task)}-${taskIndex + 1}`
+    }),
     scopeTaskCadences: scopeTasks.map((task, taskIndex) => {
       const cadence = sourceCadences[taskIndex] ?? fallbackCadences[taskIndex]
       return isRoomTaskCadence(cadence) ? cadence : inferRoomTaskCadence(task)
@@ -530,6 +669,11 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
       const price = Number(sourcePrices[taskIndex] ?? fallbackPrices[taskIndex] ?? 0)
       return Number.isFinite(price) ? Math.min(100_000, Math.max(0, price)) : 0
     }),
+    scopeTaskDefaults: scopeTasks.map((task, taskIndex) => (
+      typeof sourceDefaults[taskIndex] === 'boolean'
+        ? sourceDefaults[taskIndex]
+        : (!isMoppingOnlyTask(task) || (typeof source.defaultMopping === 'boolean' ? source.defaultMopping : fallback.defaultMopping))
+    )),
     pricingAdjustmentPercent: Number.isFinite(Number(source.pricingAdjustmentPercent))
       ? Math.min(1_000, Math.max(-100, Number(source.pricingAdjustmentPercent)))
       : fallback.pricingAdjustmentPercent,
@@ -539,7 +683,7 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     fields: Array.isArray(source.fields) ? source.fields.slice(0, 50).map(normalizeField) : fallback.fields,
   }
 
-  return ensureWeeklyPerimeterSurfaceDusting(normalized)
+  return ensureStandardRoomTasks(normalized)
 }
 
 function mergeConfig(candidate: unknown): QuoteRoomTypeConfig {

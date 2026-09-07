@@ -4,10 +4,15 @@ import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import {
   applySuggestedRoomTypePrices,
+  DEFAULT_MONTHLY_COBWEB_TASK,
+  DEFAULT_VACUUM_TASK,
   DEFAULT_WEEKLY_DUSTING_TASK,
   getRoomScopeTaskCadence,
+  getRoomScopeTaskDefault,
+  getRoomScopeTaskId,
   getRoomScopeTaskPrice,
   getRoomTypeDefaultDirectCharge,
+  isAreaPricedRoomTask,
   ROOM_TASK_CADENCE_OPTIONS,
   type QuoteRoomTypeConfig,
   type RoomMetricFieldConfig,
@@ -37,9 +42,11 @@ function createRoomType(): RoomTypeConfig {
     defaultSize: 20,
     defaultMopping: false,
     moppingCadence: 'every_clean',
-    scopeTasks: ['Vacuum or mop accessible floor areas', 'Wipe reachable surfaces', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK],
-    scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean', 'weekly'],
-    scopeTaskPrices: [0, 0, 0, 0],
+    scopeTasks: [DEFAULT_VACUUM_TASK, 'Wipe reachable surfaces', 'Empty bins where provided', DEFAULT_WEEKLY_DUSTING_TASK, DEFAULT_MONTHLY_COBWEB_TASK],
+    scopeTaskIds: ['vacuum', 'wipe-surfaces', 'empty-bins', 'dust-perimeter', 'remove-cobwebs'],
+    scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean', 'weekly', 'monthly'],
+    scopeTaskPrices: [0, 0, 0, 0, 0],
+    scopeTaskDefaults: [true, true, true, true, true],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
     fields: [],
@@ -205,8 +212,10 @@ export default function RoomTypeConfigAdmin({
         ? {
             ...roomType,
             scopeTasks: [...roomType.scopeTasks, 'New scope task'],
+            scopeTaskIds: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskId(roomType, index)), `task-${Date.now()}`],
             scopeTaskCadences: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index)), 'every_clean'],
             scopeTaskPrices: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index)), 0],
+            scopeTaskDefaults: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index)), false],
           }
         : roomType),
     }))
@@ -215,7 +224,7 @@ export default function RoomTypeConfigAdmin({
   function updateScopeTask(
     roomId: string,
     taskIndex: number,
-    patch: { label?: string; cadence?: RoomTaskCadence; price?: number }
+    patch: { label?: string; cadence?: RoomTaskCadence; price?: number; defaultSelected?: boolean }
   ) {
     setConfig((current) => ({
       roomTypes: current.roomTypes.map((roomType) => {
@@ -223,10 +232,13 @@ export default function RoomTypeConfigAdmin({
         const scopeTasks = [...roomType.scopeTasks]
         const scopeTaskCadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
         const scopeTaskPrices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
+        const scopeTaskIds = roomType.scopeTasks.map((_, index) => getRoomScopeTaskId(roomType, index))
+        const scopeTaskDefaults = roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index))
         if (patch.label !== undefined) scopeTasks[taskIndex] = patch.label
         if (patch.cadence !== undefined) scopeTaskCadences[taskIndex] = patch.cadence
         if (patch.price !== undefined) scopeTaskPrices[taskIndex] = Math.max(0, patch.price)
-        return { ...roomType, scopeTasks, scopeTaskCadences, scopeTaskPrices }
+        if (patch.defaultSelected !== undefined) scopeTaskDefaults[taskIndex] = patch.defaultSelected
+        return { ...roomType, scopeTasks, scopeTaskIds, scopeTaskCadences, scopeTaskPrices, scopeTaskDefaults }
       }),
     }))
   }
@@ -237,11 +249,17 @@ export default function RoomTypeConfigAdmin({
         ? {
             ...roomType,
             scopeTasks: roomType.scopeTasks.filter((_, index) => index !== taskIndex),
+            scopeTaskIds: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskId(roomType, index))
+              .filter((_, index) => index !== taskIndex),
             scopeTaskCadences: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskCadence(roomType, index))
               .filter((_, index) => index !== taskIndex),
             scopeTaskPrices: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskPrice(roomType, index))
+              .filter((_, index) => index !== taskIndex),
+            scopeTaskDefaults: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskDefault(roomType, index))
               .filter((_, index) => index !== taskIndex),
           }
         : roomType),
@@ -393,13 +411,13 @@ export default function RoomTypeConfigAdmin({
                     <div className="mb-3 flex items-center justify-between gap-4">
                       <div>
                         <h4 className="font-semibold text-gray-800">Client scope tasks</h4>
-                        <p className="text-xs text-gray-600">The task and frequency both appear on the client scope. A price above $0 is amortised across visits.</p>
+                        <p className="text-xs text-gray-600">Default tasks start selected in new quotes. Floor tasks use room area; other prices are fixed and support cents.</p>
                       </div>
                       <button type="button" onClick={() => addScopeTask(roomType.id)} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add task</button>
                     </div>
                     <div className="space-y-2">
                       {roomType.scopeTasks.map((task, taskIndex) => (
-                        <div key={`scope-task-${roomTypeIndex}-${taskIndex}`} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_170px_145px_auto] md:items-end">
+                        <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_150px_130px_90px_auto] md:items-end">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Task shown on scope</span>
                             <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
@@ -411,8 +429,12 @@ export default function RoomTypeConfigAdmin({
                             </select>
                           </label>
                           <label className="text-sm">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Price when done</span>
-                            <input type="number" min="0" step="0.01" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{isAreaPricedRoomTask(task) ? 'Price / sqm ($)' : 'Fixed price ($)'}</span>
+                            <input type="number" min="0" step="0.01" inputMode="decimal" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                          </label>
+                          <label className="flex min-h-[42px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700">
+                            <input type="checkbox" checked={getRoomScopeTaskDefault(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { defaultSelected: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600" />
+                            Default
                           </label>
                           <button type="button" onClick={() => removeScopeTask(roomType.id, taskIndex)} className="rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600">Remove</button>
                         </div>
