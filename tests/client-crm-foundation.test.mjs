@@ -506,6 +506,19 @@ test('CRM can create a staff-selected inspection appointment outside public avai
   assert.match(invite, /inspectionBookingSource === 'crm_manual'/)
 })
 
+test('CRM workspace shows linked pending site inspections beside the client record', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const data = source('src/lib/clientCrmData.ts')
+
+  assert.match(data, /scheduledInspections: CrmInspectionSummary\[\]/)
+  assert.match(data, /\.from\('bookings'\)[\s\S]*\.in\('opportunity_id', opportunityIds\)[\s\S]*\.eq\('inspection_status', 'scheduled'\)/)
+  assert.match(data, /scheduledInspections: inspectionsByOpportunity\.get\(id\) \?\? \[\]/)
+  assert.match(workspace, /Pending site inspection/)
+  assert.match(workspace, /selectedLead\.scheduledInspections\.map/)
+  assert.match(workspace, /inspectionDateLabel\(inspection\.scheduledFor, inspection\.endsAt, selectedLead\.city\)/)
+  assert.match(workspace, /View calendar/)
+})
+
 test('client CRM notes are append-only, internal, attributed, and duplicate-safe', () => {
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')

@@ -31,6 +31,14 @@ export type CrmQuoteHistory = {
   finalQuoteSentAt: string | null
 }
 
+export type CrmInspectionSummary = {
+  bookingRef: string
+  scheduledFor: string
+  endsAt: string
+  status: string
+  assignedAgentName: string | null
+}
+
 export type CrmOpportunity = {
   id: string
   organisationId: string | null
@@ -68,6 +76,7 @@ export type CrmOpportunity = {
   hasContactUnresolvedEmail: boolean
   productId: string | null
   productStatus: string | null
+  scheduledInspections: CrmInspectionSummary[]
   quotes: CrmQuoteHistory[]
   communications: CrmCommunication[]
   internalNotes: CrmInternalNote[]
@@ -305,7 +314,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   const contactIds = Array.from(new Set(opportunityRows.map((row) => String(row.primary_contact_id ?? '')).filter(Boolean)))
   const siteIds = Array.from(new Set(opportunityRows.map((row) => String(row.site_id ?? '')).filter(Boolean)))
   const organisationIds = Array.from(new Set(opportunityRows.map((row) => String(row.organisation_id ?? '')).filter(Boolean)))
-  const [organisations, contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails] = await Promise.all([
+  const [organisations, contacts, sites, intakeLinks, quoteLinks, scheduledInspections, emails, unresolvedEmails] = await Promise.all([
     organisationIds.length > 0
       ? db.from('crm_organisations').select('id, business_name, updated_at').in('id', organisationIds)
       : Promise.resolve({ data: [], error: null }),
@@ -322,6 +331,14 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       ? db.from('crm_opportunity_quotes').select('opportunity_id, quote_id, sequence_number').in('opportunity_id', opportunityIds).order('sequence_number', { ascending: false })
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
+      ? db.from('bookings')
+        .select('booking_ref, opportunity_id, status, inspection_scheduled_for, inputs')
+        .in('opportunity_id', opportunityIds)
+        .in('status', ['pending', 'confirmed', 'in_progress'])
+        .eq('inspection_status', 'scheduled')
+        .order('inspection_scheduled_for', { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length > 0
     ? await db.from('crm_communications')
       .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
       .in('opportunity_id', opportunityIds)
@@ -331,7 +348,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       ? db.from('crm_communications').select('contact_id').in('contact_id', contactIds).in('status', ['sending', 'unknown'])
       : Promise.resolve({ data: [], error: null }),
   ])
-  for (const result of [organisations, contacts, sites, intakeLinks, quoteLinks, emails, unresolvedEmails]) {
+  for (const result of [organisations, contacts, sites, intakeLinks, quoteLinks, scheduledInspections, emails, unresolvedEmails]) {
     if (result.error) throw result.error
   }
 
@@ -372,6 +389,35 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   const suppressedEmails = new Set((suppressions.data ?? []).map((row) => row.email_normalized))
   const unresolvedContactIds = new Set((unresolvedEmails.data ?? []).map((row) => String(row.contact_id)))
   const agentNames = new Map(agents.map((agent) => [agent.id, agent.displayName]))
+  const agentNamesByAvailabilityId = new Map(agents.flatMap((agent) => (
+    agent.availabilityAssigneeId ? [[agent.availabilityAssigneeId, agent.displayName] as const] : []
+  )))
+  const inspectionsByOpportunity = new Map<string, CrmInspectionSummary[]>()
+  for (const row of (scheduledInspections.data ?? []) as Array<Record<string, unknown>>) {
+    const opportunityId = String(row.opportunity_id ?? '')
+    const scheduledFor = String(row.inspection_scheduled_for ?? '')
+    const start = new Date(scheduledFor)
+    if (!opportunityId || Number.isNaN(start.getTime())) continue
+    const inputs = row.inputs && typeof row.inputs === 'object' ? row.inputs as Record<string, unknown> : {}
+    const requestedDuration = Number(inputs.inspectionDurationMinutes)
+    const durationMinutes = Number.isInteger(requestedDuration) && requestedDuration >= 15 && requestedDuration <= 480
+      ? requestedDuration
+      : 10
+    const availabilityAssigneeId = typeof inputs.preferredInspectionAssigneeId === 'string'
+      ? inputs.preferredInspectionAssigneeId
+      : ''
+    const summary: CrmInspectionSummary = {
+      bookingRef: String(row.booking_ref ?? ''),
+      scheduledFor: start.toISOString(),
+      endsAt: new Date(start.getTime() + durationMinutes * 60_000).toISOString(),
+      status: String(row.status ?? 'pending'),
+      assignedAgentName: agentNamesByAvailabilityId.get(availabilityAssigneeId) ?? null,
+    }
+    inspectionsByOpportunity.set(opportunityId, [
+      ...(inspectionsByOpportunity.get(opportunityId) ?? []),
+      summary,
+    ])
+  }
   const communicationsByOpportunity = new Map<string, CrmCommunication[]>()
   for (const row of (emails.data ?? []) as Array<Record<string, unknown>>) {
     const item = mapCommunication(row)
@@ -443,6 +489,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
       productId: product?.id ? String(product.id) : null,
       productStatus: product?.status ? String(product.status) : null,
+      scheduledInspections: inspectionsByOpportunity.get(id) ?? [],
       quotes: [...(quotesByOpportunity.get(id) ?? [])].sort((left, right) => (
         right.sequenceNumber - left.sequenceNumber
         || right.createdAt.localeCompare(left.createdAt)
