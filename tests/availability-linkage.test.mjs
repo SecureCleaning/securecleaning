@@ -69,6 +69,26 @@ test('an explicit inspection assignee takes precedence over a conflicting linked
   ), true)
 })
 
+test('manual CRM appointments remain visible to their assigned agent outside public service zones', () => {
+  const manualNorthmeadAppointment = booking({
+    inputs: {
+      city: 'melbourne',
+      suburb: 'Northmead',
+      postcode: '2152',
+      preferredInspectionAssigneeId: agent.id,
+      inspectionBookingSource: 'crm_manual',
+      inspectionAvailabilityOverridden: true,
+    },
+  })
+
+  assert.equal(bookingBelongsToAvailabilityAssignee(manualNorthmeadAppointment, agent, [zone]), true)
+  assert.equal(bookingBelongsToAvailabilityAssignee(
+    manualNorthmeadAppointment,
+    { ...agent, id: 'another-agent' },
+    [zone],
+  ), false)
+})
+
 test('schedule ownership rejects another city, service region, agent, and inactive agent', () => {
   assert.equal(bookingBelongsToAvailabilityAssignee(booking({
     assigned_operator_id: agent.ownerOperatorId,

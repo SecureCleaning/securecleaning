@@ -37,6 +37,10 @@ export function bookingBelongsToAvailabilityAssignee(
     return false
   }
 
+  const isManualCrmOverride = inputs.inspectionBookingSource === 'crm_manual'
+    || inputs.inspectionAvailabilityOverridden === true
+  if (isManualCrmOverride) return true
+
   if (serviceZones.length === 0) return true
   return locationMatchesServiceZones(
     {
