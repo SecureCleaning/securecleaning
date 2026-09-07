@@ -615,7 +615,15 @@ export async function addCrmOpportunityNote(actor: ClientCrmActor, input: Record
 
 export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
   const businessName = clean(input.businessName, 200)
-  const contactName = clean(input.contactName, 200)
+  const firstName = clean(input.firstName, 100)
+  const lastName = clean(input.lastName, 100)
+  const hasStructuredName = Boolean(firstName || lastName)
+  if (hasStructuredName && (!firstName || !lastName)) {
+    throw new ClientCrmError('Provide both the contact first name and last name.')
+  }
+  const contactName = hasStructuredName
+    ? `${firstName} ${lastName}`
+    : clean(input.contactName, 200)
   const email = normalizeCrmEmail(input.email)
   const phone = clean(input.phone, 40)
   const address = clean(input.address, 300)
@@ -631,7 +639,7 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const requestedAssigneeId = clean(input.assignedStaffId, 100)
 
   if (!businessName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
-    throw new ClientCrmError('Provide the business, contact, valid email, city, postcode, and contact basis.')
+    throw new ClientCrmError('Provide the business, first and last name, valid email, city, postcode, and contact basis.')
   }
   if (requiresNamedSourceProvider(sourceType, contactBasis) && !sourceProvider) {
     throw new ClientCrmError('Name the lead provider or public source before creating this opportunity.')

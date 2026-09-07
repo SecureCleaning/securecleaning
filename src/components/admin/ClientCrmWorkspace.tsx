@@ -6,6 +6,7 @@ import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import { applyCrmTemplateTokens, getMissingCrmSignatureFields, resolveDefaultCrmSenderId } from '@/lib/clientCrmPolicy'
 import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity, CrmSenderOption } from '@/lib/clientCrmData'
 import type { StaffAccount } from '@/lib/staffAccounts'
+import type { CleaningFrequency, PremisesType, TimePreference } from '@/lib/types'
 
 type WorkspaceData = {
   opportunities: CrmOpportunity[]
@@ -16,6 +17,23 @@ type WorkspaceData = {
 }
 
 type Status = { type: 'success' | 'error'; message: string } | null
+
+type AppointmentSuggestion = {
+  slotId: string
+  label: string
+  windowLabel?: string
+  startTime: string
+  endTime: string
+  assigneeName: string
+}
+
+type AppointmentAvailability = {
+  zoneMatched: boolean
+  matchedZoneNames: string[]
+  suggestions: AppointmentSuggestion[]
+  nextAvailableDate?: string
+  nextAvailableSuggestions: AppointmentSuggestion[]
+}
 
 const sourceOptions = [
   ['manual', 'Manual entry'],
@@ -32,9 +50,36 @@ const basisOptions = [
 
 const stageOptions = ['new', 'contacted', 'qualified', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost', 'cancelled']
 
+const premisesOptions: Array<[PremisesType, string]> = [
+  ['office', 'Office / workplace'],
+  ['medical', 'Medical / healthcare'],
+  ['industrial', 'Industrial'],
+  ['childcare', 'Childcare'],
+  ['retail', 'Retail'],
+  ['gym', 'Gym / fitness'],
+  ['warehouse', 'Warehouse'],
+  ['function_centre', 'Function centre'],
+  ['sports_facility', 'Sports facility'],
+  ['other', 'Other'],
+]
+
+const frequencyOptions: Array<[CleaningFrequency, string]> = [
+  ['daily', 'Daily (5× weekly)'],
+  ['3x_week', '3× weekly'],
+  ['2x_week', '2× weekly'],
+  ['weekly', 'Weekly'],
+  ['fortnightly', 'Fortnightly'],
+]
+
+const timeOptions: Array<[TimePreference, string]> = [
+  ['business_hours', 'Business hours'],
+  ['after_hours', 'After hours'],
+  ['weekend', 'Weekend'],
+]
+
 function emptyLeadDraft() {
   return {
-    businessName: '', contactName: '', email: '', phone: '', address: '', suburb: '', postcode: '',
+    businessName: '', firstName: '', lastName: '', email: '', phone: '', address: '', suburb: '', postcode: '',
     city: 'melbourne', sourceType: 'manual', sourceProvider: '', sourceReference: '',
     contactBasis: 'enquiry', sourceExplanation: '', assignedStaffId: '', notes: '',
   }
@@ -62,6 +107,22 @@ function melbourneToday() {
   return `${value.year}-${value.month}-${value.day}`
 }
 
+function addDays(dateString: string, days: number) {
+  const [year, month, day] = dateString.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+  return date.toISOString().slice(0, 10)
+}
+
+function emptyAppointmentDraft() {
+  return {
+    preferredDate: addDays(melbourneToday(), 1),
+    premisesType: 'office' as PremisesType,
+    frequency: 'weekly' as CleaningFrequency,
+    timePreference: 'business_hours' as TimePreference,
+    slotId: '',
+  }
+}
+
 export default function ClientCrmWorkspace({
   portal = 'admin',
   initialOpportunityId = '',
@@ -77,6 +138,10 @@ export default function ClientCrmWorkspace({
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '' })
   const [leadEdit, setLeadEdit] = useState({ stage: 'new', notes: '', nextFollowUpAt: '', assignedStaffId: '', contactBasis: '', sourceProvider: '', sourceExplanation: '' })
   const [profileEdit, setProfileEdit] = useState({ businessName: '', firstName: '', lastName: '', positionTitle: '', email: '', phone: '', siteName: '', address: '', suburb: '', postcode: '' })
+  const [appointmentOpen, setAppointmentOpen] = useState(false)
+  const [appointmentDraft, setAppointmentDraft] = useState(emptyAppointmentDraft)
+  const [appointmentAvailability, setAppointmentAvailability] = useState<AppointmentAvailability | null>(null)
+  const [appointmentAvailabilityBusy, setAppointmentAvailabilityBusy] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const [noteHistory, setNoteHistory] = useState<CrmOpportunity['internalNotes']>([])
   const [notesCursor, setNotesCursor] = useState<string | null>(null)
@@ -150,6 +215,9 @@ export default function ClientCrmWorkspace({
       postcode: selectedLead.postcode,
     })
     setNoteDraft('')
+    setAppointmentOpen(false)
+    setAppointmentDraft(emptyAppointmentDraft())
+    setAppointmentAvailability(null)
     const defaultSenderId = resolveDefaultCrmSenderId(
       data?.actor.id ?? '',
       selectedLead.assignedStaffId,
@@ -164,6 +232,37 @@ export default function ClientCrmWorkspace({
       acceptanceNote: '',
     })
   }, [data?.actor.id, data?.senders, selectedLead])
+
+  useEffect(() => {
+    if (!appointmentOpen || !selectedLead?.id || !appointmentDraft.preferredDate) return
+    const controller = new AbortController()
+    setAppointmentAvailabilityBusy(true)
+    setAppointmentAvailability(null)
+    const params = new URLSearchParams({
+      availabilityFor: selectedLead.id,
+      preferredDate: appointmentDraft.preferredDate,
+    })
+    fetch(`/api/admin/client-crm?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Unable to load inspection times.')
+        setAppointmentAvailability(result.result as AppointmentAvailability)
+        setAppointmentDraft((current) => ({
+          ...current,
+          slotId: (result.result?.suggestions ?? []).some((suggestion: AppointmentSuggestion) => suggestion.slotId === current.slotId)
+            ? current.slotId
+            : '',
+        }))
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load inspection times.' })
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAppointmentAvailabilityBusy(false)
+      })
+    return () => controller.abort()
+  }, [appointmentDraft.preferredDate, appointmentOpen, selectedLead?.id])
 
   async function post(body: Record<string, unknown>) {
     const response = await fetch('/api/admin/client-crm', {
@@ -196,7 +295,7 @@ export default function ClientCrmWorkspace({
     const tokens = {
       business_name: selectedLead.businessName,
       contact_name: selectedLead.contactName,
-      first_name: selectedLead.contactName.split(/\s+/)[0] || '',
+      first_name: selectedLead.firstName || selectedLead.contactName.split(/\s+/)[0] || '',
       suburb: selectedLead.suburb,
       postcode: selectedLead.postcode,
       lead_source: selectedLead.sourceProvider || selectedLead.sourceType,
@@ -260,6 +359,34 @@ export default function ClientCrmWorkspace({
       setStatus({ type: 'success', message: 'Business, contact, and site details updated.' })
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update the client details.' })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function createAppointment() {
+    if (!selectedLead || !appointmentDraft.slotId || !globalThis.crypto?.randomUUID) return
+    setBusy('appointment')
+    setStatus(null)
+    try {
+      const result = await post({
+        action: 'inspection.create',
+        opportunityId: selectedLead.id,
+        preferredDate: appointmentDraft.preferredDate,
+        slotId: appointmentDraft.slotId,
+        premisesType: appointmentDraft.premisesType,
+        frequency: appointmentDraft.frequency,
+        timePreference: appointmentDraft.timePreference,
+        idempotencyKey: crypto.randomUUID(),
+      })
+      await loadWorkspace(selectedLead.id)
+      setAppointmentOpen(false)
+      setStatus({
+        type: 'success',
+        message: `Inspection appointment ${result.result?.bookingRef ?? ''} created and added to the schedule.`,
+      })
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to create the appointment.' })
     } finally {
       setBusy('')
     }
@@ -376,6 +503,29 @@ export default function ClientCrmWorkspace({
   const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
   const canSend = Boolean(selectedLead && selectedSender && !selectedLead.suppressed && !hasUnresolvedEmail && signatureMissing.length === 0 && compose.subject.trim() && compose.body.trim())
+  const appointmentRecordReady = Boolean(
+    selectedLead?.contactId
+    && selectedLead.siteId
+    && selectedLead.city
+    && selectedLead.contactName
+    && selectedLead.email
+    && selectedLead.phone
+    && selectedLead.address
+    && selectedLead.suburb
+    && /^\d{4}$/.test(selectedLead.postcode),
+  )
+  const profileHasUnsavedChanges = Boolean(selectedLead && (
+    profileEdit.businessName !== selectedLead.businessName
+    || profileEdit.firstName !== selectedLead.firstName
+    || profileEdit.lastName !== selectedLead.lastName
+    || profileEdit.positionTitle !== selectedLead.positionTitle
+    || profileEdit.email !== selectedLead.email
+    || profileEdit.phone !== selectedLead.phone
+    || profileEdit.siteName !== selectedLead.siteName
+    || profileEdit.address !== selectedLead.address
+    || profileEdit.suburb !== selectedLead.suburb
+    || profileEdit.postcode !== selectedLead.postcode
+  ))
 
   return (
     <div>
@@ -393,7 +543,8 @@ export default function ClientCrmWorkspace({
         <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. The postcode suggests an agent automatically; an existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <label className="text-sm font-medium text-gray-700">Business name<input required value={leadDraft.businessName} onChange={(event) => setLeadDraft({ ...leadDraft, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-          <label className="text-sm font-medium text-gray-700">Contact name<input required value={leadDraft.contactName} onChange={(event) => setLeadDraft({ ...leadDraft, contactName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <label className="text-sm font-medium text-gray-700">First name<input required maxLength={100} autoComplete="given-name" value={leadDraft.firstName} onChange={(event) => setLeadDraft({ ...leadDraft, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <label className="text-sm font-medium text-gray-700">Last name<input required maxLength={100} autoComplete="family-name" value={leadDraft.lastName} onChange={(event) => setLeadDraft({ ...leadDraft, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Email<input required type="email" value={leadDraft.email} onChange={(event) => setLeadDraft({ ...leadDraft, email: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Phone<input value={leadDraft.phone} onChange={(event) => setLeadDraft({ ...leadDraft, phone: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700 lg:col-span-2">Site address<input value={leadDraft.address} onChange={(event) => setLeadDraft({ ...leadDraft, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
@@ -434,8 +585,42 @@ export default function ClientCrmWorkspace({
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Primary contact</legend><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700">First name<input value={profileEdit.firstName} onChange={(event) => setProfileEdit({ ...profileEdit, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Last name<input value={profileEdit.lastName} onChange={(event) => setProfileEdit({ ...profileEdit, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Position / title<input value={profileEdit.positionTitle} onChange={(event) => setProfileEdit({ ...profileEdit, positionTitle: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Email<input type="email" value={profileEdit.email} onChange={(event) => setProfileEdit({ ...profileEdit, email: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Phone<input type="tel" value={profileEdit.phone} onChange={(event) => setProfileEdit({ ...profileEdit, phone: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div></fieldset>
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Site</legend>{selectedLead.siteId ? <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700 sm:col-span-2">Site name<input value={profileEdit.siteName} onChange={(event) => setProfileEdit({ ...profileEdit, siteName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Street address<input value={profileEdit.address} onChange={(event) => setProfileEdit({ ...profileEdit, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Suburb<input value={profileEdit.suburb} onChange={(event) => setProfileEdit({ ...profileEdit, suburb: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Postcode<input inputMode="numeric" maxLength={4} value={profileEdit.postcode} onChange={(event) => setProfileEdit({ ...profileEdit, postcode: event.target.value.replace(/\D/g, '').slice(0, 4) })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">State / service region<span className="mt-1 block rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-normal">{selectedLead.state}</span></label></div> : <p className="text-sm text-gray-600">This opportunity does not yet have a confirmed site. Site details will become editable after inspection booking creates the canonical site record.</p>}</fieldset>
             </fieldset>
-            {canManageShared ? <button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update'} className="mt-4 rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button> : <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Business, contact, and site details are shared across sales cycles. Ask an owner or manager to change them.</p>}
+            <div className="mt-4 flex flex-wrap gap-3">
+              {canManageShared ? <button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update'} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button> : null}
+              <button
+                type="button"
+                onClick={() => setAppointmentOpen((current) => !current)}
+                disabled={!appointmentRecordReady || profileHasUnsavedChanges || ['won', 'lost', 'cancelled'].includes(selectedLead.stage)}
+                className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {appointmentOpen ? 'Close appointment form' : 'Book inspection appointment'}
+              </button>
+            </div>
+            {!canManageShared ? <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Business, contact, and site details are shared across sales cycles. Ask an owner or manager to change them.</p> : null}
+            {!appointmentRecordReady ? <p className="mt-3 text-sm font-medium text-amber-700">A saved contact, phone number, email, and complete site address are required before booking an appointment.</p> : null}
+            {profileHasUnsavedChanges ? <p className="mt-3 text-sm font-medium text-amber-700">Save the client and site changes before booking so the appointment uses the current details.</p> : null}
           </section>
+          {appointmentOpen ? <section className="rounded-2xl border border-green-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h2 className="text-lg font-bold text-gray-900">Book a site inspection</h2><p className="mt-1 text-sm text-gray-600">Uses this client’s saved details and the assigned agent’s live availability, appointments, and block-outs.</p></div>
+              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-800">{selectedLead.suburb} {selectedLead.postcode}</span>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <label className="text-sm font-medium text-gray-700">Inspection date<input type="date" min={melbourneToday()} value={appointmentDraft.preferredDate} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, preferredDate: event.target.value, slotId: '' })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Premises type<select value={appointmentDraft.premisesType} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, premisesType: event.target.value as PremisesType })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{premisesOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Cleaning frequency<select value={appointmentDraft.frequency} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, frequency: event.target.value as CleaningFrequency })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{frequencyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Cleaning time<select value={appointmentDraft.timePreference} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, timePreference: event.target.value as TimePreference })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{timeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+            </div>
+            <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-sm font-bold text-gray-900">Available appointment times</h3>
+              {appointmentAvailabilityBusy ? <p className="mt-2 text-sm text-gray-600">Checking the live schedule...</p> : null}
+              {!appointmentAvailabilityBusy && appointmentAvailability && !appointmentAvailability.zoneMatched ? <p className="mt-2 text-sm font-medium text-amber-700">This site is not currently covered by an inspection zone. Update its suburb or postcode mapping before booking.</p> : null}
+              {!appointmentAvailabilityBusy && appointmentAvailability?.zoneMatched && appointmentAvailability.suggestions.length === 0 ? <div className="mt-2 text-sm text-gray-600"><p>No appointment times remain on this date.</p>{appointmentAvailability.nextAvailableDate ? <button type="button" onClick={() => setAppointmentDraft({ ...appointmentDraft, preferredDate: appointmentAvailability.nextAvailableDate!, slotId: '' })} className="mt-2 font-semibold text-teal-700 hover:underline">Show next available date: {appointmentAvailability.nextAvailableDate}</button> : null}</div> : null}
+              {appointmentAvailability?.suggestions.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{appointmentAvailability.suggestions.map((suggestion) => <label key={suggestion.slotId} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${appointmentDraft.slotId === suggestion.slotId ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}><input type="radio" name="crm-inspection-slot" value={suggestion.slotId} checked={appointmentDraft.slotId === suggestion.slotId} onChange={() => setAppointmentDraft({ ...appointmentDraft, slotId: suggestion.slotId })} className="mt-0.5" /><span><span className="block font-semibold text-gray-900">{suggestion.label}</span><span className="mt-1 block text-xs text-gray-500">{suggestion.startTime}–{suggestion.endTime} · {suggestion.assigneeName}</span></span></label>)}</div> : null}
+              {appointmentAvailability?.matchedZoneNames.length ? <p className="mt-3 text-xs text-gray-500">Coverage: {appointmentAvailability.matchedZoneNames.join(', ')}</p> : null}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createAppointment()} disabled={busy === 'appointment' || appointmentAvailabilityBusy || profileHasUnsavedChanges || !appointmentDraft.slotId} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'appointment' ? 'Creating appointment...' : 'Create appointment'}</button><p className="text-xs text-gray-500">The selected time is checked again before saving. The client and assigned agent receive the normal inspection confirmation.</p></div>
+          </section> : null}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Opportunity workflow</h2>
             <p className="mt-1 text-sm text-gray-600">Manage this sales cycle without changing the customer’s identity or site details.</p>

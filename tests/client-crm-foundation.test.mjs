@@ -458,6 +458,45 @@ test('client CRM presents structured business, contact, and site editing', () =>
   assert.match(data, /actor\.role === 'agent'[\s\S]*Only an owner or manager can change shared client and site details/)
 })
 
+test('new CRM opportunities capture required first and last names separately', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const data = source('src/lib/clientCrmData.ts')
+
+  assert.match(workspace, /businessName: '', firstName: '', lastName: ''/)
+  assert.match(workspace, /First name<input required[^>]*autoComplete="given-name"[^>]*leadDraft\.firstName/)
+  assert.match(workspace, /Last name<input required[^>]*autoComplete="family-name"[^>]*leadDraft\.lastName/)
+  assert.doesNotMatch(workspace, /Contact name<input required value=\{leadDraft\.contactName\}/)
+  assert.match(data, /const firstName = clean\(input\.firstName, 100\)/)
+  assert.match(data, /const lastName = clean\(input\.lastName, 100\)/)
+  assert.match(data, /hasStructuredName[\s\S]*Provide both the contact first name and last name/)
+  assert.match(data, /const contactName = hasStructuredName[\s\S]*`\$\{firstName\} \$\{lastName\}`[\s\S]*clean\(input\.contactName, 200\)/)
+})
+
+test('CRM can create a protected inspection appointment from the selected client and site', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const appointments = source('src/lib/clientCrmAppointments.ts')
+  const route = source('src/app/api/admin/client-crm/route.ts')
+
+  assert.match(workspace, /Book inspection appointment/)
+  assert.match(workspace, /action: 'inspection\.create'/)
+  assert.match(workspace, /availabilityFor: selectedLead\.id/)
+  assert.match(workspace, /The selected time is checked again before saving/)
+  assert.match(route, /getCrmInspectionAvailability/)
+  assert.match(route, /action === 'inspection\.create'/)
+  assert.match(route, /client-crm-inspection:\$\{actor\.id\}/)
+  assert.match(appointments, /actorCanAccessOpportunity\(actor, opportunity\.assigned_staff_id\)/)
+  assert.match(appointments, /This appointment must be booked into your assigned inspection calendar/)
+  assert.match(appointments, /getAvailabilityCalendar\(location, city, preferredDate\)/)
+  assert.match(appointments, /suggestion\.slotId === slotId/)
+  assert.match(appointments, /opportunity_id: opportunityId/)
+  assert.match(appointments, /inspection_status: 'scheduled'/)
+  assert.match(appointments, /availabilityAssigneeId === selectedSuggestion\.assigneeId/)
+  assert.match(appointments, /\.is\('assigned_staff_id', null\)/)
+  assert.match(appointments, /idempotencyKey\.replaceAll\('-', ''\)/)
+  assert.match(appointments, /sendBookingConfirmationEmail\(bookingRef, bookingInputs\)/)
+  assert.match(appointments, /createBookingFollowUpEvent\(bookingRef, bookingInputs\)/)
+})
+
 test('client CRM notes are append-only, internal, attributed, and duplicate-safe', () => {
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')
