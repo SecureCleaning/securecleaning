@@ -62,7 +62,7 @@ export async function createBookingFollowUpEvent(
         `City: ${cityLabel}`,
         `Frequency: ${inputs.frequency}`,
         `Time preference: ${inputs.timePreference}`,
-        `Inspection window: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
+        `${inputs.inspectionBookingSource === 'crm_manual' ? 'Confirmed appointment' : 'Inspection window'}: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
         `Assigned quoter: ${inputs.preferredInspectionAssigneeName || 'To be confirmed'}`,
         `Notes: ${inputs.notes || 'None'}`,
       ].join('\n'),

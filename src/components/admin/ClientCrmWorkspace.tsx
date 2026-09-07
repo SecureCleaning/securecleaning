@@ -18,23 +18,6 @@ type WorkspaceData = {
 
 type Status = { type: 'success' | 'error'; message: string } | null
 
-type AppointmentSuggestion = {
-  slotId: string
-  label: string
-  windowLabel?: string
-  startTime: string
-  endTime: string
-  assigneeName: string
-}
-
-type AppointmentAvailability = {
-  zoneMatched: boolean
-  matchedZoneNames: string[]
-  suggestions: AppointmentSuggestion[]
-  nextAvailableDate?: string
-  nextAvailableSuggestions: AppointmentSuggestion[]
-}
-
 const sourceOptions = [
   ['manual', 'Manual entry'],
   ['purchased_lead', 'Purchased lead'],
@@ -113,13 +96,15 @@ function addDays(dateString: string, days: number) {
   return date.toISOString().slice(0, 10)
 }
 
-function emptyAppointmentDraft() {
+function emptyAppointmentDraft(assignedStaffId = '') {
   return {
     preferredDate: addDays(melbourneToday(), 1),
+    startTime: '09:00',
+    durationMinutes: '60',
+    assignedStaffId,
     premisesType: 'office' as PremisesType,
     frequency: 'weekly' as CleaningFrequency,
     timePreference: 'business_hours' as TimePreference,
-    slotId: '',
   }
 }
 
@@ -140,8 +125,6 @@ export default function ClientCrmWorkspace({
   const [profileEdit, setProfileEdit] = useState({ businessName: '', firstName: '', lastName: '', positionTitle: '', email: '', phone: '', siteName: '', address: '', suburb: '', postcode: '' })
   const [appointmentOpen, setAppointmentOpen] = useState(false)
   const [appointmentDraft, setAppointmentDraft] = useState(emptyAppointmentDraft)
-  const [appointmentAvailability, setAppointmentAvailability] = useState<AppointmentAvailability | null>(null)
-  const [appointmentAvailabilityBusy, setAppointmentAvailabilityBusy] = useState(false)
   const [noteDraft, setNoteDraft] = useState('')
   const [noteHistory, setNoteHistory] = useState<CrmOpportunity['internalNotes']>([])
   const [notesCursor, setNotesCursor] = useState<string | null>(null)
@@ -216,8 +199,9 @@ export default function ClientCrmWorkspace({
     })
     setNoteDraft('')
     setAppointmentOpen(false)
-    setAppointmentDraft(emptyAppointmentDraft())
-    setAppointmentAvailability(null)
+    setAppointmentDraft(emptyAppointmentDraft(
+      selectedLead.assignedStaffId || (data?.actor.role === 'agent' ? data.actor.id : ''),
+    ))
     const defaultSenderId = resolveDefaultCrmSenderId(
       data?.actor.id ?? '',
       selectedLead.assignedStaffId,
@@ -231,38 +215,7 @@ export default function ClientCrmWorkspace({
       acceptanceMethod: 'email',
       acceptanceNote: '',
     })
-  }, [data?.actor.id, data?.senders, selectedLead])
-
-  useEffect(() => {
-    if (!appointmentOpen || !selectedLead?.id || !appointmentDraft.preferredDate) return
-    const controller = new AbortController()
-    setAppointmentAvailabilityBusy(true)
-    setAppointmentAvailability(null)
-    const params = new URLSearchParams({
-      availabilityFor: selectedLead.id,
-      preferredDate: appointmentDraft.preferredDate,
-    })
-    fetch(`/api/admin/client-crm?${params.toString()}`, { cache: 'no-store', signal: controller.signal })
-      .then(async (response) => {
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error || 'Unable to load inspection times.')
-        setAppointmentAvailability(result.result as AppointmentAvailability)
-        setAppointmentDraft((current) => ({
-          ...current,
-          slotId: (result.result?.suggestions ?? []).some((suggestion: AppointmentSuggestion) => suggestion.slotId === current.slotId)
-            ? current.slotId
-            : '',
-        }))
-      })
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === 'AbortError') return
-        setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load inspection times.' })
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setAppointmentAvailabilityBusy(false)
-      })
-    return () => controller.abort()
-  }, [appointmentDraft.preferredDate, appointmentOpen, selectedLead?.id])
+  }, [data?.actor.id, data?.actor.role, data?.senders, selectedLead])
 
   async function post(body: Record<string, unknown>) {
     const response = await fetch('/api/admin/client-crm', {
@@ -365,7 +318,7 @@ export default function ClientCrmWorkspace({
   }
 
   async function createAppointment() {
-    if (!selectedLead || !appointmentDraft.slotId || !globalThis.crypto?.randomUUID) return
+    if (!selectedLead || !appointmentDraft.assignedStaffId || !appointmentDraft.startTime || !globalThis.crypto?.randomUUID) return
     setBusy('appointment')
     setStatus(null)
     try {
@@ -373,7 +326,9 @@ export default function ClientCrmWorkspace({
         action: 'inspection.create',
         opportunityId: selectedLead.id,
         preferredDate: appointmentDraft.preferredDate,
-        slotId: appointmentDraft.slotId,
+        startTime: appointmentDraft.startTime,
+        durationMinutes: Number(appointmentDraft.durationMinutes),
+        assignedStaffId: appointmentDraft.assignedStaffId,
         premisesType: appointmentDraft.premisesType,
         frequency: appointmentDraft.frequency,
         timePreference: appointmentDraft.timePreference,
@@ -503,6 +458,8 @@ export default function ClientCrmWorkspace({
   const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
   const canSend = Boolean(selectedLead && selectedSender && !selectedLead.suppressed && !hasUnresolvedEmail && signatureMissing.length === 0 && compose.subject.trim() && compose.body.trim())
+  const appointmentAgents = data.agents.filter((agent) => agent.availabilityAssigneeId)
+  const selectedAppointmentAgent = appointmentAgents.find((agent) => agent.id === appointmentDraft.assignedStaffId) ?? null
   const appointmentRecordReady = Boolean(
     selectedLead?.contactId
     && selectedLead.siteId
@@ -602,24 +559,23 @@ export default function ClientCrmWorkspace({
           </section>
           {appointmentOpen ? <section className="rounded-2xl border border-green-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div><h2 className="text-lg font-bold text-gray-900">Book a site inspection</h2><p className="mt-1 text-sm text-gray-600">Uses this client’s saved details and the assigned agent’s live availability, appointments, and block-outs.</p></div>
+              <div><h2 className="text-lg font-bold text-gray-900">Book a site inspection</h2><p className="mt-1 text-sm text-gray-600">Choose the exact appointment time. This private staff booking is not limited by public inspection zones or preset availability.</p></div>
               <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-800">{selectedLead.suburb} {selectedLead.postcode}</span>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <label className="text-sm font-medium text-gray-700">Inspection date<input type="date" min={melbourneToday()} value={appointmentDraft.preferredDate} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, preferredDate: event.target.value, slotId: '' })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              Manual staff override: the appointment can be placed outside the agent’s public hours and during a block-out. Check the agent’s calendar before confirming to avoid an accidental clash.
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              <label className="text-sm font-medium text-gray-700">Inspection date<input type="date" min={melbourneToday()} value={appointmentDraft.preferredDate} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, preferredDate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Start time<input type="time" required value={appointmentDraft.startTime} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, startTime: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Duration (minutes)<input type="number" required min="15" max="480" step="15" value={appointmentDraft.durationMinutes} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, durationMinutes: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Inspection agent<select disabled={Boolean(selectedLead.assignedStaffId) || data.actor.role === 'agent'} value={appointmentDraft.assignedStaffId} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="">Select agent</option>{appointmentAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select>{selectedLead.assignedStaffId ? <span className="mt-1 block text-xs font-normal text-gray-500">Change the assigned agent in Opportunity workflow if needed.</span> : null}</label>
               <label className="text-sm font-medium text-gray-700">Premises type<select value={appointmentDraft.premisesType} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, premisesType: event.target.value as PremisesType })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{premisesOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Cleaning frequency<select value={appointmentDraft.frequency} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, frequency: event.target.value as CleaningFrequency })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{frequencyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Cleaning time<select value={appointmentDraft.timePreference} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, timePreference: event.target.value as TimePreference })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{timeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             </div>
-            <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <h3 className="text-sm font-bold text-gray-900">Available appointment times</h3>
-              {appointmentAvailabilityBusy ? <p className="mt-2 text-sm text-gray-600">Checking the live schedule...</p> : null}
-              {!appointmentAvailabilityBusy && appointmentAvailability && !appointmentAvailability.zoneMatched ? <p className="mt-2 text-sm font-medium text-amber-700">This site is not currently covered by an inspection zone. Update its suburb or postcode mapping before booking.</p> : null}
-              {!appointmentAvailabilityBusy && appointmentAvailability?.zoneMatched && appointmentAvailability.suggestions.length === 0 ? <div className="mt-2 text-sm text-gray-600"><p>No appointment times remain on this date.</p>{appointmentAvailability.nextAvailableDate ? <button type="button" onClick={() => setAppointmentDraft({ ...appointmentDraft, preferredDate: appointmentAvailability.nextAvailableDate!, slotId: '' })} className="mt-2 font-semibold text-teal-700 hover:underline">Show next available date: {appointmentAvailability.nextAvailableDate}</button> : null}</div> : null}
-              {appointmentAvailability?.suggestions.length ? <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{appointmentAvailability.suggestions.map((suggestion) => <label key={suggestion.slotId} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm ${appointmentDraft.slotId === suggestion.slotId ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}><input type="radio" name="crm-inspection-slot" value={suggestion.slotId} checked={appointmentDraft.slotId === suggestion.slotId} onChange={() => setAppointmentDraft({ ...appointmentDraft, slotId: suggestion.slotId })} className="mt-0.5" /><span><span className="block font-semibold text-gray-900">{suggestion.label}</span><span className="mt-1 block text-xs text-gray-500">{suggestion.startTime}–{suggestion.endTime} · {suggestion.assigneeName}</span></span></label>)}</div> : null}
-              {appointmentAvailability?.matchedZoneNames.length ? <p className="mt-3 text-xs text-gray-500">Coverage: {appointmentAvailability.matchedZoneNames.join(', ')}</p> : null}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createAppointment()} disabled={busy === 'appointment' || appointmentAvailabilityBusy || profileHasUnsavedChanges || !appointmentDraft.slotId} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'appointment' ? 'Creating appointment...' : 'Create appointment'}</button><p className="text-xs text-gray-500">The selected time is checked again before saving. The client and assigned agent receive the normal inspection confirmation.</p></div>
+            {!selectedAppointmentAgent ? <p className="mt-4 text-sm font-medium text-amber-700">Choose an active inspection agent with a linked calendar before booking.</p> : null}
+            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createAppointment()} disabled={busy === 'appointment' || profileHasUnsavedChanges || !appointmentDraft.preferredDate || !appointmentDraft.startTime || !selectedAppointmentAgent || !Number.isInteger(Number(appointmentDraft.durationMinutes)) || Number(appointmentDraft.durationMinutes) < 15 || Number(appointmentDraft.durationMinutes) > 480} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'appointment' ? 'Creating appointment...' : 'Create appointment'}</button><p className="text-xs text-gray-500">The client and assigned agent receive the confirmed date and time with the normal calendar invitation.</p></div>
           </section> : null}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Opportunity workflow</h2>

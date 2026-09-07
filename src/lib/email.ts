@@ -365,6 +365,7 @@ export async function sendBookingConfirmationEmail(
   const businessLabel = inputs.businessName?.trim() || 'Your premises'
   const adminBusinessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
   const bookingInvite = buildBookingInviteIcs(bookingRef, inputs)
+  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual'
 
   const selectedInspectionWindow = inputs.preferredInspectionSlotLabel
     ? `${inputs.preferredInspectionSlotLabel}`
@@ -378,7 +379,7 @@ export async function sendBookingConfirmationEmail(
     from: FROM_EMAIL,
     to: inputs.email,
     replyTo: ADMIN_EMAIL,
-    subject: `Site Inspection Request Received — ${bookingRef}`,
+    subject: `${staffConfirmed ? 'Site Inspection Confirmed' : 'Site Inspection Request Received'} — ${bookingRef}`,
     attachments: [
       {
         filename: `${bookingRef}.ics`,
@@ -390,11 +391,11 @@ export async function sendBookingConfirmationEmail(
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #1a2744; padding: 24px; text-align: center;">
           <h1 style="color: white; margin: 0;">Secure Cleaning</h1>
-          <p style="color: #22c55e; margin: 4px 0 0;">Site Inspection Request Received ✓</p>
+          <p style="color: #22c55e; margin: 4px 0 0;">${staffConfirmed ? 'Site Inspection Confirmed' : 'Site Inspection Request Received'} ✓</p>
         </div>
         <div style="padding: 32px 24px;">
           <p>Hi ${inputs.contactName},</p>
-          <p>Your site inspection request has been received. We'll be in touch shortly to confirm the inspection details, scope, and next steps.</p>
+          <p>${staffConfirmed ? 'Your Secure Cleaning site inspection has been scheduled for the confirmed date and time below.' : "Your site inspection request has been received. We'll be in touch shortly to confirm the inspection details, scope, and next steps."}</p>
           
           <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 8px;">Inspection Request Reference: ${bookingRef}</h2>
@@ -403,12 +404,14 @@ export async function sendBookingConfirmationEmail(
               ${inputs.address}, ${inputs.suburb} ${inputs.postcode}, ${cityLabel}<br>
               Cleaning frequency: ${inputs.frequency.replace(/_/g, ' ')}<br>
               Preferred inspection date: ${inputs.preferredStartDate}<br>
-              Cleaning time preference: ${inputs.timePreference.replace(/_/g, ' ')}${selectedInspectionWindow ? `<br>Provisional inspection time: ${selectedInspectionWindow}` : ''}
+              Cleaning time preference: ${inputs.timePreference.replace(/_/g, ' ')}${selectedInspectionWindow ? `<br>${staffConfirmed ? 'Confirmed inspection time' : 'Provisional inspection time'}: ${selectedInspectionWindow}` : ''}
             </p>
           </div>
 
           <p style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; border-radius: 8px; padding: 14px 16px; margin: 24px 0;">
-            We have selected the earliest available inspection time within the published inspection window. Travel time between inspection appointments is reserved. We will confirm the exact inspection time as soon as possible. The attached calendar invite is provisional until we confirm it.
+            ${staffConfirmed
+              ? 'This time has been booked directly by our team. The attached calendar invitation contains the confirmed appointment details.'
+              : 'We have selected the earliest available inspection time within the published inspection window. Travel time between inspection appointments is reserved. We will confirm the exact inspection time as soon as possible. The attached calendar invite is provisional until we confirm it.'}
           </p>
 
           <h3 style="color: #1a2744;">What happens next?</h3>
@@ -432,7 +435,7 @@ export async function sendBookingConfirmationEmail(
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: internalRecipients,
-    subject: `[New Site Inspection Request] ${bookingRef} — ${adminBusinessLabel} (${cityLabel})`,
+    subject: `[${staffConfirmed ? 'Site Inspection Booked' : 'New Site Inspection Request'}] ${bookingRef} — ${adminBusinessLabel} (${cityLabel})`,
     html: `
       <p><strong>New site inspection request submitted:</strong> ${bookingRef}</p>
       <p>Business: ${adminBusinessLabel}<br>

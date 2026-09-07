@@ -105,7 +105,8 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
   const { start, end } = getBookingEventWindow(inputs)
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
-  const summary = `Secure Cleaning inspection hold — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
+  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual'
+  const summary = `Secure Cleaning ${staffConfirmed ? 'site inspection' : 'inspection hold'} — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
   const description = [
     `Booking reference: ${bookingRef}`,
     `Contact: ${inputs.contactName}`,
@@ -116,7 +117,9 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     `Time preference: ${inputs.timePreference.replace(/_/g, ' ')}`,
     `Notes: ${inputs.notes?.trim() || 'None provided'}`,
     '',
-    'This is a provisional inspection appointment selected within the published appointment window. Travel time between inspection appointments is reserved. Secure Cleaning will confirm the exact inspection time as soon as possible.',
+    staffConfirmed
+      ? 'This inspection time was confirmed directly by Secure Cleaning staff.'
+      : 'This is a provisional inspection appointment selected within the published appointment window. Travel time between inspection appointments is reserved. Secure Cleaning will confirm the exact inspection time as soon as possible.',
   ].join('\n')
 
   return [

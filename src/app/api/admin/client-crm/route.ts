@@ -12,7 +12,7 @@ import {
   updateCrmOpportunity,
 } from '@/lib/clientCrmData'
 import { sendClientCrmEmail } from '@/lib/clientCrmEmail'
-import { createCrmInspectionAppointment, getCrmInspectionAvailability } from '@/lib/clientCrmAppointments'
+import { createCrmInspectionAppointment } from '@/lib/clientCrmAppointments'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import { closeOpportunityWonAndCreateProduct, ContractProductError } from '@/lib/contractProducts'
 
@@ -22,19 +22,6 @@ export async function GET(request: NextRequest) {
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
   try {
-    const availabilityFor = request.nextUrl.searchParams.get('availabilityFor')
-    if (availabilityFor) {
-      const limited = rateLimit(request, { key: `client-crm-availability:${actor.id}`, limit: 120, windowMs: 60 * 60 * 1000 })
-      if (limited) return limited
-      return NextResponse.json({
-        success: true,
-        result: await getCrmInspectionAvailability(
-          actor,
-          availabilityFor,
-          request.nextUrl.searchParams.get('preferredDate'),
-        ),
-      })
-    }
     const notesFor = request.nextUrl.searchParams.get('notesFor')
     if (notesFor) {
       return NextResponse.json({
