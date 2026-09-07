@@ -7,7 +7,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { buildFirmQuotePreview, deriveQuoteInputsFromRooms, getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
 const {
   applySuggestedRoomTypePrices,
   DEFAULT_MONTHLY_COBWEB_TASK,
@@ -18,6 +18,8 @@ const {
   ensureWeeklyPerimeterSurfaceDusting,
   getDefaultRoomScopeTaskSelections,
   getRoomScopeTaskDefinitions,
+  getRoomScopeTaskEffectiveRate,
+  getRoomScopeTaskMinutesPerSqm,
   getRoomScopeTaskSchedule,
   getRoomTaskAmortizationFactor,
   getRoomTypeDefaultDirectCharge,
@@ -176,7 +178,8 @@ test('selected area tasks use square metres and fixed tasks use room quantity', 
     roomTypes: [{
       id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
       defaultMopping: false, scopeTasks: ['Vacuum floors', 'Empty bins'],
-      scopeTaskCadences: ['every_clean', 'every_clean'], scopeTaskPrices: [0.12, 0.75],
+      scopeTaskCadences: ['every_clean', 'every_clean'], scopeTaskPrices: [0, 0.75],
+      scopeTaskMinutesPerSqm: [0.12, 0],
       scopeTaskDefaults: [true, true], pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
     }],
   }
@@ -185,7 +188,56 @@ test('selected area tasks use square metres and fixed tasks use room quantity', 
     roomItems: [{ id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1 }],
   }
 
-  assert.equal(getRoomScheduledTaskExtraTotal(draft, config), 6.3)
+  assert.equal(getRoomScheduledTaskExtraTotal(draft, config), 5.5)
+})
+
+test('a selected priced floor task replaces generic area labour for that room', () => {
+  const roomType = {
+    id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
+    defaultMopping: false, scopeTasks: ['Vacuum floors'], scopeTaskMinutesPerSqm: [0.068], scopeTaskDefaults: [true],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+  }
+  const config = { roomTypes: [roomType] }
+  const room = { id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1 }
+  const draft = {
+    status: 'draft', revisedInputs: baseInputs, roomItems: [room], moppingMinutesPerSqm: 0.24,
+    pricingAdjustmentPercent: 0, targetPrice: '', finalPerVisit: '', scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const pricing = {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, hourlyRate: 50, minimumInvoice: 0, rangeLow: 1, rangeHigh: 1 },
+    multipliers: {
+      ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers,
+      premisesType: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.premisesType, office: 1 },
+      frequency: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency, weekly: 1 },
+      city: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.city, melbourne: 1 },
+      timePreference: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.timePreference, business_hours: 1 },
+    },
+    items: DEFAULT_QUOTE_PRICING_CONFIG.items.map((item) => ({ ...item, active: false })),
+  }
+
+  assert.equal(deriveQuoteInputsFromRooms(draft, config).floorArea, 40)
+  assert.equal(buildFirmQuotePreview(draft, pricing, config).calculatedLow, 2.27)
+
+  const task = getRoomScopeTaskDefinitions(roomType)[0]
+  assert.equal(buildFirmQuotePreview({
+    ...draft,
+    roomItems: [{ ...room, scopeTaskSelections: { [task.id]: false } }],
+  }, pricing, config).calculatedLow, 5)
+})
+
+test('standard floor task minutes reproduce the supplied 12 sqm reference costs at $50 per hour', () => {
+  const roomType = {
+    id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 12,
+    defaultMopping: false, scopeTasks: ['Vacuum floor', 'Mop floor'],
+    scopeTaskPrices: [0.25, 0.2],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+  }
+
+  assert.equal(getRoomScopeTaskMinutesPerSqm(roomType, 0), 0.068)
+  assert.equal(getRoomScopeTaskMinutesPerSqm(roomType, 1), 0.24)
+  assert.equal(Math.round(getRoomScopeTaskEffectiveRate(roomType, 0, 50) * 12 * 100) / 100, 0.68)
+  assert.equal(Math.round(getRoomScopeTaskEffectiveRate(roomType, 1, 50) * 12 * 100) / 100, 2.4)
 })
 
 test('scope task schedules expose the task cadence and suggested prices remove zero room bases', () => {

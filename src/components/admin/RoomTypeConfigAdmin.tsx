@@ -9,8 +9,11 @@ import {
   DEFAULT_WEEKLY_DUSTING_TASK,
   getRoomScopeTaskCadence,
   getRoomScopeTaskDefault,
+  getRoomScopeTaskDefinitions,
   getRoomScopeTaskId,
+  getRoomScopeTaskMinutesPerSqm,
   getRoomScopeTaskPrice,
+  inferRoomTaskMinutesPerSqm,
   getRoomTypeDefaultDirectCharge,
   isAreaPricedRoomTask,
   ROOM_TASK_CADENCE_OPTIONS,
@@ -33,6 +36,43 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
+function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig) {
+  const totals: Record<RoomTaskCadence, number> = {
+    every_clean: getRoomTypeDefaultDirectCharge(roomType, pricingConfig),
+    weekly: 0,
+    fortnightly: 0,
+    monthly: 0,
+    quarterly: 0,
+    annually: 0,
+  }
+
+  for (const task of getRoomScopeTaskDefinitions(roomType)) {
+    const rate = task.pricingMode === 'area'
+      ? task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60
+      : task.price
+    if (!task.defaultSelected || rate <= 0) continue
+    const amount = task.pricingMode === 'area'
+      ? rate * Math.max(0, roomType.defaultSize)
+      : rate
+    totals[task.cadence] += amount
+  }
+
+  const labels: Record<RoomTaskCadence, string> = {
+    every_clean: '/ clean',
+    weekly: ' weekly',
+    fortnightly: ' fortnightly',
+    monthly: ' monthly',
+    quarterly: ' quarterly',
+    annually: ' annually',
+  }
+  const order: RoomTaskCadence[] = ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually']
+  const parts = order
+    .filter((cadence) => totals[cadence] > 0)
+    .map((cadence) => `${formatCurrency(totals[cadence])}${labels[cadence]}`)
+
+  return parts.length ? parts.join(' + ') : '$0 configured'
+}
+
 function createRoomType(): RoomTypeConfig {
   return {
     id: `room_type_${Date.now()}`,
@@ -46,6 +86,7 @@ function createRoomType(): RoomTypeConfig {
     scopeTaskIds: ['vacuum', 'wipe-surfaces', 'empty-bins', 'dust-perimeter', 'remove-cobwebs'],
     scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean', 'weekly', 'monthly'],
     scopeTaskPrices: [0, 0, 0, 0, 0],
+    scopeTaskMinutesPerSqm: [0.068, 0, 0, 0, 0],
     scopeTaskDefaults: [true, true, true, true, true],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
@@ -215,6 +256,7 @@ export default function RoomTypeConfigAdmin({
             scopeTaskIds: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskId(roomType, index)), `task-${Date.now()}`],
             scopeTaskCadences: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index)), 'every_clean'],
             scopeTaskPrices: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index)), 0],
+            scopeTaskMinutesPerSqm: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index)), 0],
             scopeTaskDefaults: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index)), false],
           }
         : roomType),
@@ -224,7 +266,7 @@ export default function RoomTypeConfigAdmin({
   function updateScopeTask(
     roomId: string,
     taskIndex: number,
-    patch: { label?: string; cadence?: RoomTaskCadence; price?: number; defaultSelected?: boolean }
+    patch: { label?: string; cadence?: RoomTaskCadence; price?: number; minutesPerSqm?: number; defaultSelected?: boolean }
   ) {
     setConfig((current) => ({
       roomTypes: current.roomTypes.map((roomType) => {
@@ -232,13 +274,15 @@ export default function RoomTypeConfigAdmin({
         const scopeTasks = [...roomType.scopeTasks]
         const scopeTaskCadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
         const scopeTaskPrices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
+        const scopeTaskMinutesPerSqm = roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
         const scopeTaskIds = roomType.scopeTasks.map((_, index) => getRoomScopeTaskId(roomType, index))
         const scopeTaskDefaults = roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index))
         if (patch.label !== undefined) scopeTasks[taskIndex] = patch.label
         if (patch.cadence !== undefined) scopeTaskCadences[taskIndex] = patch.cadence
         if (patch.price !== undefined) scopeTaskPrices[taskIndex] = Math.max(0, patch.price)
+        if (patch.minutesPerSqm !== undefined) scopeTaskMinutesPerSqm[taskIndex] = Math.max(0, patch.minutesPerSqm)
         if (patch.defaultSelected !== undefined) scopeTaskDefaults[taskIndex] = patch.defaultSelected
-        return { ...roomType, scopeTasks, scopeTaskIds, scopeTaskCadences, scopeTaskPrices, scopeTaskDefaults }
+        return { ...roomType, scopeTasks, scopeTaskIds, scopeTaskCadences, scopeTaskPrices, scopeTaskMinutesPerSqm, scopeTaskDefaults }
       }),
     }))
   }
@@ -258,6 +302,9 @@ export default function RoomTypeConfigAdmin({
             scopeTaskPrices: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskPrice(roomType, index))
               .filter((_, index) => index !== taskIndex),
+            scopeTaskMinutesPerSqm: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
+              .filter((_, index) => index !== taskIndex),
             scopeTaskDefaults: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskDefault(roomType, index))
               .filter((_, index) => index !== taskIndex),
@@ -275,7 +322,7 @@ export default function RoomTypeConfigAdmin({
     <div>
         <AdminPageHeader title="Pricing & Rooms" description="Set each room's base price, scope frequency, and priced extras in one place." actions={<><button type="button" onClick={applySuggestedPrices} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900">Apply suggested prices</button><button type="button" onClick={addRoomType} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Add room</button><button type="submit" form="room-type-editor-form" disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save room pricing'}</button></>} />
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <strong>How pricing works:</strong> allocated labour + room base prices + amortised task and field extras, followed by quote-wide multipliers and the minimum invoice. Weekly or monthly work is spread across the scheduled cleans.
+          <strong>How pricing works:</strong> a selected floor task with minutes per sqm replaces generic area labour for that room. Its price follows the hourly labour rate. Otherwise allocated labour applies. Fixed, periodic and field charges are then added before the quote-wide adjustment and minimum invoice.
           {hasMissingBasePrices ? <span className="mt-1 block font-medium">Rooms that had no base price have been prefilled with the suggested amount. Save room pricing to activate them.</span> : null}
         </div>
 
@@ -283,14 +330,17 @@ export default function RoomTypeConfigAdmin({
           <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Room pricing and client scope</h2>
-              <p className="text-sm text-gray-600">Every room has a base charge; scheduled tasks and extras can add an amortised amount.</p>
+              <p className="text-sm text-gray-600">Each room shows its complete default task, field and optional room charges.</p>
             </div>
             <span className="text-xs text-gray-500">Defaults apply to new Quote Workbench rooms.</span>
           </div>
 
           <div className="space-y-6">
             {config.roomTypes.map((roomType, roomTypeIndex) => {
-              const defaultDirectCharge = getRoomTypeDefaultDirectCharge(roomType, pricingConfig)
+              const defaultPricingSummary = getDefaultRoomPricingSummary(roomType, pricingConfig)
+              const hasDefaultAreaRate = getRoomScopeTaskDefinitions(roomType).some((task) => (
+                task.defaultSelected && task.pricingMode === 'area' && task.minutesPerSqm > 0
+              ))
               const labourAdjustment = Number(roomType.pricingAdjustmentPercent || 0)
 
               return (
@@ -309,12 +359,14 @@ export default function RoomTypeConfigAdmin({
                   <span className="flex shrink-0 items-center gap-5">
                     <span className="text-right">
                       <span className="block text-sm font-bold text-indigo-900">
-                        Base room charge: {formatCurrency(defaultDirectCharge)} / visit
+                        Default charges: {defaultPricingSummary}
                       </span>
                       <span className="block text-xs text-gray-500">
-                        {labourAdjustment === 0
-                          ? 'Standard allocated labour'
-                          : `Allocated labour ${labourAdjustment > 0 ? '+' : ''}${labourAdjustment}%`}
+                        {hasDefaultAreaRate
+                          ? 'Per-sqm floor tasks replace allocated area labour'
+                          : labourAdjustment === 0
+                            ? 'Standard allocated labour applies'
+                            : `Allocated labour ${labourAdjustment > 0 ? '+' : ''}${labourAdjustment}%`}
                       </span>
                     </span>
                     <span
@@ -411,7 +463,7 @@ export default function RoomTypeConfigAdmin({
                     <div className="mb-3 flex items-center justify-between gap-4">
                       <div>
                         <h4 className="font-semibold text-gray-800">Client scope tasks</h4>
-                        <p className="text-xs text-gray-600">Default tasks start selected in new quotes. Floor tasks use room area; other prices are fixed and support cents.</p>
+                        <p className="text-xs text-gray-600">Default tasks start selected in new quotes. Floor tasks use minutes per sqm and the {formatCurrency(pricingConfig.settings.hourlyRate)} hourly rate; other prices are fixed and support cents.</p>
                       </div>
                       <button type="button" onClick={() => addScopeTask(roomType.id)} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add task</button>
                     </div>
@@ -420,7 +472,11 @@ export default function RoomTypeConfigAdmin({
                         <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_150px_130px_90px_auto] md:items-end">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Task shown on scope</span>
-                            <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                            <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} onBlur={(event) => {
+                              if (isAreaPricedRoomTask(event.target.value) && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) === 0) {
+                                updateScopeTask(roomType.id, taskIndex, { minutesPerSqm: inferRoomTaskMinutesPerSqm(event.target.value) })
+                              }
+                            }} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
                           </label>
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Frequency</span>
@@ -429,8 +485,11 @@ export default function RoomTypeConfigAdmin({
                             </select>
                           </label>
                           <label className="text-sm">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{isAreaPricedRoomTask(task) ? 'Price / sqm ($)' : 'Fixed price ($)'}</span>
-                            <input type="number" min="0" step="0.01" inputMode="decimal" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{isAreaPricedRoomTask(task) ? 'Minutes / sqm' : 'Fixed price ($)'}</span>
+                            {isAreaPricedRoomTask(task) ? <>
+                              <input type="number" min="0" step="0.001" inputMode="decimal" value={getRoomScopeTaskMinutesPerSqm(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { minutesPerSqm: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
+                              <span className="mt-1 block text-xs text-gray-500">≈ {formatCurrency(getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) * pricingConfig.settings.hourlyRate / 60)} / sqm · {formatCurrency(getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) * pricingConfig.settings.hourlyRate / 60 * Math.max(0, roomType.defaultSize))} for {roomType.defaultSize} sqm</span>
+                            </> : <input type="number" min="0" step="0.01" inputMode="decimal" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />}
                           </label>
                           <label className="flex min-h-[42px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700">
                             <input type="checkbox" checked={getRoomScopeTaskDefault(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { defaultSelected: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600" />
@@ -445,8 +504,8 @@ export default function RoomTypeConfigAdmin({
 
                 <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                   <div className="mb-3">
-                    <h4 className="font-semibold" style={{ color: '#1a2744' }}>Base room price</h4>
-                    <p className="text-sm text-gray-600">The base charge is per room, per visit. The optional percentage adjusts this room&apos;s allocated labour.</p>
+                    <h4 className="font-semibold" style={{ color: '#1a2744' }}>Additional room pricing</h4>
+                    <p className="text-sm text-gray-600">Use these only for a room-specific charge beyond its selected tasks. The percentage adjusts generic area labour only when task-based floor pricing is not active.</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="text-sm">
@@ -461,7 +520,7 @@ export default function RoomTypeConfigAdmin({
                       <span className="mt-1 block text-xs text-gray-500">Example: 20 adds 20% to this room type&apos;s labour share.</span>
                     </label>
                     <label className="text-sm">
-                      <span className="mb-1 block font-medium text-gray-700">Base price per room / visit</span>
+                      <span className="mb-1 block font-medium text-gray-700">Additional price per room / visit</span>
                       <input
                         type="number"
                         min="0"

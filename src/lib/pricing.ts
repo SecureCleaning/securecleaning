@@ -35,7 +35,7 @@ export type QuotePricingConfig = {
 
 export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
   settings: {
-    hourlyRate: 55,
+    hourlyRate: 50,
     minimumInvoice: 165,
     multiFloorBase: 1,
     multiFloorPerExtra: 0.1,

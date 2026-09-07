@@ -59,6 +59,7 @@ export type RoomTypeConfig = {
   scopeTaskIds?: string[]
   scopeTaskCadences?: RoomTaskCadence[]
   scopeTaskPrices?: number[]
+  scopeTaskMinutesPerSqm?: number[]
   scopeTaskDefaults?: boolean[]
   pricingAdjustmentPercent: number
   fixedPricePerVisit: number
@@ -73,6 +74,8 @@ const BATHROOM_ROOM_TYPE_IDS = new Set(['bathroom', 'female_bathroom', 'male_bat
 export const DEFAULT_WEEKLY_DUSTING_TASK = 'Dust perimeter edges and reachable surfaces'
 export const DEFAULT_VACUUM_TASK = 'Vacuum accessible floor areas'
 export const DEFAULT_MONTHLY_COBWEB_TASK = 'Remove visible cobwebs from ceilings and corners'
+export const DEFAULT_VACUUM_MINUTES_PER_SQM = 0.068
+export const DEFAULT_MOPPING_MINUTES_PER_SQM = 0.24
 
 function isRoomTaskCadence(value: unknown): value is RoomTaskCadence {
   return ROOM_TASK_CADENCE_OPTIONS.some((option) => option.value === value)
@@ -99,6 +102,27 @@ export function getRoomScopeTaskCadence(roomType: RoomTypeConfig, index: number)
 export function getRoomScopeTaskPrice(roomType: RoomTypeConfig, index: number) {
   const price = Number(roomType.scopeTaskPrices?.[index] ?? 0)
   return Number.isFinite(price) ? Math.max(0, price) : 0
+}
+
+export function inferRoomTaskMinutesPerSqm(label: string) {
+  const normalized = label.trim().toLowerCase()
+  if (normalized.includes('vacuum') && normalized.includes('mop') && !normalized.includes(' or ')) {
+    return DEFAULT_VACUUM_MINUTES_PER_SQM + DEFAULT_MOPPING_MINUTES_PER_SQM
+  }
+  if (normalized.includes('mop')) return DEFAULT_MOPPING_MINUTES_PER_SQM
+  if (normalized.includes('vacuum') || normalized.includes('sweep')) return DEFAULT_VACUUM_MINUTES_PER_SQM
+  return 0
+}
+
+export function getRoomScopeTaskMinutesPerSqm(roomType: RoomTypeConfig, index: number) {
+  const configured = roomType.scopeTaskMinutesPerSqm?.[index]
+  if (Number.isFinite(Number(configured))) return Math.max(0, Number(configured))
+  return inferRoomTaskMinutesPerSqm(roomType.scopeTasks[index] ?? '')
+}
+
+export function getRoomScopeTaskEffectiveRate(roomType: RoomTypeConfig, index: number, hourlyRate: number) {
+  if (!isAreaPricedRoomTask(roomType.scopeTasks[index] ?? '')) return getRoomScopeTaskPrice(roomType, index)
+  return getRoomScopeTaskMinutesPerSqm(roomType, index) * Math.max(0, hourlyRate) / 60
 }
 
 function taskSlug(label: string) {
@@ -153,6 +177,7 @@ export type RoomScopeTaskSchedule = {
 export type RoomScopeTaskDefinition = RoomScopeTaskSchedule & {
   id: string
   price: number
+  minutesPerSqm: number
   defaultSelected: boolean
   pricingMode: 'area' | 'fixed'
 }
@@ -169,6 +194,7 @@ export function getRoomScopeTaskDefinitions(
       label,
       cadence: getRoomScopeTaskCadence(roomType, index),
       price: getRoomScopeTaskPrice(roomType, index),
+      minutesPerSqm: getRoomScopeTaskMinutesPerSqm(roomType, index),
       defaultSelected: getRoomScopeTaskDefault(roomType, index),
       pricingMode: isAreaPricedRoomTask(label) ? 'area' as const : 'fixed' as const,
     }]
@@ -192,10 +218,11 @@ export function ensureWeeklyPerimeterSurfaceDusting(roomType: RoomTypeConfig): R
   const existingIndex = roomType.scopeTasks.findIndex(isPerimeterSurfaceDustingTask)
   const cadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
   const prices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
+  const minutes = roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
 
   if (existingIndex >= 0) {
     cadences[existingIndex] = 'weekly'
-    return { ...roomType, scopeTaskCadences: cadences, scopeTaskPrices: prices }
+    return { ...roomType, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes }
   }
 
   return {
@@ -203,6 +230,7 @@ export function ensureWeeklyPerimeterSurfaceDusting(roomType: RoomTypeConfig): R
     scopeTasks: [...roomType.scopeTasks, DEFAULT_WEEKLY_DUSTING_TASK],
     scopeTaskCadences: [...cadences, 'weekly'],
     scopeTaskPrices: [...prices, 0],
+    scopeTaskMinutesPerSqm: [...minutes, 0],
   }
 }
 
@@ -226,11 +254,12 @@ export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfi
     const ids = next.scopeTasks.map((_, index) => getRoomScopeTaskId(next, index))
     const cadences = next.scopeTasks.map((_, index) => getRoomScopeTaskCadence(next, index))
     const prices = next.scopeTasks.map((_, index) => getRoomScopeTaskPrice(next, index))
+    const minutes = next.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(next, index))
     const defaults = next.scopeTasks.map((_, index) => getRoomScopeTaskDefault(next, index))
 
     if (taskIndex >= 0) {
       cadences[taskIndex] = task.cadence
-      next = { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskDefaults: defaults }
+      next = { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes, scopeTaskDefaults: defaults }
     } else {
       next = {
         ...next,
@@ -238,6 +267,7 @@ export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfi
         scopeTaskIds: [...ids, `${next.id}-${taskSlug(task.label)}-${ids.length + 1}`],
         scopeTaskCadences: [...cadences, task.cadence],
         scopeTaskPrices: [...prices, 0],
+        scopeTaskMinutesPerSqm: [...minutes, inferRoomTaskMinutesPerSqm(task.label)],
         scopeTaskDefaults: [...defaults, true],
       }
     }
@@ -246,8 +276,9 @@ export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfi
   const ids = next.scopeTasks.map((_, index) => getRoomScopeTaskId(next, index))
   const cadences = next.scopeTasks.map((_, index) => getRoomScopeTaskCadence(next, index))
   const prices = next.scopeTasks.map((_, index) => getRoomScopeTaskPrice(next, index))
+  const minutes = next.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(next, index))
   const defaults = next.scopeTasks.map((_, index) => getRoomScopeTaskDefault(next, index))
-  return { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskDefaults: defaults }
+  return { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes, scopeTaskDefaults: defaults }
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
@@ -364,6 +395,12 @@ export function applySuggestedRoomTypePrices(
         scopeTaskPrices: scopeTasks.map((task) => {
           const existingIndex = roomType.scopeTasks.indexOf(task)
           return existingIndex >= 0 ? getRoomScopeTaskPrice(roomType, existingIndex) : 0
+        }),
+        scopeTaskMinutesPerSqm: scopeTasks.map((task) => {
+          const existingIndex = roomType.scopeTasks.indexOf(task)
+          return existingIndex >= 0
+            ? getRoomScopeTaskMinutesPerSqm(roomType, existingIndex)
+            : inferRoomTaskMinutesPerSqm(task)
         }),
         scopeTaskDefaults: scopeTasks.map((task) => {
           const existingIndex = roomType.scopeTasks.indexOf(task)
@@ -642,10 +679,12 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     : fallback.scopeTasks
   const sourceCadences = Array.isArray(source.scopeTaskCadences) ? source.scopeTaskCadences : []
   const sourcePrices = Array.isArray(source.scopeTaskPrices) ? source.scopeTaskPrices : []
+  const sourceMinutes = Array.isArray(source.scopeTaskMinutesPerSqm) ? source.scopeTaskMinutesPerSqm : []
   const sourceIds = Array.isArray(source.scopeTaskIds) ? source.scopeTaskIds : []
   const sourceDefaults = Array.isArray(source.scopeTaskDefaults) ? source.scopeTaskDefaults : []
   const fallbackCadences = fallback.scopeTaskCadences ?? []
   const fallbackPrices = fallback.scopeTaskPrices ?? []
+  const fallbackMinutes = fallback.scopeTaskMinutesPerSqm ?? []
 
   const normalized: RoomTypeConfig = {
     id: sourceId || fallback.id,
@@ -668,6 +707,12 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     scopeTaskPrices: scopeTasks.map((_, taskIndex) => {
       const price = Number(sourcePrices[taskIndex] ?? fallbackPrices[taskIndex] ?? 0)
       return Number.isFinite(price) ? Math.min(100_000, Math.max(0, price)) : 0
+    }),
+    scopeTaskMinutesPerSqm: scopeTasks.map((task, taskIndex) => {
+      const minutes = sourceMinutes[taskIndex] ?? fallbackMinutes[taskIndex]
+      return Number.isFinite(Number(minutes))
+        ? Math.min(60, Math.max(0, Number(minutes)))
+        : inferRoomTaskMinutesPerSqm(task)
     }),
     scopeTaskDefaults: scopeTasks.map((task, taskIndex) => (
       typeof sourceDefaults[taskIndex] === 'boolean'

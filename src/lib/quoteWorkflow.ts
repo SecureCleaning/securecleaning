@@ -6,7 +6,9 @@ import {
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
   getDefaultRoomScopeTaskSelections,
   getRoomScopeTaskCadence,
+  getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
+  getRoomScopeTaskMinutesPerSqm,
   getRoomScopeTaskPrice,
   getRoomTaskAmortizationFactor,
   getRoomTypeConfigById,
@@ -112,7 +114,7 @@ export type FirmQuoteDisplayPrice = {
   isFirm: boolean
 }
 
-export const DEFAULT_MOPPING_MINUTES_PER_SQM = 0.25
+export const DEFAULT_MOPPING_MINUTES_PER_SQM = 0.24
 
 function safePositiveInteger(value: unknown, fallback: number) {
   const numeric = Number(value)
@@ -521,11 +523,38 @@ function roundCurrency(amount: number) {
   return Math.round(amount * 100) / 100
 }
 
+export function hasSelectedPricedAreaTask(
+  room: WorkflowRoomItem,
+  roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
+) {
+  const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+  return roomType?.scopeTasks.some((task, taskIndex) => (
+    isAreaPricedRoomTask(task)
+    && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
+    && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+  )) ?? false
+}
+
+function getRoomGenericLabourArea(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
+  if (hasSelectedPricedAreaTask(room, roomTypeConfig)) return 0
+  return Math.max(0, room.size) * Math.max(0, room.quantity)
+}
+
+function getRoomGenericLabourAllocations(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
+  return new Map(draft.roomItems.map((room) => [
+    room.id,
+    getRoomGenericLabourArea(room, roomTypeConfig),
+  ]))
+}
+
 export function deriveQuoteInputsFromRooms(
   draft: FirmQuoteDraft,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ) {
-  const floorAreaFromRooms = draft.roomItems.reduce((sum, room) => sum + (room.size > 0 ? room.size * room.quantity : 0), 0)
+  const floorAreaFromRooms = draft.roomItems.reduce(
+    (sum, room) => sum + Math.max(0, room.size) * Math.max(0, room.quantity),
+    0
+  )
   const bathrooms = draft.roomItems
     .filter((room) => room.type === 'bathroom' || room.type === 'female_bathroom' || room.type === 'male_bathroom' || room.type === 'accessible_bathroom')
     .reduce((sum, room) => sum + room.quantity, 0)
@@ -537,7 +566,8 @@ export function deriveQuoteInputsFromRooms(
   return {
     ...draft.revisedInputs,
     // The client-entered total is a reference for the later site inspection.
-    // Working pricing is based only on the room areas selected in this draft.
+    // Keep the complete area for time estimates and area-based add-ons. The pricing
+    // preview separately removes generic labour for explicitly priced floor tasks.
     floorArea: floorAreaFromRooms > 0 ? roundCurrency(floorAreaFromRooms) : 0,
     floors: floors > 0 ? floors : draft.revisedInputs.floors,
     addOns: {
@@ -584,7 +614,11 @@ export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: Q
   }, 0)
 }
 
-export function getRoomScheduledTaskExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: QuoteRoomTypeConfig) {
+export function getRoomScheduledTaskExtraTotal(
+  draft: FirmQuoteDraft,
+  roomTypeConfig: QuoteRoomTypeConfig,
+  hourlyRate = 50
+) {
   const frequency = draft.revisedInputs?.frequency ?? 'weekly'
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
   return roundCurrency(draft.roomItems.reduce((total, room) => {
@@ -596,7 +630,9 @@ export function getRoomScheduledTaskExtraTotal(draft: FirmQuoteDraft, roomTypeCo
         getRoomScopeTaskCadence(roomType, taskIndex),
         frequency
       )
-      const rate = getRoomScopeTaskPrice(roomType, taskIndex)
+      const rate = isAreaPricedRoomTask(task)
+        ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, hourlyRate)
+        : getRoomScopeTaskPrice(roomType, taskIndex)
       if (isAreaPricedRoomTask(task)) {
         return taskTotal + rate * (roomAreas.get(room.id) ?? 0) * cadenceFactor
       }
@@ -621,7 +657,7 @@ export function getRoomMoppingExtraTotal(
     const usesConfiguredAreaRate = roomType.scopeTasks.some((task, taskIndex) => (
       isMoppingOnlyTask(task)
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
-      && getRoomScopeTaskPrice(roomType, taskIndex) > 0
+      && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
     if (usesConfiguredAreaRate) return sum
 
@@ -651,16 +687,19 @@ export function getRoomPricingExtraTotal(
   roomTypeConfig: QuoteRoomTypeConfig
 ) {
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
+  const genericLabourAreas = getRoomGenericLabourAllocations(draft, roomTypeConfig)
   const totalRoomArea = [...roomAreas.values()].reduce((sum, roomArea) => sum + roomArea, 0)
   const totalRoomQuantity = draft.roomItems.reduce((sum, room) => sum + Math.max(0, room.quantity), 0)
 
   return draft.roomItems.reduce(
     (totals, room) => {
       const rule = getRoomPricingRule(room, roomTypeConfig)
-      const roomArea = roomAreas.get(room.id) ?? 0
+      const roomArea = genericLabourAreas.get(room.id) ?? 0
       const roomShare = totalRoomArea > 0
         ? roomArea / totalRoomArea
-        : totalRoomQuantity > 0 ? Math.max(0, room.quantity) / totalRoomQuantity : 0
+        : totalRoomQuantity > 0 && !hasSelectedPricedAreaTask(room, roomTypeConfig)
+          ? Math.max(0, room.quantity) / totalRoomQuantity
+          : 0
       const roomFixed = rule.fixedPricePerVisit * Math.max(0, room.quantity)
       const roomPercentLow = calculated.baseLow * roomShare * (rule.adjustmentPercent / 100)
       const roomPercentHigh = calculated.baseHigh * roomShare * (rule.adjustmentPercent / 100)
@@ -683,6 +722,7 @@ export function getRoomPricingBreakdown(
 ): RoomPricingBreakdown {
   const calculated = calculateQuote(deriveQuoteInputsFromRooms(draft, roomTypeConfig), pricingConfig)
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
+  const genericLabourAreas = getRoomGenericLabourAllocations(draft, roomTypeConfig)
   const totalRoomArea = [...roomAreas.values()].reduce((sum, roomArea) => sum + roomArea, 0)
   const totalRoomQuantity = draft.roomItems.reduce((sum, room) => sum + Math.max(0, room.quantity), 0)
   const factor = 1 + (draft.pricingAdjustmentPercent || 0) / 100
@@ -690,9 +730,12 @@ export function getRoomPricingBreakdown(
   return Object.fromEntries(draft.roomItems.map((room) => {
     const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
     const roomArea = roomAreas.get(room.id) ?? 0
+    const genericLabourArea = genericLabourAreas.get(room.id) ?? 0
     const roomShare = totalRoomArea > 0
-      ? roomArea / totalRoomArea
-      : totalRoomQuantity > 0 ? Math.max(0, room.quantity) / totalRoomQuantity : 0
+      ? genericLabourArea / totalRoomArea
+      : totalRoomQuantity > 0 && !hasSelectedPricedAreaTask(room, roomTypeConfig)
+        ? Math.max(0, room.quantity) / totalRoomQuantity
+        : 0
     const rule = getRoomPricingRule(room, roomTypeConfig)
     const roomMetricExtra = (roomType?.fields ?? []).reduce((sum, field) => {
       const value = room.metrics?.[field.id]
@@ -705,7 +748,9 @@ export function getRoomPricingBreakdown(
             getRoomScopeTaskCadence(roomType, taskIndex),
             draft.revisedInputs.frequency
           )
-          const rate = getRoomScopeTaskPrice(roomType, taskIndex)
+          const rate = isAreaPricedRoomTask(task)
+            ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, pricingConfig.settings.hourlyRate)
+            : getRoomScopeTaskPrice(roomType, taskIndex)
           return sum + (isAreaPricedRoomTask(task)
             ? rate * roomArea * cadenceFactor
             : rate * Math.max(0, room.quantity) * cadenceFactor)
@@ -714,7 +759,7 @@ export function getRoomPricingBreakdown(
     const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
       isMoppingOnlyTask(task)
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
-      && getRoomScopeTaskPrice(roomType, taskIndex) > 0
+      && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
     const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize && !usesConfiguredMoppingAreaRate
       ? (roomArea * safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM) / 60) * pricingConfig.settings.hourlyRate *
@@ -748,18 +793,26 @@ export function buildFirmQuotePreview(
 ): FirmQuotePreview {
   const calculated = calculateQuote(deriveQuoteInputsFromRooms(draft, roomTypeConfig), pricingConfig)
   const roomFieldExtra = getRoomMetricExtraTotal(draft, roomTypeConfig)
-  const scheduledTaskExtra = getRoomScheduledTaskExtraTotal(draft, roomTypeConfig)
+  const scheduledTaskExtra = getRoomScheduledTaskExtraTotal(draft, roomTypeConfig, pricingConfig.settings.hourlyRate)
   const moppingExtra = getRoomMoppingExtraTotal(draft, pricingConfig, roomTypeConfig)
   const roomPricingExtra = getRoomPricingExtraTotal(draft, calculated, roomTypeConfig)
   const factor = 1 + (draft.pricingAdjustmentPercent || 0) / 100
   const rangeLow = calculated.isSpringClean ? pricingConfig.settings.springCleanLow : pricingConfig.settings.rangeLow
   const rangeHigh = calculated.isSpringClean ? pricingConfig.settings.springCleanHigh : pricingConfig.settings.rangeHigh
+  const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
+  const totalRoomArea = [...roomAreas.values()].reduce((sum, area) => sum + area, 0)
+  const genericLabourArea = draft.roomItems.reduce(
+    (sum, room) => sum + getRoomGenericLabourArea(room, roomTypeConfig),
+    0
+  )
+  const genericLabourFactor = totalRoomArea > 0 ? genericLabourArea / totalRoomArea : 1
   const baseLabourAdjusted = calculated.breakdown.baseLabour *
     calculated.breakdown.premisesMultiplier *
     calculated.breakdown.floorsMultiplier *
     calculated.breakdown.timeMultiplier *
     calculated.breakdown.frequencyMultiplier *
-    calculated.breakdown.cityMultiplier
+    calculated.breakdown.cityMultiplier *
+    genericLabourFactor
   const rawLow = roundCurrency(
     (baseLabourAdjusted + calculated.addOnsTotal) * rangeLow + roomFieldExtra + scheduledTaskExtra + moppingExtra + roomPricingExtra.low
   )

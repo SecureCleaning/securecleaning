@@ -92,6 +92,15 @@ function describeFieldPricing(label: string, pricePerUnit?: number) {
   return `${label} adds ${formatCurrency(rate)} per unit, per visit.`
 }
 
+function formatTaskCurrency(amount: number) {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
 export default function QuoteWorkflowEditor({
   quote,
   pricingConfig,
@@ -1027,8 +1036,10 @@ export default function QuoteWorkflowEditor({
                                 </span>
                                 <span className="shrink-0 text-right text-xs font-semibold text-teal-800">
                                   {task.pricingMode === 'area'
-                                    ? task.price > 0 ? `${formatCurrency(task.price)} / sqm` : 'Area labour'
-                                    : task.price > 0 ? `${formatCurrency(task.price)} when done` : 'Included'}
+                                    ? task.minutesPerSqm > 0
+                                      ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity))} for this area · {task.minutesPerSqm} min / sqm</span></>
+                                      : 'Area labour'
+                                    : task.price > 0 ? `${formatTaskCurrency(task.price)} when done` : 'Included'}
                                 </span>
                               </label>
                             )
