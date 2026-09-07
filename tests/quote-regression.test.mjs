@@ -7,7 +7,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { buildFirmQuotePreview, deriveQuoteInputsFromRooms, getRoomMetricExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
 const {
   applySuggestedRoomTypePrices,
   DEFAULT_MONTHLY_COBWEB_TASK,
@@ -238,6 +238,67 @@ test('standard floor task minutes reproduce the supplied 12 sqm reference costs 
   assert.equal(getRoomScopeTaskMinutesPerSqm(roomType, 1), 0.24)
   assert.equal(Math.round(getRoomScopeTaskEffectiveRate(roomType, 0, 50) * 12 * 100) / 100, 0.68)
   assert.equal(Math.round(getRoomScopeTaskEffectiveRate(roomType, 1, 50) * 12 * 100) / 100, 2.4)
+})
+
+test('combined floor tasks do not double-charge mopping or legacy fixed room prices', () => {
+  const roomType = {
+    id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 12,
+    defaultMopping: true, scopeTasks: ['Vacuum and Mop floors'], scopeTaskDefaults: [true],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 5, fields: [],
+  }
+  const config = { roomTypes: [roomType] }
+  const draft = {
+    status: 'draft', revisedInputs: { ...baseInputs, floorArea: 12 },
+    roomItems: [{ id: 'room-1', type: 'office', label: 'Office', quantity: 1, size: 12, floor: 1, moppingEnabled: true }],
+    moppingMinutesPerSqm: 0.24, pricingAdjustmentPercent: 0, targetPrice: '', finalPerVisit: '',
+    scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const pricing = {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, hourlyRate: 50, minimumInvoice: 0, rangeLow: 1, rangeHigh: 1 },
+    multipliers: {
+      ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers,
+      premisesType: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.premisesType, office: 1 },
+      frequency: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency, weekly: 1 },
+      city: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.city, melbourne: 1 },
+      timePreference: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.timePreference, business_hours: 1 },
+    },
+    items: [],
+  }
+
+  assert.equal(getRoomScheduledTaskExtraTotal(draft, config, 50), 3.08)
+  assert.equal(getRoomMoppingExtraTotal(draft, pricing, config), 0)
+  assert.equal(buildFirmQuotePreview(draft, pricing, config).calculatedLow, 3.08)
+  assert.equal(buildFirmQuotePreview(draft, pricing, { roomTypes: [{ ...roomType, applyFixedPriceWithAreaTasks: true }] }).calculatedLow, 8.08)
+})
+
+test('vacuum-or-mop tasks use the vacuum rate and add mopping only when selected', () => {
+  const roomType = {
+    id: 'hallway', label: 'Hallway', defaultLabel: 'Hallway', tracksSize: true, defaultSize: 12,
+    defaultMopping: false, scopeTasks: ['Vacuum or mop circulation areas'], scopeTaskDefaults: [true],
+    pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+  }
+  const config = { roomTypes: [roomType] }
+  const draft = {
+    revisedInputs: { ...baseInputs, floorArea: 12 },
+    roomItems: [{ id: 'room-1', type: 'hallway', label: 'Hallway', quantity: 1, size: 12, floor: 1, moppingEnabled: true }],
+    moppingMinutesPerSqm: 0.24,
+  }
+  const pricing = { ...DEFAULT_QUOTE_PRICING_CONFIG, settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, hourlyRate: 50 } }
+
+  assert.equal(getRoomScopeTaskMinutesPerSqm(roomType, 0), 0.068)
+  assert.equal(getRoomScheduledTaskExtraTotal(draft, config, 50), 0.68)
+  assert.equal(getRoomMoppingExtraTotal(draft, pricing, config), 2.4)
+})
+
+test('public stairs remain stairs when an editable quote draft is created', () => {
+  const draft = createDefaultFirmQuoteDraft({
+    ...baseInputs,
+    roomScope: [{ id: 'stairs-1', type: 'stairs', label: 'Stairs', quantity: 3, moppingRequired: true }],
+  }, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+
+  assert.equal(draft.roomItems[0].type, 'stairs')
+  assert.equal(draft.roomItems[0].size, DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((room) => room.id === 'stairs').defaultSize)
 })
 
 test('scope task schedules expose the task cadence and suggested prices remove zero room bases', () => {

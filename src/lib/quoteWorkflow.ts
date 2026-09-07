@@ -13,7 +13,7 @@ import {
   getRoomTaskAmortizationFactor,
   getRoomTypeConfigById,
   isAreaPricedRoomTask,
-  isMoppingOnlyTask,
+  isMoppingPricedRoomTask,
   isRoomScopeTaskSelected,
   type QuoteRoomTypeConfig,
   type RoomMetricFieldConfig,
@@ -238,6 +238,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       reception: 'reception',
       hallway: 'hallway',
       breakout: 'breakout',
+      stairs: 'stairs',
       warehouse: 'warehouse',
       other: 'other',
     }
@@ -360,7 +361,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         ? Object.fromEntries(roomType.scopeTasks.map((_, taskIndex) => {
             const taskId = getRoomScopeTaskId(roomType, taskIndex)
             const saved = sourceSelections[taskId]
-            const legacyMoppingSelection = isMoppingOnlyTask(roomType.scopeTasks[taskIndex] ?? '')
+            const legacyMoppingSelection = isMoppingPricedRoomTask(roomType.scopeTasks[taskIndex] ?? '')
               ? (typeof source.moppingEnabled === 'boolean' ? source.moppingEnabled : roomType.defaultMopping)
               : isRoomScopeTaskSelected(roomType, taskIndex)
             return [taskId, typeof saved === 'boolean' ? saved : legacyMoppingSelection]
@@ -655,7 +656,7 @@ export function getRoomMoppingExtraTotal(
       return sum
     }
     const usesConfiguredAreaRate = roomType.scopeTasks.some((task, taskIndex) => (
-      isMoppingOnlyTask(task)
+      isMoppingPricedRoomTask(task)
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
@@ -671,13 +672,16 @@ export function getRoomMoppingExtraTotal(
 
 function getRoomPricingRule(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
   const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const usesTaskBasedAreaPricing = hasSelectedPricedAreaTask(room, roomTypeConfig)
   return {
     adjustmentPercent: room.pricingOverride
       ? Number.isFinite(Number(room.pricingAdjustmentPercent)) ? Number(room.pricingAdjustmentPercent) : 0
       : roomType?.pricingAdjustmentPercent ?? 0,
     fixedPricePerVisit: room.pricingOverride
       ? Number.isFinite(Number(room.fixedPricePerVisit)) ? Math.max(0, Number(room.fixedPricePerVisit)) : 0
-      : roomType?.fixedPricePerVisit ?? 0,
+      : usesTaskBasedAreaPricing && roomType?.applyFixedPriceWithAreaTasks !== true
+        ? 0
+        : roomType?.fixedPricePerVisit ?? 0,
   }
 }
 
@@ -757,7 +761,7 @@ export function getRoomPricingBreakdown(
         }, 0)
       : 0
     const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
-      isMoppingOnlyTask(task)
+      isMoppingPricedRoomTask(task)
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))

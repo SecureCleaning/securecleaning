@@ -37,8 +37,16 @@ function formatCurrency(value: number) {
 }
 
 function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig) {
+  const taskDefinitions = getRoomScopeTaskDefinitions(roomType)
+  const hasDefaultAreaPricing = taskDefinitions.some((task) => (
+    task.defaultSelected && task.pricingMode === 'area' && task.minutesPerSqm > 0
+  ))
   const totals: Record<RoomTaskCadence, number> = {
-    every_clean: getRoomTypeDefaultDirectCharge(roomType, pricingConfig),
+    every_clean: getRoomTypeDefaultDirectCharge(
+      roomType,
+      pricingConfig,
+      !hasDefaultAreaPricing || roomType.applyFixedPriceWithAreaTasks === true
+    ),
     weekly: 0,
     fortnightly: 0,
     monthly: 0,
@@ -46,7 +54,7 @@ function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: Q
     annually: 0,
   }
 
-  for (const task of getRoomScopeTaskDefinitions(roomType)) {
+  for (const task of taskDefinitions) {
     const rate = task.pricingMode === 'area'
       ? task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60
       : task.price
@@ -90,6 +98,7 @@ function createRoomType(): RoomTypeConfig {
     scopeTaskDefaults: [true, true, true, true, true],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
+    applyFixedPriceWithAreaTasks: false,
     fields: [],
   }
 }
@@ -505,7 +514,7 @@ export default function RoomTypeConfigAdmin({
                 <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 p-4">
                   <div className="mb-3">
                     <h4 className="font-semibold" style={{ color: '#1a2744' }}>Additional room pricing</h4>
-                    <p className="text-sm text-gray-600">Use these only for a room-specific charge beyond its selected tasks. The percentage adjusts generic area labour only when task-based floor pricing is not active.</p>
+                    <p className="text-sm text-gray-600">Use these only for a room-specific charge beyond its selected tasks. Legacy fixed room prices are not stacked on task-based floor pricing unless you explicitly enable it.</p>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="text-sm">
@@ -529,6 +538,15 @@ export default function RoomTypeConfigAdmin({
                         onChange={(event) => updateRoomType(roomType.id, { fixedPricePerVisit: Math.max(0, Number(event.target.value || 0)) })}
                         className="w-full rounded-lg border border-gray-300 px-4 py-3"
                       />
+                      <span className="mt-2 flex items-start gap-2 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={roomType.applyFixedPriceWithAreaTasks === true}
+                          onChange={(event) => updateRoomType(roomType.id, { applyFixedPriceWithAreaTasks: event.target.checked })}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
+                        />
+                        Add this fixed charge on top of task-based floor pricing
+                      </span>
                       <span className="mt-1 block text-xs text-gray-500">This combines with any active bathroom or kitchen charge.</span>
                     </label>
                   </div>

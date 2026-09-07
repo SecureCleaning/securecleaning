@@ -63,6 +63,7 @@ export type RoomTypeConfig = {
   scopeTaskDefaults?: boolean[]
   pricingAdjustmentPercent: number
   fixedPricePerVisit: number
+  applyFixedPriceWithAreaTasks?: boolean
   fields: RoomMetricFieldConfig[]
 }
 
@@ -106,8 +107,10 @@ export function getRoomScopeTaskPrice(roomType: RoomTypeConfig, index: number) {
 
 export function inferRoomTaskMinutesPerSqm(label: string) {
   const normalized = label.trim().toLowerCase()
-  if (normalized.includes('vacuum') && normalized.includes('mop') && !normalized.includes(' or ')) {
-    return DEFAULT_VACUUM_MINUTES_PER_SQM + DEFAULT_MOPPING_MINUTES_PER_SQM
+  if (normalized.includes('vacuum') && normalized.includes('mop')) {
+    return normalized.includes(' or ')
+      ? DEFAULT_VACUUM_MINUTES_PER_SQM
+      : DEFAULT_VACUUM_MINUTES_PER_SQM + DEFAULT_MOPPING_MINUTES_PER_SQM
   }
   if (normalized.includes('mop')) return DEFAULT_MOPPING_MINUTES_PER_SQM
   if (normalized.includes('vacuum') || normalized.includes('sweep')) return DEFAULT_VACUUM_MINUTES_PER_SQM
@@ -151,6 +154,11 @@ export function isAreaPricedRoomTask(label: string) {
 export function isMoppingOnlyTask(label: string) {
   const normalized = label.trim().toLowerCase()
   return normalized.includes('mop') && !normalized.includes('vacuum') && !normalized.includes('sweep')
+}
+
+export function isMoppingPricedRoomTask(label: string) {
+  const normalized = label.trim().toLowerCase()
+  return normalized.includes('mop') && !normalized.includes(' or ')
 }
 
 export function getDefaultRoomScopeTaskSelections(roomType: RoomTypeConfig) {
@@ -298,7 +306,11 @@ function getDefaultMetricCharge(field: RoomMetricFieldConfig) {
   return Math.max(0, defaultValue - includedUnits) * pricePerUnit
 }
 
-export function getRoomTypeDefaultDirectCharge(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig) {
+export function getRoomTypeDefaultDirectCharge(
+  roomType: RoomTypeConfig,
+  pricingConfig: QuotePricingConfig,
+  includeFixedPrice = true
+) {
   const pricingItemCode = BATHROOM_ROOM_TYPE_IDS.has(roomType.id)
     ? 'bathrooms'
     : roomType.id === 'kitchen' ? 'kitchens' : null
@@ -310,7 +322,7 @@ export function getRoomTypeDefaultDirectCharge(roomType: RoomTypeConfig, pricing
     0
   )
 
-  return Math.max(0, roomType.fixedPricePerVisit) + configuredRoomCharge + defaultMetricCharges
+  return (includeFixedPrice ? Math.max(0, roomType.fixedPricePerVisit) : 0) + configuredRoomCharge + defaultMetricCharges
 }
 
 const SUGGESTED_ROOM_PRICES: Record<string, number> = {
@@ -725,6 +737,7 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     fixedPricePerVisit: Number.isFinite(Number(source.fixedPricePerVisit))
       ? Math.max(0, Number(source.fixedPricePerVisit))
       : fallback.fixedPricePerVisit,
+    applyFixedPriceWithAreaTasks: source.applyFixedPriceWithAreaTasks === true,
     fields: Array.isArray(source.fields) ? source.fields.slice(0, 50).map(normalizeField) : fallback.fields,
   }
 

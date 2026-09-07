@@ -8,6 +8,7 @@ import type { QuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
 import {
   buildFirmQuotePreview,
   createRoomItem,
+  DEFAULT_MOPPING_MINUTES_PER_SQM,
   deriveQuoteInputsFromRooms,
   getRoomAreaAllocationTotal,
   getRoomPricingBreakdown,
@@ -22,7 +23,7 @@ import {
   getRoomScopeTaskDefinitions,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
-  isMoppingOnlyTask,
+  isMoppingPricedRoomTask,
   ROOM_TASK_CADENCE_OPTIONS,
   type QuoteRoomTypeConfig,
   type RoomMetricFieldConfig,
@@ -354,6 +355,39 @@ export default function QuoteWorkflowEditor({
     }))
   }
 
+  function refreshPricingDefaults() {
+    if (!window.confirm('Refresh this editable quote with the current task and room pricing defaults? Your rooms, quantities, sqm, descriptions and entered room details will be kept. Quote and room price overrides will be cleared so the current defaults can be applied.')) return
+
+    setFirmQuoteDraft((current) => ({
+      ...current,
+      pricingAdjustmentPercent: 0,
+      targetPrice: '',
+      finalPerVisit: '',
+      moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+      roomItems: current.roomItems.map((room) => {
+        const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+        if (!roomType) return { ...room, pricingOverride: false }
+        const selections = getDefaultRoomScopeTaskSelections(roomType)
+        getRoomScopeTaskDefinitions(roomType)
+          .filter((task) => isMoppingPricedRoomTask(task.label))
+          .forEach((task) => { selections[task.id] = Boolean(room.moppingEnabled) })
+        return {
+          ...room,
+          scopeTaskSelections: selections,
+          moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+          pricingOverride: false,
+          pricingAdjustmentPercent: roomType.pricingAdjustmentPercent,
+          fixedPricePerVisit: roomType.fixedPricePerVisit,
+        }
+      }),
+    }))
+    setSaveState({
+      saving: false,
+      message: 'Current pricing defaults loaded. Review the recalculated amount, then save the quote.',
+      error: null,
+    })
+  }
+
   function addBlankMetricField(room: WorkflowRoomItem) {
     const id = `custom_${Date.now().toString(36)}`
     updateRoom(room.id, {
@@ -421,7 +455,7 @@ export default function QuoteWorkflowEditor({
           </p>
           {saveState.message ? (
             <div className="mt-3 inline-flex rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
-              Preview refreshed from saved draft
+              Preview refreshed
             </div>
           ) : null}
         </div>
@@ -851,6 +885,14 @@ export default function QuoteWorkflowEditor({
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
+                    onClick={refreshPricingDefaults}
+                    disabled={finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
+                    className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Recalculate with current defaults
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => addRoom('office')}
                     className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700"
                   >
@@ -1011,7 +1053,7 @@ export default function QuoteWorkflowEditor({
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
                           {getRoomScopeTaskDefinitions(typeConfig).map((task) => {
-                            const selected = isMoppingOnlyTask(task.label)
+                            const selected = isMoppingPricedRoomTask(task.label)
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
@@ -1025,7 +1067,7 @@ export default function QuoteWorkflowEditor({
                                         ...(room.scopeTaskSelections ?? getDefaultRoomScopeTaskSelections(typeConfig)),
                                         [task.id]: event.target.checked,
                                       },
-                                      ...(isMoppingOnlyTask(task.label) ? { moppingEnabled: event.target.checked } : {}),
+                                      ...(isMoppingPricedRoomTask(task.label) ? { moppingEnabled: event.target.checked } : {}),
                                     })}
                                     className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
                                   />
@@ -1057,7 +1099,7 @@ export default function QuoteWorkflowEditor({
                               const checked = event.target.checked
                               const moppingSelections = Object.fromEntries(
                                 getRoomScopeTaskDefinitions(typeConfig)
-                                  .filter((task) => isMoppingOnlyTask(task.label))
+                                  .filter((task) => isMoppingPricedRoomTask(task.label))
                                   .map((task) => [task.id, checked])
                               )
                               updateRoom(room.id, {
