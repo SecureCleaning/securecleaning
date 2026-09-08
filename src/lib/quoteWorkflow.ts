@@ -870,6 +870,11 @@ export function getFirmQuoteDisplayPrice(
     return { low: finalPerVisit, high: finalPerVisit, isFirm: true }
   }
 
+  const targetPrice = Number(draft.targetPrice)
+  if (Number.isFinite(targetPrice) && targetPrice > 0) {
+    return { low: targetPrice, high: targetPrice, isFirm: true }
+  }
+
   return {
     low: pricingPreview.adjustedLow,
     high: pricingPreview.adjustedHigh,

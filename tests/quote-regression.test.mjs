@@ -7,7 +7,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getFirmQuoteDisplayPrice, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
 const {
   applyGlobalRoomTaskRates,
   DEFAULT_MONTHLY_COBWEB_TASK,
@@ -63,6 +63,26 @@ const baseInputs = {
 test('formatPriceRange collapses identical prices and preserves ranges', () => {
   assert.equal(formatPriceRange(90, 90), '$90')
   assert.equal(formatPriceRange(90, 95), '$90 – $95')
+})
+
+test('saved target and final price overrides replace the calculated client range', () => {
+  const pricingPreview = { adjustedLow: 106, adjustedHigh: 130 }
+
+  assert.deepEqual(getFirmQuoteDisplayPrice({ targetPrice: '', finalPerVisit: '' }, pricingPreview), {
+    low: 106,
+    high: 130,
+    isFirm: false,
+  })
+  assert.deepEqual(getFirmQuoteDisplayPrice({ targetPrice: '90', finalPerVisit: '' }, pricingPreview), {
+    low: 90,
+    high: 90,
+    isFirm: true,
+  })
+  assert.deepEqual(getFirmQuoteDisplayPrice({ targetPrice: '90', finalPerVisit: '95' }, pricingPreview), {
+    low: 95,
+    high: 95,
+    isFirm: true,
+  })
 })
 
 test('quote engine applies the frequency-adjusted minimum after all room extras', () => {

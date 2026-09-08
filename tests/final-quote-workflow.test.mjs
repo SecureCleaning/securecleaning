@@ -46,7 +46,9 @@ test('public documents select explicit remote-review and final variants', () => 
   assert.match(data, /variant: QuoteDocumentVariant = 'remote_review'/)
   assert.match(data, /if \(variant === 'final'\)/)
   assert.match(data, /if \(!quote\.finalDocument\) return null/)
-  assert.match(data, /createDefaultFirmQuoteDraft\(quote\.inputs/)
+  assert.match(data, /buildFirmQuotePreview\(quote\.firmQuoteDraft, pricingConfig, roomTypeConfig\)/)
+  assert.match(data, /getFirmQuoteDisplayPrice\(quote\.firmQuoteDraft, pricingPreview\)/)
+  assert.match(data, /inputs: quote\.firmQuoteDraft\.revisedInputs/)
 })
 
 test('public quote DTO shows company while excluding contact, workflow, staff, configuration, and send metadata', () => {

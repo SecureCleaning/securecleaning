@@ -154,22 +154,11 @@ export async function getPublicQuoteWorkflowByRef(
     return { ...quote, ...quote.finalDocument }
   }
 
-  const remoteDraft = createDefaultFirmQuoteDraft(quote.inputs, roomTypeConfig)
-  const calculatedPreview = buildFirmQuotePreview(remoteDraft, pricingConfig, roomTypeConfig)
-  const pricingPreview = {
-    ...calculatedPreview,
-    calculated: quote.result,
-    calculatedLow: quote.result.totalLow,
-    calculatedHigh: quote.result.totalHigh,
-    adjustedLow: quote.result.totalLow,
-    adjustedHigh: quote.result.totalHigh,
-    suggestedPrice: null,
-  }
-  const displayPrice = { low: quote.result.totalLow, high: quote.result.totalHigh, isFirm: false }
+  const pricingPreview = buildFirmQuotePreview(quote.firmQuoteDraft, pricingConfig, roomTypeConfig)
+  const displayPrice = getFirmQuoteDisplayPrice(quote.firmQuoteDraft, pricingPreview)
   return {
     ...quote,
-    firmQuoteDraft: remoteDraft,
-    inputs: quote.inputs,
+    inputs: quote.firmQuoteDraft.revisedInputs,
     result: applyFirmQuoteDisplayPrice(quote.result, displayPrice),
     pricingPreview,
     displayPrice,
