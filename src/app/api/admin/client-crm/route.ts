@@ -13,6 +13,7 @@ import {
 } from '@/lib/clientCrmData'
 import { sendClientCrmEmail } from '@/lib/clientCrmEmail'
 import { createCrmInspectionAppointment } from '@/lib/clientCrmAppointments'
+import { createCrmQuoteDraft } from '@/lib/clientCrmQuotes'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import { closeOpportunityWonAndCreateProduct, ContractProductError } from '@/lib/contractProducts'
 
@@ -66,6 +67,11 @@ export async function POST(request: NextRequest) {
       const limited = rateLimit(request, { key: `client-crm-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await createCrmInspectionAppointment(actor, body) }, { status: 201 })
+    }
+    if (action === 'quote.create') {
+      const limited = rateLimit(request, { key: `client-crm-quote:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await createCrmQuoteDraft(actor, body) }, { status: 201 })
     }
     if (action === 'opportunity.close-won') {
       const productActor = await getContractProductActor(request)

@@ -298,12 +298,63 @@ export default function ClientCrmWorkspace({
     if (!selectedLead) return
     setBusy('lead-update')
     setStatus(null)
+    let workflowSaved = false
     try {
-      await post({ action: 'opportunity.update', id: selectedLead.id, ...leadEdit })
+      const { assignedStaffId, ...workflowFields } = leadEdit
+      await post({
+        action: 'opportunity.update',
+        id: selectedLead.id,
+        ...workflowFields,
+        ...(data?.actor.role === 'owner' || data?.actor.role === 'manager' ? { assignedStaffId } : {}),
+      })
+      workflowSaved = true
+      if (leadEdit.stage === 'quoting' && selectedLead.quotes.length === 0) {
+        if (!globalThis.crypto?.randomUUID) throw new Error('Unable to create a secure quote request. Refresh the page and try again.')
+        const created = await post({
+          action: 'quote.create',
+          opportunityId: selectedLead.id,
+          idempotencyKey: crypto.randomUUID(),
+        })
+        const quoteRef = String(created.result?.quoteRef ?? '')
+        if (!quoteRef) throw new Error('The quote was created without a reference. Reload the client record before trying again.')
+        const quotePath = portal === 'agent' && data?.actor.availabilityAssigneeId
+          ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quoteRef)}?opportunity=${encodeURIComponent(selectedLead.id)}`
+          : `/admin/quotes/${encodeURIComponent(quoteRef)}?opportunity=${encodeURIComponent(selectedLead.id)}`
+        globalThis.location.assign(quotePath)
+        return
+      }
       await loadWorkspace(selectedLead.id)
       setStatus({ type: 'success', message: 'Opportunity workflow updated.' })
     } catch (error) {
+      if (workflowSaved) await loadWorkspace(selectedLead.id).catch(() => undefined)
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update the opportunity.' })
+    } finally {
+      setBusy('')
+    }
+  }
+
+  async function createQuote() {
+    if (!selectedLead) return
+    if (!globalThis.crypto?.randomUUID) {
+      setStatus({ type: 'error', message: 'Unable to create a secure quote request. Refresh the page and try again.' })
+      return
+    }
+    setBusy('quote-create')
+    setStatus(null)
+    try {
+      const created = await post({
+        action: 'quote.create',
+        opportunityId: selectedLead.id,
+        idempotencyKey: crypto.randomUUID(),
+      })
+      const quoteRef = String(created.result?.quoteRef ?? '')
+      if (!quoteRef) throw new Error('The quote was created without a reference. Reload the client record before trying again.')
+      const quotePath = portal === 'agent' && data?.actor.availabilityAssigneeId
+        ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quoteRef)}?opportunity=${encodeURIComponent(selectedLead.id)}`
+        : `/admin/quotes/${encodeURIComponent(quoteRef)}?opportunity=${encodeURIComponent(selectedLead.id)}`
+      globalThis.location.assign(quotePath)
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to create the quote.' })
     } finally {
       setBusy('')
     }
@@ -614,7 +665,15 @@ export default function ClientCrmWorkspace({
               <label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadEdit.sourceProvider} onChange={(event) => setLeadEdit({ ...leadEdit, sourceProvider: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
               <label id="crm-source-details" className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation<textarea id="crm-source-explanation" rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
             </div>
-            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void updateLead()} disabled={busy === 'lead-update' || Boolean(selectedLead.productId)} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'lead-update' ? 'Saving...' : 'Save workflow'}</button>{!selectedLead.productId && !['won', 'lost', 'cancelled'].includes(selectedLead.stage) ? <button type="button" onClick={() => setWonOpen(true)} className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white">Close as won & create product</button> : null}{selectedLead.productId ? <Link href={portal === 'agent' && data.actor.availabilityAssigneeId ? `/availability/products/${encodeURIComponent(data.actor.availabilityAssigneeId)}?product=${encodeURIComponent(selectedLead.productId)}` : `/admin/products?product=${encodeURIComponent(selectedLead.productId)}`} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">Open {selectedLead.productStatus} product</Link> : null}</div>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={() => void updateLead()} disabled={Boolean(busy) || Boolean(selectedLead.productId)} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {busy === 'lead-update' ? 'Saving...' : leadEdit.stage === 'quoting' && selectedLead.quotes.length === 0 ? 'Save & create quote' : 'Save workflow'}
+              </button>
+              {selectedLead.stage === 'quoting' && selectedLead.quotes.length === 0 ? <button type="button" onClick={() => void createQuote()} disabled={Boolean(busy)} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'quote-create' ? 'Creating quote...' : 'Create Quote'}</button> : null}
+              {!selectedLead.productId && !['won', 'lost', 'cancelled'].includes(selectedLead.stage) ? <button type="button" onClick={() => setWonOpen(true)} className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white">Close as won & create product</button> : null}
+              {selectedLead.productId ? <Link href={portal === 'agent' && data.actor.availabilityAssigneeId ? `/availability/products/${encodeURIComponent(data.actor.availabilityAssigneeId)}?product=${encodeURIComponent(selectedLead.productId)}` : `/admin/products?product=${encodeURIComponent(selectedLead.productId)}`} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white">Open {selectedLead.productStatus} product</Link> : null}
+            </div>
+            {leadEdit.stage === 'quoting' && selectedLead.quotes.length === 0 ? <p className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">Starting the quoting stage creates a linked draft using the saved client, site, premises, and cleaning-frequency details. Nothing is emailed until the quote is reviewed and sent.</p> : null}
             {wonOpen ? <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold text-green-950">Confirm the accepted contract</h3><p className="mt-1 text-sm text-green-900">This closes the opportunity and creates one editable draft product from the selected saved quote. The quote’s ordinary accepted status is not used because it can represent a site-inspection booking.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">Winning saved quote<select value={wonDraft.quoteId} onChange={(event) => setWonDraft({ ...wonDraft, quoteId: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="">Select saved quote</option>{selectedLead.quotes.map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteRef} · {dateLabel(quote.createdAt)}{quote.finalQuoteSentAt ? ' · sent final' : quote.hasFinalDocument ? ' · reviewed final' : ' · saved quote'}</option>)}</select></label><label className="text-sm font-medium">Acceptance date<input type="date" max={melbourneToday()} value={wonDraft.acceptanceDate} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceDate: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label><label className="text-sm font-medium">Acceptance method<select value={wonDraft.acceptanceMethod} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceMethod: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="email">Email</option><option value="signed_agreement">Signed agreement</option><option value="phone">Phone</option><option value="other">Other</option></select></label><label className="text-sm font-medium">Acceptance evidence or note<input value={wonDraft.acceptanceNote} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceNote: event.target.value })} placeholder="e.g. Accepted by email on 28 August" className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label></div><div className="mt-4 flex gap-3"><button type="button" onClick={() => void closeWon()} disabled={busy === 'close-won' || !wonDraft.quoteId || wonDraft.acceptanceNote.trim().length < 3} className="rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'close-won' ? 'Creating product...' : 'Confirm win & create draft product'}</button><button type="button" onClick={() => setWonOpen(false)} className="rounded-lg border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-900">Cancel</button></div>{selectedLead.quotes.length === 0 ? <p className="mt-3 text-sm font-semibold text-amber-800">Save a quote before closing this opportunity as won.</p> : null}</div> : null}
           </section>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

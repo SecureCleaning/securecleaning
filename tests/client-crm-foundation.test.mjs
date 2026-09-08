@@ -20,6 +20,7 @@ const {
 } = await import('../src/lib/clientCrmPolicy.ts')
 
 const { buildCrmFooter, buildCrmSignature } = await import('../src/lib/clientCrmEmail.ts')
+const { buildCrmQuoteDraftInputs } = await import('../src/lib/clientCrmQuoteDraft.ts')
 const {
   buildCrmOpportunityIdentity,
   buildCrmSiteIdentity,
@@ -517,6 +518,72 @@ test('CRM workspace shows linked pending site inspections beside the client reco
   assert.match(workspace, /selectedLead\.scheduledInspections\.map/)
   assert.match(workspace, /inspectionDateLabel\(inspection\.scheduledFor, inspection\.endsAt, selectedLead\.city\)/)
   assert.match(workspace, /View calendar/)
+})
+
+test('agent workflow saves do not attempt reassignment and quoting creates a linked draft', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const data = source('src/lib/clientCrmData.ts')
+  const quotes = source('src/lib/clientCrmQuotes.ts')
+  const route = source('src/app/api/admin/client-crm/route.ts')
+
+  assert.match(workspace, /data\?\.actor\.role === 'owner' \|\| data\?\.actor\.role === 'manager' \? \{ assignedStaffId \} : \{\}/)
+  assert.match(data, /actor\.role === 'agent'[\s\S]*assignedStaffId !== current\.assigned_staff_id/)
+  assert.match(workspace, /Save & create quote/)
+  assert.match(workspace, /'Create Quote'/)
+  assert.match(workspace, /action: 'quote\.create'/)
+  assert.match(route, /action === 'quote\.create'/)
+  assert.match(route, /client-crm-quote:\$\{actor\.id\}/)
+  assert.match(quotes, /actorCanAccessOpportunity\(actor, opportunity\.assigned_staff_id\)/)
+  assert.match(quotes, /opportunity\.stage !== 'quoting'/)
+  assert.match(quotes, /\.from\('bookings'\)[\s\S]*\.eq\('opportunity_id', opportunityId\)/)
+  assert.match(quotes, /\.from\('quotes'\)\.insert/)
+  assert.match(quotes, /\.from\('crm_opportunity_quotes'\)\.insert/)
+  assert.match(quotes, /'crm\.quote\.created'/)
+  assert.doesNotMatch(quotes, /sendQuoteEmail/)
+})
+
+test('CRM quote drafts carry appointment frequency and saved details without inventing extras', () => {
+  const draft = buildCrmQuoteDraftInputs({
+    businessName: 'Example Co',
+    contactName: 'Alex Example',
+    email: 'alex@example.com',
+    phone: '0400 000 000',
+    address: '10 Main Street',
+    suburb: 'Preston',
+    postcode: '3072',
+    city: 'melbourne',
+    bookingInputs: {
+      businessName: 'Ignored booking name',
+      contactName: 'Ignored booking contact',
+      email: 'ignored@example.com',
+      phone: '0000',
+      address: 'Old address',
+      city: 'melbourne',
+      suburb: 'Preston',
+      postcode: '3072',
+      premisesType: 'medical',
+      floorArea: 240,
+      frequency: '3x_week',
+      timePreference: 'after_hours',
+      preferredStartDate: '2026-09-15',
+      addOns: { bathrooms: 4, kitchens: 2, windows: 0, consumables: true, highTouchDisinfection: true, carpetSteam: true },
+    },
+  })
+
+  assert.equal(draft.businessName, 'Example Co')
+  assert.equal(draft.address, '10 Main Street')
+  assert.equal(draft.premisesType, 'medical')
+  assert.equal(draft.floorArea, 240)
+  assert.equal(draft.frequency, '3x_week')
+  assert.equal(draft.timePreference, 'after_hours')
+  assert.equal(draft.preferredStartDate, '2026-09-15')
+  assert.deepEqual(draft.roomScope, [])
+  assert.deepEqual(draft.addOns, { bathrooms: 0, kitchens: 0, windows: 0, consumables: false, highTouchDisinfection: false, carpetSteam: false })
+
+  const fallback = buildCrmQuoteDraftInputs({ ...draft, bookingInputs: null })
+  assert.equal(fallback.floorArea, 100)
+  assert.equal(fallback.frequency, 'weekly')
+  assert.equal(fallback.premisesType, 'office')
 })
 
 test('client CRM notes are append-only, internal, attributed, and duplicate-safe', () => {

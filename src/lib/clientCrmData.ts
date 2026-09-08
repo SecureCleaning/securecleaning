@@ -788,14 +788,19 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
     update.next_follow_up_at = date ? new Date(date).toISOString() : null
   }
   if (input.assignedStaffId !== undefined) {
-    if (actor.role === 'agent') throw new ClientCrmError('Only an owner or manager can reassign an opportunity.', 403)
     const assignedStaffId = clean(input.assignedStaffId, 100) || null
-    if (assignedStaffId) {
+    if (actor.role === 'agent') {
+      if (assignedStaffId !== current.assigned_staff_id) {
+        throw new ClientCrmError('Only an owner or manager can reassign an opportunity.', 403)
+      }
+    } else if (assignedStaffId) {
       const allowed = (await getAllowedCrmAgents(actor)).some((agent) => agent.id === assignedStaffId)
       if (!allowed) throw new ClientCrmError('Select an active regional agent.')
     }
-    update.assigned_staff_id = assignedStaffId
-    update.assignment_method = 'manual_override'
+    if (actor.role !== 'agent') {
+      update.assigned_staff_id = assignedStaffId
+      update.assignment_method = 'manual_override'
+    }
   }
   if (input.contactBasis !== undefined || input.sourceProvider !== undefined || input.sourceExplanation !== undefined) {
     const contactBasis = input.contactBasis === undefined
