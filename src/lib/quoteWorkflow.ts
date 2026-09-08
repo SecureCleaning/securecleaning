@@ -5,6 +5,7 @@ import type { CleaningFrequency, QuoteInputs, QuoteResult, PremisesType, TimePre
 import {
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
   getDefaultRoomScopeTaskSelections,
+  getGlobalMoppingMinutesPerSqm,
   getRoomScopeTaskCadence,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
@@ -114,8 +115,6 @@ export type FirmQuoteDisplayPrice = {
   isFirm: boolean
 }
 
-export const DEFAULT_MOPPING_MINUTES_PER_SQM = 0.24
-
 function safePositiveInteger(value: unknown, fallback: number) {
   const numeric = Number(value)
   return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : fallback
@@ -214,7 +213,7 @@ export function createRoomItem(
     excludedMetricFieldIds: [],
     scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
     moppingEnabled: roomType?.defaultMopping ?? false,
-    moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+    moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingOverride: false,
     pricingAdjustmentPercent: roomType?.pricingAdjustmentPercent ?? 0,
     fixedPricePerVisit: roomType?.fixedPricePerVisit ?? 0,
@@ -260,7 +259,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
           : metrics,
         scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
         moppingEnabled: room.moppingRequired ?? roomType?.defaultMopping ?? false,
-        moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+        moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
         pricingOverride: false,
         pricingAdjustmentPercent: roomType?.pricingAdjustmentPercent ?? 0,
         fixedPricePerVisit: roomType?.fixedPricePerVisit ?? 0,
@@ -284,7 +283,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
     metrics: buildDefaultMetrics(mainType, roomTypeConfig),
     scopeTaskSelections: mainRoomType ? getDefaultRoomScopeTaskSelections(mainRoomType) : {},
     moppingEnabled: mainRoomType?.defaultMopping ?? false,
-    moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+    moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingOverride: false,
     pricingAdjustmentPercent: mainRoomType?.pricingAdjustmentPercent ?? 0,
     fixedPricePerVisit: mainRoomType?.fixedPricePerVisit ?? 0,
@@ -304,7 +303,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       metrics: buildDefaultMetrics('bathroom', roomTypeConfig),
       scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'bathroom')!),
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.defaultMopping ?? false,
-      moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+      moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
       pricingOverride: false,
       pricingAdjustmentPercent: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.pricingAdjustmentPercent ?? 0,
       fixedPricePerVisit: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.fixedPricePerVisit ?? 0,
@@ -323,7 +322,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       metrics: buildDefaultMetrics('kitchen', roomTypeConfig),
       scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'kitchen')!),
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.defaultMopping ?? false,
-      moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+      moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
       pricingOverride: false,
       pricingAdjustmentPercent: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.pricingAdjustmentPercent ?? 0,
       fixedPricePerVisit: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.fixedPricePerVisit ?? 0,
@@ -387,7 +386,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         moppingEnabled: typeof source.moppingEnabled === 'boolean'
           ? source.moppingEnabled
           : getRoomTypeConfigById(roomTypeConfig, type)?.defaultMopping ?? false,
-        moppingMinutesPerSqm: safePositiveNumber(source.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM),
+        moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
         pricingOverride: source.pricingOverride === true,
         pricingAdjustmentPercent: Number.isFinite(Number(source.pricingAdjustmentPercent))
           ? Number(source.pricingAdjustmentPercent)
@@ -431,7 +430,7 @@ export function createDefaultFirmQuoteDraft(
     status: 'draft',
     revisedInputs: JSON.parse(JSON.stringify(inputs)) as QuoteInputs,
     roomItems: createSeedRoomItems(inputs, roomTypeConfig),
-    moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+    moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingAdjustmentPercent: 0,
     targetPrice: '',
     finalPerVisit: '',
@@ -497,16 +496,12 @@ export function parseFirmQuoteDraft(
   }
 
   const source = candidate as Partial<FirmQuoteDraft>
-  const legacyMoppingRate = source.roomItems?.find((room) => Number.isFinite(Number(room.moppingMinutesPerSqm)))?.moppingMinutesPerSqm
 
   return {
     status: isFirmQuoteStatus(source.status) ? source.status : fallback.status,
     revisedInputs: mergeQuoteInputs(inputs, source.revisedInputs),
     roomItems: mergeRoomItems(source.roomItems, inputs, roomTypeConfig),
-    moppingMinutesPerSqm: safePositiveNumber(
-      source.moppingMinutesPerSqm,
-      safePositiveNumber(legacyMoppingRate, fallback.moppingMinutesPerSqm)
-    ),
+    moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingAdjustmentPercent:
       typeof source.pricingAdjustmentPercent === 'number' && Number.isFinite(source.pricingAdjustmentPercent)
         ? source.pricingAdjustmentPercent
@@ -575,6 +570,22 @@ export function deriveQuoteInputsFromRooms(
       ...draft.revisedInputs.addOns,
       bathrooms,
       kitchens,
+    },
+  }
+}
+
+function getDetailedPricingInputs(
+  draft: FirmQuoteDraft,
+  roomTypeConfig: QuoteRoomTypeConfig
+) {
+  const inputs = deriveQuoteInputsFromRooms(draft, roomTypeConfig)
+  return {
+    ...inputs,
+    addOns: {
+      ...inputs.addOns,
+      // These broad intake allowances are replaced by the selected room tasks.
+      bathrooms: 0,
+      kitchens: 0,
     },
   }
 }
@@ -662,7 +673,7 @@ export function getRoomMoppingExtraTotal(
     ))
     if (usesConfiguredAreaRate) return sum
 
-    const minutesPerSqm = safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM)
+    const minutesPerSqm = getGlobalMoppingMinutesPerSqm(roomTypeConfig)
     const roomMinutes = roomArea * minutesPerSqm
     const roomCost = (roomMinutes / 60) * pricingConfig.settings.hourlyRate
     const cadenceFactor = getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
@@ -724,7 +735,7 @@ export function getRoomPricingBreakdown(
   pricingConfig: QuotePricingConfig,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ): RoomPricingBreakdown {
-  const calculated = calculateQuote(deriveQuoteInputsFromRooms(draft, roomTypeConfig), pricingConfig)
+  const calculated = calculateQuote(getDetailedPricingInputs(draft, roomTypeConfig), pricingConfig)
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
   const genericLabourAreas = getRoomGenericLabourAllocations(draft, roomTypeConfig)
   const totalRoomArea = [...roomAreas.values()].reduce((sum, roomArea) => sum + roomArea, 0)
@@ -766,16 +777,8 @@ export function getRoomPricingBreakdown(
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
     const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize && !usesConfiguredMoppingAreaRate
-      ? (roomArea * safePositiveNumber(draft.moppingMinutesPerSqm, DEFAULT_MOPPING_MINUTES_PER_SQM) / 60) * pricingConfig.settings.hourlyRate *
+      ? (roomArea * getGlobalMoppingMinutesPerSqm(roomTypeConfig) / 60) * pricingConfig.settings.hourlyRate *
         getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
-      : 0
-    const roomPricingItemCode = ['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'].includes(room.type)
-      ? 'bathrooms'
-      : room.type === 'kitchen'
-        ? 'kitchens'
-        : null
-    const roomPricingItemExtra = roomPricingItemCode
-      ? (pricingConfig.items.find((item) => item.code === roomPricingItemCode && item.active)?.rate ?? 0) * Math.max(0, room.quantity)
       : 0
     const roomAdjustmentLow = calculated.baseLow * roomShare * (rule.adjustmentPercent / 100)
     const roomAdjustmentHigh = calculated.baseHigh * roomShare * (rule.adjustmentPercent / 100)
@@ -784,8 +787,8 @@ export function getRoomPricingBreakdown(
     return [room.id, {
       // Allocate base labour to rooms; add only charges that belong to this room.
       // Global add-ons and minimum call-out remain in the overall working range.
-      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
-      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra + roomPricingItemExtra) * factor),
+      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * factor),
+      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * factor),
     }]
   }))
 }
@@ -795,7 +798,7 @@ export function buildFirmQuotePreview(
   pricingConfig: QuotePricingConfig,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ): FirmQuotePreview {
-  const calculated = calculateQuote(deriveQuoteInputsFromRooms(draft, roomTypeConfig), pricingConfig)
+  const calculated = calculateQuote(getDetailedPricingInputs(draft, roomTypeConfig), pricingConfig)
   const roomFieldExtra = getRoomMetricExtraTotal(draft, roomTypeConfig)
   const scheduledTaskExtra = getRoomScheduledTaskExtraTotal(draft, roomTypeConfig, pricingConfig.settings.hourlyRate)
   const moppingExtra = getRoomMoppingExtraTotal(draft, pricingConfig, roomTypeConfig)

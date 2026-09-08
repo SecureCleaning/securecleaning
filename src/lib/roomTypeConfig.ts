@@ -4,6 +4,15 @@ import type { CleaningFrequency } from '@/lib/types'
 
 export type RoomMetricInputType = 'integer' | 'number' | 'boolean'
 export type RoomTaskCadence = 'every_clean' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually'
+export type GlobalRoomTaskPricingMode = 'area' | 'fixed'
+
+export type GlobalRoomTaskRate = {
+  code: string
+  label: string
+  pricingMode: GlobalRoomTaskPricingMode
+  minutesPerSqm: number
+  pricePerRoom: number
+}
 
 export const ROOM_TASK_CADENCE_OPTIONS: Array<{ value: RoomTaskCadence; label: string }> = [
   { value: 'every_clean', label: 'Every clean' },
@@ -68,15 +77,70 @@ export type RoomTypeConfig = {
 }
 
 export type QuoteRoomTypeConfig = {
+  globalTaskRates?: GlobalRoomTaskRate[]
   roomTypes: RoomTypeConfig[]
 }
 
-const BATHROOM_ROOM_TYPE_IDS = new Set(['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'])
 export const DEFAULT_WEEKLY_DUSTING_TASK = 'Dust perimeter edges and reachable surfaces'
 export const DEFAULT_VACUUM_TASK = 'Vacuum accessible floor areas'
 export const DEFAULT_MONTHLY_COBWEB_TASK = 'Remove visible cobwebs from ceilings and corners'
 export const DEFAULT_VACUUM_MINUTES_PER_SQM = 0.068
 export const DEFAULT_MOPPING_MINUTES_PER_SQM = 0.24
+export const DEFAULT_GLOBAL_ROOM_TASK_RATES: GlobalRoomTaskRate[] = [
+  { code: 'vacuum_sweep', label: 'Vacuuming / sweeping', pricingMode: 'area', minutesPerSqm: DEFAULT_VACUUM_MINUTES_PER_SQM, pricePerRoom: 0 },
+  { code: 'mopping', label: 'Mopping', pricingMode: 'area', minutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM, pricePerRoom: 0 },
+  { code: 'dusting', label: 'Dusting', pricingMode: 'area', minutesPerSqm: 0.09, pricePerRoom: 0 },
+  { code: 'cobwebs', label: 'Cobweb removal', pricingMode: 'area', minutesPerSqm: 0.011, pricePerRoom: 0 },
+  { code: 'wipe_surfaces', label: 'Wipe surfaces / rails', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 0.5 },
+  { code: 'empty_bins', label: 'Empty bins', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 0.7 },
+  { code: 'high_touch', label: 'Clean high-touch points', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 0.3 },
+  { code: 'bathroom_fixtures', label: 'Clean bathroom fixtures', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 5 },
+  { code: 'sinks_taps', label: 'Clean sinks / basins and taps', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 1.5 },
+]
+
+function cloneDefaultGlobalTaskRates() {
+  return DEFAULT_GLOBAL_ROOM_TASK_RATES.map((rate) => ({ ...rate }))
+}
+
+export function getGlobalRoomTaskCodesForLabel(label: string) {
+  const normalized = label.trim().toLowerCase()
+  const codes: string[] = []
+
+  if (normalized.includes('vacuum') || normalized.includes('sweep')) codes.push('vacuum_sweep')
+  if (normalized.includes('mop') && !normalized.includes(' or ')) codes.push('mopping')
+  if (normalized.includes('cobweb')) codes.push('cobwebs')
+  else if (normalized.includes('dust')) codes.push('dusting')
+  if (normalized.startsWith('wipe ')) codes.push('wipe_surfaces')
+  if (normalized.includes('empty') && normalized.includes('bin')) codes.push('empty_bins')
+  if (normalized.includes('high-touch') || normalized.includes('high touch')) codes.push('high_touch')
+  if (normalized.includes('clean and disinfect') && (normalized.includes('toilet') || normalized.includes('basin') || normalized.includes('fixture'))) {
+    codes.push('bathroom_fixtures')
+  } else if ((normalized.includes('sink') || normalized.includes('basin')) && normalized.includes('tap')) {
+    codes.push('sinks_taps')
+  }
+
+  return [...new Set(codes)]
+}
+
+export function getGlobalRoomTaskRates(config: QuoteRoomTypeConfig) {
+  const supplied = Array.isArray(config.globalTaskRates) ? config.globalTaskRates : []
+  return DEFAULT_GLOBAL_ROOM_TASK_RATES.map((fallback) => {
+    const source = supplied.find((rate) => rate?.code === fallback.code)
+    return {
+      ...fallback,
+      minutesPerSqm: Number.isFinite(Number(source?.minutesPerSqm))
+        ? Math.min(60, Math.max(0, Number(source?.minutesPerSqm)))
+        : fallback.minutesPerSqm,
+      pricePerRoom: Number.isFinite(Number(source?.pricePerRoom))
+        ? Math.min(100_000, Math.max(0, Number(source?.pricePerRoom)))
+        : fallback.pricePerRoom,
+    }
+  })
+}
+
+export function getGlobalMoppingMinutesPerSqm(config: QuoteRoomTypeConfig) {
+  return getGlobalRoomTaskRates(config).find((rate) => rate.code === 'mopping')?.minutesPerSqm ?? DEFAULT_MOPPING_MINUTES_PER_SQM
+}
 
 function isRoomTaskCadence(value: unknown): value is RoomTaskCadence {
   return ROOM_TASK_CADENCE_OPTIONS.some((option) => option.value === value)
@@ -106,15 +170,10 @@ export function getRoomScopeTaskPrice(roomType: RoomTypeConfig, index: number) {
 }
 
 export function inferRoomTaskMinutesPerSqm(label: string) {
-  const normalized = label.trim().toLowerCase()
-  if (normalized.includes('vacuum') && normalized.includes('mop')) {
-    return normalized.includes(' or ')
-      ? DEFAULT_VACUUM_MINUTES_PER_SQM
-      : DEFAULT_VACUUM_MINUTES_PER_SQM + DEFAULT_MOPPING_MINUTES_PER_SQM
-  }
-  if (normalized.includes('mop')) return DEFAULT_MOPPING_MINUTES_PER_SQM
-  if (normalized.includes('vacuum') || normalized.includes('sweep')) return DEFAULT_VACUUM_MINUTES_PER_SQM
-  return 0
+  const codes = getGlobalRoomTaskCodesForLabel(label)
+  return DEFAULT_GLOBAL_ROOM_TASK_RATES
+    .filter((rate) => rate.pricingMode === 'area' && codes.includes(rate.code))
+    .reduce((total, rate) => total + rate.minutesPerSqm, 0)
 }
 
 export function getRoomScopeTaskMinutesPerSqm(roomType: RoomTypeConfig, index: number) {
@@ -147,8 +206,8 @@ export function getRoomScopeTaskDefault(roomType: RoomTypeConfig, index: number)
 }
 
 export function isAreaPricedRoomTask(label: string) {
-  const normalized = label.trim().toLowerCase()
-  return normalized.includes('vacuum') || normalized.includes('mop') || normalized.includes('sweep')
+  const codes = getGlobalRoomTaskCodesForLabel(label)
+  return DEFAULT_GLOBAL_ROOM_TASK_RATES.some((rate) => rate.pricingMode === 'area' && codes.includes(rate.code))
 }
 
 export function isMoppingOnlyTask(label: string) {
@@ -289,6 +348,45 @@ export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfi
   return { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes, scopeTaskDefaults: defaults }
 }
 
+export function applyGlobalRoomTaskRates(config: QuoteRoomTypeConfig): QuoteRoomTypeConfig {
+  const globalTaskRates = getGlobalRoomTaskRates(config)
+  return {
+    globalTaskRates,
+    roomTypes: config.roomTypes.map((roomType) => {
+      const normalized = ensureStandardRoomTasks(roomType)
+      const prices = normalized.scopeTasks.map((task, taskIndex) => {
+        const codes = getGlobalRoomTaskCodesForLabel(task)
+        const matched = globalTaskRates.filter((rate) => codes.includes(rate.code))
+        if (matched.length === 0) return getRoomScopeTaskPrice(normalized, taskIndex)
+        return matched
+          .filter((rate) => rate.pricingMode === 'fixed')
+          .reduce((total, rate) => total + rate.pricePerRoom, 0)
+      })
+      const minutes = normalized.scopeTasks.map((task, taskIndex) => {
+        const codes = getGlobalRoomTaskCodesForLabel(task)
+        const matched = globalTaskRates.filter((rate) => codes.includes(rate.code))
+        if (matched.length === 0) return getRoomScopeTaskMinutesPerSqm(normalized, taskIndex)
+        return matched
+          .filter((rate) => rate.pricingMode === 'area')
+          .reduce((total, rate) => total + rate.minutesPerSqm, 0)
+      })
+      return {
+        ...normalized,
+        scopeTaskPrices: prices,
+        scopeTaskMinutesPerSqm: minutes,
+        pricingAdjustmentPercent: 0,
+        fixedPricePerVisit: 0,
+        applyFixedPriceWithAreaTasks: false,
+        fields: normalized.fields.map((field) => (
+          normalized.id === 'accessible_bathroom' && field.id === 'disabled_toilet'
+            ? { ...field, includedUnits: Math.max(1, Number(field.includedUnits ?? 0)) }
+            : field
+        )),
+      }
+    }),
+  }
+}
+
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
   if (cadence === 'every_clean' || frequency === 'once_off') return 1
   const visits = VISITS_PER_YEAR[frequency] || 1
@@ -308,130 +406,22 @@ function getDefaultMetricCharge(field: RoomMetricFieldConfig) {
 
 export function getRoomTypeDefaultDirectCharge(
   roomType: RoomTypeConfig,
-  pricingConfig: QuotePricingConfig,
+  _pricingConfig: QuotePricingConfig,
   includeFixedPrice = true
 ) {
-  const pricingItemCode = BATHROOM_ROOM_TYPE_IDS.has(roomType.id)
-    ? 'bathrooms'
-    : roomType.id === 'kitchen' ? 'kitchens' : null
-  const configuredRoomCharge = pricingItemCode
-    ? pricingConfig.items.find((item) => item.code === pricingItemCode && item.active)?.rate ?? 0
-    : 0
   const defaultMetricCharges = roomType.fields.reduce(
     (total, field) => total + getDefaultMetricCharge(field),
     0
   )
 
-  return (includeFixedPrice ? Math.max(0, roomType.fixedPricePerVisit) : 0) + configuredRoomCharge + defaultMetricCharges
-}
-
-const SUGGESTED_ROOM_PRICES: Record<string, number> = {
-  office: 3,
-  boardroom: 5.5,
-  reception: 3,
-  hallway: 4,
-  bathroom: 7.5,
-  female_bathroom: 7.5,
-  male_bathroom: 7.5,
-  accessible_bathroom: 10,
-  kitchen: 14,
-  breakout: 5.5,
-  stairs: 4,
-  storage: 3,
-  warehouse: 8,
-  medical_room: 8,
-  other: 5,
-}
-
-function suggestedRoomPrice(roomType: RoomTypeConfig) {
-  if (SUGGESTED_ROOM_PRICES[roomType.id] !== undefined) return SUGGESTED_ROOM_PRICES[roomType.id]
-  const label = roomType.label.toLowerCase()
-  if (label.includes('open') && label.includes('office')) return 4
-  if (label.includes('childcare') && (label.includes('bath') || label.includes('toilet'))) return 10
-  if (label.includes('bath') || label.includes('toilet')) return 7.5
-  if (label.includes('kitchen')) return 14
-  if (label.includes('office')) return 3
-  return 5
-}
-
-function suggestedScopeCadence(roomType: RoomTypeConfig, task: string): RoomTaskCadence {
-  const normalized = task.toLowerCase()
-  if (normalized.includes('cobweb')) return 'monthly'
-  if (normalized.includes('dust')) return 'weekly'
-  const isWetArea = BATHROOM_ROOM_TYPE_IDS.has(roomType.id) || roomType.id === 'kitchen'
-  if (!isWetArea && normalized.includes('wipe') && normalized.includes('surface')) return 'weekly'
-  return 'every_clean'
-}
-
-function suggestedFieldPrice(field: RoomMetricFieldConfig) {
-  const key = `${field.id} ${field.label}`.toLowerCase()
-  if (key.includes('accessible') || key.includes('disabled')) return 4.5
-  if (key.includes('sanitary')) return 1.5
-  if (key.includes('shower')) return 2.75
-  if (key.includes('toilet') || key.includes('urinal')) return 3
-  if (key.includes('basin') || key.includes('mirror')) return 2
-  if (key.includes('mop')) return 1.5
-  if (key.includes('desk')) return 1
-  if (key.includes('bin') || key.includes('door')) return 0.75
-  return Math.max(0, Number(field.pricePerUnit ?? 0))
-}
-
-export function applySuggestedRoomTypePrices(
-  config: QuoteRoomTypeConfig,
-  pricingConfig: QuotePricingConfig
-): QuoteRoomTypeConfig {
-  return {
-    roomTypes: config.roomTypes.map((roomType) => {
-      const target = suggestedRoomPrice(roomType)
-      const hasCobwebTask = roomType.scopeTasks.some((task) => task.toLowerCase().includes('cobweb'))
-      const scopeTasks = !hasCobwebTask
-        ? ['Remove visible cobwebs from ceilings and corners', ...roomType.scopeTasks]
-        : [...roomType.scopeTasks]
-      const fields = roomType.fields.map((field) => ({
-        ...field,
-        pricePerUnit: suggestedFieldPrice(field),
-        cadence: field.cadence ?? inferRoomTaskCadence(field.label),
-        includedUnits: field.inputType === 'boolean'
-          ? field.includedUnits
-          : Math.max(Number(field.includedUnits ?? 0), Number(field.defaultValue ?? 0)),
-      }))
-      const withoutFixed = {
-        ...roomType,
-        fields,
-        scopeTasks,
-        scopeTaskIds: scopeTasks.map((task, taskIndex) => {
-          const existingIndex = roomType.scopeTasks.indexOf(task)
-          return existingIndex >= 0 ? getRoomScopeTaskId(roomType, existingIndex) : `${roomType.id}-${taskSlug(task)}-${taskIndex + 1}`
-        }),
-        scopeTaskCadences: scopeTasks.map((task) => suggestedScopeCadence(roomType, task)),
-        scopeTaskPrices: scopeTasks.map((task) => {
-          const existingIndex = roomType.scopeTasks.indexOf(task)
-          return existingIndex >= 0 ? getRoomScopeTaskPrice(roomType, existingIndex) : 0
-        }),
-        scopeTaskMinutesPerSqm: scopeTasks.map((task) => {
-          const existingIndex = roomType.scopeTasks.indexOf(task)
-          return existingIndex >= 0
-            ? getRoomScopeTaskMinutesPerSqm(roomType, existingIndex)
-            : inferRoomTaskMinutesPerSqm(task)
-        }),
-        scopeTaskDefaults: scopeTasks.map((task) => {
-          const existingIndex = roomType.scopeTasks.indexOf(task)
-          return existingIndex >= 0 ? getRoomScopeTaskDefault(roomType, existingIndex) : true
-        }),
-        fixedPricePerVisit: 0,
-      }
-      return {
-        ...withoutFixed,
-        fixedPricePerVisit: Math.max(0, Math.round((target - getRoomTypeDefaultDirectCharge(withoutFixed, pricingConfig)) * 100) / 100),
-      }
-    }),
-  }
+  return (includeFixedPrice ? Math.max(0, roomType.fixedPricePerVisit) : 0) + defaultMetricCharges
 }
 
 const ROOM_TYPE_CONTENT_KEY = 'quote_room_types.config'
 const ROOM_TYPE_CONTENT_TITLE = 'Quote room type configuration'
 
 const RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
+  globalTaskRates: cloneDefaultGlobalTaskRates(),
   roomTypes: [
     {
       id: 'office',
@@ -651,7 +641,10 @@ const RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
 }
 
 export const DEFAULT_QUOTE_ROOM_TYPE_CONFIG: QuoteRoomTypeConfig = {
-  roomTypes: RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.map(ensureStandardRoomTasks),
+  ...applyGlobalRoomTaskRates({
+    globalTaskRates: cloneDefaultGlobalTaskRates(),
+    roomTypes: RAW_DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.map(ensureStandardRoomTasks),
+  }),
 }
 
 function cloneRawDefaultConfig(): QuoteRoomTypeConfig {
@@ -659,7 +652,11 @@ function cloneRawDefaultConfig(): QuoteRoomTypeConfig {
 }
 
 function cloneDefaultConfig(): QuoteRoomTypeConfig {
-  return { roomTypes: cloneRawDefaultConfig().roomTypes.map(ensureStandardRoomTasks) }
+  const raw = cloneRawDefaultConfig()
+  return applyGlobalRoomTaskRates({
+    globalTaskRates: raw.globalTaskRates,
+    roomTypes: raw.roomTypes.map(ensureStandardRoomTasks),
+  })
 }
 
 function normalizeField(candidate: unknown, index: number): RoomMetricFieldConfig {
@@ -762,12 +759,13 @@ function mergeConfig(candidate: unknown): QuoteRoomTypeConfig {
       .filter(Boolean)
   )
 
-  return {
+  return applyGlobalRoomTaskRates({
+    globalTaskRates: getGlobalRoomTaskRates(source as QuoteRoomTypeConfig),
     roomTypes: [
       ...source.roomTypes.slice(0, 50).map(normalizeRoomType),
       ...fallback.roomTypes.filter((roomType) => !configuredIds.has(roomType.id)),
     ],
-  }
+  })
 }
 
 export function getRoomTypeConfigById(config: QuoteRoomTypeConfig, id: string) {

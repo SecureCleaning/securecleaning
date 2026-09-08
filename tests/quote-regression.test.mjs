@@ -9,7 +9,7 @@ const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngin
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
 const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
 const {
-  applySuggestedRoomTypePrices,
+  applyGlobalRoomTaskRates,
   DEFAULT_MONTHLY_COBWEB_TASK,
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
   DEFAULT_VACUUM_TASK,
@@ -17,6 +17,7 @@ const {
   ensureStandardRoomTasks,
   ensureWeeklyPerimeterSurfaceDusting,
   getDefaultRoomScopeTaskSelections,
+  getGlobalRoomTaskRates,
   getRoomScopeTaskDefinitions,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskMinutesPerSqm,
@@ -118,15 +119,15 @@ test('quote engine prices a standard bathroom at the configured base charge', ()
   assert.equal(result.addOnsTotal, 8)
 })
 
-test('room type admin default direct charge matches quote room and default field charges', () => {
+test('detailed room defaults exclude the legacy bathroom and kitchen allowances', () => {
   const bathroom = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'bathroom')
   const maleBathroom = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'male_bathroom')
   const kitchen = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'kitchen')
   const office = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((roomType) => roomType.id === 'office')
 
-  assert.equal(getRoomTypeDefaultDirectCharge(bathroom, DEFAULT_QUOTE_PRICING_CONFIG), 8)
-  assert.equal(getRoomTypeDefaultDirectCharge(maleBathroom, DEFAULT_QUOTE_PRICING_CONFIG), 10.5)
-  assert.equal(getRoomTypeDefaultDirectCharge(kitchen, DEFAULT_QUOTE_PRICING_CONFIG), 50)
+  assert.equal(getRoomTypeDefaultDirectCharge(bathroom, DEFAULT_QUOTE_PRICING_CONFIG), 0)
+  assert.equal(getRoomTypeDefaultDirectCharge(maleBathroom, DEFAULT_QUOTE_PRICING_CONFIG), 2.5)
+  assert.equal(getRoomTypeDefaultDirectCharge(kitchen, DEFAULT_QUOTE_PRICING_CONFIG), 0)
   assert.equal(getRoomTypeDefaultDirectCharge(office, DEFAULT_QUOTE_PRICING_CONFIG), 0)
 })
 
@@ -152,7 +153,7 @@ test('periodic task prices are amortised across the configured cleaning frequenc
   const config = {
     roomTypes: [{
       id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
-      defaultMopping: false, scopeTasks: ['Dust desks', 'Remove cobwebs'],
+      defaultMopping: false, scopeTasks: ['Polish desks', 'Clean skirting'],
       scopeTaskCadences: ['weekly', 'monthly'], scopeTaskPrices: [10, 26],
       pricingAdjustmentPercent: 0, fixedPricePerVisit: 3, fields: [],
     }],
@@ -301,7 +302,7 @@ test('public stairs remain stairs when an editable quote draft is created', () =
   assert.equal(draft.roomItems[0].size, DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((room) => room.id === 'stairs').defaultSize)
 })
 
-test('scope task schedules expose the task cadence and suggested prices remove zero room bases', () => {
+test('scope task schedules expose cadence and global rates replace legacy room bases', () => {
   const office = {
     id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 20,
     defaultMopping: false, scopeTasks: ['Dust desks', 'Remove cobwebs'],
@@ -317,10 +318,70 @@ test('scope task schedules expose the task cadence and suggested prices remove z
     { label: 'Dust desks', cadence: 'weekly' },
   ])
 
-  const suggested = applySuggestedRoomTypePrices({ roomTypes: [{ ...office, scopeTasks: ['Dust desks'] }] }, DEFAULT_QUOTE_PRICING_CONFIG)
-  assert.equal(getRoomTypeDefaultDirectCharge(suggested.roomTypes[0], DEFAULT_QUOTE_PRICING_CONFIG), 3)
-  assert.equal(suggested.roomTypes[0].scopeTasks[0], 'Remove visible cobwebs from ceilings and corners')
-  assert.equal(suggested.roomTypes[0].scopeTaskCadences[0], 'monthly')
+  const global = applyGlobalRoomTaskRates({
+    roomTypes: [{ ...office, scopeTasks: ['Dust desks'], pricingAdjustmentPercent: 20, fixedPricePerVisit: 8 }],
+  })
+  assert.equal(global.roomTypes[0].pricingAdjustmentPercent, 0)
+  assert.equal(global.roomTypes[0].fixedPricePerVisit, 0)
+  assert.equal(global.roomTypes[0].applyFixedPriceWithAreaTasks, false)
+  assert.equal(getRoomScopeTaskMinutesPerSqm(global.roomTypes[0], 0), 0.09)
+  assert.equal(getGlobalRoomTaskRates(global).find((rate) => rate.code === 'dusting').minutesPerSqm, 0.09)
+})
+
+test('global task rates apply to matching tasks in existing and newly added room types', () => {
+  const config = applyGlobalRoomTaskRates({
+    globalTaskRates: [{ code: 'vacuum_sweep', label: 'Vacuuming / sweeping', pricingMode: 'area', minutesPerSqm: 0.1, pricePerRoom: 0 }],
+    roomTypes: [
+      {
+        id: 'office', label: 'Office', defaultLabel: 'Office', tracksSize: true, defaultSize: 12,
+        defaultMopping: false, scopeTasks: ['Vacuum floors'], pricingAdjustmentPercent: 0, fixedPricePerVisit: 8, fields: [],
+      },
+      {
+        id: 'new_room', label: 'New room', defaultLabel: 'New room', tracksSize: true, defaultSize: 10,
+        defaultMopping: false, scopeTasks: ['Sweep accessible areas'], pricingAdjustmentPercent: 15, fixedPricePerVisit: 5, fields: [],
+      },
+    ],
+  })
+
+  assert.equal(getRoomScopeTaskMinutesPerSqm(config.roomTypes[0], 0), 0.1)
+  assert.equal(getRoomScopeTaskMinutesPerSqm(config.roomTypes[1], 0), 0.1)
+  assert.equal(config.roomTypes[0].fixedPricePerVisit, 0)
+  assert.equal(config.roomTypes[1].fixedPricePerVisit, 0)
+  assert.equal(config.roomTypes[1].pricingAdjustmentPercent, 0)
+})
+
+test('task-only defaults price five medical rooms and one accessible bathroom without legacy surcharges', () => {
+  const pricing = {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, hourlyRate: 50, minimumInvoice: 0, rangeLow: 1, rangeHigh: 1 },
+    multipliers: {
+      ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers,
+      premisesType: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.premisesType, office: 1, medical: 1 },
+      frequency: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency, weekly: 1 },
+      city: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.city, melbourne: 1 },
+      timePreference: { ...DEFAULT_QUOTE_PRICING_CONFIG.multipliers.timePreference, business_hours: 1 },
+    },
+    items: [],
+  }
+  const medicalRoom = {
+    id: 'medical', type: 'medical_room', label: 'Treatment rooms', quantity: 5, size: 14, floor: 1,
+    moppingEnabled: false,
+  }
+  const medicalDraft = {
+    ...createDefaultFirmQuoteDraft({ ...baseInputs, premisesType: 'medical', floorArea: 70 }, DEFAULT_QUOTE_ROOM_TYPE_CONFIG),
+    roomItems: [medicalRoom],
+  }
+  assert.equal(buildFirmQuotePreview(medicalDraft, pricing, DEFAULT_QUOTE_ROOM_TYPE_CONFIG).calculatedLow, 16.86)
+  assert.equal(buildFirmQuotePreview({
+    ...medicalDraft,
+    roomItems: [{ ...medicalRoom, moppingEnabled: true }],
+  }, pricing, DEFAULT_QUOTE_ROOM_TYPE_CONFIG).calculatedLow, 30.86)
+
+  const accessibleDraft = {
+    ...createDefaultFirmQuoteDraft({ ...baseInputs, floorArea: 6 }, DEFAULT_QUOTE_ROOM_TYPE_CONFIG),
+    roomItems: [{ id: 'accessible', type: 'accessible_bathroom', label: 'Accessible bathroom', quantity: 1, size: 6, floor: 1, moppingEnabled: true }],
+  }
+  assert.equal(buildFirmQuotePreview(accessibleDraft, pricing, DEFAULT_QUOTE_ROOM_TYPE_CONFIG).calculatedLow, 8.2)
 })
 
 test('every room includes weekly perimeter and surface dusting without duplicates', () => {

@@ -8,7 +8,6 @@ import type { QuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
 import {
   buildFirmQuotePreview,
   createRoomItem,
-  DEFAULT_MOPPING_MINUTES_PER_SQM,
   deriveQuoteInputsFromRooms,
   getRoomAreaAllocationTotal,
   getRoomPricingBreakdown,
@@ -20,6 +19,7 @@ import {
 } from '@/lib/quoteWorkflow'
 import {
   getDefaultRoomScopeTaskSelections,
+  getGlobalMoppingMinutesPerSqm,
   getRoomScopeTaskDefinitions,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
@@ -363,7 +363,7 @@ export default function QuoteWorkflowEditor({
       pricingAdjustmentPercent: 0,
       targetPrice: '',
       finalPerVisit: '',
-      moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+      moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
       roomItems: current.roomItems.map((room) => {
         const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
         if (!roomType) return { ...room, pricingOverride: false }
@@ -374,7 +374,7 @@ export default function QuoteWorkflowEditor({
         return {
           ...room,
           scopeTaskSelections: selections,
-          moppingMinutesPerSqm: DEFAULT_MOPPING_MINUTES_PER_SQM,
+          moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
           pricingOverride: false,
           pricingAdjustmentPercent: roomType.pricingAdjustmentPercent,
           fixedPricePerVisit: roomType.fixedPricePerVisit,
@@ -843,18 +843,10 @@ export default function QuoteWorkflowEditor({
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Global mopping rate (min / sqm)</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.05"
-                  value={firmQuoteDraft.moppingMinutesPerSqm}
-                  onChange={(event) => setFirmQuoteDraft((current) => ({
-                    ...current,
-                    moppingMinutesPerSqm: Math.max(0, Number(event.target.value || 0)),
-                  }))}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-3"
-                />
-                <span className="mt-1 block text-xs text-gray-500">Applied to every room where mopping is included.</span>
+                <div className="w-full rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 font-semibold text-teal-800">
+                  {getGlobalMoppingMinutesPerSqm(roomTypeConfig)}
+                </div>
+                <span className="mt-1 block text-xs text-gray-500">Managed in Pricing &amp; Rooms and applied wherever mopping is selected.</span>
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Adjustment %</span>
