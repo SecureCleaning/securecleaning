@@ -69,6 +69,8 @@ export type RoomTypeConfig = {
   scopeTaskCadences?: RoomTaskCadence[]
   scopeTaskPrices?: number[]
   scopeTaskMinutesPerSqm?: number[]
+  scopeTaskPricingModes?: GlobalRoomTaskPricingMode[]
+  scopeTaskGlobalRateCodes?: Array<string | null>
   scopeTaskDefaults?: boolean[]
   pricingAdjustmentPercent: number
   fixedPricePerVisit: number
@@ -123,23 +125,38 @@ export function getGlobalRoomTaskCodesForLabel(label: string) {
 }
 
 export function getGlobalRoomTaskRates(config: QuoteRoomTypeConfig) {
-  const supplied = Array.isArray(config.globalTaskRates) ? config.globalTaskRates : []
-  return DEFAULT_GLOBAL_ROOM_TASK_RATES.map((fallback) => {
-    const source = supplied.find((rate) => rate?.code === fallback.code)
-    return {
-      ...fallback,
-      minutesPerSqm: Number.isFinite(Number(source?.minutesPerSqm))
-        ? Math.min(60, Math.max(0, Number(source?.minutesPerSqm)))
-        : fallback.minutesPerSqm,
-      pricePerRoom: Number.isFinite(Number(source?.pricePerRoom))
-        ? Math.min(100_000, Math.max(0, Number(source?.pricePerRoom)))
-        : fallback.pricePerRoom,
-    }
+  if (!Array.isArray(config.globalTaskRates)) return cloneDefaultGlobalTaskRates()
+
+  const usedCodes = new Set<string>()
+  return config.globalTaskRates.slice(0, 100).flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const rawCode = typeof candidate.code === 'string' ? candidate.code.trim().toLowerCase() : ''
+    const code = (rawCode || `global_task_${index + 1}`)
+      .replace(/[^a-z0-9_-]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 64)
+    if (!code || usedCodes.has(code)) return []
+    usedCodes.add(code)
+    const fallback = DEFAULT_GLOBAL_ROOM_TASK_RATES.find((rate) => rate.code === code)
+    const pricingMode: GlobalRoomTaskPricingMode = candidate.pricingMode === 'area' ? 'area' : 'fixed'
+    return [{
+      code,
+      label: typeof candidate.label === 'string' && candidate.label.trim()
+        ? candidate.label.trim().slice(0, 100)
+        : fallback?.label ?? `Global task ${index + 1}`,
+      pricingMode,
+      minutesPerSqm: Number.isFinite(Number(candidate.minutesPerSqm))
+        ? Math.min(60, Math.max(0, Number(candidate.minutesPerSqm)))
+        : fallback?.minutesPerSqm ?? 0,
+      pricePerRoom: Number.isFinite(Number(candidate.pricePerRoom))
+        ? Math.min(100_000, Math.max(0, Number(candidate.pricePerRoom)))
+        : fallback?.pricePerRoom ?? 0,
+    }]
   })
 }
 
 export function getGlobalMoppingMinutesPerSqm(config: QuoteRoomTypeConfig) {
-  return getGlobalRoomTaskRates(config).find((rate) => rate.code === 'mopping')?.minutesPerSqm ?? DEFAULT_MOPPING_MINUTES_PER_SQM
+  return getGlobalRoomTaskRates(config).find((rate) => rate.code === 'mopping')?.minutesPerSqm ?? 0
 }
 
 function isRoomTaskCadence(value: unknown): value is RoomTaskCadence {
@@ -182,8 +199,19 @@ export function getRoomScopeTaskMinutesPerSqm(roomType: RoomTypeConfig, index: n
   return inferRoomTaskMinutesPerSqm(roomType.scopeTasks[index] ?? '')
 }
 
+export function getRoomScopeTaskPricingMode(roomType: RoomTypeConfig, index: number): GlobalRoomTaskPricingMode {
+  const configured = roomType.scopeTaskPricingModes?.[index]
+  if (configured === 'area' || configured === 'fixed') return configured
+  return isAreaPricedRoomTask(roomType.scopeTasks[index] ?? '') ? 'area' : 'fixed'
+}
+
+export function getRoomScopeTaskGlobalRateCode(roomType: RoomTypeConfig, index: number): string | null {
+  const configured = roomType.scopeTaskGlobalRateCodes?.[index]
+  return typeof configured === 'string' ? configured : null
+}
+
 export function getRoomScopeTaskEffectiveRate(roomType: RoomTypeConfig, index: number, hourlyRate: number) {
-  if (!isAreaPricedRoomTask(roomType.scopeTasks[index] ?? '')) return getRoomScopeTaskPrice(roomType, index)
+  if (getRoomScopeTaskPricingMode(roomType, index) !== 'area') return getRoomScopeTaskPrice(roomType, index)
   return getRoomScopeTaskMinutesPerSqm(roomType, index) * Math.max(0, hourlyRate) / 60
 }
 
@@ -263,7 +291,7 @@ export function getRoomScopeTaskDefinitions(
       price: getRoomScopeTaskPrice(roomType, index),
       minutesPerSqm: getRoomScopeTaskMinutesPerSqm(roomType, index),
       defaultSelected: getRoomScopeTaskDefault(roomType, index),
-      pricingMode: isAreaPricedRoomTask(label) ? 'area' as const : 'fixed' as const,
+      pricingMode: getRoomScopeTaskPricingMode(roomType, index),
     }]
   })
 }
@@ -354,26 +382,38 @@ export function applyGlobalRoomTaskRates(config: QuoteRoomTypeConfig): QuoteRoom
     globalTaskRates,
     roomTypes: config.roomTypes.map((roomType) => {
       const normalized = ensureStandardRoomTasks(roomType)
-      const prices = normalized.scopeTasks.map((task, taskIndex) => {
-        const codes = getGlobalRoomTaskCodesForLabel(task)
-        const matched = globalTaskRates.filter((rate) => codes.includes(rate.code))
+      const matchedRates = normalized.scopeTasks.map((task, taskIndex) => {
+        const explicitCode = getRoomScopeTaskGlobalRateCode(normalized, taskIndex)
+        const codes = explicitCode === null
+          ? getGlobalRoomTaskCodesForLabel(task)
+          : explicitCode ? [explicitCode] : []
+        return globalTaskRates.filter((rate) => codes.includes(rate.code))
+      })
+      const prices = normalized.scopeTasks.map((_, taskIndex) => {
+        const matched = matchedRates[taskIndex]
         if (matched.length === 0) return getRoomScopeTaskPrice(normalized, taskIndex)
         return matched
           .filter((rate) => rate.pricingMode === 'fixed')
           .reduce((total, rate) => total + rate.pricePerRoom, 0)
       })
-      const minutes = normalized.scopeTasks.map((task, taskIndex) => {
-        const codes = getGlobalRoomTaskCodesForLabel(task)
-        const matched = globalTaskRates.filter((rate) => codes.includes(rate.code))
+      const minutes = normalized.scopeTasks.map((_, taskIndex) => {
+        const matched = matchedRates[taskIndex]
         if (matched.length === 0) return getRoomScopeTaskMinutesPerSqm(normalized, taskIndex)
         return matched
           .filter((rate) => rate.pricingMode === 'area')
           .reduce((total, rate) => total + rate.minutesPerSqm, 0)
       })
+      const pricingModes = normalized.scopeTasks.map((_, taskIndex) => {
+        const matched = matchedRates[taskIndex]
+        if (matched.length === 0) return getRoomScopeTaskPricingMode(normalized, taskIndex)
+        return matched.some((rate) => rate.pricingMode === 'area') ? 'area' : 'fixed'
+      })
       return {
         ...normalized,
         scopeTaskPrices: prices,
         scopeTaskMinutesPerSqm: minutes,
+        scopeTaskPricingModes: pricingModes,
+        scopeTaskGlobalRateCodes: normalized.scopeTasks.map((_, taskIndex) => getRoomScopeTaskGlobalRateCode(normalized, taskIndex)),
         pricingAdjustmentPercent: 0,
         fixedPricePerVisit: 0,
         applyFixedPriceWithAreaTasks: false,
@@ -385,6 +425,18 @@ export function applyGlobalRoomTaskRates(config: QuoteRoomTypeConfig): QuoteRoom
       }
     }),
   }
+}
+
+export function getMatchedGlobalRoomTaskRates(
+  config: QuoteRoomTypeConfig,
+  roomType: RoomTypeConfig,
+  taskIndex: number
+) {
+  const explicitCode = getRoomScopeTaskGlobalRateCode(roomType, taskIndex)
+  const codes = explicitCode === null
+    ? getGlobalRoomTaskCodesForLabel(roomType.scopeTasks[taskIndex] ?? '')
+    : explicitCode ? [explicitCode] : []
+  return getGlobalRoomTaskRates(config).filter((rate) => codes.includes(rate.code))
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
@@ -689,6 +741,8 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
   const sourceCadences = Array.isArray(source.scopeTaskCadences) ? source.scopeTaskCadences : []
   const sourcePrices = Array.isArray(source.scopeTaskPrices) ? source.scopeTaskPrices : []
   const sourceMinutes = Array.isArray(source.scopeTaskMinutesPerSqm) ? source.scopeTaskMinutesPerSqm : []
+  const sourcePricingModes = Array.isArray(source.scopeTaskPricingModes) ? source.scopeTaskPricingModes : []
+  const sourceGlobalRateCodes = Array.isArray(source.scopeTaskGlobalRateCodes) ? source.scopeTaskGlobalRateCodes : []
   const sourceIds = Array.isArray(source.scopeTaskIds) ? source.scopeTaskIds : []
   const sourceDefaults = Array.isArray(source.scopeTaskDefaults) ? source.scopeTaskDefaults : []
   const fallbackCadences = fallback.scopeTaskCadences ?? []
@@ -722,6 +776,17 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
       return Number.isFinite(Number(minutes))
         ? Math.min(60, Math.max(0, Number(minutes)))
         : inferRoomTaskMinutesPerSqm(task)
+    }),
+    scopeTaskPricingModes: scopeTasks.map((task, taskIndex) => {
+      const mode = sourcePricingModes[taskIndex]
+      return mode === 'area' || mode === 'fixed'
+        ? mode
+        : isAreaPricedRoomTask(task) ? 'area' : 'fixed'
+    }),
+    scopeTaskGlobalRateCodes: scopeTasks.map((_, taskIndex) => {
+      const code = sourceGlobalRateCodes[taskIndex]
+      if (code === null) return null
+      return typeof code === 'string' ? code.trim().slice(0, 64) : null
     }),
     scopeTaskDefaults: scopeTasks.map((task, taskIndex) => (
       typeof sourceDefaults[taskIndex] === 'boolean'

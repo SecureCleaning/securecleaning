@@ -10,10 +10,10 @@ import {
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
   getRoomScopeTaskMinutesPerSqm,
+  getRoomScopeTaskPricingMode,
   getRoomScopeTaskPrice,
   getRoomTaskAmortizationFactor,
   getRoomTypeConfigById,
-  isAreaPricedRoomTask,
   isMoppingPricedRoomTask,
   isRoomScopeTaskSelected,
   type QuoteRoomTypeConfig,
@@ -525,7 +525,7 @@ export function hasSelectedPricedAreaTask(
 ) {
   const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
   return roomType?.scopeTasks.some((task, taskIndex) => (
-    isAreaPricedRoomTask(task)
+    getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
     && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
   )) ?? false
@@ -642,10 +642,10 @@ export function getRoomScheduledTaskExtraTotal(
         getRoomScopeTaskCadence(roomType, taskIndex),
         frequency
       )
-      const rate = isAreaPricedRoomTask(task)
+      const rate = getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
         ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, hourlyRate)
         : getRoomScopeTaskPrice(roomType, taskIndex)
-      if (isAreaPricedRoomTask(task)) {
+      if (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area') {
         return taskTotal + rate * (roomAreas.get(room.id) ?? 0) * cadenceFactor
       }
       return taskTotal + rate * Math.max(0, room.quantity) * cadenceFactor
@@ -763,10 +763,10 @@ export function getRoomPricingBreakdown(
             getRoomScopeTaskCadence(roomType, taskIndex),
             draft.revisedInputs.frequency
           )
-          const rate = isAreaPricedRoomTask(task)
+          const rate = getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
             ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, pricingConfig.settings.hourlyRate)
             : getRoomScopeTaskPrice(roomType, taskIndex)
-          return sum + (isAreaPricedRoomTask(task)
+          return sum + (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
             ? rate * roomArea * cadenceFactor
             : rate * Math.max(0, room.quantity) * cadenceFactor)
         }, 0)

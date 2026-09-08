@@ -13,9 +13,10 @@ import {
   getRoomScopeTaskId,
   getRoomScopeTaskMinutesPerSqm,
   getRoomScopeTaskPrice,
-  getGlobalRoomTaskCodesForLabel,
+  getMatchedGlobalRoomTaskRates,
   getGlobalRoomTaskRates,
-  isAreaPricedRoomTask,
+  getRoomScopeTaskGlobalRateCode,
+  getRoomScopeTaskPricingMode,
   ROOM_TASK_CADENCE_OPTIONS,
   type QuoteRoomTypeConfig,
   type GlobalRoomTaskRate,
@@ -89,6 +90,8 @@ function createRoomType(): RoomTypeConfig {
     scopeTaskCadences: ['every_clean', 'every_clean', 'every_clean', 'weekly', 'monthly'],
     scopeTaskPrices: [0, 0, 0, 0, 0],
     scopeTaskMinutesPerSqm: [0.068, 0, 0, 0, 0],
+    scopeTaskPricingModes: ['area', 'fixed', 'fixed', 'area', 'area'],
+    scopeTaskGlobalRateCodes: [null, null, null, null, null],
     scopeTaskDefaults: [true, true, true, true, true],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
@@ -107,6 +110,16 @@ function createField(): RoomMetricFieldConfig {
     pricePerUnit: 0,
     cadence: 'every_clean',
     helpText: '',
+  }
+}
+
+function createGlobalTaskRate(): GlobalRoomTaskRate {
+  return {
+    code: `global_task_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    label: 'New global task rate',
+    pricingMode: 'fixed',
+    minutesPerSqm: 0,
+    pricePerRoom: 0,
   }
 }
 
@@ -170,6 +183,29 @@ export default function RoomTypeConfigAdmin({
       globalTaskRates: getGlobalRoomTaskRates(current).map((rate) => (
         rate.code === code ? { ...rate, ...patch } : rate
       )),
+    }))
+  }
+
+  function addGlobalTaskRate() {
+    setConfig((current) => applyGlobalRoomTaskRates({
+      ...current,
+      globalTaskRates: [...getGlobalRoomTaskRates(current), createGlobalTaskRate()],
+    }))
+  }
+
+  function removeGlobalTaskRate(code: string) {
+    setConfig((current) => applyGlobalRoomTaskRates({
+      ...current,
+      globalTaskRates: getGlobalRoomTaskRates(current).filter((rate) => rate.code !== code),
+      roomTypes: current.roomTypes.map((roomType) => ({
+        ...roomType,
+        scopeTaskGlobalRateCodes: roomType.scopeTasks.map((_, taskIndex) => {
+          const matched = getMatchedGlobalRoomTaskRates(current, roomType, taskIndex)
+          if (!matched.some((rate) => rate.code === code)) return getRoomScopeTaskGlobalRateCode(roomType, taskIndex)
+          const remaining = matched.filter((rate) => rate.code !== code)
+          return remaining.length === 1 ? remaining[0].code : ''
+        }),
+      })),
     }))
   }
 
@@ -264,6 +300,8 @@ export default function RoomTypeConfigAdmin({
             scopeTaskCadences: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index)), 'every_clean'],
             scopeTaskPrices: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index)), 0],
             scopeTaskMinutesPerSqm: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index)), 0],
+            scopeTaskPricingModes: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskPricingMode(roomType, index)), 'fixed'],
+            scopeTaskGlobalRateCodes: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskGlobalRateCode(roomType, index)), ''],
             scopeTaskDefaults: [...roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index)), false],
           }
         : roomType),
@@ -273,7 +311,7 @@ export default function RoomTypeConfigAdmin({
   function updateScopeTask(
     roomId: string,
     taskIndex: number,
-    patch: { label?: string; cadence?: RoomTaskCadence; price?: number; minutesPerSqm?: number; defaultSelected?: boolean }
+    patch: { label?: string; cadence?: RoomTaskCadence; price?: number; minutesPerSqm?: number; pricingMode?: 'area' | 'fixed'; globalRateCode?: string | null; defaultSelected?: boolean }
   ) {
     setConfig((current) => applyGlobalRoomTaskRates({
       ...current,
@@ -283,14 +321,18 @@ export default function RoomTypeConfigAdmin({
         const scopeTaskCadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
         const scopeTaskPrices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
         const scopeTaskMinutesPerSqm = roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
+        const scopeTaskPricingModes = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPricingMode(roomType, index))
+        const scopeTaskGlobalRateCodes = roomType.scopeTasks.map((_, index) => getRoomScopeTaskGlobalRateCode(roomType, index))
         const scopeTaskIds = roomType.scopeTasks.map((_, index) => getRoomScopeTaskId(roomType, index))
         const scopeTaskDefaults = roomType.scopeTasks.map((_, index) => getRoomScopeTaskDefault(roomType, index))
         if (patch.label !== undefined) scopeTasks[taskIndex] = patch.label
         if (patch.cadence !== undefined) scopeTaskCadences[taskIndex] = patch.cadence
         if (patch.price !== undefined) scopeTaskPrices[taskIndex] = Math.max(0, patch.price)
         if (patch.minutesPerSqm !== undefined) scopeTaskMinutesPerSqm[taskIndex] = Math.max(0, patch.minutesPerSqm)
+        if (patch.pricingMode !== undefined) scopeTaskPricingModes[taskIndex] = patch.pricingMode
+        if (patch.globalRateCode !== undefined) scopeTaskGlobalRateCodes[taskIndex] = patch.globalRateCode
         if (patch.defaultSelected !== undefined) scopeTaskDefaults[taskIndex] = patch.defaultSelected
-        return { ...roomType, scopeTasks, scopeTaskIds, scopeTaskCadences, scopeTaskPrices, scopeTaskMinutesPerSqm, scopeTaskDefaults }
+        return { ...roomType, scopeTasks, scopeTaskIds, scopeTaskCadences, scopeTaskPrices, scopeTaskMinutesPerSqm, scopeTaskPricingModes, scopeTaskGlobalRateCodes, scopeTaskDefaults }
       }),
     }))
   }
@@ -314,6 +356,12 @@ export default function RoomTypeConfigAdmin({
             scopeTaskMinutesPerSqm: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
               .filter((_, index) => index !== taskIndex),
+            scopeTaskPricingModes: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskPricingMode(roomType, index))
+              .filter((_, index) => index !== taskIndex),
+            scopeTaskGlobalRateCodes: roomType.scopeTasks
+              .map((_, index) => getRoomScopeTaskGlobalRateCode(roomType, index))
+              .filter((_, index) => index !== taskIndex),
             scopeTaskDefaults: roomType.scopeTasks
               .map((_, index) => getRoomScopeTaskDefault(roomType, index))
               .filter((_, index) => index !== taskIndex),
@@ -331,33 +379,53 @@ export default function RoomTypeConfigAdmin({
 
         <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
           <section className="rounded-2xl border border-teal-100 bg-white p-5 shadow-sm">
-            <div className="mb-4">
-              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Global shared task rates</h2>
-              <p className="text-sm text-gray-600">Change a rate once and every matching task in every room will use it. Task frequency and whether it is selected remain room-specific.</p>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Global shared task rates</h2>
+                <p className="text-sm text-gray-600">Add, edit or remove shared rates here, then choose the pricing source on each room task.</p>
+              </div>
+              <button type="button" onClick={addGlobalTaskRate} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add global rate</button>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {getGlobalRoomTaskRates(config).map((rate) => (
-                <label key={rate.code} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm">
-                  <span className="block font-semibold text-gray-800">{rate.label}</span>
-                  <span className="mt-1 block text-xs text-gray-500">{rate.pricingMode === 'area' ? 'Applied to the total sqm for this task' : 'Applied for each room containing this task'}</span>
-                  <span className="mt-3 block text-xs font-semibold uppercase tracking-wide text-gray-500">{rate.pricingMode === 'area' ? 'Minutes / sqm' : 'Price / room ($)'}</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step={rate.pricingMode === 'area' ? '0.001' : '0.01'}
-                    inputMode="decimal"
-                    value={rate.pricingMode === 'area' ? rate.minutesPerSqm : rate.pricePerRoom}
-                    onChange={(event) => updateGlobalTaskRate(rate.code, rate.pricingMode === 'area'
-                      ? { minutesPerSqm: Math.max(0, Number(event.target.value || 0)) }
-                      : { pricePerRoom: Math.max(0, Number(event.target.value || 0)) })}
-                    className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
-                  />
-                  <span className="mt-1 block text-xs text-teal-800">{rate.pricingMode === 'area'
+                <div key={rate.code} className="rounded-xl border border-teal-100 bg-teal-50/50 p-3 text-sm">
+                  <label className="block">
+                    <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Rate name</span>
+                    <input value={rate.label} onChange={(event) => updateGlobalTaskRate(rate.code, { label: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-semibold text-gray-800" />
+                  </label>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label>
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Calculation</span>
+                      <select value={rate.pricingMode} onChange={(event) => updateGlobalTaskRate(rate.code, { pricingMode: event.target.value === 'area' ? 'area' : 'fixed' })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2">
+                        <option value="fixed">Per room</option>
+                        <option value="area">Per sqm</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">{rate.pricingMode === 'area' ? 'Minutes / sqm' : 'Price / room ($)'}</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step={rate.pricingMode === 'area' ? '0.001' : '0.01'}
+                        inputMode="decimal"
+                        value={rate.pricingMode === 'area' ? rate.minutesPerSqm : rate.pricePerRoom}
+                        onChange={(event) => updateGlobalTaskRate(rate.code, rate.pricingMode === 'area'
+                          ? { minutesPerSqm: Math.max(0, Number(event.target.value || 0)) }
+                          : { pricePerRoom: Math.max(0, Number(event.target.value || 0)) })}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <span className="block text-xs text-teal-800">{rate.pricingMode === 'area'
                     ? `${formatCurrency(rate.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm at ${formatCurrency(pricingConfig.settings.hourlyRate)} per hour`
                     : `${formatCurrency(rate.pricePerRoom)} per room / visit`}</span>
-                </label>
+                    <button type="button" onClick={() => removeGlobalTaskRate(rate.code)} className="text-xs font-semibold text-red-600">Delete</button>
+                  </div>
+                </div>
               ))}
             </div>
+            {getGlobalRoomTaskRates(config).length === 0 ? <p className="rounded-lg border border-dashed border-gray-300 px-4 py-5 text-center text-sm text-gray-500">No global rates. Add one to share pricing across room tasks.</p> : null}
           </section>
 
           <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -498,17 +566,35 @@ export default function RoomTypeConfigAdmin({
                     </div>
                     <div className="space-y-2">
                       {roomType.scopeTasks.map((task, taskIndex) => {
-                        const globalCodes = getGlobalRoomTaskCodesForLabel(task)
-                        const globalLabels = getGlobalRoomTaskRates(config)
-                          .filter((rate) => globalCodes.includes(rate.code))
-                          .map((rate) => rate.label)
-                        const globallyManaged = globalLabels.length > 0
+                        const globalRates = getGlobalRoomTaskRates(config)
+                        const matchedGlobalRates = getMatchedGlobalRoomTaskRates(config, roomType, taskIndex)
+                        const globalLabels = matchedGlobalRates.map((rate) => rate.label)
+                        const globallyManaged = matchedGlobalRates.length > 0
+                        const taskPricingMode = getRoomScopeTaskPricingMode(roomType, taskIndex)
+                        const selectedGlobalRateCode = getRoomScopeTaskGlobalRateCode(roomType, taskIndex)
+                        const pricingSource = selectedGlobalRateCode === null ? '__automatic__' : selectedGlobalRateCode || '__custom__'
                         return (
-                        <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_150px_130px_90px_auto] md:items-end">
+                        <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_170px_140px_140px_90px_auto] md:items-end">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Task shown on scope</span>
                             <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
                             {globallyManaged ? <span className="mt-1 block text-xs font-medium text-teal-700">Global: {globalLabels.join(' + ')}</span> : null}
+                          </label>
+                          <label className="text-sm">
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Pricing source</span>
+                            <select
+                              value={pricingSource}
+                              onChange={(event) => updateScopeTask(roomType.id, taskIndex, {
+                                globalRateCode: event.target.value === '__automatic__'
+                                  ? null
+                                  : event.target.value === '__custom__' ? '' : event.target.value,
+                              })}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                            >
+                              <option value="__automatic__">Automatic match</option>
+                              <option value="__custom__">Custom for this task</option>
+                              {globalRates.map((rate) => <option key={rate.code} value={rate.code}>{rate.label}</option>)}
+                            </select>
                           </label>
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Frequency</span>
@@ -517,15 +603,21 @@ export default function RoomTypeConfigAdmin({
                             </select>
                           </label>
                           <label className="text-sm">
-                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{isAreaPricedRoomTask(task) ? 'Minutes / sqm' : 'Fixed price ($)'}</span>
+                            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">{taskPricingMode === 'area' ? 'Minutes / sqm' : 'Fixed price ($)'}</span>
                             {globallyManaged ? <div className="rounded-lg border border-teal-100 bg-teal-50 px-3 py-2 font-semibold text-teal-800">
-                              {isAreaPricedRoomTask(task)
+                              {taskPricingMode === 'area'
                                 ? `${getRoomScopeTaskMinutesPerSqm(roomType, taskIndex)} min / sqm`
                                 : `${formatCurrency(getRoomScopeTaskPrice(roomType, taskIndex))} / room`}
-                            </div> : isAreaPricedRoomTask(task) ? <>
+                            </div> : <>
+                              <select value={taskPricingMode} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { pricingMode: event.target.value === 'area' ? 'area' : 'fixed' })} className="mb-1 w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs">
+                                <option value="fixed">Per room</option>
+                                <option value="area">Per sqm</option>
+                              </select>
+                              {taskPricingMode === 'area' ? <>
                               <input type="number" min="0" step="0.001" inputMode="decimal" value={getRoomScopeTaskMinutesPerSqm(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { minutesPerSqm: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
                               <span className="mt-1 block text-xs text-gray-500">≈ {formatCurrency(getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) * pricingConfig.settings.hourlyRate / 60)} / sqm · {formatCurrency(getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) * pricingConfig.settings.hourlyRate / 60 * Math.max(0, roomType.defaultSize))} for {roomType.defaultSize} sqm</span>
-                            </> : <input type="number" min="0" step="0.01" inputMode="decimal" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />}
+                              </> : <input type="number" min="0" step="0.01" inputMode="decimal" value={getRoomScopeTaskPrice(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { price: Number(event.target.value || 0) })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />}
+                            </>}
                           </label>
                           <label className="flex min-h-[42px] items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700">
                             <input type="checkbox" checked={getRoomScopeTaskDefault(roomType, taskIndex)} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { defaultSelected: event.target.checked })} className="h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600" />

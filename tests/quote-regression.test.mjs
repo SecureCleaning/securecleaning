@@ -18,9 +18,12 @@ const {
   ensureWeeklyPerimeterSurfaceDusting,
   getDefaultRoomScopeTaskSelections,
   getGlobalRoomTaskRates,
+  getMatchedGlobalRoomTaskRates,
+  getRoomScopeTaskGlobalRateCode,
   getRoomScopeTaskDefinitions,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskMinutesPerSqm,
+  getRoomScopeTaskPrice,
   getRoomScopeTaskSchedule,
   getRoomTaskAmortizationFactor,
   getRoomTypeDefaultDirectCharge,
@@ -348,6 +351,26 @@ test('global task rates apply to matching tasks in existing and newly added room
   assert.equal(config.roomTypes[0].fixedPricePerVisit, 0)
   assert.equal(config.roomTypes[1].fixedPricePerVisit, 0)
   assert.equal(config.roomTypes[1].pricingAdjustmentPercent, 0)
+})
+
+test('custom global rates can be added, assigned to one task, and fully removed', () => {
+  const mwoRate = {
+    code: 'mwo_internal_external', label: 'MWO internal and external', pricingMode: 'fixed', minutesPerSqm: 0, pricePerRoom: 2.75,
+  }
+  const config = applyGlobalRoomTaskRates({
+    globalTaskRates: [mwoRate],
+    roomTypes: [{
+      id: 'kitchen', label: 'Kitchen', defaultLabel: 'Kitchen', tracksSize: true, defaultSize: 12,
+      defaultMopping: false, scopeTasks: ['Wipe MWO internal and external'], scopeTaskGlobalRateCodes: ['mwo_internal_external'],
+      pricingAdjustmentPercent: 0, fixedPricePerVisit: 0, fields: [],
+    }],
+  })
+
+  assert.deepEqual(getGlobalRoomTaskRates(config).map((rate) => rate.code), ['mwo_internal_external'])
+  assert.equal(getRoomScopeTaskPrice(config.roomTypes[0], 0), 2.75)
+  assert.equal(getRoomScopeTaskGlobalRateCode(config.roomTypes[0], 0), 'mwo_internal_external')
+  assert.equal(getMatchedGlobalRoomTaskRates(config, config.roomTypes[0], 0)[0].label, 'MWO internal and external')
+  assert.equal(getGlobalRoomTaskRates({ globalTaskRates: [], roomTypes: [] }).length, 0)
 })
 
 test('task-only defaults price five medical rooms and one accessible bathroom without legacy surcharges', () => {
