@@ -4,6 +4,7 @@ import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 import {
   getFirmQuoteDisplayPrice,
   getRoomAreaAllocations,
+  getWorkflowRoomMetricFields,
   type FirmQuoteDraft,
   type FirmQuotePreview,
   type WorkflowRoomItem,
@@ -112,12 +113,12 @@ function getRoomSelectedOptions(room: WorkflowRoomItem, roomTypeConfig: QuoteRoo
     options.push(`Mopping — ${getRoomTaskCadenceLabel(typeConfig?.moppingCadence ?? 'every_clean')}`)
   }
 
-  for (const field of typeConfig?.fields ?? []) {
-    const value = room.metrics?.[field.id]
+  for (const field of getWorkflowRoomMetricFields(room, roomTypeConfig)) {
+    const value = room.metrics?.[field.id] ?? field.defaultValue
     if (field.inputType === 'boolean' && value === true) {
       options.push(field.label)
     } else if (field.inputType !== 'boolean' && Number(value ?? 0) > 0) {
-      options.push(`${field.label}: ${formatMetricValue(Number(value))}`)
+      options.push(`${field.label}: ${formatMetricValue(Number(value))} — ${getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}`)
     }
   }
 

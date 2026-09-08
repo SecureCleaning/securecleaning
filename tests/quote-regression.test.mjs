@@ -7,7 +7,8 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getFirmQuoteDisplayPrice, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getFirmQuoteDisplayPrice, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomPricingBreakdown, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { buildClientScopeReport } = await import('../src/lib/scopeOfWorks.ts')
 const {
   applyGlobalRoomTaskRates,
   DEFAULT_MONTHLY_COBWEB_TASK,
@@ -154,17 +155,85 @@ test('detailed room defaults exclude the legacy bathroom and kitchen allowances'
   assert.equal(getRoomTypeDefaultDirectCharge(office, DEFAULT_QUOTE_PRICING_CONFIG), 0)
 })
 
-test('quote room fields can exclude saved fields and price quote-specific blank fields', () => {
+test('quote-specific room fields use one unit count and ignore a legacy included allowance', () => {
   const draft = {
+    revisedInputs: { frequency: 'weekly' },
     roomItems: [{
       id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1,
-      metrics: { bins: 99, extra_desks: 5 },
+      metrics: { bins: 99, custom_extra_desks: 5 },
       excludedMetricFieldIds: ['bins'],
+      customMetricFields: [{ id: 'custom_extra_desks', label: 'Extra desks', inputType: 'integer', defaultValue: 0, includedUnits: 1, pricePerUnit: 2 }],
+    }],
+  }
+
+  assert.equal(getRoomMetricExtraTotal(draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), 20)
+})
+
+test('copied reusable room fields retain their configured base allowance', () => {
+  const draft = {
+    revisedInputs: { frequency: 'weekly' },
+    roomItems: [{
+      id: 'room-1', type: 'office', label: 'Office', quantity: 2, size: 20, floor: 1,
+      metrics: { extra_desks: 5 },
       customMetricFields: [{ id: 'extra_desks', label: 'Extra desks', inputType: 'integer', defaultValue: 0, includedUnits: 1, pricePerUnit: 2 }],
     }],
   }
 
   assert.equal(getRoomMetricExtraTotal(draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), 16)
+})
+
+test('quote-specific room fields appear in the scope regardless of whether they add a charge', () => {
+  const room = {
+    id: 'room-1', type: 'other', label: 'Meeting room', quantity: 1, size: 20, floor: 1,
+    metrics: { custom_glass_door: 1, custom_walk_in_shower: 1, custom_unused: 0 },
+    customMetricFields: [
+      { id: 'custom_glass_door', label: 'Glass Door', inputType: 'integer', defaultValue: 0, includedUnits: 1, pricePerUnit: 1 },
+      { id: 'custom_walk_in_shower', label: 'Walk-in Shower', inputType: 'integer', defaultValue: 0, includedUnits: 0, pricePerUnit: 0 },
+      { id: 'custom_unused', label: 'Unused field', inputType: 'integer', defaultValue: 0, includedUnits: 0, pricePerUnit: 5 },
+    ],
+  }
+  const draft = {
+    status: 'draft', revisedInputs: baseInputs, roomItems: [room], moppingMinutesPerSqm: 0.24,
+    pricingAdjustmentPercent: 0, targetPrice: '', finalPerVisit: '', scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const result = calculateQuote(baseInputs)
+  const report = buildClientScopeReport(
+    'SC-TEST', baseInputs, result, draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG
+  )
+
+  assert.deepEqual(report.rooms[0].selectedOptions, [
+    'Glass Door: 1 — Every clean',
+    'Walk-in Shower: 1 — Every clean',
+  ])
+})
+
+test('room pricing breakdown includes the same quote-specific field charge as the quote total', () => {
+  const pricing = {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, minimumInvoice: 0, rangeLow: 1, rangeHigh: 1 },
+  }
+  const room = { id: 'room-1', type: 'other', label: 'Other', quantity: 1, size: 20, floor: 1 }
+  const baseDraft = {
+    status: 'draft', revisedInputs: baseInputs, roomItems: [room], moppingMinutesPerSqm: 0.24,
+    pricingAdjustmentPercent: 0, targetPrice: '', finalPerVisit: '', scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const extraDraft = {
+    ...baseDraft,
+    roomItems: [{
+      ...room,
+      metrics: { custom_glass_partitioning: 3 },
+      customMetricFields: [{
+        id: 'custom_glass_partitioning', label: 'Glass Partitioning', inputType: 'integer', defaultValue: 0,
+        includedUnits: 1, pricePerUnit: 2, cadence: 'every_clean',
+      }],
+    }],
+  }
+  const baseBreakdown = getRoomPricingBreakdown(baseDraft, pricing, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)['room-1']
+  const extraBreakdown = getRoomPricingBreakdown(extraDraft, pricing, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)['room-1']
+
+  assert.equal(getRoomMetricExtraTotal(extraDraft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), 6)
+  assert.equal(extraBreakdown.low - baseBreakdown.low, 6)
+  assert.equal(extraBreakdown.high - baseBreakdown.high, 6)
 })
 
 test('periodic task prices are amortised across the configured cleaning frequency', () => {

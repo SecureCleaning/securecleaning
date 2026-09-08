@@ -10,8 +10,10 @@ import {
   createRoomItem,
   deriveQuoteInputsFromRooms,
   getRoomAreaAllocationTotal,
+  getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
   getWorkflowRoomMetricFields,
+  isQuoteSpecificMetricField,
   type FirmQuoteDraft,
   type InspectionReport,
   type WorkflowRoomItem,
@@ -84,13 +86,18 @@ function originalSummary(result: QuoteResult) {
   return formatPriceRange(result.totalLow, result.totalHigh)
 }
 
-function describeFieldPricing(label: string, pricePerUnit?: number) {
-  const rate = Number(pricePerUnit ?? 0)
+function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomItem, frequency: QuoteInputs['frequency']) {
+  const rate = Number(field.pricePerUnit ?? 0)
   if (!Number.isFinite(rate) || rate === 0) {
-    return `${label} does not currently change the quote total.`
+    return `${field.label} does not currently change the quote total.`
   }
 
-  return `${label} adds ${formatCurrency(rate)} per unit, per visit.`
+  const included = isQuoteSpecificMetricField(room, field) ? 0 : Math.max(0, Number(field.includedUnits ?? 0))
+  const allowance = included > 0 ? `${included} unit${included === 1 ? '' : 's'} included in the room price · ` : ''
+  const rateLabel = field.inputType === 'boolean'
+    ? `${formatCurrency(rate)} when included`
+    : `${formatCurrency(rate)} per ${included > 0 ? 'additional ' : ''}unit`
+  return `${allowance}${rateLabel} · Current contribution ${formatCurrency(getRoomMetricFieldExtra(room, field, frequency))}`
 }
 
 function formatTaskCurrency(amount: number) {
@@ -608,9 +615,16 @@ export default function QuoteWorkflowEditor({
                   {room.floor > 1 ? ` · Floor ${room.floor}` : ''}
                 </div>
                 {room.moppingEnabled ? <div className="text-gray-500 mt-1">Mopping included</div> : null}
-                {getRoomTypeConfigById(roomTypeConfig, room.type)?.fields?.length ? (
+                {getWorkflowRoomMetricFields(room, roomTypeConfig).length ? (
                   <div className="text-gray-500 mt-1">
-                    {getRoomTypeConfigById(roomTypeConfig, room.type)?.fields.map((field) => `${field.label}: ${String(room.metrics?.[field.id] ?? field.defaultValue)}`).join(' · ')}
+                    {getWorkflowRoomMetricFields(room, roomTypeConfig)
+                      .filter((field) => field.inputType === 'boolean'
+                        ? room.metrics?.[field.id] === true
+                        : Number(room.metrics?.[field.id] ?? field.defaultValue ?? 0) > 0)
+                      .map((field) => field.inputType === 'boolean'
+                        ? field.label
+                        : `${field.label}: ${String(room.metrics?.[field.id] ?? field.defaultValue)}`)
+                      .join(' · ')}
                   </div>
                 ) : null}
               </div>
@@ -1195,6 +1209,7 @@ export default function QuoteWorkflowEditor({
                       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).map((field) => {
                           const isCustom = (room.customMetricFields ?? []).some((candidate) => candidate.id === field.id)
+                          const isQuoteSpecific = isCustom && isQuoteSpecificMetricField(room, field)
                           return (
                           <div key={field.id} className="rounded-lg bg-gray-50 p-3 text-sm">
                             <div className="mb-2 flex items-center justify-between gap-2">
@@ -1204,42 +1219,46 @@ export default function QuoteWorkflowEditor({
                               <button type="button" onClick={() => removeMetricField(room, field.id)} className="text-xs font-semibold text-red-600">Remove</button>
                             </div>
                             {field.inputType === 'boolean' ? (
-                              <select
-                                value={room.metrics?.[field.id] === true ? 'true' : 'false'}
-                                onChange={(event) => updateRoom(room.id, {
-                                  metrics: {
-                                    ...(room.metrics ?? {}),
-                                    [field.id]: event.target.value === 'true',
-                                  },
-                                })}
-                                className="w-full rounded-xl border border-gray-300 px-3 py-3 bg-white"
-                              >
-                                <option value="false">No</option>
-                                <option value="true">Yes</option>
-                              </select>
+                              <label className="block text-xs text-gray-500">Included in this room
+                                <select
+                                  value={room.metrics?.[field.id] === true ? 'true' : 'false'}
+                                  onChange={(event) => updateRoom(room.id, {
+                                    metrics: {
+                                      ...(room.metrics ?? {}),
+                                      [field.id]: event.target.value === 'true',
+                                    },
+                                  })}
+                                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3 bg-white"
+                                >
+                                  <option value="false">No</option>
+                                  <option value="true">Yes</option>
+                                </select>
+                              </label>
                             ) : (
-                              <input
-                                type="number"
-                                min="0"
-                                step={field.inputType === 'integer' ? 1 : 0.1}
-                                value={String(room.metrics?.[field.id] ?? field.defaultValue ?? 0)}
-                                onChange={(event) => updateRoom(room.id, {
-                                  metrics: {
-                                    ...(room.metrics ?? {}),
-                                    [field.id]: Number(event.target.value || 0),
-                                  },
-                                })}
-                                className="w-full rounded-xl border border-gray-300 px-3 py-3"
-                              />
+                              <label className="block text-xs text-gray-500">Units in each room
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step={field.inputType === 'integer' ? 1 : 0.1}
+                                  value={String(room.metrics?.[field.id] ?? field.defaultValue ?? 0)}
+                                  onChange={(event) => updateRoom(room.id, {
+                                    metrics: {
+                                      ...(room.metrics ?? {}),
+                                      [field.id]: Number(event.target.value || 0),
+                                    },
+                                  })}
+                                  className="mt-1 w-full rounded-xl border border-gray-300 px-3 py-3"
+                                />
+                              </label>
                             )}
                             {isCustom ? (
-                              <div className="mt-2 grid grid-cols-3 gap-2">
+                              <div className={`mt-2 grid gap-2 ${isQuoteSpecific ? 'grid-cols-2' : 'grid-cols-3'}`}>
                                 <label className="text-xs text-gray-500">Price / unit<input type="number" min="0" step="0.1" value={field.pricePerUnit ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { pricePerUnit: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
-                                <label className="text-xs text-gray-500">Included<input type="number" min="0" step="1" value={field.includedUnits ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { includedUnits: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
+                                {!isQuoteSpecific ? <label className="text-xs text-gray-500">Units included in base<input type="number" min="0" step="1" value={field.includedUnits ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { includedUnits: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label> : null}
                                 <label className="text-xs text-gray-500">Frequency<select value={field.cadence ?? 'every_clean'} onChange={(event) => updateCustomMetricField(room, field.id, { cadence: event.target.value as RoomTaskCadence })} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5">{ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                               </div>
                             ) : null}
-                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() ? field.helpText : describeFieldPricing(field.label, field.pricePerUnit)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
+                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() && !isQuoteSpecific ? field.helpText : describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
                           </div>
                         )})}
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}

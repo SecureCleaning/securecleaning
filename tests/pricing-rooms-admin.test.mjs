@@ -47,7 +47,13 @@ test('room tasks, mopping, and quote extras expose cadence controls and scope ou
   assert.match(quoteEditor, /Managed in Pricing &amp; Rooms and applied wherever mopping is selected/)
   assert.match(quoteEditor, /scopeTaskSelections/)
   assert.match(quoteEditor, /ROOM_TASK_CADENCE_OPTIONS/)
+  assert.match(quoteEditor, /Units in each room/)
+  assert.match(quoteEditor, /Units included in base/)
+  assert.match(quoteEditor, /Current contribution/)
   assert.match(clientScope, /getRoomTaskCadenceLabel\(task\.cadence\)/)
+
+  const scopeBuilder = source('src/lib/scopeOfWorks.ts')
+  assert.match(scopeBuilder, /getWorkflowRoomMetricFields\(room, roomTypeConfig\)/)
 })
 
 test('pricing configuration mutations remain manager-only and reject cross-origin or oversized writes', () => {

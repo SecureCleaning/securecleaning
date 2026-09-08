@@ -142,6 +142,22 @@ function getMetricExtra(
   return Math.max(0, numericValue - includedUnits) * (field.pricePerUnit ?? 0) * cadenceFactor
 }
 
+export function isQuoteSpecificMetricField(room: WorkflowRoomItem, field: RoomMetricFieldConfig) {
+  return field.id.startsWith('custom_') && (room.customMetricFields ?? []).some((candidate) => candidate.id === field.id)
+}
+
+export function getRoomMetricFieldExtra(
+  room: WorkflowRoomItem,
+  field: RoomMetricFieldConfig,
+  frequency: CleaningFrequency
+) {
+  const pricedField = isQuoteSpecificMetricField(room, field)
+    ? { ...field, includedUnits: 0 }
+    : field
+  const value = room.metrics?.[field.id] ?? field.defaultValue
+  return getMetricExtra(pricedField, value, frequency) * Math.max(0, room.quantity)
+}
+
 function createRoomId(prefix: string, index: number) {
   return `${prefix}-${index + 1}`
 }
@@ -617,12 +633,10 @@ export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: Q
     const fields = getWorkflowRoomMetricFields(room, roomTypeConfig)
     if (!fields.length) return sum
 
-    const roomTotal = fields.reduce((fieldSum, field) => {
-      const value = room.metrics?.[field.id]
-      return fieldSum + getMetricExtra(field, value ?? field.defaultValue, frequency)
-    }, 0)
-
-    return sum + roomTotal * room.quantity
+    return sum + fields.reduce(
+      (fieldSum, field) => fieldSum + getRoomMetricFieldExtra(room, field, frequency),
+      0
+    )
   }, 0)
 }
 
@@ -752,10 +766,10 @@ export function getRoomPricingBreakdown(
         ? Math.max(0, room.quantity) / totalRoomQuantity
         : 0
     const rule = getRoomPricingRule(room, roomTypeConfig)
-    const roomMetricExtra = (roomType?.fields ?? []).reduce((sum, field) => {
-      const value = room.metrics?.[field.id]
-      return sum + getMetricExtra(field, value ?? field.defaultValue, draft.revisedInputs.frequency)
-    }, 0) * Math.max(0, room.quantity)
+    const roomMetricExtra = getWorkflowRoomMetricFields(room, roomTypeConfig).reduce(
+      (sum, field) => sum + getRoomMetricFieldExtra(room, field, draft.revisedInputs.frequency),
+      0
+    )
     const roomScheduledTaskExtra = roomType
       ? roomType.scopeTasks.reduce((sum, task, taskIndex) => {
           if (!isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)) return sum
