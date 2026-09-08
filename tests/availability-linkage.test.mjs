@@ -11,6 +11,7 @@ const {
   bookingBelongsToAvailabilityAssignee,
   validateOwnerOperatorLinks,
 } = await import('../src/lib/availabilityLinkage.ts')
+const { getAgentCalendarDateRange } = await import('../src/lib/availabilityCalendar.ts')
 
 const agent = {
   id: 'agent-melbourne',
@@ -89,6 +90,20 @@ test('manual CRM appointments remain visible to their assigned agent outside pub
   ), false)
 })
 
+test('agent calendar uses the Australian local day and retains early-morning appointments after UTC midnight', () => {
+  const range = getAgentCalendarDateRange(
+    new Date('2026-09-08T00:30:00.000Z'),
+    'sydney',
+    0,
+    28,
+  )
+  const earlyMorningAppointment = new Date('2026-09-07T22:15:00.000Z')
+
+  assert.equal(range.start.toISOString(), '2026-09-07T14:00:00.000Z')
+  assert.equal(earlyMorningAppointment >= range.start, true)
+  assert.equal(earlyMorningAppointment < range.end, true)
+})
+
 test('schedule ownership rejects another city, service region, agent, and inactive agent', () => {
   assert.equal(bookingBelongsToAvailabilityAssignee(booking({
     assigned_operator_id: agent.ownerOperatorId,
@@ -155,6 +170,7 @@ test('calendar and booking mutations share the linkage predicate and operator id
 
   assert.match(calendarSource, /bookingBelongsToAvailabilityAssignee\(booking, assignee, serviceZones\)/)
   assert.match(calendarSource, /select\('booking_ref, status, created_at, inputs, assigned_operator_id'\)/)
+  assert.match(calendarSource, /options\?\.daysBehind \?\? 42/)
 
   assert.match(bookingRouteSource, /select\('booking_ref, status, inspection_status, inspection_scheduled_for, assigned_operator_id, inputs'\)/)
   assert.equal((bookingRouteSource.match(/bookingBelongsToAvailabilityAssignee\(/g) ?? []).length, 2)

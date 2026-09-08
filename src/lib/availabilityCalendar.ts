@@ -1,4 +1,4 @@
-import { getBookingEventWindow } from '@/lib/calendarInvite'
+import { getBookingEventWindow, getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAdminSupabase } from '@/lib/supabase'
 import type { BookingInputs } from '@/lib/types'
 import type {
@@ -43,15 +43,15 @@ const DAY_INDEX: Record<Weekday, number> = {
   sunday: 0,
 }
 
-function startOfDay(value: Date) {
+function startOfCalendarDay(value: Date) {
   const next = new Date(value)
-  next.setHours(0, 0, 0, 0)
+  next.setUTCHours(0, 0, 0, 0)
   return next
 }
 
-function addDays(value: Date, days: number) {
+function addCalendarDays(value: Date, days: number) {
   const next = new Date(value)
-  next.setDate(next.getDate() + days)
+  next.setUTCDate(next.getUTCDate() + days)
   return next
 }
 
@@ -59,23 +59,20 @@ function toIso(value: Date) {
   return value.toISOString()
 }
 
-function getCityTimeZone(city: AvailabilityAssignee['city']) {
-  return city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
+function dateStringInTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(value)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
 }
 
 function localDateTimeToIso(date: Date, time: string, timeZone: string) {
-  const [hour = '09', minute = '00'] = time.split(':')
-  const dateString = [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-')
-  const utcGuess = new Date(`${dateString}T${hour}:${minute}:00Z`)
-  const offset = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'longOffset',
-  })
-    .formatToParts(utcGuess)
-    .find((part) => part.type === 'timeZoneName')?.value
-    ?.replace('GMT', '')
-
-  return `${dateString}T${hour}:${minute}:00${offset || '+10:00'}`
+  const dateString = [date.getUTCFullYear(), String(date.getUTCMonth() + 1).padStart(2, '0'), String(date.getUTCDate()).padStart(2, '0')].join('-')
+  return getDateTimeInTimeZone(dateString, time, timeZone).toISOString()
 }
 
 function formatZoneNames(zoneIds: string[], zones: ServiceZone[]) {
@@ -88,9 +85,9 @@ function formatZoneNames(zoneIds: string[], zones: ServiceZone[]) {
 
 function getNextDateForWeekday(rangeStart: Date, weekday: Weekday) {
   const targetDay = DAY_INDEX[weekday]
-  const current = startOfDay(rangeStart)
-  const diff = (targetDay - current.getDay() + 7) % 7
-  return addDays(current, diff)
+  const current = startOfCalendarDay(rangeStart)
+  const diff = (targetDay - current.getUTCDay() + 7) % 7
+  return addCalendarDays(current, diff)
 }
 
 function buildAvailabilityEvents(
@@ -120,7 +117,7 @@ function buildAvailabilityEvents(
         description: slot.notes || 'Recurring inspection availability window.',
       })
 
-      occurrence = addDays(occurrence, 7)
+      occurrence = addCalendarDays(occurrence, 7)
     }
   }
 
@@ -214,21 +211,42 @@ export async function getAgentCalendarEvents(
   assignee: AvailabilityAssignee,
   options?: { daysBehind?: number; daysAhead?: number; includeAvailability?: boolean }
 ) {
-  const daysBehind = options?.daysBehind ?? 0
+  const daysBehind = options?.daysBehind ?? 42
   const daysAhead = options?.daysAhead ?? 28
   const includeAvailability = options?.includeAvailability ?? true
-  const rangeStart = addDays(startOfDay(new Date()), -daysBehind)
-  const rangeEnd = addDays(rangeStart, daysAhead)
+  const range = getAgentCalendarDateRange(new Date(), assignee.city, daysBehind, daysAhead)
   const weeklySlots = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id && slot.active)
   const oneOffBlocks = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id && block.active)
   const zones = config.zones.filter((zone) => zone.city === assignee.city)
   const bookings = await getAgentBookingsForCalendar(config, assignee)
 
   const events = [
-    ...buildBookingEvents(bookings, rangeStart, rangeEnd),
-    ...buildBlockEvents(oneOffBlocks, rangeStart, rangeEnd),
-    ...(includeAvailability ? buildAvailabilityEvents(weeklySlots, zones, assignee.city, rangeStart, rangeEnd) : []),
+    ...buildBookingEvents(bookings, range.start, range.end),
+    ...buildBlockEvents(oneOffBlocks, range.start, range.end),
+    ...(includeAvailability ? buildAvailabilityEvents(weeklySlots, zones, assignee.city, range.calendarStart, range.calendarEnd) : []),
   ]
 
   return events.sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+}
+
+export function getAgentCalendarDateRange(
+  now: Date,
+  city: AvailabilityAssignee['city'],
+  daysBehind: number,
+  daysAhead: number,
+) {
+  const timeZone = getCityTimeZone(city)
+  const today = dateStringInTimeZone(now, timeZone)
+  const todayAsCalendarDate = new Date(`${today}T00:00:00Z`)
+  const calendarStart = addCalendarDays(todayAsCalendarDate, -Math.max(0, daysBehind))
+  const calendarEnd = addCalendarDays(todayAsCalendarDate, Math.max(0, daysAhead))
+  const startDate = calendarStart.toISOString().slice(0, 10)
+  const endExclusiveDate = addCalendarDays(calendarEnd, 1).toISOString().slice(0, 10)
+
+  return {
+    start: getDateTimeInTimeZone(startDate, '00:00', timeZone),
+    end: getDateTimeInTimeZone(endExclusiveDate, '00:00', timeZone),
+    calendarStart,
+    calendarEnd,
+  }
 }
