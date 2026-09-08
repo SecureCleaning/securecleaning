@@ -5,6 +5,7 @@ import type { QuoteResult as QuoteResultType, QuoteInputs } from '@/lib/types'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from '@/lib/publicRoomScope'
 import { formatPriceRange } from '@/lib/quoteEngine'
 import type { PublicQuoteDisplayInputs } from '@/lib/publicQuoteDocument'
+import { isSelfServiceQuoteJourney, type QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 
 interface QuoteResultViewProps {
   quoteRef: string
@@ -15,6 +16,8 @@ interface QuoteResultViewProps {
   documentVariant?: 'remote_review' | 'final'
   customerEmail?: string
   bookingHandoffToken?: string
+  customerJourney?: QuoteCustomerJourney
+  isFirmPrice?: boolean
 }
 
 const frequencyLabels: Record<string, string> = {
@@ -45,9 +48,22 @@ const timeLabels: Record<string, string> = {
   weekend: 'Weekend (sometimes cheaper!)',
 }
 
-export default function QuoteResultView({ quoteRef, result, inputs, emailSent, documentVariant = 'remote_review', customerEmail, bookingHandoffToken }: QuoteResultViewProps) {
+export default function QuoteResultView({
+  quoteRef,
+  result,
+  inputs,
+  emailSent,
+  documentVariant = 'remote_review',
+  customerEmail,
+  bookingHandoffToken,
+  customerJourney = 'online_enquiry',
+  isFirmPrice = false,
+}: QuoteResultViewProps) {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const hasEmailIssue = emailSent === false
+  const isAgentCreated = customerJourney === 'agent_created'
+  const isConfirmedPrice = documentVariant === 'final' || isFirmPrice
+  const showSelfServiceActions = documentVariant !== 'final' && isSelfServiceQuoteJourney(customerJourney)
   const roomScopeSummary = summarizePublicRoomScope(
     sanitizePublicRoomScope(inputs.roomScope).filter((room) => !isBathroomRoomScopeType(room.type) && room.type !== 'kitchen')
   )
@@ -67,7 +83,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           </svg>
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: '#1a2744' }}>
-          {documentVariant === 'final' ? 'Your Final Quote' : 'Your Instant Quote'}
+          {documentVariant === 'final' ? 'Your Final Quote' : isAgentCreated ? 'Your Quote' : 'Your Instant Quote'}
         </h1>
         <p className="text-gray-500 text-sm">
           Quote Reference: <span className="font-mono font-semibold text-gray-700">{quoteRef}</span>
@@ -97,10 +113,10 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
 
       <div className="rounded-2xl p-8 text-white mb-6 text-center" style={{ backgroundColor: '#1a2744' }}>
         <p className="text-gray-400 text-sm mb-2">
-          {`${documentVariant === 'final' ? 'Confirmed price' : 'Per Visit Estimate'} (${frequencyLabels[inputs.frequency] ?? 'Recurring service'})`}
+          {`${isConfirmedPrice ? 'Confirmed price' : isAgentCreated ? 'Quote price' : 'Per Visit Estimate'} (${frequencyLabels[inputs.frequency] ?? 'Recurring service'})`}
         </p>
         <p className="text-5xl font-black mb-1">{formatPriceRange(result.totalLow, result.totalHigh)}</p>
-        <p className="text-gray-400 text-sm">{documentVariant === 'final' ? 'Final price per visit' : 'Price range per visit'} · Excl. GST</p>
+        <p className="text-gray-400 text-sm">{isConfirmedPrice ? 'Fixed price per visit' : isAgentCreated ? 'Quote price per visit' : 'Price range per visit'} · Excl. GST</p>
         {result.carpetSteamSeparate && (
           <p className="mt-3 text-amber-300 text-sm">* Carpet steam cleaning quoted separately</p>
         )}
@@ -154,7 +170,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           )}
 
           <div className="border-t border-gray-200 pt-3 mt-3 flex justify-between font-bold text-base">
-            <span>{documentVariant === 'final' ? 'Confirmed total per visit' : 'Indicative total per visit'}</span>
+            <span>{isConfirmedPrice ? 'Confirmed total per visit' : isAgentCreated ? 'Quoted total per visit' : 'Indicative total per visit'}</span>
             <span style={{ color: '#1a2744' }}>
               {formatPriceRange(result.totalLow, result.totalHigh)}
             </span>
@@ -162,7 +178,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
         </div>
       </div>
 
-      {documentVariant !== 'final' ? <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
+      {showSelfServiceActions ? <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-sm text-amber-900">
         <p className="font-semibold mb-1">What this quote includes</p>
         <p>
           This is an indicative estimate based on your premises size, cleaning frequency, timing preference,
@@ -177,11 +193,15 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
       </div> : null}
 
       <p className="text-xs text-gray-500 text-center mb-8">
-        {documentVariant === 'final' ? 'This is the reviewed final quotation. Valid for 30 days. All prices exclude GST.' : 'Final pricing is confirmed after your free site inspection. Valid for 30 days. All prices exclude GST.'}
+        {documentVariant === 'final'
+          ? 'This is the reviewed final quotation. Valid for 30 days. All prices exclude GST.'
+          : isAgentCreated
+            ? 'This quotation was prepared following your site review. Valid for 30 days. All prices exclude GST.'
+            : 'Final pricing is confirmed after your free site inspection. Valid for 30 days. All prices exclude GST.'}
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {documentVariant !== 'final' ? <Link
+        {showSelfServiceActions ? <Link
           href={`/booking?${new URLSearchParams({
             quoteRef,
             ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
@@ -204,7 +224,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
         >
           View Scope of Works
         </Link>
-        <Link
+        {showSelfServiceActions ? <Link
           href={bookingHandoffToken
             ? `/quote?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
             : '/quote'}
@@ -213,7 +233,7 @@ export default function QuoteResultView({ quoteRef, result, inputs, emailSent, d
           className="inline-flex items-center justify-center px-8 py-4 rounded-xl font-semibold text-gray-700 text-lg border-2 border-gray-200 hover:border-gray-300 transition-all"
         >
           Recalculate
-        </Link>
+        </Link> : null}
       </div>
 
       <p className="text-center text-sm text-gray-500 mt-4">

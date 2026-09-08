@@ -54,6 +54,7 @@ test('public documents select explicit remote-review and final variants', () => 
 test('public quote DTO shows company while excluding contact, workflow, staff, configuration, and send metadata', () => {
   const record = {
     quoteRef: 'SC-20260814-TEST',
+    customerJourney: 'agent_created',
     inputs: {
       businessName: 'Private business', contactName: 'Private person', email: 'private@example.com', phone: '0400000000',
       address: 'Private address', notes: 'Private notes', city: 'melbourne', premisesType: 'office', floorArea: 100,
@@ -64,11 +65,14 @@ test('public quote DTO shows company while excluding contact, workflow, staff, c
     inspectionReport: { riskNotes: 'internal' }, firmQuoteDraft: { serviceCommentary: 'internal' },
     finalDocument: { reviewedBy: { name: 'Staff' } }, roomTypeConfig: { secret: true },
     sentAt: 'now', sentBy: { name: 'Staff' }, sentTo: 'private@example.com',
+    displayPrice: { low: 100, high: 100, isFirm: true },
   }
   for (const variant of ['remote_review', 'final']) {
     const dto = toPublicQuoteDocument(record, variant)
-    assert.deepEqual(Object.keys(dto).sort(), ['inputs', 'quoteRef', 'result', 'variant'])
+    assert.deepEqual(Object.keys(dto).sort(), ['customerJourney', 'inputs', 'isFirmPrice', 'quoteRef', 'result', 'variant'])
     assert.equal(dto.inputs.businessName, 'Private business')
+    assert.equal(dto.customerJourney, 'agent_created')
+    assert.equal(dto.isFirmPrice, true)
     const serialized = JSON.stringify(dto)
     for (const forbidden of ['inspectionReport', 'firmQuoteDraft', 'finalDocument', 'roomTypeConfig', 'sentAt', 'sentBy', 'sentTo', 'email', 'phone', 'address', 'notes', 'reviewedBy', 'breakdown', 'estimatedHours', 'internalLabour']) {
       assert.equal(serialized.includes(forbidden), false, `${forbidden} leaked from ${variant}`)
@@ -157,7 +161,7 @@ test('final customer documents remove provisional and inspection-booking actions
   const quoteView = readFileSync(`${root}/src/components/quote/QuoteResultView.tsx`, 'utf8')
   const scopePage = readFileSync(`${root}/src/app/scope/[ref]/page.tsx`, 'utf8')
   assert.match(quoteView, /documentVariant === 'final' \? 'Your Final Quote'/)
-  assert.match(quoteView, /documentVariant !== 'final' \? <Link/)
-  assert.match(scopePage, /variant !== 'final' \? <Link/)
+  assert.match(quoteView, /showSelfServiceActions \? <Link/)
+  assert.match(scopePage, /variant !== 'final' && isSelfServiceQuoteJourney\(report\.customerJourney\) \? <Link/)
   assert.match(scopePage, /reviewed final scope/)
 })

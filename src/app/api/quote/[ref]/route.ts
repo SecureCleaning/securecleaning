@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
 import { rateLimit } from '@/lib/abuseProtection'
+import { isQuoteReference } from '@/lib/quoteReference'
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +12,7 @@ export async function GET(
 
   const quoteRef = params.ref?.trim()
 
-  if (!quoteRef || !/^SC-\d{8}-[A-Z0-9]{4}$/.test(quoteRef)) {
+  if (!isQuoteReference(quoteRef)) {
     return NextResponse.json({ success: false, error: 'Quote reference is required.' }, { status: 400 })
   }
 

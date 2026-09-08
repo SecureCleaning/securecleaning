@@ -24,6 +24,8 @@ export default async function QuoteByRefPage({ params, searchParams }: { params:
           result={quote.result}
           inputs={quote.inputs}
           documentVariant={quote.variant}
+          customerJourney={quote.customerJourney}
+          isFirmPrice={quote.isFirmPrice}
           bookingHandoffToken={isQuoteBookingHandoffToken(searchParams?.handoff) ? searchParams?.handoff : undefined}
         />
       </div>

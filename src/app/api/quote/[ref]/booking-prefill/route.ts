@@ -3,6 +3,7 @@ import { rateLimit } from '@/lib/abuseProtection'
 import { verifyQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 import { buildBookingPrefillFromQuoteInputs, buildQuoteEditPrefillFromQuoteInputs } from '@/lib/quoteBookingPrefill'
 import { getQuoteByRef } from '@/lib/quoteData'
+import { isQuoteReference } from '@/lib/quoteReference'
 
 export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
   const blocked = rateLimit(request, { key: 'quote-booking-prefill:hour', limit: 20, windowMs: 60 * 60 * 1000 })
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, { params }: { params: { ref: str
 
   const quoteRef = params.ref?.trim()
   const handoff = request.nextUrl.searchParams.get('handoff')
-  if (!quoteRef || !/^SC-\d{8}-[A-Z0-9]{4}$/.test(quoteRef) || !verifyQuoteBookingHandoffToken(quoteRef, handoff)) {
+  if (!isQuoteReference(quoteRef) || !verifyQuoteBookingHandoffToken(quoteRef, handoff)) {
     return NextResponse.json({ success: false, error: 'Quote booking details are unavailable.' }, { status: 404 })
   }
 

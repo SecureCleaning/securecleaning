@@ -1,5 +1,6 @@
 import { formatPriceRange } from '@/lib/quoteEngine'
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
+import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 import {
   getFirmQuoteDisplayPrice,
   getRoomAreaAllocations,
@@ -46,6 +47,7 @@ export type ClientScopeReport = {
   validUntil?: string | null
   createdAt?: string | null
   isFirmQuote: boolean
+  customerJourney: QuoteCustomerJourney
 }
 
 const FALLBACK_TASKS_BY_ROOM_TYPE: Record<WorkflowRoomType, string[]> = {
@@ -177,9 +179,13 @@ export function buildClientScopeReport(
   roomTypeConfig: QuoteRoomTypeConfig,
   validUntil?: string | null,
   createdAt?: string | null,
-  pricingPreview?: Pick<FirmQuotePreview, 'adjustedLow' | 'adjustedHigh'>
+  pricingPreview?: Pick<FirmQuotePreview, 'adjustedLow' | 'adjustedHigh'>,
+  customerJourney: QuoteCustomerJourney = 'online_enquiry'
 ): ClientScopeReport {
   const price = displayPrice(draft, result, pricingPreview)
+  const priceLabel = customerJourney === 'agent_created' && !price.isFirm
+    ? 'Quote price per visit'
+    : price.label
   const globalOptions = getGlobalSelectedOptions(draft.revisedInputs)
   const roomAreas = getRoomAreaAllocations(draft)
 
@@ -197,9 +203,10 @@ export function buildClientScopeReport(
     inclusions: draft.inclusions.trim(),
     exclusions: draft.exclusions.trim() || 'Final scope and pricing remain subject to confirmation of site conditions and access requirements.',
     displayedPrice: price.value,
-    priceLabel: price.label,
+    priceLabel,
     validUntil,
     createdAt,
     isFirmQuote: price.isFirm,
+    customerJourney,
   }
 }

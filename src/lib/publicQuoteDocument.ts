@@ -1,5 +1,6 @@
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
 import type { QuoteDocumentVariant, PublicQuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
+import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 
 export type PublicQuoteDisplayInputs = Pick<QuoteInputs,
   'businessName' | 'city' | 'premisesType' | 'floorArea' | 'floors' | 'frequency' | 'timePreference' | 'roomScope'
@@ -12,6 +13,8 @@ export type PublicQuoteDisplayInputs = Pick<QuoteInputs,
 export type PublicQuoteDocument = {
   quoteRef: string
   variant: QuoteDocumentVariant
+  customerJourney: QuoteCustomerJourney
+  isFirmPrice: boolean
   inputs: PublicQuoteDisplayInputs
   result: Pick<QuoteResult, 'totalLow' | 'totalHigh' | 'carpetSteamSeparate'>
 }
@@ -21,6 +24,8 @@ export function toPublicQuoteDocument(record: PublicQuoteWorkflowRecord, variant
   return {
     quoteRef: record.quoteRef,
     variant,
+    customerJourney: record.customerJourney,
+    isFirmPrice: record.displayPrice.isFirm,
     inputs: {
       businessName: source.businessName,
       city: source.city,

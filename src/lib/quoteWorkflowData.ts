@@ -18,6 +18,7 @@ import { getQuotePricingConfig, type QuotePricingConfig } from '@/lib/pricing'
 import { DEFAULT_QUOTE_ROOM_TYPE_CONFIG, getQuoteRoomTypeConfig, type QuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { buildClientScopeReport, type ClientScopeReport } from '@/lib/scopeOfWorks'
 import { toPublicQuoteDocument } from '@/lib/publicQuoteDocument'
+import { getQuoteCustomerJourney, type QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 
 export type QuoteDocumentVariant = 'remote_review' | 'final'
 
@@ -49,6 +50,7 @@ export type QuoteWorkflowRecord = {
   inputs: QuoteInputs
   result: QuoteResult
   status: string
+  customerJourney: QuoteCustomerJourney
   validUntil?: string | null
   createdAt?: string | null
   inspectionReport: InspectionReport
@@ -92,6 +94,15 @@ export async function getQuoteWorkflowByRef(
   }
   if (!data) return null
 
+  const crmLinkRes = await db.from('crm_opportunity_quotes')
+    .select('link_source')
+    .eq('quote_id', data.id)
+    .maybeSingle()
+  if (crmLinkRes.error) {
+    console.error('[quoteWorkflowData] Failed to load quote journey:', crmLinkRes.error)
+  }
+  const customerJourney = getQuoteCustomerJourney(crmLinkRes.data?.link_source)
+
   let inspectionReport = createDefaultInspectionReport(data.inputs as QuoteInputs)
   let firmQuoteDraft = createDefaultFirmQuoteDraft(data.inputs as QuoteInputs, roomTypeConfig)
   let workflowColumnsAvailable = false
@@ -124,6 +135,7 @@ export async function getQuoteWorkflowByRef(
 
   return {
     id: data.id, quoteRef: data.quote_ref, inputs: data.inputs as QuoteInputs, result: data.result as QuoteResult,
+    customerJourney,
     status: data.status, validUntil: data.valid_until, createdAt: data.created_at, inspectionReport, firmQuoteDraft,
     workflowColumnsAvailable, finalDocument, reviewedAt, reviewedBy, sentAt, sentBy, sentTo, sentDocumentVariant,
   }
@@ -137,7 +149,7 @@ export async function getPublicScopeDocumentByRef(quoteRef: string, variant: Quo
   const quote = await getPublicQuoteWorkflowByRef(quoteRef, variant)
   if (!quote) return null
   return buildClientScopeReport(quote.quoteRef, quote.inputs, quote.result, quote.firmQuoteDraft, quote.roomTypeConfig,
-    quote.validUntil, quote.createdAt, quote.pricingPreview)
+    quote.validUntil, quote.createdAt, quote.pricingPreview, quote.customerJourney)
 }
 
 export async function getPublicQuoteWorkflowByRef(

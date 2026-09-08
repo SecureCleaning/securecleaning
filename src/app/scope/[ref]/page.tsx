@@ -6,6 +6,8 @@ import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 import { getRoomTaskCadenceLabel } from '@/lib/roomTypeConfig'
+import { isQuoteReference } from '@/lib/quoteReference'
+import { isSelfServiceQuoteJourney } from '@/lib/quoteCustomerJourney'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +25,7 @@ function formatDate(value?: string | null) {
 export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string } }) {
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
   const handoff = isQuoteBookingHandoffToken(searchParams?.handoff) ? searchParams?.handoff : undefined
-  const report = /^SC-\d{8}-[A-Z0-9]{4}$/.test(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant) : null
+  const report = isQuoteReference(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant) : null
   const siteUrl = getSiteUrl()
 
   if (!report) {
@@ -41,7 +43,9 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div>
                 <Link href="/" className="text-lg font-bold tracking-tight hover:text-emerald-300">Secure Cleaning</Link>
-                <p className="mt-2 text-sm text-slate-300">{variant === 'final' ? 'Final scope of works' : 'Remote-review scope of works'}</p>
+                <p className="mt-2 text-sm text-slate-300">
+                  {variant === 'final' ? 'Final scope of works' : report.customerJourney === 'agent_created' ? 'Client scope of works' : 'Remote-review scope of works'}
+                </p>
               </div>
               <div className="text-left text-sm sm:text-right">
                 <p className="text-xs uppercase tracking-[0.16em] text-slate-400">Reference</p>
@@ -66,7 +70,7 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                   <p className="mt-1 text-2xl font-bold text-slate-950">{report.displayedPrice}</p>
                   <p className="mt-1 text-xs text-slate-600">Prices exclude GST</p>
                 </div>
-                {variant !== 'final' ? <Link
+                {variant !== 'final' && isSelfServiceQuoteJourney(report.customerJourney) ? <Link
                   href={`/booking?${new URLSearchParams({
                     quoteRef: report.quoteRef,
                     ...(handoff ? { handoff } : {}),
@@ -174,6 +178,8 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
               <p className="mt-6 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
                 {variant === 'final'
                   ? 'This is the reviewed final scope prepared for the named business. Any later change requires a newly reviewed document.'
+                  : report.customerJourney === 'agent_created'
+                    ? 'This scope was prepared following the site review and records the quoted recurring service.'
                   : 'This scope is prepared for the named business and is provided for quotation purposes. Final service details are confirmed after access, site conditions, and any agreed changes are reviewed.'}
               </p>
             </footer>
