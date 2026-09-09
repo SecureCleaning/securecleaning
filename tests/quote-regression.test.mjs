@@ -207,6 +207,55 @@ test('quote-specific room fields appear in the scope regardless of whether they 
   ])
 })
 
+test('client scope shows every saved room size without changing room pricing modes', () => {
+  const roomItems = DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.map((roomType, index) => ({
+    id: `room-${index + 1}`,
+    type: roomType.id,
+    label: roomType.label,
+    quantity: 2,
+    size: 7.5,
+    floor: 1,
+  }))
+  const draft = {
+    status: 'reviewed', revisedInputs: baseInputs, roomItems, moppingMinutesPerSqm: 0.24,
+    pricingAdjustmentPercent: 0, targetPrice: '90', finalPerVisit: '90', scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const report = buildClientScopeReport(
+    'SC-TEST', baseInputs, calculateQuote(baseInputs), draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+    null, null, undefined, 'agent_created'
+  )
+
+  assert.equal(report.rooms.length, DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.length)
+  assert.deepEqual(report.rooms.map((room) => room.size), roomItems.map(() => 7.5))
+  assert.equal(report.rooms.find((room) => room.typeLabel === 'Kitchen')?.size, 7.5)
+  assert.equal(report.rooms.find((room) => room.typeLabel === 'Bathroom / Amenities')?.size, 7.5)
+  assert.equal(DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((room) => room.id === 'kitchen')?.tracksSize, false)
+  assert.equal(DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.find((room) => room.id === 'bathroom')?.tracksSize, false)
+})
+
+test('scope wording separates inspected agent quotes from online enquiries', () => {
+  const draft = {
+    ...createDefaultFirmQuoteDraft(baseInputs, DEFAULT_QUOTE_ROOM_TYPE_CONFIG),
+    status: 'reviewed',
+    targetPrice: '90',
+    finalPerVisit: '90',
+    exclusions: '',
+  }
+  const result = calculateQuote(baseInputs)
+
+  const agentReport = buildClientScopeReport(
+    'SC-AGENT', baseInputs, result, draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+    null, null, undefined, 'agent_created'
+  )
+  const onlineReport = buildClientScopeReport(
+    'SC-ONLINE', baseInputs, result, draft, DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
+    null, null, undefined, 'online_enquiry'
+  )
+
+  assert.equal(agentReport.exclusions, '')
+  assert.equal(onlineReport.exclusions, 'Final scope and pricing remain subject to confirmation of site conditions and access requirements.')
+})
+
 test('room pricing breakdown includes the same quote-specific field charge as the quote total', () => {
   const pricing = {
     ...DEFAULT_QUOTE_PRICING_CONFIG,

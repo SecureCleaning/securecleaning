@@ -159,10 +159,12 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
               </section>
             ) : null}
 
-            <section className="border-b border-slate-200 py-7">
-              <h2 className="scope-heading">Assumptions and exclusions</h2>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{report.exclusions}</p>
-            </section>
+            {report.exclusions ? (
+              <section className="border-b border-slate-200 py-7">
+                <h2 className="scope-heading">Assumptions and exclusions</h2>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">{report.exclusions}</p>
+              </section>
+            ) : null}
 
             <footer className="pt-7 text-sm text-slate-500">
               <div className="flex flex-wrap justify-between gap-4">
@@ -176,11 +178,13 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                 </div>
               </div>
               <p className="mt-6 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
-                {variant === 'final'
-                  ? 'This is the reviewed final scope prepared for the named business. Any later change requires a newly reviewed document.'
+                {variant === 'final' && report.customerJourney === 'agent_created'
+                  ? 'This is the confirmed final scope and price prepared following site inspection. Any later change requires a newly reviewed document.'
+                  : variant === 'final'
+                    ? 'This is the reviewed quote prepared for the named business. Final scope and pricing remain subject to confirmation of site conditions and access requirements.'
                   : report.customerJourney === 'agent_created'
-                    ? 'This scope was prepared following the site review and records the quoted recurring service.'
-                  : 'This scope is prepared for the named business and is provided for quotation purposes. Final service details are confirmed after access, site conditions, and any agreed changes are reviewed.'}
+                    ? 'This scope was prepared following the site inspection and records the quoted recurring service and price.'
+                    : 'This scope is prepared for the named business and is provided for quotation purposes. Final service details are confirmed after access, site conditions, and any agreed changes are reviewed.'}
               </p>
             </footer>
           </main>

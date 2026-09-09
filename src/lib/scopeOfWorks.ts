@@ -3,7 +3,6 @@ import type { QuoteInputs, QuoteResult } from '@/lib/types'
 import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 import {
   getFirmQuoteDisplayPrice,
-  getRoomAreaAllocations,
   getWorkflowRoomMetricFields,
   type FirmQuoteDraft,
   type FirmQuotePreview,
@@ -135,8 +134,9 @@ function getGlobalSelectedOptions(inputs: QuoteInputs) {
   return options
 }
 
-function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig, allocatedArea?: number): ClientScopeRoom {
+function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig): ClientScopeRoom {
   const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const savedSize = Number(room.size)
 
   return {
     id: room.id,
@@ -144,8 +144,10 @@ function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeCon
     description: room.description?.trim() || undefined,
     typeLabel: labelForRoomType(room, roomTypeConfig),
     quantity: room.quantity,
-    size: typeConfig?.tracksSize && (allocatedArea ?? 0) > 0
-      ? Math.round(((allocatedArea ?? 0) / Math.max(1, room.quantity)) * 10) / 10
+    // Room size is useful client-facing scope information even when that room
+    // type is priced by fixtures or fixed tasks rather than by floor area.
+    size: Number.isFinite(savedSize) && savedSize > 0
+      ? Math.round(savedSize * 10) / 10
       : undefined,
     floor: room.floor,
     tasks: typeConfig
@@ -188,7 +190,6 @@ export function buildClientScopeReport(
     ? 'Quote price per visit'
     : price.label
   const globalOptions = getGlobalSelectedOptions(draft.revisedInputs)
-  const roomAreas = getRoomAreaAllocations(draft)
 
   return {
     quoteRef,
@@ -198,11 +199,13 @@ export function buildClientScopeReport(
     premisesLabel: PREMISES_LABELS[draft.revisedInputs.premisesType] ?? 'Commercial premises',
     frequencyLabel: FREQUENCY_LABELS[draft.revisedInputs.frequency] ?? draft.revisedInputs.frequency,
     timePreferenceLabel: TIME_LABELS[draft.revisedInputs.timePreference] ?? draft.revisedInputs.timePreference,
-    rooms: draft.roomItems.map((room) => buildRoomScope(room, roomTypeConfig, roomAreas.get(room.id))),
+    rooms: draft.roomItems.map((room) => buildRoomScope(room, roomTypeConfig)),
     selectedOptions: globalOptions,
     summary: draft.scopeSummary.trim() || 'Regular cleaning of the listed areas, completed to the agreed frequency and service requirements.',
     inclusions: draft.inclusions.trim(),
-    exclusions: draft.exclusions.trim() || 'Final scope and pricing remain subject to confirmation of site conditions and access requirements.',
+    exclusions: draft.exclusions.trim() || (customerJourney === 'online_enquiry'
+      ? 'Final scope and pricing remain subject to confirmation of site conditions and access requirements.'
+      : ''),
     displayedPrice: price.value,
     priceLabel,
     validUntil,

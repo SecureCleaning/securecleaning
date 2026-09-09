@@ -182,5 +182,6 @@ test('final customer documents remove provisional and inspection-booking actions
   assert.match(quoteView, /documentVariant === 'final' \? 'Your Final Quote'/)
   assert.match(quoteView, /showSelfServiceActions \? <Link/)
   assert.match(scopePage, /variant !== 'final' && isSelfServiceQuoteJourney\(report\.customerJourney\) \? <Link/)
-  assert.match(scopePage, /reviewed final scope/)
+  assert.match(scopePage, /confirmed final scope and price prepared following site inspection/)
+  assert.match(scopePage, /variant === 'final' && report\.customerJourney === 'agent_created'/)
 })
