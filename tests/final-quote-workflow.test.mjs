@@ -41,6 +41,25 @@ test('protected send routes retain authorization, readiness, final variant, and 
   }
 })
 
+test('agents can prepare and send a final quote without a hidden reviewed-status prerequisite', () => {
+  const editor = readFileSync(`${root}/src/components/admin/QuoteWorkflowEditor.tsx`, 'utf8')
+  const agentPage = readFileSync(`${root}/src/app/availability/quotes/[assigneeId]/[ref]/page.tsx`, 'utf8')
+  const agentWorkflow = readFileSync(`${root}/src/app/api/availability-agent/[assigneeId]/quotes/[ref]/workflow/route.ts`, 'utf8')
+  const agentSend = readFileSync(`${root}/src/app/api/availability-agent/[assigneeId]/quotes/[ref]/send/route.ts`, 'utf8')
+
+  assert.match(agentPage, /canEmailUpdatedQuote/)
+  assert.match(editor, /async function openFinalQuoteEmail/)
+  assert.match(editor, /status: 'reviewed'/)
+  assert.match(editor, /fetch\(workflowApiPath/)
+  assert.match(editor, /setQuoteEmailComposerOpen\(true\)/)
+  assert.doesNotMatch(editor, /disabled=\{quoteEmailAction\.busy \|\| saveState\.saving \|\| firmQuoteDraft\.status !== 'reviewed' \|\| !finalPublished\}/)
+  assert.match(agentWorkflow, /isAuthorizedAvailabilityAgentRequest/)
+  assert.match(agentWorkflow, /canAvailabilityAgentAccessQuote/)
+  assert.match(agentWorkflow, /reviewQuoteWorkflowByRef/)
+  assert.match(agentSend, /isAuthorizedAvailabilityAgentRequest/)
+  assert.match(agentSend, /canAvailabilityAgentAccessQuote/)
+})
+
 test('public documents select explicit remote-review and final variants', () => {
   const data = readFileSync(`${root}/src/lib/quoteWorkflowData.ts`, 'utf8')
   assert.match(data, /variant: QuoteDocumentVariant = 'remote_review'/)

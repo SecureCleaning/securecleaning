@@ -9,6 +9,7 @@ import {
   buildFirmQuotePreview,
   createRoomItem,
   deriveQuoteInputsFromRooms,
+  getFinalQuoteReadiness,
   getRoomAreaAllocationTotal,
   getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
@@ -243,6 +244,51 @@ export default function QuoteWorkflowEditor({
         busy: false,
         message: null,
         error: error instanceof Error ? error.message : 'Failed to email the updated quote.',
+      })
+    }
+  }
+
+  async function openFinalQuoteEmail() {
+    if (firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted') return
+    if (finalPublished) {
+      setQuoteEmailComposerOpen(true)
+      return
+    }
+
+    const reviewedDraft: FirmQuoteDraft = {
+      ...firmQuoteDraft,
+      status: 'reviewed',
+      revisedInputs: derivedInputs,
+    }
+    const readiness = getFinalQuoteReadiness(reviewedDraft)
+    if (!readiness.ready) {
+      setQuoteEmailAction({ busy: false, message: null, error: readiness.errors[0] })
+      return
+    }
+
+    setQuoteEmailAction({ busy: true, message: null, error: null })
+    try {
+      const response = await fetch(workflowApiPath, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inspectionReport, firmQuoteDraft: reviewedDraft }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success || result.status !== 'reviewed') {
+        throw new Error(result.error || 'The final quote could not be prepared for sending.')
+      }
+
+      setFirmQuoteDraft(reviewedDraft)
+      setFinalPublished(true)
+      setQuoteEmailDraft((current) => ({ ...current, to: derivedInputs.email.trim().toLowerCase() }))
+      setQuoteEmailComposerOpen(true)
+      setSaveState({ saving: false, message: 'Final quote reviewed and published. It is now locked and ready to send.', error: null })
+      setQuoteEmailAction({ busy: false, message: 'Final quote prepared. Review the email below, then send it to the client.', error: null })
+    } catch (error) {
+      setQuoteEmailAction({
+        busy: false,
+        message: null,
+        error: error instanceof Error ? error.message : 'The final quote could not be prepared for sending.',
       })
     }
   }
@@ -494,11 +540,11 @@ export default function QuoteWorkflowEditor({
           {canEmailUpdatedQuote ? (
             <button
               type="button"
-              onClick={() => setQuoteEmailComposerOpen((open) => !open)}
-              disabled={quoteEmailAction.busy || saveState.saving || firmQuoteDraft.status !== 'reviewed' || !finalPublished}
+              onClick={() => quoteEmailComposerOpen ? setQuoteEmailComposerOpen(false) : void openFinalQuoteEmail()}
+              disabled={quoteEmailAction.busy || saveState.saving || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
               className="rounded-lg border border-green-200 bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {quoteEmailComposerOpen ? 'Close email' : firmQuoteDraft.status === 'sent' ? 'Final quote sent' : 'Send final quote'}
+              {quoteEmailAction.busy ? quoteEmailComposerOpen ? 'Sending...' : 'Preparing final quote...' : quoteEmailComposerOpen ? 'Close email' : firmQuoteDraft.status === 'sent' ? 'Final quote sent' : 'Send final quote'}
             </button>
           ) : null}
           {canReconcileDelivery && finalPublished ? (
