@@ -15,10 +15,13 @@ function cleanerTaskDisplay(task: string | { label: string; cadence: string }) {
 
 type WorkspaceData = {
   products: ContractProduct[]
-  broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
+  broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single'; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
+  templates: Array<{ id: string; name: string; subject: string; message: string; updatedAt: string }>
   actor: { id: string; role: string; state: string | null; displayName: string }
   jobsUrl: string
 }
+
+type BroadcastCleaner = { id: string; name: string; businessName: string; email: string }
 
 type ProductDraft = {
   heading: string
@@ -83,8 +86,14 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastProducts, setBroadcastProducts] = useState<string[]>([])
   const [broadcastSubject, setBroadcastSubject] = useState('')
   const [broadcastIntro, setBroadcastIntro] = useState('')
-  const [broadcastPreview, setBroadcastPreview] = useState<{ recipientCount: number; consideredCount: number; excluded: Record<string, number> } | null>(null)
+  const [broadcastRecipientMode, setBroadcastRecipientMode] = useState<'state' | 'single'>('state')
+  const [broadcastCleanerId, setBroadcastCleanerId] = useState('')
+  const [broadcastCleaners, setBroadcastCleaners] = useState<BroadcastCleaner[]>([])
+  const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
+  const [broadcastPreview, setBroadcastPreview] = useState<{ recipientCount: number; consideredCount: number; excluded: Record<string, number>; targetCleaner: BroadcastCleaner | null; canSend: boolean } | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [templateName, setTemplateName] = useState('')
 
   const load = useCallback(async (preferredId = '') => {
     const response = await fetch('/api/admin/contract-products', { cache: 'no-store' })
@@ -101,6 +110,29 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   }, [])
 
   useEffect(() => { void load(initialProductId).catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load.')) }, [initialProductId, load])
+
+  const loadBroadcastCleaners = useCallback(async (state: string) => {
+    setBroadcastCleanersLoading(true)
+    try {
+      const response = await fetch('/api/admin/contract-products', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'broadcast.recipients', state }),
+      })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to load eligible cleaners.')
+      setBroadcastCleaners(result.result.cleaners)
+    } catch (error) {
+      setBroadcastCleaners([])
+      setMessage(error instanceof Error ? error.message : 'Unable to load eligible cleaners.')
+    } finally {
+      setBroadcastCleanersLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!data || view !== 'broadcasts') return
+    void loadBroadcastCleaners(broadcastState)
+  }, [broadcastState, data, loadBroadcastCleaners, view])
   const selected = data?.products.find((product) => product.id === selectedId) ?? null
   const previewAnnualValue = selected && draft
     ? selected.clientPricePerVisitExGstCents * Math.max(0, Math.round(Number(draft.annualVisits) || 0)) : 0
@@ -109,6 +141,14 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     : Math.round(previewAnnualValue * 0.5)
   const filtered = useMemo(() => (data?.products ?? []).filter((product) => filter === 'all' || product.status === filter), [data, filter])
   const stateProducts = (data?.products ?? []).filter((product) => product.state === broadcastState && product.status === 'available')
+  const stateJobsUrl = data?.jobsUrl
+    ? `${data.jobsUrl}${data.jobsUrl.includes('?') ? '&' : '?'}state=${encodeURIComponent(broadcastState)}`
+    : ''
+
+  function invalidateBroadcastPreview() {
+    setBroadcastPreview(null)
+    setBroadcastRequestId('')
+  }
 
   function selectProduct(id: string) {
     setSelectedId(id)
@@ -171,7 +211,12 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
 
   async function previewBroadcast() {
     try {
-      const result = await action('broadcast.preview', { state: broadcastState, productIds: broadcastProducts })
+      const result = await action('broadcast.preview', {
+        state: broadcastState,
+        productIds: broadcastProducts,
+        recipientMode: broadcastRecipientMode,
+        cleanerId: broadcastCleanerId,
+      })
       setBroadcastPreview(result)
       if (!broadcastSubject) setBroadcastSubject(result.defaultSubject)
       if (!broadcastIntro) setBroadcastIntro(result.defaultIntro)
@@ -186,6 +231,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setBroadcastRequestId(requestId)
       const result = await action('broadcast.send', {
         state: broadcastState, productIds: broadcastProducts, subject: broadcastSubject, intro: broadcastIntro,
+        recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId,
         idempotencyKey: requestId,
       })
       if (result.inProgress) {
@@ -199,6 +245,53 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send broadcast.') }
   }
 
+  function loadTemplate() {
+    const template = data?.templates.find((candidate) => candidate.id === selectedTemplateId)
+    if (!template) return
+    setBroadcastSubject(template.subject)
+    setBroadcastIntro(template.message)
+    setTemplateName(template.name)
+    invalidateBroadcastPreview()
+    setMessage(`Template "${template.name}" loaded. You can edit it for this send.`)
+  }
+
+  function startNewTemplate() {
+    setSelectedTemplateId('')
+    setTemplateName('')
+    setMessage('Enter a template name, then save the current subject and message as a new template.')
+  }
+
+  async function saveTemplate() {
+    try {
+      const template = await action('broadcast.template.save', {
+        templateId: selectedTemplateId,
+        name: templateName,
+        subject: broadcastSubject,
+        message: broadcastIntro,
+      }) as WorkspaceData['templates'][number]
+      setData((current) => current ? {
+        ...current,
+        templates: [...current.templates.filter((candidate) => candidate.id !== template.id), template]
+          .sort((left, right) => left.name.localeCompare(right.name)),
+      } : current)
+      setSelectedTemplateId(template.id)
+      setTemplateName(template.name)
+      setMessage(`Template "${template.name}" saved.`)
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save template.') }
+  }
+
+  async function archiveTemplate() {
+    const template = data?.templates.find((candidate) => candidate.id === selectedTemplateId)
+    if (!template || !window.confirm(`Archive the template "${template.name}"?`)) return
+    try {
+      await action('broadcast.template.archive', { templateId: template.id })
+      setData((current) => current ? { ...current, templates: current.templates.filter((candidate) => candidate.id !== template.id) } : current)
+      setSelectedTemplateId('')
+      setTemplateName('')
+      setMessage(`Template "${template.name}" archived.`)
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to archive template.') }
+  }
+
   if (!data) return <div className="rounded-xl border border-gray-200 bg-white p-6">{message || 'Loading contract products...'}</div>
   const backHref = portal === 'agent' ? '/agent' : '/admin'
 
@@ -206,7 +299,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     <AdminPageHeader title="Contract Products" description="Turn won client opportunities into editable cleaner-facing contract listings." backHref={backHref} backLabel={portal === 'agent' ? 'Back to agent portal' : 'Back to overview'} />
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-100 bg-teal-50 p-4">
       <div className="flex gap-2"><button type="button" onClick={() => setView('products')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'products' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Products</button><button type="button" onClick={() => setView('broadcasts')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'broadcasts' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Broadcasts</button></div>
-      <div className="flex flex-wrap gap-2">{data.jobsUrl ? <><a href={data.jobsUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Preview available jobs</a><button type="button" onClick={() => void navigator.clipboard.writeText(data.jobsUrl)} className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Copy reusable link</button></> : <span className="text-sm text-amber-800">Reusable jobs link is not configured.</span>}</div>
+      <div className="flex flex-wrap gap-2">{data.jobsUrl ? <><a href={view === 'broadcasts' ? stateJobsUrl : data.jobsUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Preview available jobs</a><button type="button" onClick={() => void navigator.clipboard.writeText(view === 'broadcasts' ? stateJobsUrl : data.jobsUrl)} className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Copy reusable link</button></> : <span className="text-sm text-amber-800">Reusable jobs link is not configured.</span>}</div>
     </div>
     {message ? <p role="status" className="mb-4 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">{message}</p> : null}
 
@@ -222,9 +315,119 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-bold">Cleaner scope preview</h3><p className="mt-1 text-sm text-gray-600">This independent snapshot excludes the client identity, exact address, postcode, quote reference, pricing calculations, and security notes.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{selected.cleanerScopeSnapshot.rooms.map((room, index) => <div key={`${room.type}-${index}`} className="rounded-xl border border-gray-200 p-4"><h4 className="font-semibold">{room.label} · Qty {room.quantity}</h4><ul className="mt-2 space-y-1 text-sm text-gray-600">{room.tasks.map((task, taskIndex) => { const display = cleanerTaskDisplay(task); return <li key={`${display.label}-${taskIndex}`} className="flex justify-between gap-3"><span>{display.label}</span><strong className="shrink-0 text-xs">{display.cadence}</strong></li> })}</ul></div>)}</div></section>
         <div className="sticky bottom-4 flex flex-wrap items-center justify-end gap-3 rounded-xl border border-gray-200 bg-white/95 p-4 shadow-lg">{selected.status === 'available' ? <><span className="mr-auto text-sm text-gray-600">Withdraw this listing before editing or publishing a new version.</span><button type="button" onClick={() => void withdraw()} disabled={Boolean(busy)} className="rounded-lg border border-red-200 px-5 py-3 font-semibold text-red-700">Withdraw</button></> : selected.status === 'draft' || selected.status === 'withdrawn' ? <><button type="button" onClick={() => void save()} disabled={Boolean(busy)} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'product.update' ? 'Saving...' : 'Save draft'}</button><button type="button" onClick={() => void publish()} disabled={Boolean(busy)} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">Publish</button></> : <span className="text-sm text-gray-600">This product is locked while {selected.status}.</span>}</div>
       </main> : <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500">Close a CRM opportunity as won to create the first product.</div>}
-    </div> : <div className="grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(300px,0.7fr)]">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-xl font-bold">Broadcast available jobs</h2><p className="mt-1 text-sm text-gray-600">Send one privacy-safe digest to approved, non-suppressed cleaners in the selected state.</p><div className="mt-5 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">State<select value={broadcastState} disabled={data.actor.role === 'agent'} onChange={(event) => { setBroadcastState(event.target.value); setBroadcastProducts([]); setBroadcastPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{CONTRACT_PRODUCT_STATES.map((state) => <option key={state}>{state}</option>)}</select></label><div><p className="text-sm font-medium">Products</p><p className="mt-1 text-xs text-gray-500">Leave all unticked to include every available product in this state.</p></div><div className="sm:col-span-2 grid gap-2 sm:grid-cols-2">{stateProducts.map((product) => <label key={product.id} className="flex items-start gap-2 rounded-lg border border-gray-200 p-3 text-sm"><input type="checkbox" checked={broadcastProducts.includes(product.id)} onChange={(event) => setBroadcastProducts(event.target.checked ? [...broadcastProducts, product.id] : broadcastProducts.filter((id) => id !== product.id))} /><span><strong>{product.productCode}</strong> · {product.suburb}<span className="block text-xs text-gray-500">{product.heading}</span></span></label>)}{stateProducts.length === 0 ? <p className="text-sm text-gray-500">No available products in this state.</p> : null}</div><label className="text-sm font-medium sm:col-span-2">Subject<input value={broadcastSubject} onChange={(event) => setBroadcastSubject(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium sm:col-span-2">Introduction<textarea rows={4} value={broadcastIntro} onChange={(event) => setBroadcastIntro(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div><div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy)} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">Preview eligibility</button>{broadcastPreview ? <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || broadcastPreview.recipientCount === 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">Send to {broadcastPreview.recipientCount} cleaners</button> : null}</div>{broadcastPreview ? <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm"><strong>{broadcastPreview.recipientCount} eligible</strong> from {broadcastPreview.consideredCount} approved cleaner records.<p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p></div> : null}</section>
-      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold">Broadcast history</h2><div className="mt-3 divide-y divide-gray-100">{data.broadcasts.map((campaign) => <div key={campaign.id} className="py-3 text-sm"><div className="flex justify-between gap-3"><strong>{campaign.state} · {campaign.subject}</strong><span className="text-xs uppercase text-gray-500">{campaign.status}</span></div><p className="mt-1 text-xs text-gray-500">{new Date(campaign.createdAt).toLocaleString('en-AU')} · {campaign.sentCount}/{campaign.recipientCount} sent · {campaign.failedCount} unresolved/failed</p></div>)}{data.broadcasts.length === 0 ? <p className="py-3 text-sm text-gray-500">No broadcasts sent yet.</p> : null}</div></section>
+    </div> : <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-xl font-bold">Email available jobs</h2>
+        <p className="mt-1 text-sm text-gray-600">Send to one approved cleaner or every eligible cleaner in a selected state. Every email includes the selected products and the state-filtered available-jobs link.</p>
+
+        <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <h3 className="font-semibold text-gray-900">1. Choose recipients</h3>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-medium">State or territory
+              <select value={broadcastState} disabled={data.actor.role === 'agent'} onChange={(event) => {
+                setBroadcastState(event.target.value)
+                setBroadcastProducts([])
+                setBroadcastCleanerId('')
+                invalidateBroadcastPreview()
+              }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                {CONTRACT_PRODUCT_STATES.map((state) => <option key={state}>{state}</option>)}
+              </select>
+            </label>
+            <fieldset>
+              <legend className="text-sm font-medium">Send to</legend>
+              <div className="mt-2 flex flex-col gap-2 text-sm">
+                <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'state'} onChange={() => { setBroadcastRecipientMode('state'); setBroadcastCleanerId(''); invalidateBroadcastPreview() }} /> All eligible cleaners in {broadcastState}</label>
+                <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'single'} onChange={() => { setBroadcastRecipientMode('single'); invalidateBroadcastPreview() }} /> One cleaner</label>
+              </div>
+            </fieldset>
+            {broadcastRecipientMode === 'single' ? <label className="text-sm font-medium sm:col-span-2">Cleaner
+              <select value={broadcastCleanerId} disabled={broadcastCleanersLoading} onChange={(event) => { setBroadcastCleanerId(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                <option value="">{broadcastCleanersLoading ? 'Loading eligible cleaners...' : 'Select an approved cleaner'}</option>
+                {broadcastCleaners.map((cleaner) => <option key={cleaner.id} value={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.name} · {cleaner.email}</option>)}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-gray-500">Only approved, non-suppressed cleaners in {broadcastState} are available.</span>
+            </label> : <p className="text-sm text-gray-600 sm:col-span-2">{broadcastCleanersLoading ? 'Checking cleaner eligibility...' : `${broadcastCleaners.length} cleaners are currently eligible in ${broadcastState}. Final eligibility is checked again before sending.`}</p>}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-gray-200 p-4">
+          <h3 className="font-semibold text-gray-900">2. Choose available products</h3>
+          <p className="mt-1 text-xs text-gray-500">Leave every box unticked to include all available products in {broadcastState}, or select particular jobs.</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {stateProducts.map((product) => <label key={product.id} className="flex items-start gap-2 rounded-lg border border-gray-200 p-3 text-sm">
+              <input type="checkbox" checked={broadcastProducts.includes(product.id)} onChange={(event) => {
+                setBroadcastProducts(event.target.checked ? [...broadcastProducts, product.id] : broadcastProducts.filter((id) => id !== product.id))
+                invalidateBroadcastPreview()
+              }} />
+              <span><strong>{product.productCode}</strong> · {product.suburb}<span className="block text-xs text-gray-500">{product.heading}</span></span>
+            </label>)}
+            {stateProducts.length === 0 ? <p className="text-sm text-gray-500">No available products in this state.</p> : null}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-gray-200 p-4">
+          <h3 className="font-semibold text-gray-900">3. Write the email</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <label className="text-sm font-medium">Email template
+              <select value={selectedTemplateId} onChange={(event) => { setSelectedTemplateId(event.target.value); setTemplateName(data.templates.find((template) => template.id === event.target.value)?.name ?? '') }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                <option value="">Custom email</option>
+                {data.templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+            </label>
+            <button type="button" onClick={loadTemplate} disabled={!selectedTemplateId || Boolean(busy)} className="self-end rounded-lg border border-teal-300 px-4 py-2.5 text-sm font-semibold text-teal-800 disabled:opacity-50">Load template</button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">Loading a template copies it into this email. Agents can change the copied subject and message without altering the saved template.</p>
+          <div className="mt-4 grid gap-4">
+            <label className="text-sm font-medium">Subject
+              <input maxLength={240} value={broadcastSubject} onChange={(event) => { setBroadcastSubject(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
+            </label>
+            <label className="text-sm font-medium">Message
+              <textarea rows={7} maxLength={2000} value={broadcastIntro} onChange={(event) => { setBroadcastIntro(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
+              <span className="mt-1 block text-xs font-normal text-gray-500">The greeting, product cards, available-jobs button, your signature, and unsubscribe link are added automatically.</span>
+            </label>
+          </div>
+          {stateJobsUrl ? <div className="mt-4 rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm">
+            <strong>Automatic jobs link for {broadcastState}</strong>
+            <p className="mt-1 break-all text-xs text-gray-600">{stateJobsUrl}</p>
+            <div className="mt-2 flex gap-2"><a href={stateJobsUrl} target="_blank" rel="noreferrer" className="rounded-md border border-teal-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800">Open link</a><button type="button" onClick={() => void navigator.clipboard.writeText(stateJobsUrl)} className="rounded-md border border-teal-200 bg-white px-3 py-1.5 text-xs font-semibold text-teal-800">Copy link</button></div>
+          </div> : <p className="mt-4 text-sm text-amber-800">The reusable available-jobs link must be configured before sending.</p>}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy) || stateProducts.length === 0 || (broadcastRecipientMode === 'single' && !broadcastCleanerId)} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.preview' ? 'Checking...' : 'Check recipients & content'}</button>
+          {broadcastPreview ? <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button> : null}
+        </div>
+        {broadcastPreview ? <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
+          <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
+          {broadcastPreview.targetCleaner ? <p className="mt-1 text-gray-700">{broadcastPreview.targetCleaner.businessName || broadcastPreview.targetCleaner.name} · {broadcastPreview.targetCleaner.email}</p> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
+          <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
+          {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">This exceeds the 50-recipient safety limit. Send to one cleaner or narrow the approved cleaner list before sending.</p> : null}
+        </div> : null}
+      </section>
+
+      <aside className="space-y-5">
+        {data.actor.role === 'owner' ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Template library</h2><p className="mt-1 text-xs text-gray-500">Owner controls</p></div><button type="button" onClick={startNewTemplate} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">New</button></div>
+          <p className="mt-3 text-sm text-gray-600">Save the current subject and message as a reusable starting point for agents.</p>
+          <label className="mt-4 block text-sm font-medium">Template name
+            <input maxLength={80} value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="e.g. New NSW contracts" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
+          </label>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void saveTemplate()} disabled={Boolean(busy) || !templateName || !broadcastSubject || !broadcastIntro} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{selectedTemplateId ? 'Update template' : 'Save new template'}</button>
+            {selectedTemplateId ? <button type="button" onClick={() => void archiveTemplate()} disabled={Boolean(busy)} className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700">Archive</button> : null}
+          </div>
+          <p className="mt-3 text-xs text-gray-500">Updating a template does not change emails already sent or the agent&apos;s current draft unless they load it again.</p>
+        </section> : null}
+
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <h2 className="text-lg font-bold">Email history</h2>
+          <div className="mt-3 divide-y divide-gray-100">{data.broadcasts.map((campaign) => <div key={campaign.id} className="py-3 text-sm">
+            <div className="flex justify-between gap-3"><strong>{campaign.state} · {campaign.subject}</strong><span className="text-xs uppercase text-gray-500">{campaign.status}</span></div>
+            <p className="mt-1 text-xs text-gray-500">{campaign.recipientMode === 'single' ? 'Single cleaner' : 'State broadcast'} · {new Date(campaign.createdAt).toLocaleString('en-AU')}</p>
+            <p className="mt-1 text-xs text-gray-500">{campaign.sentCount}/{campaign.recipientCount} sent · {campaign.failedCount} unresolved/failed</p>
+          </div>)}{data.broadcasts.length === 0 ? <p className="py-3 text-sm text-gray-500">No emails sent yet.</p> : null}</div>
+        </section>
+      </aside>
     </div>}
   </div>
 }

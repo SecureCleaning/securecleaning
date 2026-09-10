@@ -4,9 +4,15 @@ import { createCleanerJobsAccessToken } from '@/lib/cleanerJobsAccess'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
   getContractProductBroadcastHistory,
+  listEligibleContractProductBroadcastCleaners,
   previewContractProductBroadcast,
   sendContractProductBroadcast,
 } from '@/lib/contractProductBroadcasts'
+import {
+  archiveContractProductBroadcastTemplate,
+  getContractProductBroadcastTemplates,
+  saveContractProductBroadcastTemplate,
+} from '@/lib/contractProductBroadcastTemplates'
 import {
   ContractProductError,
   getActiveJobsAccessLinkId,
@@ -23,9 +29,10 @@ export async function GET(request: NextRequest) {
   const actor = await getContractProductActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Contract product access required.' }, { status: 403 })
   try {
-    const [products, broadcasts, accessLinkId] = await Promise.all([
+    const [products, broadcasts, templates, accessLinkId] = await Promise.all([
       getContractProducts(actor),
       getContractProductBroadcastHistory(actor),
+      getContractProductBroadcastTemplates(),
       getActiveJobsAccessLinkId(),
     ])
     const accessToken = accessLinkId ? createCleanerJobsAccessToken(accessLinkId) : ''
@@ -33,6 +40,7 @@ export async function GET(request: NextRequest) {
       success: true,
       products,
       broadcasts,
+      templates,
       actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
       jobsUrl: accessToken ? `${getSiteUrl()}/jobs/access/${encodeURIComponent(accessToken)}` : '',
     })
@@ -53,7 +61,22 @@ export async function POST(request: NextRequest) {
     if (action === 'product.update') return NextResponse.json({ success: true, result: await updateContractProduct(actor, body) })
     if (action === 'product.publish') return NextResponse.json({ success: true, result: await publishContractProduct(actor, body) })
     if (action === 'product.withdraw') return NextResponse.json({ success: true, result: await withdrawContractProduct(actor, body) })
+    if (action === 'broadcast.recipients') {
+      const limited = rateLimit(request, { key: `contract-product-broadcast-recipients:${actor.id}`, limit: 60, windowMs: 10 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await listEligibleContractProductBroadcastCleaners(actor, body) })
+    }
     if (action === 'broadcast.preview') return NextResponse.json({ success: true, result: await previewContractProductBroadcast(actor, body) })
+    if (action === 'broadcast.template.save') {
+      const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await saveContractProductBroadcastTemplate(actor, body) })
+    }
+    if (action === 'broadcast.template.archive') {
+      const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await archiveContractProductBroadcastTemplate(actor, body) })
+    }
     if (action === 'broadcast.send') {
       const limited = rateLimit(request, { key: `contract-product-broadcast:${actor.id}`, limit: 5, windowMs: 60 * 60 * 1000 })
       if (limited) return limited

@@ -31,6 +31,8 @@ type EligibleCleaner = {
   unsubscribeToken: string
 }
 
+type BroadcastRecipientMode = 'state' | 'single'
+
 function clean(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 }
@@ -51,6 +53,10 @@ function assertBroadcastState(actor: ContractProductActor, value: unknown) {
     throw new ContractProductError('Agents can only broadcast jobs in their assigned state.', 403)
   }
   return state
+}
+
+function getRecipientMode(value: unknown): BroadcastRecipientMode {
+  return value === 'single' ? 'single' : 'state'
 }
 
 async function getBroadcastProducts(actor: ContractProductActor, state: ContractProductState, selectedProductIds: unknown) {
@@ -115,16 +121,59 @@ async function getEligibleCleaners(state: ContractProductState) {
   return { eligible, excluded, considered: candidates.length }
 }
 
+function selectBroadcastRecipients(
+  recipients: Awaited<ReturnType<typeof getEligibleCleaners>>,
+  mode: BroadcastRecipientMode,
+  cleanerIdValue: unknown,
+) {
+  if (mode === 'state') return recipients.eligible
+  const cleanerId = clean(cleanerIdValue, 80)
+  const cleaner = recipients.eligible.find((candidate) => candidate.id === cleanerId)
+  if (!cleaner) {
+    throw new ContractProductError('Select an eligible approved cleaner in this state.', 409)
+  }
+  return [cleaner]
+}
+
+export async function listEligibleContractProductBroadcastCleaners(
+  actor: ContractProductActor,
+  input: Record<string, unknown>,
+) {
+  const state = assertBroadcastState(actor, input.state)
+  const recipients = await getEligibleCleaners(state)
+  return {
+    state,
+    cleaners: recipients.eligible.map((cleaner) => ({
+      id: cleaner.id,
+      name: cleaner.name,
+      businessName: cleaner.businessName,
+      email: cleaner.email,
+    })),
+    consideredCount: recipients.considered,
+    excluded: recipients.excluded,
+  }
+}
+
 export async function previewContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>) {
   const state = assertBroadcastState(actor, input.state)
+  const recipientMode = getRecipientMode(input.recipientMode)
   const [products, recipients] = await Promise.all([
     getBroadcastProducts(actor, state, input.productIds),
     getEligibleCleaners(state),
   ])
+  const selectedRecipients = selectBroadcastRecipients(recipients, recipientMode, input.cleanerId)
   return {
     state,
     products,
-    recipientCount: recipients.eligible.length,
+    recipientMode,
+    recipientCount: selectedRecipients.length,
+    canSend: selectedRecipients.length <= 50,
+    targetCleaner: recipientMode === 'single' ? {
+      id: selectedRecipients[0].id,
+      name: selectedRecipients[0].name,
+      businessName: selectedRecipients[0].businessName,
+      email: selectedRecipients[0].email,
+    } : null,
     consideredCount: recipients.considered,
     excluded: recipients.excluded,
     defaultSubject: `Available cleaning contracts in ${state}`,
@@ -140,6 +189,7 @@ function buildBroadcastHtml(input: {
   unsubscribeUrl: string
   actor: ContractProductActor
 }) {
+  const messageHtml = escapeHtml(input.intro).replace(/\r?\n/g, '<br>')
   const cards = input.products.map((product) => `
     <div style="border:1px solid #dbe3ea;border-radius:10px;padding:18px;margin:16px 0;">
       <div style="font-size:12px;font-weight:700;color:#0f766e;">${escapeHtml(product.productCode)} · ${escapeHtml(product.suburb)}, ${escapeHtml(product.state)}</div>
@@ -153,7 +203,7 @@ function buildBroadcastHtml(input: {
       <div style="background:#1a2744;padding:24px;"><h1 style="color:white;margin:0;font-size:23px;">Secure Cleaning</h1></div>
       <div style="padding:26px 24px;">
         <p>Hi ${escapeHtml(input.cleaner.name)},</p>
-        <p>${escapeHtml(input.intro)}</p>
+        <p style="line-height:1.6;">${messageHtml}</p>
         ${cards}
         <p style="margin:26px 0;"><a href="${escapeHtml(input.jobsUrl)}" style="display:inline-block;background:#16a34a;color:white;padding:13px 20px;border-radius:7px;text-decoration:none;font-weight:700;">View all available jobs</a></p>
         <p>Kind regards,<br><br>${escapeHtml(input.actor.displayName)}<br>${escapeHtml(input.actor.jobTitle)}<br>Secure Cleaning<br>${escapeHtml(input.actor.phone)}<br>${escapeHtml(input.actor.email)}</p>
@@ -176,6 +226,11 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   const idempotencyKey = clean(input.idempotencyKey, 100)
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('A valid send request ID is required.')
   const state = assertBroadcastState(actor, input.state)
+  const recipientMode = getRecipientMode(input.recipientMode)
+  const targetCleanerId = recipientMode === 'single' ? clean(input.cleanerId, 80) : ''
+  if (recipientMode === 'single' && !targetCleanerId) {
+    throw new ContractProductError('Select a cleaner before sending.')
+  }
   const subject = clean(input.subject, 240)
   const intro = clean(input.intro, 2000)
   if (!subject || !intro) throw new ContractProductError('Subject and introductory message are required.')
@@ -185,13 +240,15 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   let products: BroadcastProduct[] = []
   let campaign: { status: string; sent_count: number; failed_count: number; skipped_count: number } | null = null
   const { data: existingCampaign, error: existingError } = await db.from('cleaner_broadcast_campaigns')
-    .select('id, state, subject_snapshot, intro_snapshot, status, sent_count, failed_count, skipped_count')
+    .select('id, state, subject_snapshot, intro_snapshot, recipient_mode, target_cleaner_id, status, sent_count, failed_count, skipped_count')
     .eq('idempotency_key', idempotencyKey).eq('sender_staff_id', actor.id).maybeSingle()
   if (existingError) throw existingError
   if (existingCampaign) {
     duplicate = true
     campaignId = String(existingCampaign.id)
-    if (existingCampaign.state !== state || existingCampaign.subject_snapshot !== subject || existingCampaign.intro_snapshot !== intro) {
+    if (existingCampaign.state !== state || existingCampaign.subject_snapshot !== subject || existingCampaign.intro_snapshot !== intro
+      || existingCampaign.recipient_mode !== recipientMode
+      || String(existingCampaign.target_cleaner_id ?? '') !== targetCleanerId) {
       throw new ContractProductError('This send request ID belongs to a different broadcast.', 409)
     }
     campaign = existingCampaign
@@ -215,19 +272,23 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
       getBroadcastProducts(actor, state, input.productIds),
       getEligibleCleaners(state),
     ])
-    if (recipients.eligible.length === 0) throw new ContractProductError('No eligible approved cleaners were found for this state.', 409)
-    if (recipients.eligible.some((cleaner) => !cleaner.unsubscribeToken)) {
+    const selectedRecipients = selectBroadcastRecipients(recipients, recipientMode, targetCleanerId)
+    if (selectedRecipients.length === 0) throw new ContractProductError('No eligible approved cleaners were found for this state.', 409)
+    if (selectedRecipients.some((cleaner) => !cleaner.unsubscribeToken)) {
       throw new ContractProductError('One or more cleaner records are missing email preference details.', 409)
     }
-    if (recipients.eligible.length > 50) throw new ContractProductError('This broadcast exceeds the current 50-recipient safety limit.', 409)
+    if (selectedRecipients.length > 50) throw new ContractProductError('This broadcast exceeds the current 50-recipient safety limit.', 409)
     products = newProducts
-    const { data: campaignIdValue, error: campaignError } = await db.rpc('create_cleaner_broadcast_campaign', {
+    const { data: campaignIdValue, error: campaignError } = await db.rpc('create_cleaner_broadcast_campaign_v2', {
       p_idempotency_key: idempotencyKey,
       p_state: state,
       p_subject: subject,
       p_intro: intro,
       p_product_ids: products.map((product) => product.id),
       p_product_snapshots: products,
+      p_recipient_mode: recipientMode,
+      p_target_cleaner_id: targetCleanerId || null,
+      p_recipient_cleaner_ids: selectedRecipients.map((cleaner) => cleaner.id),
       p_actor_id: actor.id,
       p_actor_role: actor.role,
       p_actor_state: actor.productState,
@@ -369,13 +430,14 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
 export async function getContractProductBroadcastHistory(actor: ContractProductActor) {
   const db = getAdminSupabase()
   let query = db.from('cleaner_broadcast_campaigns')
-    .select('id, state, subject_snapshot, status, recipient_count, sent_count, failed_count, skipped_count, sender_staff_id, created_at, completed_at')
+    .select('id, state, subject_snapshot, recipient_mode, target_cleaner_id, status, recipient_count, sent_count, failed_count, skipped_count, sender_staff_id, created_at, completed_at')
     .order('created_at', { ascending: false }).limit(50)
   if (actor.role === 'agent') query = query.eq('sender_staff_id', actor.id)
   const { data, error } = await query
   if (error) throw error
   return (data ?? []).map((row) => ({
     id: String(row.id), state: String(row.state), subject: String(row.subject_snapshot), status: String(row.status),
+    recipientMode: row.recipient_mode === 'single' ? 'single' : 'state',
     recipientCount: Number(row.recipient_count), sentCount: Number(row.sent_count), failedCount: Number(row.failed_count),
     skippedCount: Number(row.skipped_count), createdAt: String(row.created_at), completedAt: row.completed_at ? String(row.completed_at) : null,
   }))
