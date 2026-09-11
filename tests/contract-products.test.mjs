@@ -45,7 +45,15 @@ function finalDocument() {
     firmQuoteDraft: {
       status: 'reviewed', revisedInputs: {}, moppingMinutesPerSqm: 0.25, pricingAdjustmentPercent: 0,
       targetPrice: '', finalPerVisit: '', scopeSummary: 'private free text', inclusions: '', exclusions: '', serviceCommentary: '',
-      roomItems: [{ id: 'room-1', type: 'office', label: 'Client-specific room name', description: 'private note', quantity: 2, size: 60, floor: 1 }],
+      roomItems: [{
+        id: 'room-1', type: 'office', label: 'Downstairs meeting room',
+        description: 'Clean the presentation wall after each service.', quantity: 2, size: 60, floor: 1,
+        metrics: { screens: 2 },
+        customMetricFields: [{
+          id: 'screens', label: 'Presentation screens', inputType: 'integer', defaultValue: 0,
+          includedUnits: 0, pricePerUnit: 1, cadence: 'every_clean',
+        }],
+      }],
     },
     pricingPreview: {}, displayPrice: { low: 200, high: 200, isFirm: true },
     roomTypeConfig: DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
@@ -113,16 +121,54 @@ test('cleaner scope is a privacy-safe immutable projection of the reviewed final
   const scope = buildCleanerScopeSnapshot(finalDocument())
   assert.equal(scope.state, 'VIC')
   assert.equal(scope.suburb, 'Richmond')
-  assert.equal(scope.rooms[0].label, 'Office area')
+  assert.equal(scope.rooms[0].label, 'Downstairs meeting room')
+  assert.equal(scope.rooms[0].description, 'Clean the presentation wall after each service.')
+  assert.equal(scope.rooms[0].size, 60)
   assert.ok(scope.rooms[0].tasks.length > 0)
+  assert.deepEqual(scope.rooms[0].selectedOptions, [
+    'Bins: 1 — Every clean',
+    'Presentation screens: 2 — Every clean',
+  ])
   assert.deepEqual(scope.selectedOptions, ['High-touch disinfection'])
   assert.equal(isPublishableCleanerScope(scope), true)
   const serialized = JSON.stringify(scope)
-  for (const privateValue of ['Private Client', 'Private Street', 'pat@example.com', '0400000000', 'private free text', 'private note']) {
+  for (const privateValue of ['Private Client', 'Private Street', 'pat@example.com', '0400000000', 'private free text']) {
     assert.doesNotMatch(serialized, new RegExp(privateValue, 'i'))
   }
   assert.equal(containsForbiddenCleanerScopeData({ nested: { email: 'test@example.com' } }), true)
   assert.equal(isPublishableCleanerScope({ ...scope, contactName: 'Pat Person' }), false)
+})
+
+test('contract product scope refresh is authorized, source-bound, audited, and limited to editable products', () => {
+  const products = source('src/lib/contractProducts.ts')
+  const route = source('src/app/api/admin/contract-products/route.ts')
+  const migration = source('supabase/contract_product_scope_refresh_migration.sql')
+  assert.match(products, /export async function refreshContractProductScope/)
+  assert.match(products, /getAuthorizedProduct\(actor, productId\)/)
+  assert.match(products, /\['draft', 'withdrawn'\]\.includes/)
+  assert.match(products, /\.eq\('id', String\(current\.source_quote_id\)\)/)
+  assert.match(products, /assertCleanerListingExcludesSourcePii/)
+  assert.match(products, /rpc\('refresh_contract_product_cleaner_scope'/)
+  assert.match(route, /product\.refresh-scope/)
+  assert.match(route, /contract-product-scope-refresh/)
+  assert.match(migration, /SECURITY DEFINER\s+SET search_path = public, pg_temp/)
+  assert.match(migration, /product_row\.status NOT IN \('draft', 'withdrawn'\)/)
+  assert.match(migration, /product_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.match(migration, /cleaner scope does not match winning quote/)
+  assert.match(migration, /contract_product\.scope_refreshed_from_winning_quote/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION refresh_contract_product_cleaner_scope[\s\S]+FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION refresh_contract_product_cleaner_scope[\s\S]+TO service_role/)
+})
+
+test('cleaner product views render the exact room scope details and remain compatible with older snapshots', () => {
+  const admin = source('src/components/admin/ContractProductsWorkspace.tsx')
+  const cleaner = source('src/app/jobs/[code]/page.tsx')
+  for (const view of [admin, cleaner]) {
+    assert.match(view, /room\.description/)
+    assert.match(view, /room\.size > 0/)
+    assert.match(view, /room\.selectedOptions \?\? \[\]/)
+    assert.match(view, /Selected for this area/)
+  }
 })
 
 test('product access and lifecycle keep agents within their assigned records', () => {

@@ -104,7 +104,7 @@ function formatMetricValue(value: number | boolean) {
   return typeof value === 'number' && Number.isInteger(value) ? String(value) : String(value)
 }
 
-function getRoomSelectedOptions(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
+export function getRoomScopeSelectedOptions(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
   const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
   const options: string[] = []
 
@@ -153,7 +153,7 @@ function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeCon
     tasks: typeConfig
       ? getRoomScopeTaskSchedule(typeConfig, room.scopeTaskSelections, true)
       : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' as const })),
-    selectedOptions: getRoomSelectedOptions(room, roomTypeConfig),
+    selectedOptions: getRoomScopeSelectedOptions(room, roomTypeConfig),
   }
 }
 

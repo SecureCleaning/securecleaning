@@ -1,6 +1,7 @@
 import type { FirmQuoteDisplayPrice, FirmQuoteDraft } from '@/lib/quoteWorkflow'
 import { getRoomScopeTaskSchedule, getRoomTypeConfigById } from '@/lib/roomTypeConfig'
 import type { QuoteRoomTypeConfig, RoomScopeTaskSchedule } from '@/lib/roomTypeConfig'
+import { getRoomScopeSelectedOptions } from '@/lib/scopeOfWorks'
 import type { AdminRole } from '@/lib/staffAccounts'
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
 
@@ -25,10 +26,12 @@ export type CleanerScopeSnapshotV1 = {
   rooms: Array<{
     type: string
     label: string
+    description?: string
     quantity: number
     size: number
     floor: number
     tasks: CleanerScopeTask[]
+    selectedOptions?: string[]
   }>
   selectedOptions: string[]
 }
@@ -147,13 +150,17 @@ export function buildCleanerScopeSnapshot(document: ContractProductQuoteSnapshot
     summary: `Recurring cleaning for a ${premisesLabel} site in ${suburb}, ${state}.`,
     rooms: document.firmQuoteDraft.roomItems.map((room) => {
       const config = getRoomTypeConfigById(document.roomTypeConfig, room.type)
+      const savedLabel = room.label?.trim().slice(0, 160)
+      const description = room.description?.trim().slice(0, 1000)
       return {
         type: room.type,
-        label: config?.defaultLabel ?? config?.label ?? 'Service area',
+        label: savedLabel || config?.defaultLabel || config?.label || 'Service area',
+        ...(description ? { description } : {}),
         quantity: Math.max(1, Math.round(Number(room.quantity) || 1)),
         size: Math.max(0, Number(room.size) || 0),
         floor: Math.max(1, Math.round(Number(room.floor) || 1)),
         tasks: config ? getRoomScopeTaskSchedule(config, room.scopeTaskSelections, true) : [],
+        selectedOptions: getRoomScopeSelectedOptions(room, document.roomTypeConfig),
       }
     }),
     selectedOptions: selectedOptions(document),

@@ -99,6 +99,17 @@ function digits(value: unknown) {
   return clean(value, 100).replace(/[^0-9]/g, '')
 }
 
+function cleanerScopeUserText(value: unknown) {
+  if (!value || typeof value !== 'object') return ''
+  const scope = value as Partial<CleanerScopeSnapshotV1>
+  const roomText = Array.isArray(scope.rooms)
+    ? scope.rooms.flatMap((room) => [room.label, room.description, ...(room.selectedOptions ?? [])])
+    : []
+  return [...roomText, ...(Array.isArray(scope.selectedOptions) ? scope.selectedOptions : [])]
+    .filter((item): item is string => typeof item === 'string')
+    .join(' ')
+}
+
 async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
   const db = getAdminSupabase()
   const { data: opportunity, error } = await db.from('crm_opportunities')
@@ -113,7 +124,9 @@ async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
       : Promise.resolve({ data: null, error: null }),
   ])
   for (const result of [organisation, contact, site]) if (result.error) throw result.error
-  const listingText = normalizedText(`${product.heading ?? ''} ${product.description ?? ''}`)
+  const listingText = normalizedText(
+    `${product.heading ?? ''} ${product.description ?? ''} ${cleanerScopeUserText(product.cleaner_scope_snapshot)}`,
+  )
   const sensitiveText = [
     organisation.data?.business_name, organisation.data?.legal_name,
     contact.data?.business_name, contact.data?.contact_name, contact.data?.email,
@@ -339,6 +352,53 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   if (error) throw error
   if (!data) throw new ContractProductError('This product changed while you were editing it. Reload and try again.', 409)
   return mapProduct(data as ProductRow)
+}
+
+export async function refreshContractProductScope(actor: ContractProductActor, input: Record<string, unknown>) {
+  const productId = clean(input.productId, 100)
+  const expectedUpdatedAt = clean(input.expectedUpdatedAt, 100)
+  if (!productId || !expectedUpdatedAt) throw new ContractProductError('Product ID and current version are required.')
+  const current = await getAuthorizedProduct(actor, productId)
+  if (String(current.updated_at) !== expectedUpdatedAt) {
+    throw new ContractProductError('This product changed while you were editing it. Reload and try again.', 409)
+  }
+  if (!['draft', 'withdrawn'].includes(String(current.status))) {
+    throw new ContractProductError('Withdraw an available product before refreshing its scope.', 409)
+  }
+
+  const db = getAdminSupabase()
+  const { data: quote, error: quoteError } = await db.from('quotes')
+    .select('id, inputs, result, firm_quote_workflow, final_quote_document, final_quote_document_version')
+    .eq('id', String(current.source_quote_id)).maybeSingle()
+  if (quoteError) throw quoteError
+  if (!quote) throw new ContractProductError('The winning quote is no longer available.', 409)
+
+  const sourceSnapshot = await getContractProductQuoteSnapshot(quote as ProductRow)
+  const cleanerScopeSnapshot = buildCleanerScopeSnapshot(sourceSnapshot)
+  if (!isPublishableCleanerScope(cleanerScopeSnapshot)) {
+    throw new ContractProductError('The winning quote could not be converted into a privacy-safe cleaner scope.', 409)
+  }
+  if (actor.role === 'agent' && cleanerScopeSnapshot.state !== actor.productState) {
+    throw new ContractProductError('Agents can only refresh products in their assigned state.', 403)
+  }
+  await assertCleanerListingExcludesSourcePii({ ...current, cleaner_scope_snapshot: cleanerScopeSnapshot })
+
+  const sourceVersion = quote.final_quote_document
+    ? Math.max(1, Math.round(Number(quote.final_quote_document_version) || 1))
+    : 1
+  const { data, error } = await db.rpc('refresh_contract_product_cleaner_scope', {
+    p_product_id: productId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_source_quote_document_version: sourceVersion,
+    p_cleaner_scope_snapshot: cleanerScopeSnapshot,
+    p_actor_id: actor.id,
+    p_actor_role: actor.role,
+    p_actor_state: actor.productState,
+  })
+  if (error?.code === '40001') throw new ContractProductError('This product changed while you were editing it. Reload and try again.', 409)
+  if (error?.code === '42501') throw new ContractProductError('You cannot refresh this product.', 403)
+  if (error) throw error
+  return { productId, updatedAt: String(data) }
 }
 
 export async function publishContractProduct(actor: ContractProductActor, input: Record<string, unknown>) {
