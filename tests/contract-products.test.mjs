@@ -169,6 +169,9 @@ test('cleaner product views render the exact room scope details and remain compa
     assert.match(view, /room\.selectedOptions \?\? \[\]/)
     assert.match(view, /Selected for this area/)
   }
+  assert.match(admin, /Refresh from winning quote/)
+  assert.match(admin, /product\.refresh-scope/)
+  assert.match(admin, /expectedUpdatedAt: selected\.updatedAt/)
 })
 
 test('product access and lifecycle keep agents within their assigned records', () => {
