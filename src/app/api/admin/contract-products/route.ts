@@ -5,6 +5,7 @@ import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
   getContractProductBroadcastHistory,
   listEligibleContractProductBroadcastCleaners,
+  listContractProductBroadcastSenders,
   previewContractProductBroadcast,
   sendContractProductBroadcast,
 } from '@/lib/contractProductBroadcasts'
@@ -30,11 +31,12 @@ export async function GET(request: NextRequest) {
   const actor = await getContractProductActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Contract product access required.' }, { status: 403 })
   try {
-    const [products, broadcasts, templates, accessLinkId] = await Promise.all([
+    const [products, broadcasts, templates, accessLinkId, senders] = await Promise.all([
       getContractProducts(actor),
       getContractProductBroadcastHistory(actor),
       getContractProductBroadcastTemplates(),
       getActiveJobsAccessLinkId(),
+      listContractProductBroadcastSenders(actor),
     ])
     const accessToken = accessLinkId ? createCleanerJobsAccessToken(accessLinkId) : ''
     return NextResponse.json({
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
       products,
       broadcasts,
       templates,
+      senders,
       actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
       jobsUrl: accessToken ? `${getSiteUrl()}/jobs/access/${encodeURIComponent(accessToken)}` : '',
     })

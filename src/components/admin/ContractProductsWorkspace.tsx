@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
+import { getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
 import { CONTRACT_PRODUCT_STATES } from '@/lib/contractProductPolicy'
 import { getContractProductStartDateDraft, resolveContractProductStartDate } from '@/lib/contractProductListingDetails'
 import type { ContractProduct } from '@/lib/contractProducts'
@@ -15,13 +16,15 @@ function cleanerTaskDisplay(task: string | { label: string; cadence: string }) {
 
 type WorkspaceData = {
   products: ContractProduct[]
-  broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single'; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
+  broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single' | 'multiple'; senderName: string; senderEmail: string; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
   templates: Array<{ id: string; name: string; subject: string; message: string; updatedAt: string }>
+  senders: BroadcastSender[]
   actor: { id: string; role: string; state: string | null; displayName: string }
   jobsUrl: string
 }
 
 type BroadcastCleaner = { id: string; name: string; businessName: string; email: string }
+type BroadcastSender = { id: string; displayName: string; email: string; jobTitle: string; phone: string; role: string }
 
 type ProductDraft = {
   heading: string
@@ -86,11 +89,13 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastProducts, setBroadcastProducts] = useState<string[]>([])
   const [broadcastSubject, setBroadcastSubject] = useState('')
   const [broadcastIntro, setBroadcastIntro] = useState('')
-  const [broadcastRecipientMode, setBroadcastRecipientMode] = useState<'state' | 'single'>('state')
+  const [broadcastRecipientMode, setBroadcastRecipientMode] = useState<'state' | 'single' | 'multiple'>('state')
   const [broadcastCleanerId, setBroadcastCleanerId] = useState('')
+  const [broadcastCleanerEmails, setBroadcastCleanerEmails] = useState('')
+  const [broadcastSenderId, setBroadcastSenderId] = useState('')
   const [broadcastCleaners, setBroadcastCleaners] = useState<BroadcastCleaner[]>([])
   const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
-  const [broadcastPreview, setBroadcastPreview] = useState<{ recipientCount: number; consideredCount: number; excluded: Record<string, number>; targetCleaner: BroadcastCleaner | null; canSend: boolean } | null>(null)
+  const [broadcastPreview, setBroadcastPreview] = useState<{ recipientCount: number; consideredCount: number; excluded: Record<string, number>; targetCleaner: BroadcastCleaner | null; targetCleaners: BroadcastCleaner[]; canSend: boolean } | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
@@ -101,6 +106,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     if (!response.ok) throw new Error(result.error || 'Unable to load contract products.')
     const next = result as WorkspaceData & { success: boolean }
     setData(next)
+    setBroadcastSenderId((current) => next.senders.some((sender) => sender.id === current) ? current : next.actor.id)
     const id = next.products.some((product) => product.id === preferredId) ? preferredId : next.products[0]?.id ?? ''
     setSelectedId(id)
     const selected = next.products.find((product) => product.id === id)
@@ -144,6 +150,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const stateJobsUrl = data?.jobsUrl
     ? `${data.jobsUrl}${data.jobsUrl.includes('?') ? '&' : '?'}state=${encodeURIComponent(broadcastState)}`
     : ''
+  const selectedBroadcastSender = data?.senders.find((sender) => sender.id === broadcastSenderId) ?? null
+  const broadcastSenderMissing = selectedBroadcastSender ? getMissingCrmSignatureFields(selectedBroadcastSender) : ['sender']
 
   function invalidateBroadcastPreview() {
     setBroadcastPreview(null)
@@ -228,6 +236,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         productIds: broadcastProducts,
         recipientMode: broadcastRecipientMode,
         cleanerId: broadcastCleanerId,
+        cleanerEmails: broadcastCleanerEmails,
       })
       setBroadcastPreview(result)
       if (!broadcastSubject) setBroadcastSubject(result.defaultSubject)
@@ -243,7 +252,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setBroadcastRequestId(requestId)
       const result = await action('broadcast.send', {
         state: broadcastState, productIds: broadcastProducts, subject: broadcastSubject, intro: broadcastIntro,
-        recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId,
+        recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId, cleanerEmails: broadcastCleanerEmails,
+        senderStaffId: broadcastSenderId,
         idempotencyKey: requestId,
       })
       if (result.inProgress) {
@@ -330,7 +340,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     </div> : <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-xl font-bold">Email available jobs</h2>
-        <p className="mt-1 text-sm text-gray-600">Send to one approved cleaner or every eligible cleaner in a selected state. Every email includes the selected products and the state-filtered available-jobs link.</p>
+        <p className="mt-1 text-sm text-gray-600">Send to one cleaner, a selected group, or every eligible cleaner in a state. Every email includes the selected products and the state-filtered available-jobs link.</p>
 
         <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
           <h3 className="font-semibold text-gray-900">1. Choose recipients</h3>
@@ -340,6 +350,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
                 setBroadcastState(event.target.value)
                 setBroadcastProducts([])
                 setBroadcastCleanerId('')
+                setBroadcastCleanerEmails('')
                 invalidateBroadcastPreview()
               }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
                 {CONTRACT_PRODUCT_STATES.map((state) => <option key={state}>{state}</option>)}
@@ -348,8 +359,9 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
             <fieldset>
               <legend className="text-sm font-medium">Send to</legend>
               <div className="mt-2 flex flex-col gap-2 text-sm">
-                <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'state'} onChange={() => { setBroadcastRecipientMode('state'); setBroadcastCleanerId(''); invalidateBroadcastPreview() }} /> All eligible cleaners in {broadcastState}</label>
+                <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'state'} onChange={() => { setBroadcastRecipientMode('state'); setBroadcastCleanerId(''); setBroadcastCleanerEmails(''); invalidateBroadcastPreview() }} /> All eligible cleaners in {broadcastState}</label>
                 <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'single'} onChange={() => { setBroadcastRecipientMode('single'); invalidateBroadcastPreview() }} /> One cleaner</label>
+                <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'multiple'} onChange={() => { setBroadcastRecipientMode('multiple'); setBroadcastCleanerId(''); invalidateBroadcastPreview() }} /> Selected cleaners</label>
               </div>
             </fieldset>
             {broadcastRecipientMode === 'single' ? <label className="text-sm font-medium sm:col-span-2">Cleaner
@@ -358,6 +370,10 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
                 {broadcastCleaners.map((cleaner) => <option key={cleaner.id} value={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.name} · {cleaner.email}</option>)}
               </select>
               <span className="mt-1 block text-xs font-normal text-gray-500">Only approved, non-suppressed cleaners in {broadcastState} are available.</span>
+            </label> : broadcastRecipientMode === 'multiple' ? <label className="text-sm font-medium sm:col-span-2">Cleaner email addresses
+              <textarea rows={3} maxLength={5000} value={broadcastCleanerEmails} onChange={(event) => { setBroadcastCleanerEmails(event.target.value); invalidateBroadcastPreview() }} placeholder="cleaner.one@example.com.au, cleaner.two@example.com.au" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5" />
+              <span className="mt-1 block text-xs font-normal text-gray-500">Enter 2–50 addresses separated by commas, semicolons, or new lines. Every address must match an approved, eligible cleaner in {broadcastState}; no email is sent until the list passes the check below.</span>
+              {!broadcastCleanersLoading && broadcastCleaners.length > 0 ? <span className="mt-2 block text-xs font-normal text-gray-500">Eligible addresses: {broadcastCleaners.map((cleaner) => cleaner.email).join(', ')}</span> : null}
             </label> : <p className="text-sm text-gray-600 sm:col-span-2">{broadcastCleanersLoading ? 'Checking cleaner eligibility...' : `${broadcastCleaners.length} cleaners are currently eligible in ${broadcastState}. Final eligibility is checked again before sending.`}</p>}
           </div>
         </div>
@@ -379,6 +395,16 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
 
         <div className="mt-4 rounded-xl border border-gray-200 p-4">
           <h3 className="font-semibold text-gray-900">3. Write the email</h3>
+          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="text-sm font-medium">Send as
+              {data.actor.role === 'owner' ? <select value={broadcastSenderId} onChange={(event) => { setBroadcastSenderId(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                {data.senders.map((sender) => <option key={sender.id} value={sender.id}>{sender.displayName} · {sender.jobTitle} · {sender.email}</option>)}
+              </select> : <span className="mt-1 block rounded-lg border border-gray-300 bg-white px-3 py-2.5 font-normal">{selectedBroadcastSender?.displayName ?? data.actor.displayName}</span>}
+            </label>
+            {selectedBroadcastSender ? <p className="mt-2 whitespace-pre-line text-xs text-gray-600">{`Email signature:\n${selectedBroadcastSender.displayName}\n${selectedBroadcastSender.jobTitle}\nSecure Cleaning\n${selectedBroadcastSender.phone}\n${selectedBroadcastSender.email}`}</p> : null}
+            <p className="mt-2 text-xs text-gray-500">The selected name appears in the From heading and signature. Replies go to this person&apos;s work email. Unless the owner changes this selection, it defaults to whoever is signed in.</p>
+            {broadcastSenderMissing.length > 0 ? <p className="mt-2 text-xs font-semibold text-amber-800">Complete this sender&apos;s Team Access details before sending: {broadcastSenderMissing.join(', ')}.</p> : null}
+          </div>
           <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
             <label className="text-sm font-medium">Email template
               <select value={selectedTemplateId} onChange={(event) => { setSelectedTemplateId(event.target.value); setTemplateName(data.templates.find((template) => template.id === event.target.value)?.name ?? '') }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
@@ -406,12 +432,12 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         </div>
 
         <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy) || stateProducts.length === 0 || (broadcastRecipientMode === 'single' && !broadcastCleanerId)} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.preview' ? 'Checking...' : 'Check recipients & content'}</button>
-          {broadcastPreview ? <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button> : null}
+          <button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy) || stateProducts.length === 0 || (broadcastRecipientMode === 'single' && !broadcastCleanerId) || (broadcastRecipientMode === 'multiple' && !broadcastCleanerEmails.trim())} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.preview' ? 'Checking...' : 'Check recipients & content'}</button>
+          {broadcastPreview ? <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0 || broadcastSenderMissing.length > 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button> : null}
         </div>
         {broadcastPreview ? <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
           <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
-          {broadcastPreview.targetCleaner ? <p className="mt-1 text-gray-700">{broadcastPreview.targetCleaner.businessName || broadcastPreview.targetCleaner.name} · {broadcastPreview.targetCleaner.email}</p> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
+          {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
           <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
           {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">This exceeds the 50-recipient safety limit. Send to one cleaner or narrow the approved cleaner list before sending.</p> : null}
         </div> : null}
@@ -435,7 +461,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
           <h2 className="text-lg font-bold">Email history</h2>
           <div className="mt-3 divide-y divide-gray-100">{data.broadcasts.map((campaign) => <div key={campaign.id} className="py-3 text-sm">
             <div className="flex justify-between gap-3"><strong>{campaign.state} · {campaign.subject}</strong><span className="text-xs uppercase text-gray-500">{campaign.status}</span></div>
-            <p className="mt-1 text-xs text-gray-500">{campaign.recipientMode === 'single' ? 'Single cleaner' : 'State broadcast'} · {new Date(campaign.createdAt).toLocaleString('en-AU')}</p>
+            <p className="mt-1 text-xs text-gray-500">{campaign.recipientMode === 'single' ? 'Single cleaner' : campaign.recipientMode === 'multiple' ? 'Selected cleaners' : 'State broadcast'} · {new Date(campaign.createdAt).toLocaleString('en-AU')}</p>
+            <p className="mt-1 text-xs text-gray-500">Sent as {campaign.senderName || 'Secure Cleaning'}{campaign.senderEmail ? ` · ${campaign.senderEmail}` : ''}</p>
             <p className="mt-1 text-xs text-gray-500">{campaign.sentCount}/{campaign.recipientCount} sent · {campaign.failedCount} unresolved/failed</p>
           </div>)}{data.broadcasts.length === 0 ? <p className="py-3 text-sm text-gray-500">No emails sent yet.</p> : null}</div>
         </section>
