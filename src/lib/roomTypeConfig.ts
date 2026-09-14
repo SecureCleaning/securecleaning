@@ -175,6 +175,15 @@ export function getRoomTaskCadenceLabel(cadence: RoomTaskCadence) {
   return ROOM_TASK_CADENCE_LABELS[cadence] ?? 'Every clean'
 }
 
+export function getEffectiveRoomTaskCadence(
+  cadence: RoomTaskCadence,
+  frequency: CleaningFrequency
+): RoomTaskCadence {
+  if (cadence === 'every_clean' || frequency === 'once_off') return 'every_clean'
+  const visits = VISITS_PER_YEAR[frequency] || 1
+  return TASK_OCCURRENCES_PER_YEAR[cadence] >= visits ? 'every_clean' : cadence
+}
+
 export function getRoomScopeTaskCadence(roomType: RoomTypeConfig, index: number) {
   const configured = roomType.scopeTaskCadences?.[index]
   return isRoomTaskCadence(configured)
@@ -441,7 +450,7 @@ export function getMatchedGlobalRoomTaskRates(
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
-  if (cadence === 'every_clean' || frequency === 'once_off') return 1
+  if (getEffectiveRoomTaskCadence(cadence, frequency) === 'every_clean') return 1
   const visits = VISITS_PER_YEAR[frequency] || 1
   return Math.min(1, TASK_OCCURRENCES_PER_YEAR[cadence] / visits)
 }

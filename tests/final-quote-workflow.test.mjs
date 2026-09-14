@@ -60,6 +60,17 @@ test('monthly frequency is selectable and preserved across quote and booking wor
   }
 })
 
+test('scope email resends use the latest saved document frequency and matching scope variant', () => {
+  const operations = readFileSync(`${root}/src/lib/adminOperations.ts`, 'utf8')
+  const email = readFileSync(`${root}/src/lib/email.ts`, 'utf8')
+
+  assert.match(operations, /const variant = workflow\.finalDocument \? 'final' : 'remote_review'/)
+  assert.match(operations, /getPublicQuoteWorkflowByRef\(quoteRef, variant\)/)
+  assert.match(operations, /sendScopeOfWorksEmail\(quote\.quoteRef, quote\.inputs, variant\)/)
+  assert.match(email, /Service frequency:/)
+  assert.match(email, /variant === 'final' \? \{ variant: 'final' \} : \{\}/)
+})
+
 test('final quote readiness requires review and a positive final price', () => {
   const draft = { status: 'draft', finalPerVisit: '', roomItems: [], revisedInputs: { contactName: '', email: '' } }
   assert.equal(getFinalQuoteReadiness(draft).ready, false)

@@ -1,5 +1,5 @@
 import type { FirmQuoteDisplayPrice, FirmQuoteDraft } from '@/lib/quoteWorkflow'
-import { getRoomScopeTaskSchedule, getRoomTypeConfigById } from '@/lib/roomTypeConfig'
+import { getEffectiveRoomTaskCadence, getRoomScopeTaskSchedule, getRoomTypeConfigById } from '@/lib/roomTypeConfig'
 import type { QuoteRoomTypeConfig, RoomScopeTaskSchedule } from '@/lib/roomTypeConfig'
 import { getRoomScopeSelectedOptions } from '@/lib/scopeOfWorks'
 import type { AdminRole } from '@/lib/staffAccounts'
@@ -160,8 +160,11 @@ export function buildCleanerScopeSnapshot(document: ContractProductQuoteSnapshot
         quantity: Math.max(1, Math.round(Number(room.quantity) || 1)),
         size: Math.max(0, Number(room.size) || 0),
         floor: Math.max(1, Math.round(Number(room.floor) || 1)),
-        tasks: config ? getRoomScopeTaskSchedule(config, room.scopeTaskSelections, true) : [],
-        selectedOptions: getRoomScopeSelectedOptions(room, document.roomTypeConfig),
+        tasks: config ? getRoomScopeTaskSchedule(config, room.scopeTaskSelections, true).map((task) => ({
+          ...task,
+          cadence: getEffectiveRoomTaskCadence(task.cadence, document.inputs.frequency),
+        })) : [],
+        selectedOptions: getRoomScopeSelectedOptions(room, document.roomTypeConfig, document.inputs.frequency),
       }
     }),
     selectedOptions: selectedOptions(document),

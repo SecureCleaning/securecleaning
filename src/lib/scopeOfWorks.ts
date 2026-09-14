@@ -10,6 +10,7 @@ import {
   type WorkflowRoomType,
 } from '@/lib/quoteWorkflow'
 import {
+  getEffectiveRoomTaskCadence,
   getRoomScopeTaskSchedule,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
@@ -105,12 +106,16 @@ function formatMetricValue(value: number | boolean) {
   return typeof value === 'number' && Number.isInteger(value) ? String(value) : String(value)
 }
 
-export function getRoomScopeSelectedOptions(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
+export function getRoomScopeSelectedOptions(
+  room: WorkflowRoomItem,
+  roomTypeConfig: QuoteRoomTypeConfig,
+  frequency: QuoteInputs['frequency']
+) {
   const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
   const options: string[] = []
 
   if (room.moppingEnabled && !STANDARD_MOPPING_ROOM_TYPES.has(room.type)) {
-    options.push(`Mopping — ${getRoomTaskCadenceLabel(typeConfig?.moppingCadence ?? 'every_clean')}`)
+    options.push(`Mopping — ${getRoomTaskCadenceLabel(getEffectiveRoomTaskCadence(typeConfig?.moppingCadence ?? 'every_clean', frequency))}`)
   }
 
   for (const field of getWorkflowRoomMetricFields(room, roomTypeConfig)) {
@@ -118,7 +123,7 @@ export function getRoomScopeSelectedOptions(room: WorkflowRoomItem, roomTypeConf
     if (field.inputType === 'boolean' && value === true) {
       options.push(field.label)
     } else if (field.inputType !== 'boolean' && Number(value ?? 0) > 0) {
-      options.push(`${field.label}: ${formatMetricValue(Number(value))} — ${getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}`)
+      options.push(`${field.label}: ${formatMetricValue(Number(value))} — ${getRoomTaskCadenceLabel(getEffectiveRoomTaskCadence(field.cadence ?? 'every_clean', frequency))}`)
     }
   }
 
@@ -135,7 +140,11 @@ function getGlobalSelectedOptions(inputs: QuoteInputs) {
   return options
 }
 
-function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig): ClientScopeRoom {
+function buildRoomScope(
+  room: WorkflowRoomItem,
+  roomTypeConfig: QuoteRoomTypeConfig,
+  frequency: QuoteInputs['frequency']
+): ClientScopeRoom {
   const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
   const savedSize = Number(room.size)
 
@@ -152,9 +161,12 @@ function buildRoomScope(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeCon
       : undefined,
     floor: room.floor,
     tasks: typeConfig
-      ? getRoomScopeTaskSchedule(typeConfig, room.scopeTaskSelections, true)
+      ? getRoomScopeTaskSchedule(typeConfig, room.scopeTaskSelections, true).map((task) => ({
+          ...task,
+          cadence: getEffectiveRoomTaskCadence(task.cadence, frequency),
+        }))
       : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' as const })),
-    selectedOptions: getRoomScopeSelectedOptions(room, roomTypeConfig),
+    selectedOptions: getRoomScopeSelectedOptions(room, roomTypeConfig, frequency),
   }
 }
 
@@ -200,7 +212,7 @@ export function buildClientScopeReport(
     premisesLabel: PREMISES_LABELS[draft.revisedInputs.premisesType] ?? 'Commercial premises',
     frequencyLabel: FREQUENCY_LABELS[draft.revisedInputs.frequency] ?? draft.revisedInputs.frequency,
     timePreferenceLabel: TIME_LABELS[draft.revisedInputs.timePreference] ?? draft.revisedInputs.timePreference,
-    rooms: draft.roomItems.map((room) => buildRoomScope(room, roomTypeConfig)),
+    rooms: draft.roomItems.map((room) => buildRoomScope(room, roomTypeConfig, draft.revisedInputs.frequency)),
     selectedOptions: globalOptions,
     summary: draft.scopeSummary.trim() || 'Regular cleaning of the listed areas, completed to the agreed frequency and service requirements.',
     inclusions: draft.inclusions.trim(),

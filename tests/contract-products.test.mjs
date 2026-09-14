@@ -149,6 +149,16 @@ test('cleaner scope is a privacy-safe immutable projection of the reviewed final
   assert.equal(isPublishableCleanerScope({ ...scope, contactName: 'Pat Person' }), false)
 })
 
+test('monthly winning quotes cap cleaner product tasks to the available visit schedule', () => {
+  const document = finalDocument()
+  document.inputs.frequency = 'monthly'
+  const scope = buildCleanerScopeSnapshot(document)
+
+  assert.equal(scope.frequency, 'monthly')
+  assert.ok(scope.rooms[0].tasks.length > 0)
+  assert.equal(scope.rooms[0].tasks.every((task) => typeof task === 'string' || task.cadence === 'every_clean'), true)
+})
+
 test('contract product scope refresh is authorized, source-bound, audited, and limited to editable products', () => {
   const products = source('src/lib/contractProducts.ts')
   const route = source('src/app/api/admin/contract-products/route.ts')

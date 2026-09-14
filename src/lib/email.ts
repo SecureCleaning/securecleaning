@@ -253,10 +253,18 @@ export async function sendQuoteEmail(
 
 }
 
-export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInputs): Promise<void> {
+export async function sendScopeOfWorksEmail(
+  quoteRef: string,
+  inputs: QuoteInputs,
+  variant: 'remote_review' | 'final' = 'remote_review'
+): Promise<void> {
   const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({
+    ...(variant === 'final' ? { variant: 'final' } : {}),
+    handoff: bookingHandoffToken,
+  }).toString()}`
   const businessLabel = inputs.businessName?.trim() || 'your premises'
+  const frequencyLabel = inputs.frequency.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase())
 
   await sendEmailOrThrow({
     from: FROM_EMAIL,
@@ -272,7 +280,8 @@ export async function sendScopeOfWorksEmail(quoteRef: string, inputs: QuoteInput
         <div style="padding: 32px 24px;">
           <p>Hi ${inputs.contactName},</p>
           <p>Your client scope of works for <strong>${businessLabel}</strong> is ready to view online.</p>
-          <p>The report lists the planned areas, regular tasks, and options selected for your remote quotation. Any agreed changes can be reflected in the same online report.</p>
+          <p><strong>Service frequency:</strong> ${frequencyLabel}</p>
+          <p>The report lists the planned areas, regular tasks, and options selected for your ${variant === 'final' ? 'final quote' : 'remote quotation'}. Any agreed changes can be reflected in the same online report.</p>
           <p style="margin: 28px 0; text-align: center;">
             <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Scope of Works</a>
           </p>

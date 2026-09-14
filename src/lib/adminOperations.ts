@@ -2,7 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail, sendQuoteEmail, sendScopeOfWorksEmail } from '@/lib/email'
 import type { BookingInputs, QuoteInputs } from '@/lib/types'
 import { writeAuditLog } from '@/lib/auditLog'
-import { getPublicQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getPublicQuoteWorkflowByRef, getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { isBookingStatus } from '@/lib/bookingStatus'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 
@@ -50,18 +50,13 @@ export async function resendQuoteEmailByRef(quoteRef: string) {
 }
 
 export async function resendScopeOfWorksEmailByRef(quoteRef: string) {
-  const db = getAdminSupabase()
+  const workflow = await getQuoteWorkflowByRef(quoteRef)
+  if (!workflow) throw new Error('Quote not found.')
+  const variant = workflow.finalDocument ? 'final' : 'remote_review'
+  const quote = await getPublicQuoteWorkflowByRef(quoteRef, variant)
+  if (!quote) throw new Error('Quote not found.')
 
-  const { data, error } = await db
-    .from('quotes')
-    .select('quote_ref, inputs')
-    .eq('quote_ref', quoteRef)
-    .maybeSingle()
-
-  if (error) throw error
-  if (!data) throw new Error('Quote not found.')
-
-  await sendScopeOfWorksEmail(data.quote_ref, data.inputs as QuoteInputs)
+  await sendScopeOfWorksEmail(quote.quoteRef, quote.inputs, variant)
   await writeAuditLog('quote', quoteRef, 'scope_email_resent')
   return { success: true }
 }

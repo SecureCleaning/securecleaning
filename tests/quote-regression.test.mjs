@@ -18,6 +18,7 @@ const {
   ensureStandardRoomTasks,
   ensureWeeklyPerimeterSurfaceDusting,
   getDefaultRoomScopeTaskSelections,
+  getEffectiveRoomTaskCadence,
   getGlobalRoomTaskRates,
   getMatchedGlobalRoomTaskRates,
   getRoomScopeTaskGlobalRateCode,
@@ -329,6 +330,52 @@ test('periodic task prices are amortised across the configured cleaning frequenc
     ...draft,
     roomItems: [{ ...draft.roomItems[0], scopeTaskSelections: selections }],
   }, config) - 2.4) < 0.000001)
+})
+
+test('client task schedules cannot promise work more often than the quote service visits', () => {
+  assert.equal(getEffectiveRoomTaskCadence('weekly', 'daily'), 'weekly')
+  assert.equal(getEffectiveRoomTaskCadence('weekly', 'weekly'), 'every_clean')
+  assert.equal(getEffectiveRoomTaskCadence('weekly', 'fortnightly'), 'every_clean')
+  assert.equal(getEffectiveRoomTaskCadence('weekly', 'monthly'), 'every_clean')
+  assert.equal(getEffectiveRoomTaskCadence('monthly', 'monthly'), 'every_clean')
+  assert.equal(getEffectiveRoomTaskCadence('quarterly', 'monthly'), 'quarterly')
+
+  const roomTypeConfig = {
+    roomTypes: [{
+      id: 'other', label: 'Other', defaultLabel: 'Other', tracksSize: true, defaultSize: 20,
+      defaultMopping: true, moppingCadence: 'weekly',
+      scopeTasks: ['Dust desks', 'Remove cobwebs', 'Quarterly detail'],
+      scopeTaskCadences: ['weekly', 'monthly', 'quarterly'],
+      pricingAdjustmentPercent: 0, fixedPricePerVisit: 0,
+      fields: [{
+        id: 'glass', label: 'Glass panels', inputType: 'integer', defaultValue: 0,
+        includedUnits: 0, pricePerUnit: 1, cadence: 'weekly',
+      }],
+    }],
+  }
+  const monthlyInputs = { ...baseInputs, frequency: 'monthly' }
+  const monthlyDraft = {
+    status: 'draft', revisedInputs: monthlyInputs,
+    roomItems: [{ id: 'room-1', type: 'other', label: 'Other', quantity: 1, size: 20, floor: 1, moppingEnabled: true, metrics: { glass: 2 } }],
+    pricingAdjustmentPercent: 0, targetPrice: '', finalPerVisit: '', scopeSummary: '', inclusions: '', exclusions: '', serviceCommentary: '',
+  }
+  const report = buildClientScopeReport(
+    'SC-MONTHLY', monthlyInputs, calculateQuote(monthlyInputs), monthlyDraft, roomTypeConfig
+  )
+
+  assert.deepEqual(report.rooms[0].tasks.map((task) => task.cadence), ['every_clean', 'every_clean', 'quarterly'])
+  assert.deepEqual(report.rooms[0].selectedOptions, [
+    'Mopping — Every clean',
+    'Glass panels: 2 — Every clean',
+  ])
+
+  const weeklyPreview = buildFirmQuotePreview({
+    ...monthlyDraft,
+    revisedInputs: { ...monthlyInputs, frequency: 'weekly' },
+  }, DEFAULT_QUOTE_PRICING_CONFIG, roomTypeConfig)
+  const monthlyPreview = buildFirmQuotePreview(monthlyDraft, DEFAULT_QUOTE_PRICING_CONFIG, roomTypeConfig)
+  assert.equal(monthlyPreview.calculated.breakdown.frequencyMultiplier, 1.2)
+  assert.notEqual(monthlyPreview.adjustedLow, weeklyPreview.adjustedLow)
 })
 
 test('selected area tasks use square metres and fixed tasks use room quantity', () => {
