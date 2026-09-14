@@ -287,7 +287,7 @@ export default function ClientCrmWorkspace({
       setLeadDraft(emptyLeadDraft())
       setView('pipeline')
       await loadWorkspace(result.result?.id)
-      setStatus({ type: 'success', message: 'Opportunity created and assigned using the selected agent or postcode coverage.' })
+      setStatus({ type: 'success', message: data?.actor.role === 'agent' ? 'Opportunity created and assigned to you for your state.' : 'Opportunity created and assigned using the selected agent or postcode coverage.' })
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to create the opportunity.' })
     } finally {
@@ -565,7 +565,7 @@ export default function ClientCrmWorkspace({
       {status ? <div role={status.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-xl border p-4 text-sm ${status.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>{status.message}</div> : null}
       {view === 'new' ? <form onSubmit={createLead} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-900">Create an opportunity</h2>
-        <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. The postcode suggests an agent automatically; an existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>
+        <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. Agents can create records within their assigned state; postcode coverage suggests the agent for owner or manager entries. An existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <label className="text-sm font-medium text-gray-700">Business name<input required value={leadDraft.businessName} onChange={(event) => setLeadDraft({ ...leadDraft, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">First name<input required maxLength={100} autoComplete="given-name" value={leadDraft.firstName} onChange={(event) => setLeadDraft({ ...leadDraft, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>

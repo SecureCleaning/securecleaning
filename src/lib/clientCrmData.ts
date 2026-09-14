@@ -1,5 +1,6 @@
 import { getAdminSupabase } from '@/lib/supabase'
 import { findMatchingZones, getAvailabilityConfig } from '@/lib/availability'
+import { canAgentSelfAssignCrmRegion } from '@/lib/clientCrmAssignment'
 import { listStaffAccounts, type StaffAccount } from '@/lib/staffAccounts'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
 import { normalizeCrmPhone } from '@/lib/clientCrmOpportunity'
@@ -695,8 +696,13 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   let assignedStaffId: string | null = null
   let assignmentMethod = 'unassigned'
   if (actor.role === 'agent') {
-    if (!candidates.some((candidate) => candidate.id === actor.id)) {
-      throw new ClientCrmError('This postcode is outside your assigned service coverage. Ask an owner or manager to assign the opportunity.', 403)
+    const availabilityConfig = await getAvailabilityConfig()
+    if (!canAgentSelfAssignCrmRegion({
+      availabilityAssigneeId: actor.availabilityAssigneeId,
+      city,
+      assignees: availabilityConfig.assignees,
+    })) {
+      throw new ClientCrmError('This location is outside your assigned state or service region. Ask an owner or manager to assign the opportunity.', 403)
     }
     assignedStaffId = actor.id
     assignmentMethod = 'agent_self'
