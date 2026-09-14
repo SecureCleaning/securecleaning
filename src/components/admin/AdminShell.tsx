@@ -20,7 +20,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl items-start justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
         <AdminNav currentPath={pathname} />
         <button
           type="button"

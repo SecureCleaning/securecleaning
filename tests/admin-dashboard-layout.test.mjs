@@ -21,9 +21,12 @@ test('admin dashboard keeps quotes first and removes dead-end local work areas',
 
 test('admin shortcuts resolve to focused management routes with accurate labels', () => {
   assert.match(dashboard, /<nav className="flex flex-wrap gap-2" aria-label="Admin shortcuts">/)
-  for (const href of ['/admin/sites', '/admin/availability', '/admin/calendar']) {
+  for (const href of ['/admin/availability', '/admin/calendar']) {
     assert.match(dashboard, new RegExp(`href="${href}"`))
   }
+  assert.match(dashboard, /href="\/admin\/clients\?view=sites"/)
+  assert.match(dashboard, /Manage client sites/)
+  assert.doesNotMatch(dashboard, /href="\/admin\/sites"/)
   assert.match(dashboard, /Inspection agents &amp; availability/)
   assert.doesNotMatch(dashboard, /href="\/admin\/(?:content|pricing)"/)
 })

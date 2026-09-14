@@ -423,7 +423,7 @@ export default function AdminDashboard({ initialData }: Props) {
       </div>
 
       <nav className="flex flex-wrap gap-2" aria-label="Admin shortcuts">
-        <Link href="/admin/sites" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Manage sites</Link>
+        <Link href="/admin/clients?view=sites" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Manage client sites</Link>
         <Link href="/admin/availability" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Inspection agents &amp; availability</Link>
         <Link href="/admin/calendar" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Calendar</Link>
       </nav>

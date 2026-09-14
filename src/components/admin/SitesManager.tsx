@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import type { City, PremisesType } from '@/lib/types'
 import type { SiteRecord } from '@/lib/sites'
@@ -41,10 +42,17 @@ function toFormState(site?: SiteRecord): SiteFormState {
   }
 }
 
-export default function SitesManager({ initialSites }: { initialSites: SiteRecord[] }) {
+export default function SitesManager({
+  initialSites,
+  allowCreate = true,
+}: {
+  initialSites: SiteRecord[]
+  allowCreate?: boolean
+}) {
   const [sites, setSites] = useState<SiteRecord[]>(initialSites)
-  const [editingSiteId, setEditingSiteId] = useState<string | null>(null)
-  const [form, setForm] = useState<SiteFormState>(toFormState())
+  const initialSite = allowCreate ? undefined : initialSites[0]
+  const [editingSiteId, setEditingSiteId] = useState<string | null>(initialSite?.id ?? null)
+  const [form, setForm] = useState<SiteFormState>(() => toFormState(initialSite))
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -117,15 +125,24 @@ export default function SitesManager({ initialSites }: { initialSites: SiteRecor
     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
       <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
-          <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Sites</h2>
-          <button
-            type="button"
-            onClick={startCreate}
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: '#1a2744' }}
-          >
-            New Site
-          </button>
+          <div>
+            <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Client sites</h2>
+            <p className="mt-1 text-sm text-gray-600">Select a site to manage its operational details.</p>
+          </div>
+          {allowCreate ? (
+            <button
+              type="button"
+              onClick={startCreate}
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
+              style={{ backgroundColor: '#1a2744' }}
+            >
+              New Site
+            </button>
+          ) : (
+            <Link href="/admin/clients" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">
+              Add through Client CRM
+            </Link>
+          )}
         </div>
         <div className="divide-y divide-gray-100">
           {sites.map((site) => (
@@ -141,6 +158,9 @@ export default function SitesManager({ initialSites }: { initialSites: SiteRecor
                   <div className="text-sm text-gray-600 mt-1">{site.address}</div>
                   <div className="text-xs text-gray-500 mt-1 capitalize">
                     {site.city} · {site.premises_type ?? 'unspecified'}
+                  </div>
+                  <div className="mt-1 text-xs font-medium text-teal-700">
+                    {site.client_id ? 'Linked to Client CRM' : 'Not yet linked to a client'}
                   </div>
                 </div>
                 <div className={`text-xs font-semibold px-2 py-1 rounded-full ${site.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>

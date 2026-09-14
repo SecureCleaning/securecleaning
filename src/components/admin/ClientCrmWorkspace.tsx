@@ -128,9 +128,11 @@ function emptyAppointmentDraft(assignedStaffId = '') {
 export default function ClientCrmWorkspace({
   portal = 'admin',
   initialOpportunityId = '',
+  showSitesLink = false,
 }: {
   portal?: 'admin' | 'agent'
   initialOpportunityId?: string
+  showSitesLink?: boolean
 }) {
   const [data, setData] = useState<WorkspaceData | null>(null)
   const [selectedLeadId, setSelectedLeadId] = useState('')
@@ -559,7 +561,7 @@ export default function ClientCrmWorkspace({
         description={portal === 'agent' ? 'Manage assigned opportunities, client follow-ups, quote history, and email activity.' : 'Capture enquiry intakes, assign regional agents, and keep each customer/site sales cycle connected to its full quote history.'}
         backHref={portal === 'agent' && data.actor.availabilityAssigneeId ? `/availability/quotes/${data.actor.availabilityAssigneeId}` : '/admin'}
         backLabel={portal === 'agent' ? 'Back to my quotes' : 'Back to overview'}
-        actions={<div className="flex gap-2"><button type="button" onClick={() => setView('pipeline')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'pipeline' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Pipeline</button><button type="button" onClick={() => setView('new')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'new' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>New opportunity</button><button type="button" onClick={() => setView('templates')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'templates' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Templates</button></div>}
+        actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={() => setView('pipeline')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'pipeline' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Pipeline</button><button type="button" onClick={() => setView('new')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'new' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>New opportunity</button><button type="button" onClick={() => setView('templates')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'templates' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Templates</button>{showSitesLink ? <Link href="/admin/clients?view=sites" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Site details</Link> : null}</div>}
       />
 
       {status ? <div role={status.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-xl border p-4 text-sm ${status.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>{status.message}</div> : null}
