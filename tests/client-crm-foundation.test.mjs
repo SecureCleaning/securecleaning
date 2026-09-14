@@ -459,18 +459,33 @@ test('client CRM presents structured business, contact, and site editing', () =>
   assert.match(data, /actor\.role === 'agent'[\s\S]*Only an owner or manager can change shared client and site details/)
 })
 
-test('new CRM opportunities capture required first and last names separately', () => {
+test('new CRM opportunities require a first name while allowing a missing surname', () => {
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')
 
   assert.match(workspace, /businessName: '', firstName: '', lastName: ''/)
   assert.match(workspace, /First name<input required[^>]*autoComplete="given-name"[^>]*leadDraft\.firstName/)
-  assert.match(workspace, /Last name<input required[^>]*autoComplete="family-name"[^>]*leadDraft\.lastName/)
+  assert.match(workspace, /Last name \(optional\)<input maxLength=\{100\}[^>]*autoComplete="family-name"[^>]*leadDraft\.lastName/)
   assert.doesNotMatch(workspace, /Contact name<input required value=\{leadDraft\.contactName\}/)
   assert.match(data, /const firstName = clean\(input\.firstName, 100\)/)
   assert.match(data, /const lastName = clean\(input\.lastName, 100\)/)
-  assert.match(data, /hasStructuredName[\s\S]*Provide both the contact first name and last name/)
-  assert.match(data, /const contactName = hasStructuredName[\s\S]*`\$\{firstName\} \$\{lastName\}`[\s\S]*clean\(input\.contactName, 200\)/)
+  assert.doesNotMatch(data, /Provide both the contact first name and last name/)
+  assert.match(data, /const contactName = firstName[\s\S]*\[firstName, lastName\]\.filter\(Boolean\)\.join\(' '\)/)
+  assert.match(data, /!businessName \|\| !firstName \|\| !contactName/)
+})
+
+test('a provisional client exposes address fields and reloads the canonical site opportunity after save', () => {
+  const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+  const migration = source('supabase/client_crm_missing_site_profile_migration.sql')
+
+  assert.match(workspace, /selectedLead\.siteId \? 'Site' : 'Add site address'/)
+  assert.doesNotMatch(workspace, /Site details will become editable after inspection booking/)
+  assert.match(workspace, /loadWorkspace\(String\(result\.result\?\.id \|\| selectedLead\.id\)\)/)
+  assert.match(migration, /crm_site_identity_key\(BTRIM\(p_address\), BTRIM\(p_suburb\), BTRIM\(p_postcode\), contact_row\.city\)/)
+  assert.match(migration, /crm_promote_provisional_opportunity\(opportunity_row\.id, resolved_site_id\)/)
+  assert.match(migration, /ON CONFLICT \(organisation_id, crm_site_key\)/)
+  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager'\)/)
+  assert.doesNotMatch(migration, /DELETE FROM|TRUNCATE|DROP TABLE/)
 })
 
 test('CRM can create a staff-selected inspection appointment outside public availability', () => {

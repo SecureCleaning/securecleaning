@@ -542,7 +542,10 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
   if (!current || !canActorAccessAssignedOpportunity(actor.role, actor.id, current.assigned_staff_id)) {
     throw new ClientCrmError('Opportunity not found.', 404)
   }
-  if (current.site_id && (!address || !postcode)) throw new ClientCrmError('Enter the site street address and four-digit postcode.')
+  const hasSiteInput = Boolean(siteName || address || suburb || postcode)
+  if ((current.site_id || hasSiteInput) && (!address || !/^\d{4}$/.test(postcode))) {
+    throw new ClientCrmError('Enter the site street address and four-digit postcode.')
+  }
   const { data: emailMatches, error: emailMatchError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
   if (emailMatchError) throw emailMatchError
   if (((emailMatches ?? []) as Array<Record<string, unknown>>).some((row) => String(row.id) !== String(current.primary_contact_id))) {
@@ -664,12 +667,8 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const businessName = clean(input.businessName, 200)
   const firstName = clean(input.firstName, 100)
   const lastName = clean(input.lastName, 100)
-  const hasStructuredName = Boolean(firstName || lastName)
-  if (hasStructuredName && (!firstName || !lastName)) {
-    throw new ClientCrmError('Provide both the contact first name and last name.')
-  }
-  const contactName = hasStructuredName
-    ? `${firstName} ${lastName}`
+  const contactName = firstName
+    ? [firstName, lastName].filter(Boolean).join(' ')
     : clean(input.contactName, 200)
   const email = normalizeCrmEmail(input.email)
   const phone = clean(input.phone, 40)
@@ -685,8 +684,8 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const notes = clean(input.notes, 5000)
   const requestedAssigneeId = clean(input.assignedStaffId, 100)
 
-  if (!businessName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
-    throw new ClientCrmError('Provide the business, first and last name, valid email, city, postcode, and contact basis.')
+  if (!businessName || !firstName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
+    throw new ClientCrmError('Provide the business, first name, valid email, city, postcode, and contact basis.')
   }
   if (requiresNamedSourceProvider(sourceType, contactBasis) && !sourceProvider) {
     throw new ClientCrmError('Name the lead provider or public source before creating this opportunity.')
