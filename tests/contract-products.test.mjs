@@ -282,6 +282,22 @@ test('won transition uses the built-in UUID generator under its restricted searc
   assert.doesNotMatch(migration, /CREATE EXTENSION|SET search_path = public, extensions/)
 })
 
+test('monthly won transition reapplies built-in UUID generation after the function replacement', () => {
+  const migration = source('supabase/contract_product_uuid_generation_post_monthly_fix_migration.sql')
+  const readme = source('supabase/README.md')
+
+  assert.match(migration, /to_regprocedure\([\s\S]+close_crm_opportunity_won_and_create_product/)
+  assert.match(migration, /WHEN ''monthly'' THEN 12/)
+  assert.match(migration, /legacy_call_count = 1[\s\S]+gen_random_uuid\(\)/)
+  assert.match(migration, /legacy_call_count = 0[\s\S]+POSITION\('gen_random_uuid\(\)'/)
+  assert.match(migration, /SET search_path = public, pg_temp/)
+  assert.match(migration, /FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /TO service_role/)
+  assert.doesNotMatch(migration, /CREATE EXTENSION|SET search_path = public, extensions/)
+  assert.ok(readme.indexOf('monthly_cleaning_frequency_migration.sql')
+    < readme.indexOf('contract_product_uuid_generation_post_monthly_fix_migration.sql'))
+})
+
 test('migration is rerunnable and new product data remains service-role only', () => {
   const migration = source('supabase/contract_products_migration.sql')
   for (const pattern of [
