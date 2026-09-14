@@ -19,14 +19,18 @@ For contract product sales, start from `schema.sql`, then apply `audit_log_migra
 3. `contract_product_estimated_hours_text_migration.sql`
 4. `monthly_cleaning_frequency_migration.sql`
 5. `contract_product_uuid_generation_post_monthly_fix_migration.sql`
-6. `contract_product_sales_migration.sql`
-7. `contract_sale_approved_cleaners_migration.sql`
-8. `contract_sale_tax_invoice_workflow_migration.sql`
-9. `contract_sale_document_bundle_workflow_migration.sql`
+6. `contract_product_won_quote_status_migration.sql`
+7. `contract_product_sales_migration.sql`
+8. `contract_sale_approved_cleaners_migration.sql`
+9. `contract_sale_tax_invoice_workflow_migration.sql`
+10. `contract_sale_document_bundle_workflow_migration.sql`
 
 The post-monthly UUID migration is deliberately ordered after the monthly-frequency
 function replacement. It is rerunnable, preserves the monthly annual-visit mapping,
 and restores the built-in UUID generator under the restricted function search path.
+The won-quote status migration atomically marks the product's source quote accepted,
+locks its firm-quote workflow, and backfills only won opportunities that already have
+their matching contract product.
 
 The sales migration is additive. It creates the product-sale ledger, GST-inclusive invoices, pending/confirmed payments, payment plans, three-party inspections, versioned agreements, a private signed-agreement bucket, and cleaner-to-site handovers. Apply it before deploying application code that calls `/api/admin/contract-sales`.
 The approved-cleaner migration updates the protected sale and handover functions so cleaner workflow approval controls eligibility while compliance remains a separately visible operational status.

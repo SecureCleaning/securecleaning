@@ -298,6 +298,26 @@ test('monthly won transition reapplies built-in UUID generation after the functi
     < readme.indexOf('contract_product_uuid_generation_post_monthly_fix_migration.sql'))
 })
 
+test('winning a quote atomically accepts and locks its source quote', () => {
+  const migration = source('supabase/contract_product_won_quote_status_migration.sql')
+  const agentAction = source('src/components/availability/AgentQuoteWinAction.tsx')
+  const crmWorkspace = source('src/components/admin/ClientCrmWorkspace.tsx')
+
+  assert.match(migration, /CREATE OR REPLACE FUNCTION sync_winning_quote_accepted_status\(\)/)
+  assert.match(migration, /SECURITY DEFINER\s+SET search_path = public, pg_temp/)
+  assert.match(migration, /AFTER UPDATE OF stage, winning_quote_id ON crm_opportunities/)
+  assert.match(migration, /source_quote_id = NEW\.winning_quote_id/)
+  assert.match(migration, /status = 'accepted'/)
+  assert.match(migration, /follow_up_status = 'won'/)
+  assert.match(migration, /'"accepted"'::JSONB/)
+  assert.match(migration, /quote\.accepted_from_won_opportunity/)
+  assert.match(migration, /JOIN contract_products AS p[\s\S]+p\.source_quote_id = o\.winning_quote_id/)
+  assert.match(migration, /quote\.accepted_from_won_opportunity_backfill/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION sync_winning_quote_accepted_status\(\)[\s\S]+FROM PUBLIC, anon, authenticated, service_role/)
+  assert.match(agentAction, /marks the winning quote as accepted, locks that saved quote version/)
+  assert.match(crmWorkspace, /marks and locks the winning quote as accepted/)
+})
+
 test('migration is rerunnable and new product data remains service-role only', () => {
   const migration = source('supabase/contract_products_migration.sql')
   for (const pattern of [
