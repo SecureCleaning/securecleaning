@@ -123,6 +123,7 @@ export default function QuoteWorkflowEditor({
   const [inspectionReport, setInspectionReport] = useState<InspectionReport>(quote.inspectionReport)
   const [firmQuoteDraft, setFirmQuoteDraft] = useState<FirmQuoteDraft>(quote.firmQuoteDraft)
   const [finalPublished, setFinalPublished] = useState(Boolean(quote.finalDocument))
+  const [documentVersion, setDocumentVersion] = useState(quote.finalDocumentVersion ?? quote.finalDocument?.version ?? null)
   const [previewMode, setPreviewMode] = useState(false)
   const [saveState, setSaveState] = useState<{ saving: boolean; message: string | null; error: string | null }>({
     saving: false,
@@ -165,6 +166,7 @@ export default function QuoteWorkflowEditor({
     }))
     return [...fields.values()]
   }, [roomTypeConfig])
+  const canReviseFinal = Boolean(quote.finalDocument) && firmQuoteDraft.status !== 'accepted'
 
   function openPreview(options?: { smooth?: boolean }) {
     const behavior = options?.smooth === false ? 'auto' : 'smooth'
@@ -320,15 +322,23 @@ export default function QuoteWorkflowEditor({
     setSaveState({ saving: true, message: null, error: null })
 
     try {
+      const isRevision = Boolean(quote.finalDocument)
+      if (isRevision && (!canReviseFinal || !documentVersion)) {
+        throw new Error('This final quote cannot be revised from the workbench.')
+      }
+      const submittedDraft: FirmQuoteDraft = {
+        ...firmQuoteDraft,
+        status: isRevision ? 'reviewed' : firmQuoteDraft.status,
+        revisedInputs: derivedInputs,
+      }
       const response = await fetch(workflowApiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           inspectionReport,
-          firmQuoteDraft: {
-            ...firmQuoteDraft,
-            revisedInputs: derivedInputs,
-          },
+          firmQuoteDraft: submittedDraft,
+          revision: isRevision,
+          expectedDocumentVersion: isRevision ? documentVersion : undefined,
         }),
       })
 
@@ -337,17 +347,17 @@ export default function QuoteWorkflowEditor({
         throw new Error(result.error || 'Failed to save workflow.')
       }
 
-      setFirmQuoteDraft((current) => ({
-        ...current,
-        revisedInputs: derivedInputs,
-      }))
+      setFirmQuoteDraft(submittedDraft)
+      if (result.revised && Number.isInteger(result.documentVersion)) setDocumentVersion(result.documentVersion)
       if (result.status === 'reviewed') setFinalPublished(true)
       if (result.status === 'reviewed') {
         setQuoteEmailDraft((current) => ({ ...current, to: derivedInputs.email.trim().toLowerCase() }))
       }
       setSaveState({
         saving: false,
-        message: result.status === 'reviewed'
+        message: result.revised
+          ? `Revised final quote version ${result.documentVersion} saved. The client scope now uses this version; resend the final quote when ready.`
+          : result.status === 'reviewed'
           ? 'Final quote reviewed and published. It is now locked and ready to send.'
           : 'Inspection summary and firm quote draft saved.',
         error: null,
@@ -513,6 +523,16 @@ export default function QuoteWorkflowEditor({
           ) : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          {canReviseFinal ? (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saveState.saving}
+              className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saveState.saving ? 'Saving revised final…' : 'Save revised final'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => window.open(`/scope/${quote.quoteRef}${finalPublished || firmQuoteDraft.status === 'sent' ? '?variant=final' : ''}`, '_blank', 'noopener,noreferrer')}
@@ -575,6 +595,11 @@ export default function QuoteWorkflowEditor({
       {scopeAction.error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{scopeAction.error}</div> : null}
       {quoteEmailAction.message ? <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{quoteEmailAction.message}</div> : null}
       {quoteEmailAction.error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{quoteEmailAction.error}</div> : null}
+      {canReviseFinal ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          This preview reflects the current editor values. Use <strong>Save revised final</strong> to update the client scope; the previous sent version stays in history and no email is sent automatically.
+        </div>
+      ) : null}
       {canEmailUpdatedQuote && quoteEmailComposerOpen ? (
         <div className="mb-5 rounded-xl border border-green-200 bg-green-50 p-4">
           <div className="flex items-start justify-between gap-4">
@@ -854,6 +879,11 @@ export default function QuoteWorkflowEditor({
               </div>
             </summary>
             <div className="mt-4">
+            {canReviseFinal ? (
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                This quote already has a final document. You can update the firm quote below, then use <strong>Save revised final + open preview</strong>. The prior version is retained in history, the client scope changes only when you save, and no email is sent automatically.
+              </div>
+            ) : null}
             <label className="block text-sm">
               <span className="mb-1 block font-medium text-gray-700">Quote workflow status</span>
               <select
@@ -1458,10 +1488,18 @@ export default function QuoteWorkflowEditor({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saveState.saving || finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
+            disabled={saveState.saving || firmQuoteDraft.status === 'accepted' || (finalPublished && !canReviseFinal)}
             className="rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {saveState.saving ? 'Saving workflow…' : finalPublished ? 'Final document locked' : firmQuoteDraft.status === 'reviewed' ? 'Publish reviewed final' : 'Save + open preview'}
+            {saveState.saving
+              ? 'Saving workflow…'
+              : canReviseFinal
+                ? 'Save revised final + open preview'
+                : finalPublished
+                  ? 'Final document locked'
+                  : firmQuoteDraft.status === 'reviewed'
+                    ? 'Publish reviewed final'
+                    : 'Save + open preview'}
           </button>
         </div>
       </div>

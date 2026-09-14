@@ -3,7 +3,7 @@ import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availabili
 import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAuth'
 import { canAvailabilityAgentAccessQuote } from '@/lib/clientCrmQuoteAccess'
 import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
-import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, reviseQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getAdminSessionIdentityFromRequest } from '@/lib/adminAuth'
@@ -42,15 +42,30 @@ export async function POST(
     if (firmQuoteDraft.status === 'reviewed' && !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
     }
-    if (quote.finalDocument || quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
+    const sessionIdentity = getAdminSessionIdentityFromRequest(request)
+    const staffAccount = sessionIdentity ? await getStaffAccountById(sessionIdentity.id) : null
+    const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
+      ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
+      : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
+
+    if (quote.finalDocument) {
+      if (quote.firmQuoteDraft.status === 'accepted') {
+        return NextResponse.json({ success: false, error: 'Accepted quotes are locked because downstream contract records may already rely on them.' }, { status: 409 })
+      }
+      if (body?.revision !== true || !Number.isInteger(body?.expectedDocumentVersion) || body.expectedDocumentVersion < 1) {
+        return NextResponse.json({ success: false, error: 'A versioned final-quote revision is required.' }, { status: 409 })
+      }
+      const finalDocument = await reviseQuoteWorkflowByRef(
+        params.ref, body.expectedDocumentVersion, inspectionReport, firmQuoteDraft, actor,
+        await getQuotePricingConfig(), roomTypeConfig
+      )
+      return NextResponse.json({ success: true, status: 'reviewed', revised: true, documentVersion: finalDocument.version })
+    }
+
+    if (quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
       return NextResponse.json({ success: false, error: 'Reviewed and sent quotes cannot be changed by a normal save.' }, { status: 409 })
     }
     if (firmQuoteDraft.status === 'reviewed') {
-      const sessionIdentity = getAdminSessionIdentityFromRequest(request)
-      const staffAccount = sessionIdentity ? await getStaffAccountById(sessionIdentity.id) : null
-      const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
-        ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
-        : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
       await reviewQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft, {
         ...actor,
       }, await getQuotePricingConfig(), roomTypeConfig)

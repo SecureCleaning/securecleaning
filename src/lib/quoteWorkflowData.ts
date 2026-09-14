@@ -57,6 +57,7 @@ export type QuoteWorkflowRecord = {
   firmQuoteDraft: FirmQuoteDraft
   workflowColumnsAvailable: boolean
   finalDocument: FinalQuoteDocument | null
+  finalDocumentVersion?: number | null
   reviewedAt?: string | null
   reviewedBy?: QuoteWorkflowActor | null
   sentAt?: string | null
@@ -107,6 +108,7 @@ export async function getQuoteWorkflowByRef(
   let firmQuoteDraft = createDefaultFirmQuoteDraft(data.inputs as QuoteInputs, roomTypeConfig)
   let workflowColumnsAvailable = false
   let finalDocument: FinalQuoteDocument | null = null
+  let finalDocumentVersion: number | null = null
   let reviewedAt: string | null = null
   let reviewedBy: QuoteWorkflowActor | null = null
   let sentAt: string | null = null
@@ -115,7 +117,7 @@ export async function getQuoteWorkflowByRef(
   let sentDocumentVariant: QuoteDocumentVariant | null = null
 
   const workflowRes = await db.from('quotes').select(
-    'inspection_report, firm_quote_workflow, final_quote_document, final_quote_reviewed_at, final_quote_reviewed_by, final_quote_sent_at, final_quote_sent_by, final_quote_sent_to, final_quote_sent_variant'
+    'inspection_report, firm_quote_workflow, final_quote_document, final_quote_document_version, final_quote_reviewed_at, final_quote_reviewed_by, final_quote_sent_at, final_quote_sent_by, final_quote_sent_to, final_quote_sent_variant'
   ).eq('quote_ref', quoteRef).maybeSingle()
 
   if (workflowRes.error) {
@@ -125,6 +127,9 @@ export async function getQuoteWorkflowByRef(
     inspectionReport = parseInspectionReport(workflowRes.data.inspection_report, data.inputs as QuoteInputs)
     firmQuoteDraft = parseFirmQuoteDraft(workflowRes.data.firm_quote_workflow, data.inputs as QuoteInputs, roomTypeConfig)
     finalDocument = workflowRes.data.final_quote_document as FinalQuoteDocument | null
+    finalDocumentVersion = typeof workflowRes.data.final_quote_document_version === 'number'
+      ? workflowRes.data.final_quote_document_version
+      : finalDocument?.version ?? null
     reviewedAt = workflowRes.data.final_quote_reviewed_at
     reviewedBy = workflowRes.data.final_quote_reviewed_by as QuoteWorkflowActor | null
     sentAt = workflowRes.data.final_quote_sent_at
@@ -137,7 +142,7 @@ export async function getQuoteWorkflowByRef(
     id: data.id, quoteRef: data.quote_ref, inputs: data.inputs as QuoteInputs, result: data.result as QuoteResult,
     customerJourney,
     status: data.status, validUntil: data.valid_until, createdAt: data.created_at, inspectionReport, firmQuoteDraft,
-    workflowColumnsAvailable, finalDocument, reviewedAt, reviewedBy, sentAt, sentBy, sentTo, sentDocumentVariant,
+    workflowColumnsAvailable, finalDocument, finalDocumentVersion, reviewedAt, reviewedBy, sentAt, sentBy, sentTo, sentDocumentVariant,
   }
 }
 
@@ -224,6 +229,55 @@ export async function reviewQuoteWorkflowByRef(
   }).eq('quote_ref', quoteRef).is('final_quote_document', null).select('quote_ref').maybeSingle()
   if (error) throw error
   if (!data) throw new QuoteWorkflowConflictError('This quote has already been reviewed. Reload before continuing.')
+  return finalDocument
+}
+
+export async function reviseQuoteWorkflowByRef(
+  quoteRef: string,
+  expectedDocumentVersion: number,
+  inspectionReport: InspectionReport,
+  firmQuoteDraft: FirmQuoteDraft,
+  actor: QuoteWorkflowActor,
+  pricingConfig: QuotePricingConfig,
+  roomTypeConfig: QuoteRoomTypeConfig
+) {
+  const readiness = getFinalQuoteReadiness(firmQuoteDraft)
+  if (!readiness.ready) throw new Error(readiness.errors[0])
+  const current = await getQuoteWorkflowByRef(quoteRef, roomTypeConfig)
+  if (!current?.finalDocument) throw new QuoteWorkflowConflictError('There is no published final quote to revise.')
+  if (current.firmQuoteDraft.status === 'accepted') {
+    throw new QuoteWorkflowConflictError('Accepted quotes are locked because downstream contract records may already rely on them.')
+  }
+  if (current.finalDocumentVersion !== expectedDocumentVersion) {
+    throw new QuoteWorkflowConflictError('The final quote changed before this revision was saved. Reload and review the latest version.')
+  }
+
+  const reviewedAt = new Date().toISOString()
+  const documentVersion = expectedDocumentVersion + 1
+  const reviewedDraft: FirmQuoteDraft = { ...firmQuoteDraft, status: 'reviewed' }
+  const pricingPreview = buildFirmQuotePreview(reviewedDraft, pricingConfig, roomTypeConfig)
+  const displayPrice = getFirmQuoteDisplayPrice(reviewedDraft, pricingPreview)
+  const finalDocument: FinalQuoteDocument = {
+    variant: 'final', version: documentVersion, reviewedAt, reviewedBy: actor,
+    inputs: reviewedDraft.revisedInputs,
+    result: applyFirmQuoteDisplayPrice(current.result, displayPrice),
+    firmQuoteDraft: reviewedDraft, pricingPreview, displayPrice, roomTypeConfig,
+  }
+
+  const db = getAdminSupabase()
+  const { data, error } = await db.rpc('revise_final_quote_document', {
+    p_quote_ref: quoteRef,
+    p_expected_document_version: expectedDocumentVersion,
+    p_inspection_report: inspectionReport,
+    p_firm_quote_draft: reviewedDraft,
+    p_final_document: finalDocument,
+    p_actor: actor,
+    p_reviewed_at: reviewedAt,
+  })
+  if (error) throw error
+  if (Number(data) !== documentVersion) {
+    throw new QuoteWorkflowConflictError('The final quote changed before this revision was saved. Reload and review the latest version.')
+  }
   return finalDocument
 }
 

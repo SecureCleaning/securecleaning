@@ -19,6 +19,32 @@ test('normal workflow save states exclude sent, accepted, and unknown values', (
   assert.match(adminSave, /isEditableFirmQuoteStatus/)
   assert.match(agentSave, /isEditableFirmQuoteStatus/)
   assert.doesNotMatch(adminSave, /saveQuoteWorkflowByRef\([^)]*status: 'sent'/)
+  assert.match(adminSave, /reviseQuoteWorkflowByRef/)
+  assert.match(agentSave, /reviseQuoteWorkflowByRef/)
+  assert.match(agentSave, /canAvailabilityAgentAccessQuote/)
+})
+
+test('sent quote edits use an explicit versioned revision and remain locked after acceptance', () => {
+  const editor = readFileSync(`${root}/src/components/admin/QuoteWorkflowEditor.tsx`, 'utf8')
+  const data = readFileSync(`${root}/src/lib/quoteWorkflowData.ts`, 'utf8')
+  const migration = readFileSync(`${root}/supabase/final_quote_revision_migration.sql`, 'utf8')
+
+  assert.match(editor, /Save revised final \+ open preview/)
+  assert.match(editor, /expectedDocumentVersion/)
+  assert.match(editor, /The prior version is retained in history/)
+  assert.match(editor, /no email is sent automatically/)
+  assert.match(data, /export async function reviseQuoteWorkflowByRef/)
+  assert.match(data, /expectedDocumentVersion \+ 1/)
+  assert.match(data, /Accepted quotes are locked/)
+  assert.match(data, /revise_final_quote_document/)
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.quote_final_document_versions/)
+  assert.match(migration, /NEW\.final_quote_document_version = OLD\.final_quote_document_version \+ 1/)
+  assert.match(migration, /status = 'pending'/)
+  assert.match(migration, /final_quote_sent_at = NULL/)
+  assert.match(migration, /final_quote_revised/)
+  assert.match(migration, /status IN \('claimed', 'provider_accepted'\)/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION public\.revise_final_quote_document/)
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
 })
 
 test('final quote readiness requires review and a positive final price', () => {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
-import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
+import { getQuoteWorkflowByRef, QuoteWorkflowConflictError, reviewQuoteWorkflowByRef, reviseQuoteWorkflowByRef, saveQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft, parseInspectionReport } from '@/lib/quoteWorkflow'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getQuotePricingConfig } from '@/lib/pricing'
@@ -55,16 +55,30 @@ export async function POST(
       return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
     }
 
-    if (quote.finalDocument || quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
+    const identity = getAdminSessionIdentityFromRequest(request)
+    if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    const actor = { kind: 'staff_account' as const, id: identity.id, name: identity.username }
+
+    if (quote.finalDocument) {
+      if (quote.firmQuoteDraft.status === 'accepted') {
+        return NextResponse.json({ success: false, error: 'Accepted quotes are locked because downstream contract records may already rely on them.' }, { status: 409 })
+      }
+      if (body?.revision !== true || !Number.isInteger(body?.expectedDocumentVersion) || body.expectedDocumentVersion < 1) {
+        return NextResponse.json({ success: false, error: 'A versioned final-quote revision is required.' }, { status: 409 })
+      }
+      const finalDocument = await reviseQuoteWorkflowByRef(
+        params.ref, body.expectedDocumentVersion, inspectionReport, firmQuoteDraft, actor,
+        await getQuotePricingConfig(), roomTypeConfig
+      )
+      return NextResponse.json({ success: true, status: 'reviewed', revised: true, documentVersion: finalDocument.version })
+    }
+
+    if (quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {
       return NextResponse.json({ success: false, error: 'Reviewed and sent quotes cannot be changed by a normal save.' }, { status: 409 })
     }
 
     if (firmQuoteDraft.status === 'reviewed') {
-      const identity = getAdminSessionIdentityFromRequest(request)
-      if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-      await reviewQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft, {
-        kind: 'staff_account', id: identity.id, name: identity.username,
-      }, await getQuotePricingConfig(), roomTypeConfig)
+      await reviewQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft, actor, await getQuotePricingConfig(), roomTypeConfig)
     } else {
       await saveQuoteWorkflowByRef(params.ref, inspectionReport, firmQuoteDraft)
     }
