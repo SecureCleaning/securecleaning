@@ -20,10 +20,11 @@ test('cleaner portal tokens bind mode email cleaner and expiry', () => {
 })
 
 test('onboarding tokens cannot carry cleaner ownership and require valid email', () => {
-  const token = createCleanerPortalToken({ mode: 'onboarding', email: 'new@example.com', cleanerId: 'ignored' })
+  const token = createCleanerPortalToken({ mode: 'onboarding', email: 'new@example.com', cleanerId: 'ignored', state: 'nsw' })
   const claims = verifyCleanerPortalToken(token)
   assert.equal(claims?.mode, 'onboarding')
   assert.equal(claims?.cleanerId, undefined)
+  assert.equal(claims?.state, 'NSW')
   assert.throws(() => createCleanerPortalToken({ mode: 'update', email: 'bad', cleanerId: '' }))
 })
 
@@ -48,17 +49,22 @@ test('cleaner portal rejects missing identity and invalid regions', () => {
   assert.throws(() => sanitizeCleanerPortalPayload({ businessName: 'A', firstName: 'A', lastName: 'B', state: 'invalid' }, 'a@example.com'))
 })
 
-test('portal routes retain signed ownership, pending approval, notices and private upload guards', async () => {
-  const [portal, profileRoute, uploadRoute, requestRoute, adminRoute, claimRoute, nav] = await Promise.all([
+test('portal routes retain signed ownership, regional invitations, pending approval, notices and private upload guards', async () => {
+  const [portal, profileRoute, uploadRoute, requestRoute, adminRoute, agentRoute, agentPage, adminPage, claimRoute, nav] = await Promise.all([
     readFile(new URL('../src/lib/cleanerPortal.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/api/cleaner-portal/profile/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/api/cleaner-portal/documents/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/api/cleaner-portal/request-access/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/api/admin/cleaner-access/route.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/api/availability-agent/[assigneeId]/cleaner-access/route.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/availability/cleaners/[assigneeId]/page.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/admin/cleaners/page.tsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/cleaners/portal/claim/route.ts', import.meta.url), 'utf8'),
     readFile(new URL('../src/components/admin/AdminNav.tsx', import.meta.url), 'utf8'),
   ])
   assert.match(portal, /status: 'pending_approval'/)
+  assert.match(portal, /state: claims\.state/)
+  assert.match(portal, /existing\?\.profile\.state !== requiredState/)
   assert.match(portal, /item\.role === 'owner'/)
   assert.match(portal, /availability\.assignees\.filter/)
   assert.match(portal, /\/availability\/cleaners\//)
@@ -72,7 +78,11 @@ test('portal routes retain signed ownership, pending approval, notices and priva
   assert.match(requestRoute, /genericMessage/)
   assert.match(requestRoute, /rateLimitValue/)
   assert.match(adminRoute, /authorizeCleanerAdminRequest\(request, 'mutate'\)/)
+  assert.match(agentRoute, /getCleanerAgentContext\(request, params\.assigneeId\)/)
+  assert.match(agentRoute, /sendCleanerPortalLink\(email, mode, \{ state: context\.state \}\)/)
+  assert.match(agentPage, /CleanerAccessAdmin/)
+  assert.match(adminPage, /CleanerAccessAdmin/)
   assert.match(claimRoute, /httpOnly: true/)
   assert.match(claimRoute, /sameSite: 'lax'/)
-  assert.match(nav, /Cleaner Invitations/)
+  assert.doesNotMatch(nav, /Cleaner Invitations/)
 })

@@ -8,6 +8,7 @@ export type CleanerPortalClaims = {
   mode: 'update' | 'onboarding'
   email: string
   cleanerId?: string
+  state?: string
   exp: number
 }
 
@@ -34,9 +35,10 @@ export function createCleanerPortalToken(
     mode: input.mode,
     email: input.email.trim().toLowerCase(),
     cleanerId: input.mode === 'update' ? input.cleanerId : undefined,
+    state: input.mode === 'onboarding' && typeof input.state === 'string' ? input.state.trim().toUpperCase() : undefined,
     exp: Math.floor(now / 1000) + lifetimeSeconds,
   }
-  if (!validEmail(claims.email) || (claims.mode === 'update' && !claims.cleanerId)) {
+  if (!validEmail(claims.email) || (claims.mode === 'update' && !claims.cleanerId) || (claims.state && !['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'].includes(claims.state))) {
     throw new Error('Invalid cleaner portal token claims.')
   }
   const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
@@ -58,7 +60,15 @@ export function verifyCleanerPortalToken(token: unknown, now = Date.now()): Clea
     if ((parsed.mode !== 'update' && parsed.mode !== 'onboarding') || !validEmail(email)) return null
     if (!Number.isSafeInteger(parsed.exp) || Number(parsed.exp) < Math.floor(now / 1000)) return null
     if (parsed.mode === 'update' && (typeof parsed.cleanerId !== 'string' || !parsed.cleanerId)) return null
-    return { mode: parsed.mode, email, cleanerId: parsed.mode === 'update' ? parsed.cleanerId : undefined, exp: Number(parsed.exp) }
+    const state = typeof parsed.state === 'string' ? parsed.state.trim().toUpperCase() : undefined
+    if (state && !['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'].includes(state)) return null
+    return {
+      mode: parsed.mode,
+      email,
+      cleanerId: parsed.mode === 'update' ? parsed.cleanerId : undefined,
+      ...(parsed.mode === 'onboarding' && state ? { state } : {}),
+      exp: Number(parsed.exp),
+    }
   } catch {
     return null
   }

@@ -17,7 +17,7 @@ export default async function CleanerPortalPage() {
 
   try {
     const profile = await getCleanerPortalProfile(claims)
-    return <CleanerPortalForm mode={claims.mode} registeredEmail={claims.email} initialProfile={profile} />
+    return <CleanerPortalForm mode={claims.mode} registeredEmail={claims.email} initialProfile={profile} lockedState={claims.state} />
   } catch {
     return <div className="mx-auto max-w-xl px-4 py-16 text-center"><h1 className="text-3xl font-bold text-[#1a2744]">Cleaner access unavailable</h1><p className="mt-3 text-gray-600">This cleaner record is no longer available through that link.</p><Link href="/cleaners" className="mt-6 inline-flex rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white">Request another link</Link></div>
   }

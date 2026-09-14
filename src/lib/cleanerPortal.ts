@@ -56,7 +56,10 @@ async function reviewRecipients(state: string) {
 }
 
 export async function saveCleanerPortalProfile(claims: CleanerPortalClaims, candidate: unknown) {
-  const payload = sanitizeCleanerPortalPayload(candidate, claims.email)
+  const regionLockedCandidate = claims.mode === 'onboarding' && claims.state && candidate && typeof candidate === 'object'
+    ? { ...(candidate as Record<string, unknown>), state: claims.state }
+    : candidate
+  const payload = sanitizeCleanerPortalPayload(regionLockedCandidate, claims.email)
   if (claims.mode === 'update' && claims.cleanerId) {
     await getCleanerPortalProfile(claims)
     const cleaner = await updateCleaner(claims.cleanerId, payload, portalActor(claims, claims.cleanerId))
@@ -81,13 +84,15 @@ export async function uploadCleanerPortalDocument(claims: CleanerPortalClaims, i
   return uploadCleanerDocument({ ...input, cleanerId: claims.cleanerId, actor: portalActor(claims, claims.cleanerId) })
 }
 
-export async function sendCleanerPortalLink(email: string, mode: 'update' | 'onboarding') {
+export async function sendCleanerPortalLink(email: string, mode: 'update' | 'onboarding', options?: { state?: string }) {
   const normalizedEmail = email.trim().toLowerCase()
+  const requiredState = options?.state?.trim().toUpperCase()
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error('Enter a valid email address.')
   const existing = await findCleanerPortalRecordByEmail(normalizedEmail)
   if (mode === 'update' && !existing) return false
+  if (mode === 'update' && requiredState && existing?.profile.state !== requiredState) return false
   if (mode === 'onboarding' && existing) throw new Error('A cleaner record already exists for this email address. Send an update link instead.')
-  const token = createCleanerPortalToken({ mode, email: normalizedEmail, cleanerId: existing?.id })
+  const token = createCleanerPortalToken({ mode, email: normalizedEmail, cleanerId: existing?.id, state: mode === 'onboarding' ? requiredState : undefined })
   const link = `${getSiteUrl()}/cleaners/portal/claim?token=${encodeURIComponent(token)}`
   await sendEmailOrThrow({
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: normalizedEmail,

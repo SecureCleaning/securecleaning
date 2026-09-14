@@ -11,7 +11,6 @@ const tabs = [
   { href: '/admin/availability', label: 'Availability' },
   { href: '/admin/calendar', label: 'Calendar' },
   { href: '/admin/cleaners', label: 'Cleaners' },
-  { href: '/admin/cleaner-access', label: 'Cleaner Invitations' },
   { href: '/admin/chat', label: 'Chat' },
   { href: '/admin/staff', label: 'Team Access' },
 ]

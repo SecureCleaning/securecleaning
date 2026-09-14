@@ -5,6 +5,7 @@ import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availabili
 import { hasAvailabilityAgentSession } from '@/lib/availabilityAgentAuth'
 import { getStateForAvailabilityCity } from '@/lib/cleanerAgentPolicy'
 import { getCleanerTemplates, searchAgentCleanerPage } from '@/lib/cleaners'
+import CleanerAccessAdmin from '@/components/admin/CleanerAccessAdmin'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,7 @@ export default async function AvailabilityCleanersPage({ params }: { params: Pro
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <AvailabilityAgentNav assigneeId={assignee.id} showLogout />
+        <div className="mb-6"><CleanerAccessAdmin apiPath={`/api/availability-agent/${encodeURIComponent(assignee.id)}/cleaner-access`} state={state} /></div>
         <AgentCleaners assigneeId={assignee.id} agentName={assignee.name} state={state} initialCleaners={result.cleaners} initialTemplates={templates} initialTotal={result.total} />
       </div>
     </div>
