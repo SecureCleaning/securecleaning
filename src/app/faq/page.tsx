@@ -62,7 +62,7 @@ const FAQ_DEFAULTS = [
   {
     question: 'What recurring cleaning schedules are available?',
     answer:
-      'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, or fortnightly schedules. Request a quote and we will confirm the right service plan for your premises.',
+      'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, fortnightly, or monthly schedules. Request a quote and we will confirm the right service plan for your premises.',
   },
   {
     question: 'Are your cleaners insured?',

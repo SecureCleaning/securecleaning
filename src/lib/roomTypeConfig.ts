@@ -33,6 +33,7 @@ const VISITS_PER_YEAR: Record<CleaningFrequency, number> = {
   '2x_week': 104,
   weekly: 52,
   fortnightly: 26,
+  monthly: 12,
   once_off: 1,
 }
 

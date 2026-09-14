@@ -52,6 +52,7 @@ const frequencyOptions: Array<[CleaningFrequency, string]> = [
   ['2x_week', '2× weekly'],
   ['weekly', 'Weekly'],
   ['fortnightly', 'Fortnightly'],
+  ['monthly', 'Monthly'],
 ]
 
 const timeOptions: Array<[TimePreference, string]> = [

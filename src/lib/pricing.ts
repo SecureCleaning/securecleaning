@@ -63,6 +63,7 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
       '2x_week': 1,
       weekly: 1.05,
       fortnightly: 1.1,
+      monthly: 1.2,
       once_off: 1.25,
     },
     city: {

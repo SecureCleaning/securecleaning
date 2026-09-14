@@ -66,12 +66,22 @@ test('contract product financial defaults use expected annual visits and editabl
   assert.equal(getDefaultAnnualVisits('2x_week'), 104)
   assert.equal(getDefaultAnnualVisits('weekly'), 52)
   assert.equal(getDefaultAnnualVisits('fortnightly'), 26)
+  assert.equal(getDefaultAnnualVisits('monthly'), 12)
   assert.equal(getDefaultAnnualVisits('once_off'), 1)
   assert.deepEqual(calculateContractProductPricing(20_000, 52), {
     annualValueExGstCents: 1_040_000,
     suggestedPurchasePriceExGstCents: 520_000,
     gstRate: 0.1,
   })
+})
+
+test('monthly quotes create contract products with twelve annual visits', () => {
+  const migration = source('supabase/monthly_cleaning_frequency_migration.sql')
+  assert.match(migration, /ALTER TYPE public\.cleaning_frequency ADD VALUE IF NOT EXISTS 'monthly'/)
+  assert.match(migration, /WHEN 'monthly' THEN 12/)
+  assert.match(migration, /close_crm_opportunity_won_and_create_product/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION close_crm_opportunity_won_and_create_product/)
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION close_crm_opportunity_won_and_create_product/)
 })
 
 test('contract product start dates support an explicit TBC workflow', () => {

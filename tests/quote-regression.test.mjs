@@ -126,6 +126,21 @@ test('quote engine applies the frequency multiplier to the minimum invoice', () 
   assert.equal(result.totalHigh, 99)
 })
 
+test('monthly service uses its configured per-visit multiplier', () => {
+  const result = calculateQuote({
+    ...baseInputs,
+    floorArea: 10,
+    frequency: 'monthly',
+  }, {
+    ...DEFAULT_QUOTE_PRICING_CONFIG,
+    settings: { ...DEFAULT_QUOTE_PRICING_CONFIG.settings, minimumInvoice: 90 },
+  })
+
+  assert.equal(DEFAULT_QUOTE_PRICING_CONFIG.multipliers.frequency.monthly, 1.2)
+  assert.equal(result.totalLow, 108)
+  assert.equal(result.totalHigh, 108)
+})
+
 test('quote engine prices a standard bathroom at the configured base charge', () => {
   const result = calculateQuote({
     ...baseInputs,
@@ -289,6 +304,7 @@ test('periodic task prices are amortised across the configured cleaning frequenc
   assert.equal(getRoomTaskAmortizationFactor('weekly', 'daily'), 0.2)
   assert.equal(getRoomTaskAmortizationFactor('monthly', 'weekly'), 12 / 52)
   assert.equal(getRoomTaskAmortizationFactor('weekly', 'fortnightly'), 1)
+  assert.equal(getRoomTaskAmortizationFactor('weekly', 'monthly'), 1)
   assert.equal(getRoomTaskAmortizationFactor('monthly', 'once_off'), 1)
 
   const config = {

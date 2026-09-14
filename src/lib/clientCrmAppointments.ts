@@ -17,7 +17,7 @@ const PREMISES_TYPES: PremisesType[] = [
   'office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse',
   'function_centre', 'sports_facility', 'other',
 ]
-const CLEANING_FREQUENCIES: CleaningFrequency[] = ['daily', '3x_week', '2x_week', 'weekly', 'fortnightly']
+const CLEANING_FREQUENCIES: CleaningFrequency[] = ['daily', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly']
 const TIME_PREFERENCES: TimePreference[] = ['business_hours', 'after_hours', 'weekend']
 
 type AppointmentContext = {

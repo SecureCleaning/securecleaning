@@ -45,6 +45,7 @@ const frequencyOptions = [
   { value: '2x_week', label: '2x per Week' },
   { value: 'weekly', label: 'Weekly' },
   { value: 'fortnightly', label: 'Fortnightly' },
+  { value: 'monthly', label: 'Monthly' },
 ]
 
 const timeOptions = [

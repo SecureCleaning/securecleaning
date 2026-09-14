@@ -164,7 +164,7 @@ const faqEntries: ContentEntryDefinition[] = [
   entry('faq.item_10_question', 'FAQ 10 question', 'What add-on services are available?', 'faq'),
   entry('faq.item_10_answer', 'FAQ 10 answer', 'Available add-ons include: bathroom/toilet servicing, kitchen and kitchenette cleaning, external window cleaning, consumables supply (toilet paper, soap, paper towels), and high-touch point disinfection. Carpet steam cleaning is quoted separately.', 'faq'),
   entry('faq.recurring_cleaning_question', 'Recurring cleaning question', 'What recurring cleaning schedules are available?', 'faq'),
-  entry('faq.recurring_cleaning_answer', 'Recurring cleaning answer', 'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, or fortnightly schedules. Request a quote and we will confirm the right service plan for your premises.', 'faq'),
+  entry('faq.recurring_cleaning_answer', 'Recurring cleaning answer', 'We provide recurring commercial cleaning on daily, three-times-weekly, twice-weekly, weekly, fortnightly, or monthly schedules. Request a quote and we will confirm the right service plan for your premises.', 'faq'),
   entry('faq.item_12_question', 'FAQ 12 question', 'Are your cleaners insured?', 'faq'),
   entry('faq.item_12_answer', 'FAQ 12 answer', 'All Secure Cleaning Owner-Operators are required to hold public liability insurance as a condition of operating. We verify this before any operator is permitted to take on clients.', 'faq'),
   entry('faq.item_13_question', 'FAQ 13 question', 'Do you clean residential properties?', 'faq'),

@@ -16,7 +16,7 @@ CREATE TYPE premises_type AS ENUM (
 );
 
 CREATE TYPE cleaning_frequency AS ENUM (
-  'daily', '3x_week', '2x_week', 'weekly', 'fortnightly', 'once_off'
+  'daily', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly', 'once_off'
 );
 
 CREATE TYPE time_preference AS ENUM ('business_hours', 'after_hours', 'weekend');

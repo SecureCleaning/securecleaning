@@ -74,6 +74,7 @@ const FREQUENCY_LABELS: Record<string, string> = {
   '2x_week': '2 times per week',
   weekly: 'Weekly',
   fortnightly: 'Fortnightly',
+  monthly: 'Monthly',
   once_off: 'Recurring service',
 }
 

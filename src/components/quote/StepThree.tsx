@@ -16,6 +16,7 @@ const frequencyOptions: { value: CleaningFrequency; label: string; subtext: stri
   { value: '2x_week', label: '2x per Week', subtext: 'Flexible days' },
   { value: 'weekly', label: 'Weekly', subtext: 'Once a week' },
   { value: 'fortnightly', label: 'Fortnightly', subtext: 'Every 2 weeks' },
+  { value: 'monthly', label: 'Monthly', subtext: 'Once a month' },
 ]
 
 const timeOptions: { value: TimePreference; label: string; subtext: string }[] = [

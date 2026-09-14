@@ -50,6 +50,7 @@ const frequencyOptions = [
   ['2x_week', '2x per week'],
   ['weekly', 'Weekly'],
   ['fortnightly', 'Fortnightly'],
+  ['monthly', 'Monthly'],
 ] as const
 
 const timeOptions = [

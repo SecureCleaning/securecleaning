@@ -47,6 +47,19 @@ test('sent quote edits use an explicit versioned revision and remain locked afte
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
 })
 
+test('monthly frequency is selectable and preserved across quote and booking workflows', () => {
+  const editor = readFileSync(`${root}/src/components/admin/QuoteWorkflowEditor.tsx`, 'utf8')
+  const publicQuote = readFileSync(`${root}/src/components/quote/StepThree.tsx`, 'utf8')
+  const booking = readFileSync(`${root}/src/components/booking/BookingForm.tsx`, 'utf8')
+  const crmAppointments = readFileSync(`${root}/src/lib/clientCrmAppointments.ts`, 'utf8')
+  const crmQuoteDraft = readFileSync(`${root}/src/lib/clientCrmQuoteDraft.ts`, 'utf8')
+  const scope = readFileSync(`${root}/src/lib/scopeOfWorks.ts`, 'utf8')
+
+  for (const source of [editor, publicQuote, booking, crmAppointments, crmQuoteDraft, scope]) {
+    assert.match(source, /monthly/)
+  }
+})
+
 test('final quote readiness requires review and a positive final price', () => {
   const draft = { status: 'draft', finalPerVisit: '', roomItems: [], revisedInputs: { contactName: '', email: '' } }
   assert.equal(getFinalQuoteReadiness(draft).ready, false)

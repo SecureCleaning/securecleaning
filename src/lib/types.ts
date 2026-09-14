@@ -20,6 +20,7 @@ export type CleaningFrequency =
   | '2x_week'
   | 'weekly'
   | 'fortnightly'
+  | 'monthly'
   | 'once_off'
 
 export type TimePreference = 'business_hours' | 'after_hours' | 'weekend'
