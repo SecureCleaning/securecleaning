@@ -33,6 +33,7 @@ export function bookingBelongsToAvailabilityAssignee(
     : ''
   if (preferredAssigneeId) {
     if (preferredAssigneeId !== assignee.id) return false
+    return true
   } else if (!assignee.ownerOperatorId || booking.assigned_operator_id !== assignee.ownerOperatorId) {
     return false
   }

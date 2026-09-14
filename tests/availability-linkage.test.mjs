@@ -90,6 +90,27 @@ test('manual CRM appointments remain visible to their assigned agent outside pub
   ), false)
 })
 
+test('an explicit agent assignment remains visible when zones change or a legacy address is incomplete', () => {
+  const assignedOutsideCurrentZones = booking({
+    inputs: {
+      city: 'melbourne',
+      suburb: 'Geelong',
+      postcode: '3220',
+      preferredInspectionAssigneeId: agent.id,
+      inspectionBookingSource: 'public',
+    },
+  })
+  const assignedWithoutPostcode = booking({
+    inputs: {
+      city: 'melbourne',
+      preferredInspectionAssigneeId: agent.id,
+    },
+  })
+
+  assert.equal(bookingBelongsToAvailabilityAssignee(assignedOutsideCurrentZones, agent, [zone]), true)
+  assert.equal(bookingBelongsToAvailabilityAssignee(assignedWithoutPostcode, agent, [zone]), true)
+})
+
 test('agent calendar uses the Australian local day and retains early-morning appointments after UTC midnight', () => {
   const range = getAgentCalendarDateRange(
     new Date('2026-09-08T00:30:00.000Z'),
