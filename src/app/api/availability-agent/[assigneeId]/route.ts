@@ -11,6 +11,8 @@ import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAut
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { rateLimit, rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
 
+class AgentAvailabilityValidationError extends Error {}
+
 function sanitizeAgentSlots(
   slots: unknown,
   assigneeId: string,
@@ -21,6 +23,13 @@ function sanitizeAgentSlots(
 
   return slots.map((slot, index) => {
     const source = typeof slot === 'object' && slot ? (slot as Partial<WeeklyAvailabilitySlot>) : {}
+    const submittedZoneIds = Array.isArray(source.zoneIds)
+      ? source.zoneIds.map((zoneId) => String(zoneId))
+      : []
+    const unknownZoneIds = submittedZoneIds.filter((zoneId) => !allowedZoneIds.has(zoneId))
+    if (unknownZoneIds.length > 0) {
+      throw new AgentAvailabilityValidationError('One or more inspection zones have changed. Reload the page and select the zones again.')
+    }
     return {
       id: String(source.id ?? `slot-${assigneeId}-${index + 1}`),
       city: source.city === 'sydney' ? 'sydney' : fallbackCity,
@@ -29,9 +38,7 @@ function sanitizeAgentSlots(
       day: (source.day ?? 'monday') as WeeklyAvailabilitySlot['day'],
       startTime: String(source.startTime ?? '09:00'),
       endTime: String(source.endTime ?? '10:00'),
-      zoneIds: Array.isArray(source.zoneIds)
-        ? source.zoneIds.map((zoneId) => String(zoneId)).filter((zoneId) => allowedZoneIds.has(zoneId))
-        : [],
+      zoneIds: submittedZoneIds,
       active: Boolean(source.active ?? true),
       notes: typeof source.notes === 'string' ? source.notes : '',
     }
@@ -149,6 +156,9 @@ export async function POST(
       zones: savedConfig.zones.filter((zone) => zone.city === assignee.city),
     })
   } catch (error) {
+    if (error instanceof AgentAvailabilityValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
     console.error('[api/availability-agent] Failed to save agent availability:', error)
     return NextResponse.json({ error: 'Failed to save agent availability.' }, { status: 500 })
   }

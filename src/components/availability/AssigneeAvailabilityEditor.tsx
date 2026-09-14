@@ -15,6 +15,16 @@ import AvailabilityAgentNav from './AvailabilityAgentNav'
 
 const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
+function slotZoneFieldName(slotId: string) {
+  return `weekly-slot-zones:${slotId}`
+}
+
+function haveSameZoneIds(left: string[], right: string[]) {
+  if (left.length !== right.length) return false
+  const rightIds = new Set(right)
+  return left.every((zoneId) => rightIds.has(zoneId))
+}
+
 function toLocalDateTimeInput(value?: string) {
   if (!value) return ''
   const date = new Date(value)
@@ -83,6 +93,16 @@ export default function AssigneeAvailabilityEditor({
     )
   }
 
+  function updateSlotZone(slotId: string, zoneId: string, checked: boolean) {
+    setWeeklySlots((current) => current.map((slot) => {
+      if (slot.id !== slotId) return slot
+      const zoneIds = checked
+        ? [...new Set([...slot.zoneIds, zoneId])]
+        : slot.zoneIds.filter((currentZoneId) => currentZoneId !== zoneId)
+      return { ...slot, zoneIds, assigneeId: assignee.id }
+    }))
+  }
+
   function addSlot() {
     const id = `slot-${assignee.id}-${Date.now()}`
     setWeeklySlots((current) => [
@@ -133,6 +153,13 @@ export default function AssigneeAvailabilityEditor({
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const submittedForm = new FormData(event.currentTarget)
+    const weeklySlotsToSave = weeklySlots.map((slot) => ({
+      ...slot,
+      zoneIds: allowZoneEditing
+        ? submittedForm.getAll(slotZoneFieldName(slot.id)).map((zoneId) => String(zoneId))
+        : slot.zoneIds,
+    }))
     setIsSubmitting(true)
     setStatus({ type: 'idle', message: '' })
 
@@ -140,7 +167,7 @@ export default function AssigneeAvailabilityEditor({
       const response = await fetch(apiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ weeklySlots, oneOffBlocks }),
+        body: JSON.stringify({ weeklySlots: weeklySlotsToSave, oneOffBlocks }),
       })
 
       const result = await response.json()
@@ -150,6 +177,13 @@ export default function AssigneeAvailabilityEditor({
 
       const savedWeeklySlots = (result.weeklySlots as WeeklyAvailabilitySlot[]) ?? weeklySlots
       const savedOneOffBlocks = (result.oneOffBlocks as OneOffAvailabilityBlock[]) ?? oneOffBlocks
+      const mismatchedSlot = weeklySlotsToSave.find((submittedSlot) => {
+        const savedSlot = savedWeeklySlots.find((candidate) => candidate.id === submittedSlot.id)
+        return !savedSlot || !haveSameZoneIds(submittedSlot.zoneIds, savedSlot.zoneIds)
+      })
+      if (mismatchedSlot) {
+        throw new Error(`The inspection zones for ${mismatchedSlot.label || 'a weekly slot'} were not saved. Please reload and try again.`)
+      }
       setWeeklySlots(savedWeeklySlots)
       setOneOffBlocks(savedOneOffBlocks)
       setCalendarEvents((current) => replaceCalendarBlockoutEvents(current, savedOneOffBlocks))
@@ -320,13 +354,10 @@ export default function AssigneeAvailabilityEditor({
                               <label key={zone.id} className="flex items-start gap-2 text-sm text-gray-700">
                                 <input
                                   type="checkbox"
+                                  name={slotZoneFieldName(slot.id)}
+                                  value={zone.id}
                                   checked={checked}
-                                  onChange={(event) => {
-                                    const nextZoneIds = event.target.checked
-                                      ? [...slot.zoneIds, zone.id]
-                                      : slot.zoneIds.filter((zoneId) => zoneId !== zone.id)
-                                    updateSlot(slot.id, { zoneIds: nextZoneIds })
-                                  }}
+                                  onChange={(event) => updateSlotZone(slot.id, zone.id, event.target.checked)}
                                 />
                                 <span>{zone.name}</span>
                               </label>
