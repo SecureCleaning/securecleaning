@@ -47,6 +47,20 @@ test('sent quote edits use an explicit versioned revision and remain locked afte
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
 })
 
+test('final quote revision repair validates the canonical actor and document fields', () => {
+  const repair = readFileSync(`${root}/supabase/final_quote_revision_function_repair_migration.sql`, 'utf8')
+
+  assert.match(repair, /CREATE OR REPLACE FUNCTION public\.revise_final_quote_document/)
+  assert.match(repair, /BTRIM\(p_actor->>'id'\)/)
+  assert.match(repair, /BTRIM\(p_actor->>'name'\)/)
+  assert.match(repair, /p_final_document->'inputs' IS DISTINCT FROM p_firm_quote_draft->'revisedInputs'/)
+  assert.doesNotMatch(repair, /\bBTRM\s*\(/i)
+  assert.doesNotMatch(repair, /p_actor->>'(?:ed|tiame)'/)
+  assert.doesNotMatch(repair, /p_final_document->'enputs'/)
+  assert.match(repair, /REVOKE ALL ON FUNCTION public\.revise_final_quote_document/)
+  assert.match(repair, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
+})
+
 test('monthly frequency is selectable and preserved across quote and booking workflows', () => {
   const editor = readFileSync(`${root}/src/components/admin/QuoteWorkflowEditor.tsx`, 'utf8')
   const publicQuote = readFileSync(`${root}/src/components/quote/StepThree.tsx`, 'utf8')
