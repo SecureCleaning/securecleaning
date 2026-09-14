@@ -36,3 +36,9 @@ The sales migration is additive. It creates the product-sale ledger, GST-inclusi
 The approved-cleaner migration updates the protected sale and handover functions so cleaner workflow approval controls eligibility while compliance remains a separately visible operational status.
 The tax-invoice workflow migration adds the service-role-only global invoice template, immutable supplier, recipient, wording, deposit and sender snapshots, introduces the full sale tax-invoice type, and updates payment, inspection and handover gates while preserving legacy deposit and balance invoices.
 The document-bundle migration adds explicit final-price confirmation, locks that price once an invoice or agreement snapshot exists, lets the tax invoice and agreement be prepared in either order, and removes the obsolete signed-agreement prerequisite from invoice preparation. The application sends the matching tax-invoice and agreement PDFs together; signature and cleared-deposit checks remain later inspection and handover gates.
+
+Apply `admin_quote_deletion_migration.sql` after the CRM, final-quote, contract-product,
+and contract-sale migrations. It installs the service-role-only transactional deletion
+RPC used by the owner-only dashboard control. Accepted or sent final quotes and quotes
+linked to bookings, winning opportunities, contract products, or product sales are
+protected from deletion. CRM opportunities remain after removable quote links are cleared.

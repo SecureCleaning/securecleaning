@@ -7,6 +7,7 @@ import DispatchPanel from './DispatchPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
 import ReportingPanel from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
+import DeleteQuoteButton from './DeleteQuoteButton'
 import { getRelevantOperators } from '@/lib/operatorMatching'
 
 type DashboardStats = {
@@ -168,6 +169,7 @@ export interface AdminDashboardData {
 
 interface Props {
   initialData: AdminDashboardData
+  canDeleteQuotes?: boolean
 }
 
 const tabs = [
@@ -192,7 +194,7 @@ function formatDate(value?: string | null) {
 const quoteStatuses = ['pending', 'sent', 'accepted', 'expired', 'declined']
 const bookingStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled']
 
-export default function AdminDashboard({ initialData }: Props) {
+export default function AdminDashboard({ initialData, canDeleteQuotes = false }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
   const [bookings, setBookings] = useState(initialData.bookings)
@@ -523,6 +525,17 @@ export default function AdminDashboard({ initialData }: Props) {
                           >
                             Open workbench
                           </a>
+                          {canDeleteQuotes ? (
+                            <DeleteQuoteButton
+                              quoteRef={quote.quote_ref}
+                              onDeleted={(quoteRef) => {
+                                setQuotes((current) => current.filter((item) => item.quote_ref !== quoteRef))
+                                setAlerts((current) => current.filter((item) => item.entity_ref !== quoteRef))
+                                setActionState({ loading: null, message: `Quote ${quoteRef} was permanently deleted.`, error: null })
+                                void refreshOverview()
+                              }}
+                            />
+                          ) : null}
                         </div>
                       </td>
                     </tr>
