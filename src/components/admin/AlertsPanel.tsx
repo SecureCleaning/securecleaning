@@ -45,24 +45,24 @@ export default function AlertsPanel({
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Action needed</h2>
-      </div>
-      <div className="p-4">
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5">
+        <h2 className="text-base font-bold" style={{ color: '#1a2744' }}>Action needed</h2>
+        <div className="flex flex-wrap gap-1.5">
           {(['critical', 'warning', 'info'] as const).map((severity) => (
             <div
               key={severity}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold ${severityStyles[severity]}`}
+              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${severityStyles[severity]}`}
             >
               {severityLabels[severity]}: {counts[severity]}
             </div>
           ))}
         </div>
-        <div className="mt-3 max-h-[22rem] space-y-2 overflow-y-auto pr-1">
+      </div>
+      <div className="p-2.5">
+        <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
           {alerts.map((alert) => (
-            <div key={alert.id} className={`rounded-xl border p-3 ${severityStyles[alert.severity]}`}>
-              <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <div key={alert.id} className={`rounded-xl border p-2.5 ${severityStyles[alert.severity]}`}>
+              <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <span className="rounded-full border border-current/20 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide">
                   {kindLabels[alert.kind] ?? alert.kind.replace(/_/g, ' ')}
                 </span>
@@ -70,23 +70,20 @@ export default function AlertsPanel({
                   {severityLabels[alert.severity]}
                 </span>
               </div>
-              <div className="font-semibold">{alert.title}</div>
-              <div className="text-sm mt-1">{alert.description}</div>
-              <div className="mt-2 text-xs opacity-80">
-                Open the workflow below to resolve this alert.
-              </div>
-              <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold leading-snug">{alert.title}</div>
+              <div className="mt-1 text-xs leading-relaxed opacity-90">{alert.description}</div>
+              <div className="mt-2 flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => onOpenAlert(alert)}
-                  className="rounded-lg border border-current/25 bg-white/60 px-3 py-2 text-sm font-semibold hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
+                  className="rounded-lg border border-current/25 bg-white/60 px-2.5 py-1.5 text-xs font-semibold hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
                 >
-                  Open issue
+                  Open
                 </button>
                 <button
                   type="button"
                   onClick={() => onDismissAlert(alert)}
-                  className="rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold opacity-80 hover:bg-white/60 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
+                  className="rounded-lg border border-current/20 px-2.5 py-1.5 text-xs font-semibold opacity-80 hover:bg-white/60 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-current"
                 >
                   Dismiss
                 </button>

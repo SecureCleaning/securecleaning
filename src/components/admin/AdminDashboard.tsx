@@ -401,34 +401,42 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
     void refreshOverview()
   }
 
+  const pendingQuoteCount = quotes.filter((quote) => quote.status === 'pending').length
+
+  function tabCount(tab: TabKey) {
+    if (tab === 'quotes') return quotes.length
+    if (tab === 'bookings') return bookings.length
+    return leads.length
+  }
+
   return (
-    <div className="space-y-5">
-      <div className="grid gap-3 lg:grid-cols-[1.3fr_0.7fr]">
-        <div className="space-y-4">
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold uppercase tracking-wide text-green-700">Quote priority</div>
-                <div className="mt-1 text-3xl font-bold" style={{ color: '#1a2744' }}>
-                  {quotes.filter((quote) => quote.status === 'pending').length} pending quotes
-                </div>
-                <p className="mt-1 text-sm text-gray-600">Review new enquiries and move active opportunities forward first.</p>
+    <div className="space-y-4">
+      <section aria-label="Operations overview" className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+        <div className="grid gap-3 p-3 lg:grid-cols-[minmax(17rem,1.15fr)_minmax(0,2fr)]">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wide text-green-700">Quote priority</div>
+              <div className="mt-0.5 text-2xl font-bold leading-tight" style={{ color: '#1a2744' }}>
+                {pendingQuoteCount} pending {pendingQuoteCount === 1 ? 'quote' : 'quotes'}
               </div>
-              <button type="button" onClick={() => openWorkArea('quotes')} className="rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white hover:bg-green-700">
-                Open quote queue
-              </button>
+              <p className="mt-0.5 text-xs text-gray-600">New enquiries waiting for review.</p>
             </div>
+            <button type="button" onClick={() => openWorkArea('quotes')} className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700">
+              Open queue
+            </button>
           </div>
           <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openWorkArea} />
         </div>
-        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
-      </div>
-
-      <nav className="flex flex-wrap gap-2" aria-label="Admin shortcuts">
-        <Link href="/admin/clients?view=sites" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Manage client sites</Link>
-        <Link href="/admin/availability" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Inspection agents &amp; availability</Link>
-        <Link href="/admin/calendar" className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:border-green-300">Calendar</Link>
-      </nav>
+        <nav className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50/70 px-3 py-2" aria-label="Admin shortcuts">
+          <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Quick access</span>
+          <Link href="/admin/clients" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Client CRM</Link>
+          <Link href="/admin/clients?view=sites" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Client sites</Link>
+          <Link href="/admin/products" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Contract products</Link>
+          <Link href="/admin/sales" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Product sales</Link>
+          <Link href="/admin/calendar" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Calendar</Link>
+          <Link href="/admin/availability" className="rounded-lg px-2.5 py-1.5 text-sm font-semibold text-gray-700 hover:bg-white hover:text-green-700">Inspection availability</Link>
+        </nav>
+      </section>
 
       {actionState.message ? (
         <div role="status" aria-live="polite" className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
@@ -441,8 +449,9 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
         </div>
       ) : null}
 
-      <div id="admin-workarea" tabIndex={-1} className="scroll-mt-24 focus:outline-none">
-        <div className="flex flex-wrap gap-3">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+      <div id="admin-workarea" tabIndex={-1} className="min-w-0 scroll-mt-24 focus:outline-none">
+        <div className="mb-2 inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Dashboard work queues">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.key
             return (
@@ -450,14 +459,18 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                 key={tab.key}
                 type="button"
                 onClick={() => openWorkArea(tab.key)}
-                aria-pressed={isActive}
-                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+                aria-selected={isActive}
+                role="tab"
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
                   isActive
                     ? 'bg-green-600 text-white'
-                    : 'border border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
                 {tab.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                  {tabCount(tab.key)}
+                </span>
               </button>
             )
           })}
@@ -495,7 +508,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                         <select
                           value={quote.status}
                           onChange={(event) => handleQuoteStatusChange(quote.quote_ref, event.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs"
                         >
                           {quoteStatuses.map((status) => (
                             <option key={status} value={status}>{status}</option>
@@ -503,27 +516,27 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                         </select>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-col gap-2">
+                        <div className="flex min-w-[10rem] flex-wrap gap-1.5">
+                          <a
+                            href={`/admin/quotes/${quote.quote_ref}`}
+                            className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-center text-xs font-semibold text-green-700 hover:border-green-300"
+                          >
+                            Workbench
+                          </a>
                           <button
                             type="button"
                             onClick={() => handleQuoteResend(quote.quote_ref)}
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:border-gray-300"
                           >
-                            Resend email
+                            Resend
                           </button>
                           <a
                             href={`/quote/${quote.quote_ref}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300 text-center"
+                            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-center text-xs font-semibold text-gray-700 hover:border-gray-300"
                           >
-                            View quote
-                          </a>
-                          <a
-                            href={`/admin/quotes/${quote.quote_ref}`}
-                            className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-semibold text-green-700 hover:border-green-300 text-center"
-                          >
-                            Open workbench
+                            Preview
                           </a>
                           {canDeleteQuotes ? (
                             <DeleteQuoteButton
@@ -678,34 +691,34 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-2">
+                        <div className="flex min-w-[11rem] flex-wrap gap-1.5">
                           <button
                             type="button"
                             onClick={() => openBookingEditor(booking.booking_ref)}
-                            className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-center text-sm font-semibold text-green-700 hover:border-green-300"
+                            className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-center text-xs font-semibold text-green-700 hover:border-green-300"
                           >
-                            Edit booking
+                            Booking
                           </button>
                           <button
                             type="button"
                             onClick={() => openDispatchEditor(booking.booking_ref)}
-                            className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-sm font-semibold text-blue-800 hover:border-blue-300"
+                            className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-center text-xs font-semibold text-blue-800 hover:border-blue-300"
                           >
-                            Edit workflow
+                            Workflow
                           </button>
                           <button
                             type="button"
                             onClick={() => handleBookingResend(booking.booking_ref)}
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300"
+                            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:border-gray-300"
                           >
-                            Resend confirmation
+                            Resend
                           </button>
                           {linkedAgentId ? (
                             <a
                               href={`/admin/availability/quoters/${encodeURIComponent(linkedAgentId)}`}
-                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-sm font-semibold text-blue-800 hover:border-blue-300"
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-center text-xs font-semibold text-blue-800 hover:border-blue-300"
                             >
-                              Edit agent schedule
+                              Agent schedule
                             </a>
                           ) : null}
                         </div>
@@ -783,6 +796,10 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
             }}
           />
         )}
+      </div>
+      <aside className="order-first min-w-0 xl:order-last xl:sticky xl:top-4">
+        <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
+      </aside>
       </div>
     </div>
   )

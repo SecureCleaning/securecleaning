@@ -75,7 +75,7 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
       <button
         type="button"
         onClick={inspectDeletion}
-        className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:border-red-300"
+        className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:border-red-300"
       >
         Delete quote
       </button>
