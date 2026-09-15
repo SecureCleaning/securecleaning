@@ -42,3 +42,7 @@ and contract-sale migrations. It installs the service-role-only transactional de
 RPC used by the owner-only dashboard control. Accepted or sent final quotes and quotes
 linked to bookings, winning opportunities, contract products, or product sales are
 protected from deletion. CRM opportunities remain after removable quote links are cleared.
+
+Apply `final_quote_document_guard_repair_migration.sql` after the final-quote revision
+migrations. It restores the versioned-document trigger after production drift introduced
+a misspelled `EXCLUDED.superseded_by` reference that blocked revised final quote saves.

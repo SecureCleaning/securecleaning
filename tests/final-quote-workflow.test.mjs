@@ -61,6 +61,17 @@ test('final quote revision repair validates the canonical actor and document fie
   assert.match(repair, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
 })
 
+test('final quote document guard repair preserves version history with the canonical column', () => {
+  const repair = readFileSync(`${root}/supabase/final_quote_document_guard_repair_migration.sql`, 'utf8')
+
+  assert.match(repair, /CREATE OR REPLACE FUNCTION public\.protect_final_quote_document/)
+  assert.match(repair, /SECURITY INVOKER/)
+  assert.match(repair, /INSERT INTO public\.quote_final_document_versions/)
+  assert.match(repair, /superseded_by = EXCLUDED\.superseded_by/)
+  assert.doesNotMatch(repair, /EXCLUDED\.supersed_by/)
+  assert.match(repair, /RAISE EXCEPTION 'reviewed final quote document is immutable'/)
+})
+
 test('monthly frequency is selectable and preserved across quote and booking workflows', () => {
   const editor = readFileSync(`${root}/src/components/admin/QuoteWorkflowEditor.tsx`, 'utf8')
   const publicQuote = readFileSync(`${root}/src/components/quote/StepThree.tsx`, 'utf8')
