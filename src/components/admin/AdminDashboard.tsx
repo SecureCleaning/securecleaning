@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import BookingEditor from './BookingEditor'
 import DispatchPanel from './DispatchPanel'
@@ -203,6 +203,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   const [leads, setLeads] = useState(initialData.leads)
   const [reportingSnapshot, setReportingSnapshot] = useState(initialData.overview.reporting)
   const [alerts, setAlerts] = useState(initialData.overview.alerts)
+  const [alertsOpen, setAlertsOpen] = useState(false)
   const [sites] = useState(initialData.sites)
   const [operators] = useState(initialData.operators)
   const [actionState, setActionState] = useState<{ loading: string | null; message: string | null; error: string | null }>({
@@ -210,6 +211,30 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
     message: null,
     error: null,
   })
+
+  useEffect(() => {
+    if (!alertsOpen) return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setAlertsOpen(false)
+    }
+
+    const desktopLayout = window.matchMedia('(min-width: 1280px)')
+    function closeOnDesktop(event: MediaQueryListEvent) {
+      if (event.matches) setAlertsOpen(false)
+    }
+
+    window.addEventListener('keydown', closeOnEscape)
+    desktopLayout.addEventListener('change', closeOnDesktop)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+      desktopLayout.removeEventListener('change', closeOnDesktop)
+    }
+  }, [alertsOpen])
 
   function openWorkArea(nextTab: TabKey) {
     setActiveTab(nextTab)
@@ -239,6 +264,8 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   }
 
   function openAlert(alert: AdminAlertRow) {
+    setAlertsOpen(false)
+
     if (alert.kind === 'new_quote') {
       window.location.assign(`/admin/quotes/${encodeURIComponent(alert.entity_ref)}`)
       return
@@ -402,6 +429,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   }
 
   const pendingQuoteCount = quotes.filter((quote) => quote.status === 'pending').length
+  const criticalAlertCount = alerts.filter((alert) => alert.severity === 'critical').length
 
   function tabCount(tab: TabKey) {
     if (tab === 'quotes') return quotes.length
@@ -451,29 +479,44 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
       <div id="admin-workarea" tabIndex={-1} className="min-w-0 scroll-mt-24 focus:outline-none">
-        <div className="mb-2 inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Dashboard work queues">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.key
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => openWorkArea(tab.key)}
-                aria-selected={isActive}
-                role="tab"
-                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  isActive
-                    ? 'bg-green-600 text-white'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                {tab.label}
-                <span className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                  {tabCount(tab.key)}
-                </span>
-              </button>
-            )
-          })}
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="inline-flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-1 shadow-sm" role="tablist" aria-label="Dashboard work queues">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => openWorkArea(tab.key)}
+                  aria-selected={isActive}
+                  role="tab"
+                  className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    isActive
+                      ? 'bg-green-600 text-white'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] leading-none ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                    {tabCount(tab.key)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+          <button
+            type="button"
+            onClick={() => setAlertsOpen(true)}
+            aria-controls="admin-alert-drawer"
+            aria-expanded={alertsOpen}
+            className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900 shadow-sm hover:bg-blue-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 xl:hidden"
+          >
+            Actions
+            <span className="rounded-full bg-blue-900 px-2 py-0.5 text-xs text-white">{alerts.length}</span>
+            {criticalAlertCount > 0 ? (
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-800">{criticalAlertCount} critical</span>
+            ) : null}
+          </button>
         </div>
 
         {activeTab === 'quotes' && (
@@ -516,7 +559,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                         </select>
                       </td>
                       <td className="px-3 py-2">
-                        <div className="flex min-w-[10rem] flex-wrap gap-1.5">
+                        <div className="flex min-w-max flex-nowrap items-center gap-1.5 whitespace-nowrap">
                           <a
                             href={`/admin/quotes/${quote.quote_ref}`}
                             className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1.5 text-center text-xs font-semibold text-green-700 hover:border-green-300"
@@ -797,10 +840,35 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
           />
         )}
       </div>
-      <aside className="order-first min-w-0 xl:order-last xl:sticky xl:top-4">
+      <aside className="hidden min-w-0 xl:sticky xl:top-4 xl:block">
         <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
       </aside>
       </div>
+
+      {alertsOpen ? (
+        <div id="admin-alert-drawer" className="fixed inset-0 z-[70] xl:hidden" role="dialog" aria-modal="true" aria-labelledby="admin-alert-drawer-title">
+          <button
+            type="button"
+            aria-label="Close action panel"
+            onClick={() => setAlertsOpen(false)}
+            className="absolute inset-0 bg-slate-950/35"
+          />
+          <aside className="absolute inset-y-0 right-0 w-[min(28rem,calc(100vw-1rem))] overflow-y-auto bg-gray-50 p-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 id="admin-alert-drawer-title" className="text-lg font-bold" style={{ color: '#1a2744' }}>Action panel</h2>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setAlertsOpen(false)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+              >
+                Close
+              </button>
+            </div>
+            <AlertsPanel alerts={alerts} onOpenAlert={openAlert} onDismissAlert={dismissAlert} />
+          </aside>
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import test from 'node:test'
 const dashboard = readFileSync(new URL('../src/components/admin/AdminDashboard.tsx', import.meta.url), 'utf8')
 const reporting = readFileSync(new URL('../src/components/admin/ReportingPanel.tsx', import.meta.url), 'utf8')
 const followUp = readFileSync(new URL('../src/components/admin/CrmFollowUpPanel.tsx', import.meta.url), 'utf8')
+const deleteQuote = readFileSync(new URL('../src/components/admin/DeleteQuoteButton.tsx', import.meta.url), 'utf8')
 
 test('admin dashboard keeps quotes first and removes dead-end local work areas', () => {
   assert.match(dashboard, /\{ key: 'quotes', label: 'Quotes' \}/)
@@ -40,7 +41,13 @@ test('dashboard summaries flow into a compact two-column workspace and preserve 
   assert.match(dashboard, /Operations overview/)
   assert.match(dashboard, /xl:grid-cols-\[minmax\(0,1fr\)_22rem\]/)
   assert.match(dashboard, /xl:sticky xl:top-4/)
-  assert.match(dashboard, /flex min-w-\[10rem\] flex-wrap gap-1\.5/)
+  assert.match(dashboard, /aria-controls="admin-alert-drawer"/)
+  assert.match(dashboard, /role="dialog" aria-modal="true"/)
+  assert.match(dashboard, /fixed inset-0 z-\[70\] xl:hidden/)
+  assert.match(dashboard, /hidden min-w-0 xl:sticky xl:top-4 xl:block/)
+  assert.doesNotMatch(dashboard, /order-first/)
+  assert.match(dashboard, /flex min-w-max flex-nowrap items-center gap-1\.5 whitespace-nowrap/)
+  assert.match(deleteQuote, /whitespace-nowrap rounded-lg border border-red-200/)
   assert.match(dashboard, /Agent schedule/)
   assert.match(dashboard, /role="status" aria-live="polite"/)
   assert.match(dashboard, /role="alert" aria-live="assertive"/)
