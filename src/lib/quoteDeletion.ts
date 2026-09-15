@@ -46,7 +46,7 @@ export async function getQuoteDeletionPreview(quoteRef: string): Promise<QuoteDe
     db.from('crm_opportunities').select('id', { count: 'exact', head: true }).eq('winning_quote_id', quote.id),
     db.from('quote_send_attempts').select('id', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref).in('status', ['provider_accepted', 'finalized']),
     db.from('quote_send_attempts').select('id', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref),
-    db.from('final_quote_document_versions').select('quote_ref', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref),
+    db.from('quote_final_document_versions').select('quote_ref', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref),
   ])
 
   const firstError = [products, sales, bookings, opportunityLinks, winningOpportunities, confirmedSendAttempts, sendAttempts, documentVersions]

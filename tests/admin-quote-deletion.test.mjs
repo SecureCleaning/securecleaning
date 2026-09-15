@@ -23,6 +23,7 @@ test('quote deletion is owner-only and requires an exact typed reference', () =>
 
 test('transactional quote deletion preserves business records and blocks product dependencies', () => {
   const migration = source('supabase/admin_quote_deletion_migration.sql')
+  const deletion = source('src/lib/quoteDeletion.ts')
 
   assert.match(migration, /SECURITY DEFINER/)
   assert.match(migration, /FOR UPDATE/)
@@ -32,6 +33,10 @@ test('transactional quote deletion preserves business records and blocks product
   assert.match(migration, /Quotes linked to a booking cannot be deleted/)
   assert.match(migration, /Winning opportunity quotes cannot be deleted/)
   assert.match(migration, /Quotes with a sent final document cannot be deleted/)
+  assert.match(migration, /FROM public\.quote_final_document_versions/)
+  assert.doesNotMatch(migration, /public\.final_quote_document_versions/)
+  assert.match(deletion, /db\.from\('quote_final_document_versions'\)/)
+  assert.doesNotMatch(deletion, /db\.from\('final_quote_document_versions'\)/)
   assert.match(migration, /DELETE FROM public\.crm_opportunity_quotes/)
   assert.doesNotMatch(migration, /UPDATE public\.bookings/)
   assert.doesNotMatch(migration, /DELETE FROM public\.bookings/)

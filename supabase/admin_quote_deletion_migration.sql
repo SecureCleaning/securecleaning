@@ -97,7 +97,7 @@ BEGIN
   WHERE quote_ref = quote_row.quote_ref;
 
   SELECT COUNT(*) INTO document_version_count
-  FROM public.final_quote_document_versions
+  FROM public.quote_final_document_versions
   WHERE quote_ref = quote_row.quote_ref;
 
   DELETE FROM public.crm_opportunity_quotes
