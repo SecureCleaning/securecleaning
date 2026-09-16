@@ -156,19 +156,23 @@ test('public quote DTO shows company while excluding contact, workflow, staff, c
       addOns: { bathrooms: 1, kitchens: 1, glassCleaningRequired: false, highTouchDisinfection: false, carpetSteam: false, consumables: false },
     },
     result: { totalLow: 100, totalHigh: 120, carpetSteamSeparate: false, breakdown: { internalLabour: 99 }, estimatedHours: 8 },
-    inspectionReport: { riskNotes: 'internal' }, firmQuoteDraft: { serviceCommentary: 'internal' },
+    inspectionReport: { riskNotes: 'internal' }, firmQuoteDraft: {
+      serviceCommentary: 'internal', includeConsumablesCatalogue: true,
+      supplierCostCents: 4000, markupOverrideBps: 2000,
+    },
     finalDocument: { reviewedBy: { name: 'Staff' } }, roomTypeConfig: { secret: true },
     sentAt: 'now', sentBy: { name: 'Staff' }, sentTo: 'private@example.com',
     displayPrice: { low: 100, high: 100, isFirm: true },
   }
   for (const variant of ['remote_review', 'final']) {
     const dto = toPublicQuoteDocument(record, variant)
-    assert.deepEqual(Object.keys(dto).sort(), ['customerJourney', 'inputs', 'isFirmPrice', 'quoteRef', 'result', 'variant'])
+    assert.deepEqual(Object.keys(dto).sort(), ['customerJourney', 'includeConsumablesCatalogue', 'inputs', 'isFirmPrice', 'quoteRef', 'result', 'variant'])
     assert.equal(dto.inputs.businessName, 'Private business')
     assert.equal(dto.customerJourney, 'agent_created')
     assert.equal(dto.isFirmPrice, true)
+    assert.equal(dto.includeConsumablesCatalogue, true)
     const serialized = JSON.stringify(dto)
-    for (const forbidden of ['inspectionReport', 'firmQuoteDraft', 'finalDocument', 'roomTypeConfig', 'sentAt', 'sentBy', 'sentTo', 'email', 'phone', 'address', 'notes', 'reviewedBy', 'breakdown', 'estimatedHours', 'internalLabour']) {
+    for (const forbidden of ['inspectionReport', 'firmQuoteDraft', 'finalDocument', 'roomTypeConfig', 'sentAt', 'sentBy', 'sentTo', 'email', 'phone', 'address', 'notes', 'reviewedBy', 'breakdown', 'estimatedHours', 'internalLabour', 'supplierCostCents', 'markupOverrideBps']) {
       assert.equal(serialized.includes(forbidden), false, `${forbidden} leaked from ${variant}`)
     }
   }

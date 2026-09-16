@@ -93,6 +93,7 @@ export type FirmQuoteDraft = {
   inclusions: string
   exclusions: string
   serviceCommentary: string
+  includeConsumablesCatalogue: boolean
 }
 
 export type FirmQuotePreview = {
@@ -454,6 +455,7 @@ export function createDefaultFirmQuoteDraft(
     inclusions: '',
     exclusions: '',
     serviceCommentary: '',
+    includeConsumablesCatalogue: false,
   }
 }
 
@@ -528,6 +530,7 @@ export function parseFirmQuoteDraft(
     inclusions: typeof source.inclusions === 'string' ? source.inclusions : fallback.inclusions,
     exclusions: typeof source.exclusions === 'string' ? source.exclusions : fallback.exclusions,
     serviceCommentary: typeof source.serviceCommentary === 'string' ? source.serviceCommentary : fallback.serviceCommentary,
+    includeConsumablesCatalogue: source.includeConsumablesCatalogue === true,
   }
 }
 

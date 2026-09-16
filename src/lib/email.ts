@@ -303,6 +303,7 @@ export async function sendUpdatedQuoteEmail(
     to?: string
     subject?: string
     message?: string
+    includeConsumablesCatalogue?: boolean
   },
 ) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
@@ -310,6 +311,7 @@ export async function sendUpdatedQuoteEmail(
   const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
   const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
+  const consumablesUrl = `${SITE_URL}/consumables`
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
   const recipient = options?.to?.trim() || inputs.email.trim()
@@ -354,6 +356,7 @@ export async function sendUpdatedQuoteEmail(
           <p style="margin: 28px 0;">
             <a href="${finalQuoteUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">View Updated Quote</a>
             <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #0b5f74; color: white; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px;">View Scope of Works</a>
+            ${options?.includeConsumablesCatalogue ? `<a href="${consumablesUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #d39f2a; color: #172033; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px; margin-left: 8px;">View Consumables Pricing</a>` : ''}
           </p>
 
           <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>

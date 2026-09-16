@@ -1,5 +1,8 @@
 import RoomTypeConfigAdmin from '@/components/admin/RoomTypeConfigAdmin'
 import PricingAdmin from '@/components/admin/PricingAdmin'
+import ConsumablesAdmin from '@/components/admin/ConsumablesAdmin'
+import { getAdminSessionIdentityFromCookies, hasAdminRole } from '@/lib/adminAuth'
+import { getConsumablesAdminCatalog } from '@/lib/consumables'
 import { withAdminPage } from '@/lib/adminPage'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
@@ -8,9 +11,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function AdminRoomTypesPage() {
   return withAdminPage(async () => {
-    const [initialConfig, pricingConfig] = await Promise.all([
+    const identity = await getAdminSessionIdentityFromCookies()
+    const canManageConsumables = Boolean(identity && hasAdminRole(identity.role, 'manager'))
+    const [initialConfig, pricingConfig, consumablesCatalog] = await Promise.all([
       getQuoteRoomTypeConfig(),
       getQuotePricingConfig(),
+      canManageConsumables ? getConsumablesAdminCatalog() : Promise.resolve(null),
     ])
 
     return <>
@@ -22,6 +28,7 @@ export default async function AdminRoomTypesPage() {
           <PricingAdmin initialConfig={pricingConfig} embedded />
         </div>
       </details>
+      {consumablesCatalog ? <ConsumablesAdmin initialCatalog={consumablesCatalog} /> : null}
     </>
   })
 }

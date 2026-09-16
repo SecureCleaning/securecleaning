@@ -57,7 +57,9 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     const finalQuote = await getPublicQuoteWorkflowByRef(params.ref, 'final')
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     providerCallStarted = true
-    const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, { to, subject, message })
+    const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
+      to, subject, message, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+    })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)
     const completed = await completeFinalQuoteSend(params.ref, attemptId, quote.finalDocument.version)

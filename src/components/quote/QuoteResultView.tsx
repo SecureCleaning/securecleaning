@@ -18,6 +18,7 @@ interface QuoteResultViewProps {
   bookingHandoffToken?: string
   customerJourney?: QuoteCustomerJourney
   isFirmPrice?: boolean
+  includeConsumablesCatalogue?: boolean
 }
 
 const frequencyLabels: Record<string, string> = {
@@ -59,6 +60,7 @@ export default function QuoteResultView({
   bookingHandoffToken,
   customerJourney = 'online_enquiry',
   isFirmPrice = false,
+  includeConsumablesCatalogue = false,
 }: QuoteResultViewProps) {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const hasEmailIssue = emailSent === false
@@ -225,6 +227,14 @@ export default function QuoteResultView({
         >
           View Scope of Works
         </Link>
+        {includeConsumablesCatalogue ? <Link
+          href="/consumables"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center rounded-xl border-2 border-amber-500 px-8 py-4 text-lg font-bold text-amber-800 transition-all hover:bg-amber-50"
+        >
+          View Consumables Pricing
+        </Link> : null}
         {showSelfServiceActions ? <Link
           href={bookingHandoffToken
             ? `/quote?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`

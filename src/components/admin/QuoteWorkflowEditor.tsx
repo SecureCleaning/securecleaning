@@ -1454,6 +1454,19 @@ export default function QuoteWorkflowEditor({
                 <span className="mt-1 block text-xs text-gray-500">This appears in the client scope. Do not include keys, alarm details, hazards, staff actions, or other internal notes.</span>
               </label>
             </div>
+            <label className="mt-5 flex items-start gap-3 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm">
+              <input
+                type="checkbox"
+                checked={firmQuoteDraft.includeConsumablesCatalogue}
+                disabled={finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
+                onChange={(event) => setFirmQuoteDraft((current) => ({ ...current, includeConsumablesCatalogue: event.target.checked }))}
+                className="mt-1 h-4 w-4"
+              />
+              <span>
+                <span className="block font-semibold text-teal-950">Include consumables pricing catalogue</span>
+                <span className="mt-1 block text-teal-800">Adds a client-safe catalogue link to the final quote page and email. Supplier costs and markup are never shown.</span>
+              </span>
+            </label>
             </div>
           </details>
 

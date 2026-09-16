@@ -17,6 +17,7 @@ export type PublicQuoteDocument = {
   isFirmPrice: boolean
   inputs: PublicQuoteDisplayInputs
   result: Pick<QuoteResult, 'totalLow' | 'totalHigh' | 'carpetSteamSeparate'>
+  includeConsumablesCatalogue: boolean
 }
 
 export function toPublicQuoteDocument(record: PublicQuoteWorkflowRecord, variant: QuoteDocumentVariant): PublicQuoteDocument {
@@ -26,6 +27,7 @@ export function toPublicQuoteDocument(record: PublicQuoteWorkflowRecord, variant
     variant,
     customerJourney: record.customerJourney,
     isFirmPrice: record.displayPrice.isFirm,
+    includeConsumablesCatalogue: record.firmQuoteDraft.includeConsumablesCatalogue,
     inputs: {
       businessName: source.businessName,
       city: source.city,
