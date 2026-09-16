@@ -1,5 +1,8 @@
 'use client'
 
+import RichEmailEditor from '@/components/admin/RichEmailComposer'
+import { createRichEmailContent } from '@/lib/richEmailContent'
+
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
@@ -196,7 +199,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
           <label className="text-sm font-medium">Invoice title<input value={invoiceTemplateDraft.invoiceTitle} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, invoiceTitle: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium md:col-span-2">Line-item description<input value={invoiceTemplateDraft.lineItemTemplate} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, lineItemTemplate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium md:col-span-3">Email subject<input value={invoiceTemplateDraft.emailSubjectTemplate} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, emailSubjectTemplate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-          <label className="text-sm font-medium md:col-span-3">Email introduction<textarea rows={3} value={invoiceTemplateDraft.emailIntroTemplate} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, emailIntroTemplate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <div className="md:col-span-3"><RichEmailEditor label="Email introduction" value={createRichEmailContent({ text: invoiceTemplateDraft.emailIntroTemplate, html: invoiceTemplateDraft.emailIntroHtml, document: invoiceTemplateDraft.emailIntroDocument })} resetKey={`invoice-intro-${invoiceTemplateDraft.updatedAt || 'default'}`} disabled={Boolean(busy)} onChange={content => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, emailIntroTemplate: content.text, emailIntroHtml: content.html, emailIntroDocument: content.document })} /></div>
           <label className="text-sm font-medium md:col-span-3">Payment terms<textarea rows={4} value={invoiceTemplateDraft.paymentTermsTemplate} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, paymentTermsTemplate: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium md:col-span-3">Invoice footer<textarea rows={2} value={invoiceTemplateDraft.footerNote} onChange={(event) => setInvoiceTemplateDraft({ ...invoiceTemplateDraft, footerNote: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
         </div>

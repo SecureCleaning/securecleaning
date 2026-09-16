@@ -1,12 +1,19 @@
 'use client'
 
+import RichEmailEditor from '@/components/admin/RichEmailComposer'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
-import { applyCrmTemplateTokens, getMissingCrmSignatureFields, resolveDefaultCrmSenderId } from '@/lib/clientCrmPolicy'
+import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
+import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import { getMissingCrmSignatureFields, resolveDefaultCrmSenderId } from '@/lib/clientCrmPolicy'
 import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity, CrmSenderOption } from '@/lib/clientCrmData'
+import { appendEmailMergeField, CLIENT_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
+import { createRichEmailContent, hasRichEmailContent, plainTextToEmailHtml, type RichEmailContent } from '@/lib/richEmailContent'
 import type { StaffAccount } from '@/lib/staffAccounts'
 import type { CleaningFrequency, PremisesType, TimePreference } from '@/lib/types'
+
 
 type WorkspaceData = {
   opportunities: CrmOpportunity[]
@@ -73,8 +80,18 @@ function emptyTemplateDraft(actorRole: string) {
   return {
     id: '', name: '', description: '', category: 'outreach', purpose: 'marketing',
     visibility: actorRole === 'agent' ? 'personal' : 'shared',
-    status: actorRole === 'agent' ? 'draft' : 'published', subject: '', body: '',
+    status: actorRole === 'agent' ? 'draft' : 'published', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null,
   }
+}
+
+type ClientEmailPreview = {
+  subject: string
+  from?: string
+  to?: string
+  cc?: string
+  html: string
+  previewFingerprint?: string
+  history?: boolean
 }
 
 function dateLabel(value: string | null | undefined) {
@@ -139,7 +156,10 @@ export default function ClientCrmWorkspace({
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
   const [leadDraft, setLeadDraft] = useState(emptyLeadDraft)
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
-  const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '' })
+  const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null })
+  const [composeEditorKey, setComposeEditorKey] = useState(0)
+  const [templateEditorKey, setTemplateEditorKey] = useState(0)
+  const [emailPreview, setEmailPreview] = useState<ClientEmailPreview | null>(null)
   const [leadEdit, setLeadEdit] = useState({ stage: 'new', notes: '', nextFollowUpAt: '', assignedStaffId: '', contactBasis: '', sourceProvider: '', sourceExplanation: '' })
   const [profileEdit, setProfileEdit] = useState({ businessName: '', firstName: '', lastName: '', positionTitle: '', email: '', phone: '', siteName: '', address: '', suburb: '', postcode: '' })
   const [appointmentOpen, setAppointmentOpen] = useState(false)
@@ -226,7 +246,9 @@ export default function ClientCrmWorkspace({
       selectedLead.assignedStaffId,
       data?.senders.map((sender) => sender.id) ?? [],
     )
-    setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '' })
+    setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null })
+    setComposeEditorKey((current) => current + 1)
+    setEmailPreview(null)
     setWonOpen(false)
     setWonDraft({
       quoteId: selectedLead.quotes.find((quote) => quote.hasFinalDocument)?.id ?? selectedLead.quotes[0]?.id ?? '',
@@ -261,23 +283,21 @@ export default function ClientCrmWorkspace({
   function chooseTemplate(templateId: string) {
     const template = data?.templates.find((item) => item.id === templateId)
     if (!template || !selectedLead) {
-      setCompose((current) => ({ ...current, templateId: '', subject: '', body: '' }))
+      setCompose((current) => ({ ...current, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null }))
+      setComposeEditorKey((current) => current + 1)
+      setEmailPreview(null)
       return
-    }
-    const tokens = {
-      business_name: selectedLead.businessName,
-      contact_name: selectedLead.contactName,
-      first_name: selectedLead.firstName || selectedLead.contactName.split(/\s+/)[0] || '',
-      suburb: selectedLead.suburb,
-      postcode: selectedLead.postcode,
-      lead_source: selectedLead.sourceProvider || selectedLead.sourceType,
     }
     setCompose((current) => ({
       ...current,
       templateId,
-      subject: applyCrmTemplateTokens(template.subject, tokens),
-      body: applyCrmTemplateTokens(template.body, tokens),
+      subject: template.subject,
+      body: template.body,
+      bodyHtml: template.bodyHtml || plainTextToEmailHtml(template.body),
+      bodyDocument: template.bodyDocument,
     }))
+    setComposeEditorKey((current) => current + 1)
+    setEmailPreview(null)
   }
 
   async function createLead(event: React.FormEvent) {
@@ -465,20 +485,48 @@ export default function ClientCrmWorkspace({
     }
   }
 
+  function composePayload() {
+    if (!selectedLead) return null
+    return {
+      opportunityId: selectedLead.id,
+      senderStaffId: compose.senderStaffId,
+      templateId: compose.templateId || null,
+      subject: compose.subject,
+      body: compose.body,
+      bodyHtml: compose.bodyHtml,
+      bodyDocument: compose.bodyDocument,
+    }
+  }
+
+  async function previewEmail() {
+    const payload = composePayload()
+    if (!payload) return
+    setBusy('email-preview')
+    setStatus(null)
+    try {
+      const result = await post({ action: 'email.preview', ...payload })
+      setEmailPreview(result.result as ClientEmailPreview)
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to preview the email.' })
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function sendEmail() {
     if (!selectedLead || !globalThis.crypto?.randomUUID) return
+    const payload = composePayload()
+    if (!payload || !emailPreview?.previewFingerprint) return
     setBusy('email')
     setStatus(null)
     try {
       await post({
         action: 'email.send',
-        opportunityId: selectedLead.id,
-        senderStaffId: compose.senderStaffId,
-        templateId: compose.templateId || null,
-        subject: compose.subject,
-        body: compose.body,
+        ...payload,
+        previewFingerprint: emailPreview.previewFingerprint,
         idempotencyKey: crypto.randomUUID(),
       })
+      setEmailPreview(null)
       await loadWorkspace(selectedLead.id)
       setStatus({ type: 'success', message: 'Email accepted by the provider and recorded in the opportunity history.' })
     } catch (error) {
@@ -499,7 +547,10 @@ export default function ClientCrmWorkspace({
       status: template.status,
       subject: template.subject,
       body: template.body,
+      bodyHtml: template.bodyHtml || plainTextToEmailHtml(template.body),
+      bodyDocument: template.bodyDocument,
     })
+    setTemplateEditorKey((current) => current + 1)
     setView('templates')
   }
 
@@ -510,6 +561,7 @@ export default function ClientCrmWorkspace({
     try {
       await post({ action: 'template.save', ...templateDraft })
       setTemplateDraft(emptyTemplateDraft(data?.actor.role ?? 'agent'))
+      setTemplateEditorKey((current) => current + 1)
       await loadWorkspace(selectedLeadId)
       setStatus({ type: 'success', message: 'Email template saved with a new audit version.' })
     } catch (error) {
@@ -527,7 +579,8 @@ export default function ClientCrmWorkspace({
   const selectedSender = data.senders.find((sender) => sender.id === compose.senderStaffId) ?? null
   const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
-  const canSend = Boolean(selectedLead && selectedSender && !selectedLead.suppressed && !hasUnresolvedEmail && signatureMissing.length === 0 && compose.subject.trim() && compose.body.trim())
+  const canPrepareEmail = Boolean(selectedLead && selectedSender && signatureMissing.length === 0 && compose.subject.trim() && hasRichEmailContent({ html: compose.bodyHtml, text: compose.body }))
+  const canSend = Boolean(canPrepareEmail && !selectedLead?.suppressed && !hasUnresolvedEmail && emailPreview?.previewFingerprint)
   const appointmentAgents = data.agents.filter((agent) => agent.availabilityAssigneeId)
   const selectedAppointmentAgent = appointmentAgents.find((agent) => agent.id === appointmentDraft.assignedStaffId) ?? null
   const appointmentRecordReady = Boolean(
@@ -597,9 +650,9 @@ export default function ClientCrmWorkspace({
           <label className="text-sm font-medium text-gray-700">Purpose<span className="mt-1 block rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 font-normal">Client outreach</span><span className="mt-1 block text-xs font-normal text-gray-500">All CRM-composer emails respect marketing unsubscribe preferences.</span></label>
           <label className="text-sm font-medium text-gray-700">Visibility<select disabled={!canManageShared} value={templateDraft.visibility} onChange={(event) => setTemplateDraft({ ...templateDraft, visibility: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="shared">Shared</option><option value="personal">Personal</option></select></label>
           <label className="text-sm font-medium text-gray-700">Status<select disabled={!canManageShared} value={templateDraft.status} onChange={(event) => setTemplateDraft({ ...templateDraft, status: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
-          <label className="text-sm font-medium text-gray-700 md:col-span-2">Subject<input required value={templateDraft.subject} onChange={(event) => setTemplateDraft({ ...templateDraft, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-          <label className="text-sm font-medium text-gray-700 md:col-span-2">Message<textarea required rows={10} value={templateDraft.body} onChange={(event) => setTemplateDraft({ ...templateDraft, body: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-        </div><p className="mt-3 text-xs text-gray-500">Available fields: {'{{first_name}}'}, {'{{contact_name}}'}, {'{{business_name}}'}, {'{{suburb}}'}, {'{{postcode}}'}, {'{{lead_source}}'}. The agent signature and unsubscribe section are added automatically.</p><div className="mt-4 flex gap-3"><button type="submit" disabled={busy === 'template'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'template' ? 'Saving...' : 'Save template'}</button><button type="button" onClick={() => setTemplateDraft(emptyTemplateDraft(data.actor.role))} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">New template</button></div></form>
+          <label className="text-sm font-medium text-gray-700 md:col-span-2">Subject<input required value={templateDraft.subject} onChange={(event) => setTemplateDraft({ ...templateDraft, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => setTemplateDraft((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) }))} /></span></label>
+          <div className="md:col-span-2"><RichEmailEditor value={createRichEmailContent({ document: templateDraft.bodyDocument, html: templateDraft.bodyHtml, text: templateDraft.body })} resetKey={`crm-template-${templateEditorKey}`} minHeight={300} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message) => setTemplateDraft((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document }))} /></div>
+        </div><p className="mt-3 text-xs text-gray-500">Choose a database field from the menus to insert it. The selected client&apos;s current saved details are filled during preview; older {'{{field}}'} templates remain supported. The agent signature and unsubscribe section are added automatically.</p><div className="mt-4 flex gap-3"><button type="submit" disabled={busy === 'template'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'template' ? 'Saving...' : 'Save template'}</button><button type="button" onClick={() => { setTemplateDraft(emptyTemplateDraft(data.actor.role)); setTemplateEditorKey((current) => current + 1) }} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">New template</button></div></form>
       </div> : null}
 
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
@@ -695,13 +748,13 @@ export default function ClientCrmWorkspace({
             {signatureMissing.length > 0 ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Sending as this person is disabled until Team Access has: {signatureMissing.join(', ')}.</p> : null}
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               <label className="text-sm font-medium text-gray-700">Send as
-                {canManageShared ? <select value={compose.senderStaffId} onChange={(event) => setCompose({ ...compose, senderStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
+                {canManageShared ? <select value={compose.senderStaffId} onChange={(event) => { setCompose({ ...compose, senderStaffId: event.target.value }); setEmailPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
                   {data.senders.map((sender) => <option key={sender.id} value={sender.id}>{sender.displayName} - {sender.jobTitle}</option>)}
                 </select> : <span className="mt-1 block rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 font-normal">{selectedSender?.displayName ?? data.actor.displayName}</span>}
               </label>
               <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
-              <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-              <label className="text-sm font-medium text-gray-700 md:col-span-2 lg:col-span-3">Message<textarea rows={9} value={compose.body} onChange={(event) => setCompose({ ...compose, body: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => { setCompose({ ...compose, subject: event.target.value }); setEmailPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => { setCompose((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) })); setEmailPreview(null) }} /></span></label>
+              <div className="md:col-span-2 lg:col-span-3"><RichEmailEditor value={createRichEmailContent({ document: compose.bodyDocument, html: compose.bodyHtml, text: compose.body })} resetKey={`crm-compose-${composeEditorKey}`} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message: RichEmailContent) => { setCompose((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
             </div>
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -715,8 +768,8 @@ export default function ClientCrmWorkspace({
               {selectedSender ? <p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${selectedSender.displayName}\n${selectedSender.jobTitle}\nSecure Cleaning\n${selectedSender.phone}\n${selectedSender.email}\nsecurecleaning.com.au`}</p> : null}
               <p className="mt-2 text-xs text-gray-500">Source wording is saved with this client workflow. Sender details come from Team Access. The unsubscribe link and company footer are added automatically.</p>
             </div>
-            <button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="mt-4 rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button>
-            <p className="mt-2 text-xs text-gray-500">The system automatically checks sender permission, recipient consistency, contact source, unsubscribe status, signature completeness, and any unresolved prior send.</p>
+            <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewEmail()} disabled={!canPrepareEmail || busy === 'email-preview'} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email-preview' ? 'Preparing preview...' : 'Preview email'}</button><button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button></div>
+            <p className="mt-2 text-xs text-gray-500">Preview is required after every change. The system verifies sender permission, recipient consistency, contact source, unsubscribe status, signature completeness, and unresolved prior sends again before delivery.</p>
           </section>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Quote history</h2>
@@ -728,9 +781,10 @@ export default function ClientCrmWorkspace({
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{item.finalHtml ? <button type="button" onClick={() => setEmailPreview({ subject: item.subject, to: item.toEmail, from: item.senderName, html: item.finalHtml || '', history: true })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
+      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => setEmailPreview(null)} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )
 }

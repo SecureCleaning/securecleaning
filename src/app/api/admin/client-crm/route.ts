@@ -11,7 +11,7 @@ import {
   updateCrmProfile,
   updateCrmOpportunity,
 } from '@/lib/clientCrmData'
-import { sendClientCrmEmail } from '@/lib/clientCrmEmail'
+import { previewClientCrmEmail, sendClientCrmEmail } from '@/lib/clientCrmEmail'
 import { createCrmInspectionAppointment } from '@/lib/clientCrmAppointments'
 import { createCrmQuoteDraft } from '@/lib/clientCrmQuotes'
 import { getContractProductActor } from '@/lib/contractProductAuth'
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   }
 }
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 24 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
@@ -80,6 +80,11 @@ export async function POST(request: NextRequest) {
     }
     if (action === 'template.save') {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })
+    }
+    if (action === 'email.preview') {
+      const limited = rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await previewClientCrmEmail(actor, body) })
     }
     if (action === 'email.send') {
       const limited = rateLimit(request, { key: `client-crm-send:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })

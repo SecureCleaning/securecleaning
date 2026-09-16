@@ -4,6 +4,10 @@ import { writeAuditLog } from '@/lib/auditLog'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
 import { toAgentCleanerEmailHistory } from '@/lib/cleanerAgentPolicy'
 import { cleanerServiceAreasForImportUpdate, cleanServiceAreas, normaliseCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
+import { getStaffAccountProfileById } from '@/lib/staffAccounts'
+import { parseRichEmailContent, richEmailFingerprint, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
+import type { RichEmailContent } from '@/lib/richEmailContent'
+import { applyEmailMergeFields, CLEANER_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
 
 export type CleanerStatus = 'lead' | 'pending_approval' | 'approved' | 'paused' | 'rejected' | 'inactive'
 export const CLEANER_COMPLIANCE_STATUSES = ['current', 'docs_due', 'expired', 'not_checked'] as const
@@ -56,6 +60,8 @@ export interface CleanerEmailTemplate {
   description?: string | null
   subject: string
   body: string
+  body_html?: string | null
+  body_document?: Record<string, unknown> | null
   is_active: boolean
   created_at?: string | null
   updated_at?: string | null
@@ -69,7 +75,12 @@ export interface CleanerEmail {
   to_email: string
   subject: string
   body: string
+  body_html_snapshot?: string | null
+  body_document_snapshot?: Record<string, unknown> | null
+  final_html_snapshot?: string | null
+  final_text_snapshot?: string | null
   status: CleanerEmailStatus
+  delivery_outcome?: string | null
   provider_message_id?: string | null
   error_message?: string | null
   sent_by?: string | null
@@ -171,9 +182,9 @@ const CLEANER_SELECT =
 const AGENT_CLEANER_DETAIL_SELECT = CLEANER_SELECT
 
 const COMMENT_SELECT = 'id, cleaner_id, author_name, comment, created_at'
-const TEMPLATE_SELECT = 'id, name, description, subject, body, is_active, created_at, updated_at'
+const TEMPLATE_SELECT = 'id, name, description, subject, body, body_html, body_document, is_active, created_at, updated_at'
 const EMAIL_SELECT =
-  'id, cleaner_id, template_id, template_name, to_email, subject, body, status, provider_message_id, error_message, sent_by, sent_at, delivered_at, opened_at, clicked_at, created_at'
+  'id, cleaner_id, template_id, template_name, to_email, subject, body, body_html_snapshot, body_document_snapshot, final_html_snapshot, final_text_snapshot, status, provider_message_id, error_message, sent_by, sent_at, delivered_at, opened_at, clicked_at, created_at, delivery_outcome'
 const DOCUMENT_SELECT =
   'id, cleaner_id, document_type, file_name, storage_path, content_type, size_bytes, expiry_date, notes, uploaded_by, created_at'
 const CLEANER_DOCUMENT_BUCKET = 'cleaner-documents'
@@ -578,6 +589,21 @@ export async function getCleanerAdminData() {
   return { cleaners, templates, selected, total: cleanerPage.total, page: cleanerPage.page, pageSize: cleanerPage.pageSize }
 }
 
+export async function deleteCleanerPermanently(cleanerId: string, actor: CleanerAuditActor) {
+  const { data, error } = await getAdminSupabase().rpc('delete_cleaner_permanently', {
+    p_cleaner_id: cleanerId,
+    p_actor_id: actor.id,
+    p_actor_username: actor.username,
+    p_actor_role: actor.role,
+  })
+  if (error) {
+    if (error.code === '23503') throw new Error('This cleaner has linked sales, offers or broadcast history and cannot be deleted. Keep the record rejected instead.')
+    if (error.message === 'cleaner_has_documents') throw new Error('Remove the uploaded documents before deleting this cleaner.')
+    throw new Error('Unable to delete cleaner. Check that the cleaner deletion migration has been applied.')
+  }
+  return data === true
+}
+
 export async function deleteSampleCleaners(actor: CleanerAuditActor) {
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -936,21 +962,31 @@ function escapeHtml(value: string) {
     .replace(/'/g, '&#039;')
 }
 
-function textToHtml(value: string) {
-  return escapeHtml(value)
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${paragraph.replace(/\n/g, '<br>')}</p>`)
-    .join('')
-}
-
-function applyTemplateTokens(value: string, cleaner: CleanerRecord) {
-  return value
-    .replaceAll('{{first_name}}', cleaner.first_name ?? cleaner.contact_name.split(' ')[0] ?? '')
-    .replaceAll('{{last_name}}', cleaner.last_name ?? '')
-    .replaceAll('{{contact_name}}', cleaner.contact_name)
-    .replaceAll('{{business_name}}', cleaner.business_name)
-    .replaceAll('{{city}}', cleaner.city ?? '')
-    .replaceAll('{{suburb}}', cleaner.suburb ?? '')
+function applyTemplateTokens(value: string, cleaner: CleanerRecord, escapeValues = false) {
+  const firstName = cleaner.first_name ?? cleaner.contact_name.split(/\s+/)[0] ?? ''
+  const lastName = cleaner.last_name ?? cleaner.contact_name.split(/\s+/).slice(1).join(' ')
+  const values: Record<string, string> = {
+    first_name: firstName,
+    last_name: lastName,
+    name: cleaner.contact_name,
+    contact_name: cleaner.contact_name,
+    company: cleaner.business_name,
+    business_name: cleaner.business_name,
+    email: cleaner.email,
+    cleaner_email: cleaner.email,
+    phone: cleaner.phone ?? '',
+    address: cleaner.address ?? '',
+    suburb: cleaner.suburb ?? '',
+    postcode: cleaner.postcode ?? '',
+    city: cleaner.city ?? '',
+    state: cleaner.state ?? '',
+    abn: cleaner.abn ?? '',
+    services: (cleaner.services ?? []).join(', '),
+  }
+  const resolved = escapeValues
+    ? Object.fromEntries(Object.entries(values).map(([key, replacement]) => [key, escapeHtml(replacement)]))
+    : values
+  return applyEmailMergeFields(value, resolved)
 }
 
 function getProviderMessageId(response: unknown) {
@@ -959,24 +995,85 @@ function getProviderMessageId(response: unknown) {
   return typeof record.id === 'string' ? record.id : null
 }
 
-export async function sendCleanerEmail(payload: {
+type CleanerEmailInput = {
   cleanerId: string
   state?: string
   templateId?: string | null
   templateName?: string | null
   subject: string
   body: string
+  bodyHtml?: string
+  bodyDocument?: Record<string, unknown> | null
+  previewFingerprint?: string
   actor: CleanerAuditActor
-}) {
+}
+
+function buildCleanerEmailHtml(bodyHtml: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827; line-height: 1.55;">
+      <div style="background: #1a2744; padding: 22px 24px;">
+        <h1 style="color: white; margin: 0; font-size: 22px;">Secure Cleaning</h1>
+      </div>
+      <div style="padding: 24px;">${bodyHtml}</div>
+    </div>
+  `.trim()
+}
+
+async function prepareCleanerEmail(payload: CleanerEmailInput) {
   const detail = payload.state
     ? await getCleanerDetailForState(payload.cleanerId, payload.state)
     : await getCleanerDetail(payload.cleanerId)
   const cleaner = detail.cleaner
   const subject = applyTemplateTokens(cleanString(payload.subject, 240), cleaner)
-  const body = applyTemplateTokens(cleanString(payload.body, 5000), cleaner)
+  let requestedContent: RichEmailContent
+  try {
+    requestedContent = parseRichEmailContent(payload as unknown as Record<string, unknown>, { maxText: 20_000, maxHtml: 120_000 })
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : 'Message is required.')
+  }
+  const unsupportedFields = findUnsupportedEmailMergeFields(
+    CLEANER_EMAIL_MERGE_FIELD_KEYS,
+    String(payload.subject ?? ''),
+    requestedContent.text,
+    requestedContent.html,
+  )
+  if (unsupportedFields.length > 0) {
+    throw new Error(`Remove or correct unsupported database fields: ${unsupportedFields.join(', ')}.`)
+  }
+  const content = {
+    document: requestedContent.document,
+    html: sanitizeRichEmailHtml(applyTemplateTokens(requestedContent.html, cleaner, true)),
+    text: applyTemplateTokens(requestedContent.text, cleaner),
+  }
+  if (!subject || !content.text) throw new Error('Subject and message are required.')
 
-  if (!subject || !body) {
-    throw new Error('Subject and message are required.')
+  const sender = await getStaffAccountProfileById(payload.actor.id)
+  const senderEmail = sender?.active && sender.email ? sender.email : process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au'
+  const from = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
+  const finalHtml = buildCleanerEmailHtml(content.html)
+  const finalText = content.text
+  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([cleaner.id, cleaner.email, from, senderEmail, payload.actor.id]) })
+  return { detail, cleaner, subject, content, senderEmail, from, finalHtml, finalText, previewFingerprint }
+}
+
+export async function previewCleanerEmail(payload: CleanerEmailInput) {
+  const prepared = await prepareCleanerEmail(payload)
+  return {
+    subject: prepared.subject,
+    from: prepared.from,
+    to: prepared.cleaner.email,
+    cc: prepared.senderEmail,
+    html: prepared.finalHtml,
+    text: prepared.finalText,
+    previewFingerprint: prepared.previewFingerprint,
+  }
+}
+
+export async function sendCleanerEmail(payload: CleanerEmailInput) {
+  const prepared = await prepareCleanerEmail(payload)
+  const { cleaner, subject, content, senderEmail, from, finalHtml, finalText, previewFingerprint } = prepared
+  if (cleanString(payload.previewFingerprint, 100) !== previewFingerprint) {
+    throw new Error('Preview this exact email before sending it.')
   }
 
   const db = getAdminSupabase()
@@ -991,7 +1088,11 @@ export async function sendCleanerEmail(payload: {
       template_name: payload.templateName || null,
       to_email: cleaner.email,
       subject,
-      body,
+      body: content.text,
+      body_html_snapshot: content.html,
+      body_document_snapshot: content.document,
+      final_html_snapshot: finalHtml,
+      final_text_snapshot: finalText,
       status: 'draft',
       sent_by: payload.actor.username,
     })
@@ -1002,20 +1103,12 @@ export async function sendCleanerEmail(payload: {
 
   try {
     const response = await sendEmailWithResult({
-      from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
+      from,
       to: cleaner.email,
-      replyTo: process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au',
+      cc: senderEmail,
+      replyTo: senderEmail,
       subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #111827;">
-          <div style="background: #1a2744; padding: 22px 24px;">
-            <h1 style="color: white; margin: 0; font-size: 22px;">Secure Cleaning</h1>
-          </div>
-          <div style="padding: 24px;">
-            ${textToHtml(body)}
-          </div>
-        </div>
-      `,
+      html: finalHtml,
     })
 
     const providerMessageId = getProviderMessageId(response)
@@ -1054,6 +1147,9 @@ export async function sendCleanerEmailForState(payload: {
   templateId?: string | null
   subject: string
   body: string
+  bodyHtml?: string
+  bodyDocument?: Record<string, unknown> | null
+  previewFingerprint?: string
   actor: CleanerAuditActor
 }) {
   let templateName: string | null = null
@@ -1075,6 +1171,9 @@ export async function sendCleanerEmailForState(payload: {
     templateName,
     subject: payload.subject,
     body: payload.body,
+    bodyHtml: payload.bodyHtml,
+    bodyDocument: payload.bodyDocument,
+    previewFingerprint: payload.previewFingerprint,
     actor: payload.actor,
   })
   return toAgentCleanerEmailHistory(email)

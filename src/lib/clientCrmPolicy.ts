@@ -1,4 +1,5 @@
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
+import { applyEmailMergeFields } from '@/lib/emailMergeFields'
 
 export const CRM_ROLES = ['owner', 'manager', 'agent'] as const
 export const CRM_OPPORTUNITY_STAGES = ['new', 'contacted', 'qualified', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost', 'cancelled'] as const
@@ -99,10 +100,17 @@ export function buildContactSourceExplanation(input: {
 }
 
 export function applyCrmTemplateTokens(value: string, tokens: Record<string, string>) {
-  return Object.entries(tokens).reduce(
-    (result, [key, replacement]) => result.replaceAll(`{{${key}}}`, replacement),
-    value,
-  )
+  return applyEmailMergeFields(value, {
+    ...tokens,
+    name: tokens.name ?? tokens.contact_name ?? '',
+    contact_name: tokens.contact_name ?? tokens.name ?? '',
+    company: tokens.company ?? tokens.business_name ?? '',
+    business_name: tokens.business_name ?? tokens.company ?? '',
+    address: tokens.address ?? tokens.site_address ?? '',
+    site_address: tokens.site_address ?? tokens.address ?? '',
+    lead_source: tokens.lead_source ?? tokens.source_provider ?? '',
+    source_provider: tokens.source_provider ?? tokens.lead_source ?? '',
+  })
 }
 
 export function canActorAccessAssignedOpportunity(role: AdminRole, actorId: string, assignedStaffId: string | null) {

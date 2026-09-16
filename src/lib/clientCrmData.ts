@@ -1,4 +1,6 @@
 import { getAdminSupabase } from '@/lib/supabase'
+import { parseRichEmailContent } from '@/lib/richEmailServer'
+import { CLIENT_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
 import { findMatchingZones, getAvailabilityConfig } from '@/lib/availability'
 import { canAgentSelfAssignCrmRegion } from '@/lib/clientCrmAssignment'
 import { listStaffAccounts, type StaffAccount } from '@/lib/staffAccounts'
@@ -100,6 +102,8 @@ export type CrmEmailTemplate = {
   status: 'draft' | 'published' | 'archived'
   subject: string
   body: string
+  bodyHtml: string
+  bodyDocument: Record<string, unknown> | null
   currentVersion: number
   createdByStaffId: string | null
   updatedAt: string
@@ -114,6 +118,8 @@ export type CrmCommunication = {
   toEmail: string
   senderName: string
   subject: string
+  finalHtml: string | null
+  finalText: string | null
   status: 'sending' | 'sent' | 'rejected' | 'unknown'
   sentAt: string | null
   createdAt: string
@@ -267,6 +273,8 @@ function mapTemplate(row: Record<string, unknown>): CrmEmailTemplate {
     status: row.status === 'draft' || row.status === 'archived' ? row.status : 'published',
     subject: String(row.subject ?? ''),
     body: String(row.body ?? ''),
+    bodyHtml: String(row.body_html ?? ''),
+    bodyDocument: row.body_document && typeof row.body_document === 'object' ? row.body_document as Record<string, unknown> : null,
     currentVersion: Number(row.current_version ?? 1),
     createdByStaffId: typeof row.created_by_staff_id === 'string' ? row.created_by_staff_id : null,
     updatedAt: String(row.updated_at ?? ''),
@@ -283,6 +291,8 @@ function mapCommunication(row: Record<string, unknown>): CrmCommunication {
     toEmail: String(row.to_email ?? ''),
     senderName: String(row.sender_name ?? ''),
     subject: String(row.subject_snapshot ?? ''),
+    finalHtml: typeof row.final_html_snapshot === 'string' ? row.final_html_snapshot : null,
+    finalText: typeof row.final_text_snapshot === 'string' ? row.final_text_snapshot : null,
     status: row.status === 'sent' || row.status === 'rejected' || row.status === 'unknown' ? row.status : 'sending',
     sentAt: typeof row.sent_at === 'string' ? row.sent_at : null,
     createdAt: String(row.created_at ?? ''),
@@ -301,7 +311,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
   const [opportunitiesResult, templatesResult, agents, senders] = await Promise.all([
     opportunityQuery,
     db.from('crm_email_templates')
-      .select('id, name, description, category, purpose, visibility, status, subject, body, current_version, created_by_staff_id, updated_at')
+      .select('id, name, description, category, purpose, visibility, status, subject, body, body_html, body_document, current_version, created_by_staff_id, updated_at')
       .neq('status', 'archived')
       .order('name', { ascending: true }),
     getAllowedCrmAgents(actor),
@@ -341,7 +351,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
     ? await db.from('crm_communications')
-      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
+      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, final_html_snapshot, final_text_snapshot, status, sent_at, created_at')
       .in('opportunity_id', opportunityIds)
       .order('created_at', { ascending: false })
     : Promise.resolve({ data: [], error: null }),
@@ -856,8 +866,23 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
   const visibility = input.visibility === 'personal' ? 'personal' : 'shared'
   const status = input.status === 'draft' || input.status === 'archived' ? input.status : 'published'
   const subject = clean(input.subject, 240)
-  const body = clean(input.body, 10000)
+  let richBody
+  try {
+    richBody = parseRichEmailContent(input)
+  } catch (error) {
+    throw new ClientCrmError(error instanceof Error ? error.message : 'Template message is required.')
+  }
+  const body = richBody.text
   if (!name || !subject || !body) throw new ClientCrmError('Template name, subject, and message are required.')
+  const unsupportedFields = findUnsupportedEmailMergeFields(
+    CLIENT_EMAIL_MERGE_FIELD_KEYS,
+    subject,
+    richBody.text,
+    richBody.html,
+  )
+  if (unsupportedFields.length > 0) {
+    throw new ClientCrmError(`Remove or correct unsupported database fields: ${unsupportedFields.join(', ')}.`)
+  }
   const db = getAdminSupabase()
   const { data, error } = await db.rpc('save_client_crm_template', {
     p_template_id: id || null,
@@ -879,7 +904,15 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
   }
   const saved = Array.isArray(data) ? data[0] : data
   if (!saved?.template_id) throw new Error('Template save did not return an ID.')
-  return { id: String(saved.template_id), version: Number(saved.template_version) }
+  const templateId = String(saved.template_id)
+  const templateVersion = Number(saved.template_version)
+  const [{ error: templateSnapshotError }, { error: versionSnapshotError }] = await Promise.all([
+    db.from('crm_email_templates').update({ body_html: richBody.html, body_document: richBody.document }).eq('id', templateId),
+    db.from('crm_email_template_versions').update({ body_html: richBody.html, body_document: richBody.document }).eq('template_id', templateId).eq('version', templateVersion),
+  ])
+  if (templateSnapshotError) throw templateSnapshotError
+  if (versionSnapshotError) throw versionSnapshotError
+  return { id: templateId, version: templateVersion }
 }
 
 export async function syncOnlineQuoteCrmOpportunity(input: {

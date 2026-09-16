@@ -29,6 +29,7 @@ const actions = [
   'documentDownload',
   'documentDelete',
   'sampleDelete',
+  'delete',
 ]
 
 test('cleaner permissions match the bounded role matrix', () => {

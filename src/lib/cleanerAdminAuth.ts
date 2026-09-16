@@ -18,6 +18,7 @@ export type CleanerAdminAction =
   | 'documentDownload'
   | 'documentDelete'
   | 'sampleDelete'
+  | 'delete'
 
 const minimumRoleByAction: Record<CleanerAdminAction, AdminRole> = {
   list: 'viewer',
@@ -31,6 +32,7 @@ const minimumRoleByAction: Record<CleanerAdminAction, AdminRole> = {
   documentDownload: 'manager',
   documentDelete: 'manager',
   sampleDelete: 'manager',
+  delete: 'manager',
 }
 
 export function canAccessCleanerAdminAction(role: AdminRole, action: CleanerAdminAction) {

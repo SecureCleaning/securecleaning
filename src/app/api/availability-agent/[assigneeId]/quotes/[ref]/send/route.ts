@@ -1,3 +1,4 @@
+import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
@@ -33,7 +34,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] ?? 'The final document is not ready.' }, { status: 409 })
     }
-    const body = await request.json().catch(() => ({})) as { to?: unknown; subject?: unknown; message?: unknown }
+    const body = await request.json().catch(() => ({})) as { to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
     const recipient = resolveFinalQuoteRecipient(quote.finalDocument.inputs.email, body.to)
     if (!recipient.matches) {
       return NextResponse.json({ success: false, error: 'The recipient must match the reviewed final document.' }, { status: 400 })
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
       ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
+    const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
     attemptId = randomUUID()
     if (!(await createFinalQuoteSendAttempt(params.ref, attemptId, actor, to, quote.finalDocument.version))) {
       return NextResponse.json({ success: false, error: 'This final quote already has a sent or unresolved delivery attempt.' }, { status: 409 })
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     providerCallStarted = true
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
-      to, subject, message, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      to, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)

@@ -1,14 +1,18 @@
 import 'server-only'
 
 import type { ContractProductActor } from '@/lib/contractProductAuth'
+import { findUnsupportedContractProductBroadcastTemplateFields } from '@/lib/contractProductBroadcastTemplateTokens'
 import { ContractProductError } from '@/lib/contractProducts'
 import { getAdminSupabase } from '@/lib/supabase'
+import { parseRichEmailContent } from '@/lib/richEmailServer'
 
 export type ContractProductBroadcastTemplate = {
   id: string
   name: string
   subject: string
   message: string
+  messageHtml: string
+  messageDocument: Record<string, unknown> | null
   updatedAt: string
 }
 
@@ -22,13 +26,15 @@ function mapTemplate(row: Record<string, unknown>): ContractProductBroadcastTemp
     name: String(row.name),
     subject: String(row.subject),
     message: String(row.message),
+    messageHtml: String(row.message_html ?? ''),
+    messageDocument: row.message_document && typeof row.message_document === 'object' ? row.message_document as Record<string, unknown> : null,
     updatedAt: String(row.updated_at),
   }
 }
 
 export async function getContractProductBroadcastTemplates() {
   const { data, error } = await getAdminSupabase().from('cleaner_broadcast_templates')
-    .select('id, name, subject, message, updated_at')
+    .select('id, name, subject, message, message_html, message_document, updated_at')
     .eq('status', 'active')
     .order('name')
   if (error) throw error
@@ -45,9 +51,19 @@ export async function saveContractProductBroadcastTemplate(
   const templateId = clean(input.templateId, 80)
   const name = clean(input.name, 80)
   const subject = clean(input.subject, 240)
-  const message = clean(input.message, 2000)
+  let richMessage
+  try {
+    richMessage = parseRichEmailContent(input, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 20_000, maxHtml: 120_000 })
+  } catch (error) {
+    throw new ContractProductError(error instanceof Error ? error.message : 'Template message is required.')
+  }
+  const message = richMessage.text
   if (!name || !subject || !message) {
     throw new ContractProductError('Template name, subject, and message are required.')
+  }
+  const unsupportedFields = findUnsupportedContractProductBroadcastTemplateFields(subject, message, richMessage.html)
+  if (unsupportedFields.length > 0) {
+    throw new ContractProductError(`Remove or correct unsupported template fields: ${unsupportedFields.join(', ')}`)
   }
 
   const db = getAdminSupabase()
@@ -56,9 +72,11 @@ export async function saveContractProductBroadcastTemplate(
       name,
       subject,
       message,
+      message_html: richMessage.html,
+      message_document: richMessage.document,
       updated_by_staff_id: actor.id,
     }).eq('id', templateId).eq('status', 'active')
-      .select('id, name, subject, message, updated_at').maybeSingle()
+      .select('id, name, subject, message, message_html, message_document, updated_at').maybeSingle()
     if (error) {
       if (error.code === '23505') throw new ContractProductError('A template with this name already exists.', 409)
       throw error
@@ -71,9 +89,11 @@ export async function saveContractProductBroadcastTemplate(
     name,
     subject,
     message,
+    message_html: richMessage.html,
+    message_document: richMessage.document,
     created_by_staff_id: actor.id,
     updated_by_staff_id: actor.id,
-  }).select('id, name, subject, message, updated_at').single()
+  }).select('id, name, subject, message, message_html, message_document, updated_at').single()
   if (error) {
     if (error.code === '23505') throw new ContractProductError('A template with this name already exists.', 409)
     throw error

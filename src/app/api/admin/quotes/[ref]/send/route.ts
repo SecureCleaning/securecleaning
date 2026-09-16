@@ -1,3 +1,4 @@
+import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
@@ -25,7 +26,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] ?? 'The final document is not ready.' }, { status: 409 })
     }
-    const body = await request.json().catch(() => ({})) as { to?: unknown; subject?: unknown; message?: unknown }
+    const body = await request.json().catch(() => ({})) as { to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
     const recipient = resolveFinalQuoteRecipient(quote.finalDocument.inputs.email, body.to)
     if (!recipient.matches) {
       return NextResponse.json({ success: false, error: 'The recipient must match the reviewed final document.' }, { status: 400 })
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     if (subject && subject.length > 180) return NextResponse.json({ success: false, error: 'The email subject is too long.' }, { status: 400 })
     if (message && message.length > 4000) return NextResponse.json({ success: false, error: 'The email message is too long.' }, { status: 400 })
 
+    const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
     attemptId = randomUUID()
     const attempt = await createFinalQuoteSendAttempt(params.ref, attemptId, {
       kind: 'staff_account', id: identity.id, name: identity.username,
@@ -48,7 +50,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     providerCallStarted = true
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
-      to, subject, message, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      to, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)

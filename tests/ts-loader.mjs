@@ -37,6 +37,9 @@ async function resolveWithExtension(specifier, context, nextResolve) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
+  if (specifier === 'server-only') {
+    return { url: 'data:text/javascript,export {}', shortCircuit: true }
+  }
   if (specifier.startsWith('@/')) {
     const sourcePath = join(repositoryRoot, 'src', specifier.slice(2))
     return resolveWithExtension(pathToFileURL(sourcePath).href, context, nextResolve)

@@ -1,5 +1,7 @@
 'use client'
 
+import RichEmailEditor from '@/components/admin/RichEmailComposer'
+
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CleanerComment,
@@ -10,7 +12,13 @@ import type {
   CleanerStatus,
 } from '@/lib/cleaners'
 import { defaultCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
+import CleanerEmailComposer from '@/components/admin/CleanerEmailComposer'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
+import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
+import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import { appendEmailMergeField, CLEANER_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
+import { createRichEmailContent, hasRichEmailContent, plainTextToEmailHtml } from '@/lib/richEmailContent'
+
 
 type CleanerDetail = {
   cleaner: CleanerRecord
@@ -20,6 +28,8 @@ type CleanerDetail = {
 }
 
 type Props = {
+  canDelete?: boolean
+  canEmail?: boolean
   initialCleaners: CleanerRecord[]
   initialTotal: number
   initialPage: number
@@ -285,24 +295,14 @@ function createDocumentDraft(overrides: Partial<DocumentDraftState> = {}): Docum
   }
 }
 
-function buildEmailDraft(template: CleanerEmailTemplate | null, cleaner: CleanerRecord | null) {
-  const applyTokens = (value: string) => {
-    if (!cleaner) return value
-    return value
-      .replaceAll('{{first_name}}', cleaner.first_name ?? splitContactName(cleaner.contact_name).firstName)
-      .replaceAll('{{last_name}}', cleaner.last_name ?? splitContactName(cleaner.contact_name).lastName)
-      .replaceAll('{{contact_name}}', cleaner.contact_name)
-      .replaceAll('{{business_name}}', cleaner.business_name)
-      .replaceAll('{{city}}', cleaner.city ?? '')
-      .replaceAll('{{suburb}}', cleaner.suburb ?? '')
-      .replaceAll('{{state}}', cleaner.state ?? '')
-  }
-
+function buildEmailDraft(template: CleanerEmailTemplate | null) {
   return {
     templateId: template?.id ?? '',
     templateName: template?.name ?? '',
-    subject: applyTokens(template?.subject ?? ''),
-    body: applyTokens(template?.body ?? ''),
+    subject: template?.subject ?? '',
+    body: template?.body ?? '',
+    bodyHtml: template?.body_html || plainTextToEmailHtml(template?.body ?? ''),
+    bodyDocument: template?.body_document ?? null,
   }
 }
 
@@ -550,7 +550,8 @@ function statusTone(status: string) {
   return 'bg-blue-100 text-blue-700'
 }
 
-export default function CleanersAdmin({ initialCleaners, initialTotal, initialPage, initialPageSize, initialTemplates, initialSelected }: Props) {
+export default function CleanersAdmin({ canDelete = false, canEmail = false, initialCleaners, initialTotal, initialPage, initialPageSize, initialTemplates, initialSelected }: Props) {
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false)
   const [cleaners, setCleaners] = useState(initialCleaners)
   const [templates] = useState(initialTemplates)
   const [selectedDetail, setSelectedDetail] = useState<CleanerDetail | null>(initialSelected)
@@ -568,14 +569,18 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
   })
   const [commentDraft, setCommentDraft] = useState('')
   const [documentDraft, setDocumentDraft] = useState<DocumentDraftState>(createDocumentDraft())
-  const [emailDraft, setEmailDraft] = useState(buildEmailDraft(templates[0] ?? null, initialSelected?.cleaner ?? null))
+  const [emailDraft, setEmailDraft] = useState(buildEmailDraft(templates[0] ?? null))
+  const [emailEditorKey, setEmailEditorKey] = useState(0)
+  const [emailPreview, setEmailPreview] = useState<{ subject: string; from?: string; to?: string; cc?: string; html: string; previewFingerprint?: string; history?: boolean } | null>(null)
   const [serviceAreaDraft, setServiceAreaDraft] = useState('')
   const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' })
   const [isLoading, setIsLoading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
+  const [isPreviewingEmail, setIsPreviewingEmail] = useState(false)
   const [isCleaningSamples, setIsCleaningSamples] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -629,7 +634,9 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
     setSelectedDetail(null)
     setCommentDraft('')
     setDocumentDraft(createDocumentDraft())
-    setEmailDraft(buildEmailDraft(templates[0] ?? null, null))
+    setEmailDraft(buildEmailDraft(templates[0] ?? null))
+    setEmailEditorKey((current) => current + 1)
+    setEmailPreview(null)
     setServiceAreaDraft('')
     setStatus({ type: 'idle', message: '' })
     setModalTab('details')
@@ -658,7 +665,9 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
       setSelectedDetail(detail)
       setEditingId(detail.cleaner.id)
       setForm(toFormState(detail.cleaner))
-      setEmailDraft(buildEmailDraft(templates[0] ?? null, detail.cleaner))
+      setEmailDraft(buildEmailDraft(templates[0] ?? null))
+      setEmailEditorKey((current) => current + 1)
+      setEmailPreview(null)
       setServiceAreaDraft('')
       setCommentDraft('')
       setDocumentDraft(createDocumentDraft())
@@ -698,6 +707,33 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Search failed.' })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  async function deleteSelectedCleaner() {
+    if (!selectedCleaner || !canDelete || isDeleting || isSaving) return
+    const cleanerId = selectedCleaner.id
+    const confirmation = window.prompt(`Permanently delete ${getCleanerDisplayName(selectedCleaner)} (${selectedCleaner.email})? This removes the profile, comments and direct email history and cannot be undone. Linked sales, offers, broadcasts or uploaded documents prevent deletion. Deletion does not block future re-registration or import. Type DELETE to confirm.`)
+    if (confirmation !== 'DELETE') return
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/admin/cleaners/${cleanerId}`, {
+        method: 'DELETE',
+        headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleanerId, confirmation }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unable to delete cleaner.')
+      setIsModalOpen(false)
+      setSelectedDetail(null)
+      setEditingId(null)
+      setForm(toFormState())
+      await search(1, pagination.pageSize)
+      setStatus({ type: 'success', message: result.deleted ? 'Cleaner permanently deleted.' : 'Cleaner was already removed.' })
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to delete cleaner.' })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -798,6 +834,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
 
   async function saveCleaner(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isDeleting || isSaving) return
     setIsSaving(true)
     setStatus({ type: 'idle', message: '' })
 
@@ -857,7 +894,9 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
         emails: current?.cleaner.id === cleaner.id ? current.emails : [],
         documents: current?.cleaner.id === cleaner.id ? current.documents : [],
       }))
-      setEmailDraft(buildEmailDraft(templates[0] ?? null, cleaner))
+      setEmailDraft(buildEmailDraft(templates[0] ?? null))
+      setEmailEditorKey((current) => current + 1)
+      setEmailPreview(null)
       setServiceAreaDraft('')
       setStatus({ type: 'success', message: editingId ? 'Cleaner updated.' : 'Cleaner created.' })
       if (!editingId) {
@@ -1019,7 +1058,29 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
 
   function selectTemplate(templateId: string) {
     const template = templates.find((item) => item.id === templateId) ?? null
-    setEmailDraft(buildEmailDraft(template, selectedCleaner))
+    setEmailDraft(buildEmailDraft(template))
+    setEmailEditorKey((current) => current + 1)
+    setEmailPreview(null)
+  }
+
+  async function previewEmail() {
+    if (!selectedCleaner) return
+    setIsPreviewingEmail(true)
+    setStatus({ type: 'idle', message: '' })
+    try {
+      const response = await fetch(`/api/admin/cleaners/${selectedCleaner.id}/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
+        body: JSON.stringify({ action: 'preview', ...emailDraft }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unable to preview email.')
+      setEmailPreview(result.preview)
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to preview email.' })
+    } finally {
+      setIsPreviewingEmail(false)
+    }
   }
 
   async function sendEmail() {
@@ -1034,7 +1095,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
           'Content-Type': 'application/json',
           ...getAdminHeaders(),
         },
-        body: JSON.stringify(emailDraft),
+        body: JSON.stringify({ ...emailDraft, previewFingerprint: emailPreview?.previewFingerprint }),
       })
 
       const result = await response.json()
@@ -1043,6 +1104,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
       }
 
       setSelectedDetail((current) => current ? { ...current, emails: [result.email as CleanerEmail, ...current.emails] } : current)
+      setEmailPreview(null)
       setStatus({ type: 'success', message: 'Email sent and logged.' })
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to send email.' })
@@ -1065,6 +1127,8 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
             <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">{stats.docsDue} docs due / expired</span>
           </div>
         </div>
+        <div className="flex flex-wrap gap-2">
+        {canEmail ? <button type="button" onClick={() => setEmailComposerOpen(true)} className="h-11 rounded-full border border-teal-700 px-5 text-sm font-bold text-teal-800">Email cleaners</button> : null}
         <button
           type="button"
           onClick={startCreate}
@@ -1073,7 +1137,10 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
         >
           + New Cleaner
         </button>
+        </div>
       </section>
+
+      {emailComposerOpen && canEmail ? <CleanerEmailComposer cleaners={cleaners} templates={templates} onClose={() => setEmailComposerOpen(false)} /> : null}
 
       {status.message ? (
         <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${
@@ -1337,11 +1404,16 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
                 >
                   Close
                 </button>
+                {canDelete && selectedCleaner ? (
+                  <button type="button" onClick={deleteSelectedCleaner} disabled={isDeleting || isSaving || isSending || isUploading || Boolean(deletingDocumentId)} className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-60">
+                    {isDeleting ? 'Deleting...' : 'Delete cleaner permanently'}
+                  </button>
+                ) : null}
                 {modalTab === 'details' ? (
                   <button
                     type="submit"
                     form="cleaner-details-form"
-                    disabled={isSaving}
+                    disabled={isSaving || isDeleting}
                     className="rounded-lg px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
                     style={{ backgroundColor: '#12b76a' }}
                   >
@@ -1351,6 +1423,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
               </div>
             </div>
 
+            {status.type === 'error' ? <p role="alert" className="mx-5 mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{status.message}</p> : null}
             <div className="border-b border-gray-200 px-5 pt-3">
               <div className="flex gap-1 overflow-x-auto">
                 {modalTabs.map((tab) => (
@@ -1791,22 +1864,13 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
                     </label>
                     <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
                       Subject
-                      <input value={emailDraft.subject} onChange={(event) => setEmailDraft({ ...emailDraft, subject: event.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                      <input value={emailDraft.subject} onChange={(event) => { setEmailDraft({ ...emailDraft, subject: event.target.value }); setEmailPreview(null) }} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                      <span className="mt-2 block"><EmailMergeFieldPicker fields={CLEANER_EMAIL_MERGE_FIELDS} onInsert={(token) => { setEmailDraft((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) })); setEmailPreview(null) }} /></span>
                     </label>
-                    <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
-                      Message
-                      <textarea rows={9} value={emailDraft.body} onChange={(event) => setEmailDraft({ ...emailDraft, body: event.target.value })} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
-                    </label>
+                    <div className="md:col-span-2"><RichEmailEditor value={createRichEmailContent({ document: emailDraft.bodyDocument, html: emailDraft.bodyHtml, text: emailDraft.body })} resetKey={`cleaner-email-${emailEditorKey}`} mergeFields={CLEANER_EMAIL_MERGE_FIELDS} onChange={(message) => { setEmailDraft((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void sendEmail()}
-                    disabled={isSending || !emailDraft.subject.trim() || !emailDraft.body.trim()}
-                    className="mt-4 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                    style={{ backgroundColor: '#22c55e' }}
-                  >
-                    {isSending ? 'Sending…' : 'Send Email'}
-                  </button>
+                  <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewEmail()} disabled={isPreviewingEmail || !emailDraft.subject.trim() || !hasRichEmailContent({ html: emailDraft.bodyHtml, text: emailDraft.body })} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isPreviewingEmail ? 'Preparing preview…' : 'Preview email'}</button><button type="button" onClick={() => void sendEmail()} disabled={isSending || !emailPreview?.previewFingerprint} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSending ? 'Sending…' : 'Send Email'}</button></div>
+                  <p className="mt-2 text-xs text-gray-500">Preview is required after every change. The sender is copied automatically and replies go to that person&apos;s work email when available.</p>
                   </>
                   ) : (
                     <div className="mt-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600">
@@ -1824,9 +1888,10 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
                         <div className="font-semibold text-gray-900">{email.subject}</div>
                         <div className="mt-1 text-xs text-gray-500">{email.template_name || 'Custom email'} · {email.to_email}</div>
                         {email.error_message ? <div className="mt-1 text-xs text-red-600">{email.error_message}</div> : null}
+                        {email.final_html_snapshot ? <button type="button" onClick={() => setEmailPreview({ subject: email.subject, to: email.to_email, html: email.final_html_snapshot || '', history: true })} className="mt-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700">View sent email</button> : null}
                       </div>
-                      <span className={`h-fit rounded-full px-2 py-1 text-center text-xs font-semibold ${statusTone(email.status)}`}>
-                        {formatStatus(email.status)}
+                      <span className={`h-fit rounded-full px-2 py-1 text-center text-xs font-semibold ${statusTone(email.delivery_outcome || email.status)}`}>
+                        {formatStatus(email.delivery_outcome || email.status)}
                       </span>
                     </div>
                   ))}
@@ -1841,6 +1906,7 @@ export default function CleanersAdmin({ initialCleaners, initialTotal, initialPa
           </div>
         </div>
       ) : null}
+      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent cleaner email' : 'Cleaner email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={isSending} onClose={() => setEmailPreview(null)} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )
 }

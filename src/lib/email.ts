@@ -1,3 +1,4 @@
+import { sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import type { QuoteInputs, QuoteResult, BookingInputs } from './types'
 import { formatPriceRange } from './quoteEngine'
 import { buildBookingInviteIcs } from './calendarInvite'
@@ -90,13 +91,14 @@ export async function sendEmailOrThrow(payload: Record<string, unknown>) {
 
   const response = await resend.emails.send(payload)
   if (response?.error) {
-    throw new EmailProviderRejectedError(response.error.message || 'Email send failed')
+    throw new EmailProviderRejectedError(response.error.message || 'Email send failed', response.error.name)
   }
   return response?.data ?? response
 }
 
 export class EmailProviderRejectedError extends Error {
   readonly outcome = 'provider_rejected'
+  constructor(message: string, readonly providerErrorName?: string) { super(message) }
 }
 
 export async function sendEmailWithResult(payload: Record<string, unknown>) {
@@ -303,6 +305,7 @@ export async function sendUpdatedQuoteEmail(
     to?: string
     subject?: string
     message?: string
+    messageHtml?: string
     includeConsumablesCatalogue?: boolean
   },
 ) {
@@ -317,7 +320,7 @@ export async function sendUpdatedQuoteEmail(
   const recipient = options?.to?.trim() || inputs.email.trim()
   const subject = options?.subject?.trim() || `Your updated Secure Cleaning quote — ${quoteRef}`
   const message = options?.message?.trim() || 'Following our review of your requirements, your updated quote is ready to view online.'
-  const messageHtml = message
+  const messageHtml = options?.messageHtml ? sanitizeRichEmailHtml(options.messageHtml) : message
     .split(/\n\s*\n/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')

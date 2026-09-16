@@ -6,9 +6,16 @@ import type { ContractProductActor } from '@/lib/contractProductAuth'
 import { normalizeContractProductState, type ContractProductState } from '@/lib/contractProductPolicy'
 import { ContractProductError, getActiveJobsAccessLinkId, getContractProducts } from '@/lib/contractProducts'
 import { hasCompleteCrmSignature } from '@/lib/clientCrmPolicy'
+import {
+  applyContractProductBroadcastTemplateFields,
+  findUnsupportedContractProductBroadcastTemplateFields,
+  type ContractProductBroadcastTemplateValues,
+} from '@/lib/contractProductBroadcastTemplateTokens'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { getStaffAccountProfileById, listStaffAccounts, type StaffAccount } from '@/lib/staffAccounts'
 import { getAdminSupabase } from '@/lib/supabase'
+import { parseRichEmailContent, richEmailFingerprint, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
+import type { RichEmailContent } from '@/lib/richEmailContent'
 
 type BroadcastProduct = {
   id: string
@@ -29,6 +36,15 @@ type EligibleCleaner = {
   email: string
   name: string
   businessName: string
+  firstName: string
+  lastName: string
+  city: string
+  suburb: string
+  postcode: string
+  phone: string
+  address: string
+  abn: string
+  services: string
   unsubscribeToken: string
 }
 
@@ -157,7 +173,7 @@ async function getBroadcastProducts(actor: ContractProductActor, state: Contract
 async function getEligibleCleaners(state: ContractProductState) {
   const db = getAdminSupabase()
   const { data, error } = await db.from('cleaners')
-    .select('id, email, contact_name, business_name, broadcast_unsubscribe_token')
+    .select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token')
     .eq('status', 'approved').eq('state', state).order('created_at', { ascending: true }).limit(500)
   if (error) throw error
   const candidates = data ?? []
@@ -184,6 +200,15 @@ async function getEligibleCleaners(state: ContractProductState) {
       email,
       name: String(row.contact_name ?? '').trim() || 'Cleaner',
       businessName: String(row.business_name ?? '').trim(),
+      firstName: String(row.first_name ?? '').trim() || String(row.contact_name ?? '').trim().split(/\s+/)[0] || 'Cleaner',
+      lastName: String(row.last_name ?? '').trim(),
+      city: String(row.city ?? '').trim(),
+      suburb: String(row.suburb ?? '').trim(),
+      postcode: String(row.postcode ?? '').trim(),
+      phone: String(row.phone ?? '').trim(),
+      address: String(row.address ?? '').trim(),
+      abn: String(row.abn ?? '').trim(),
+      services: Array.isArray(row.services) ? row.services.map(String).join(', ') : '',
       unsubscribeToken: String(row.broadcast_unsubscribe_token ?? ''),
     })
   }
@@ -217,6 +242,115 @@ function selectBroadcastRecipients(
   return emails.map((email) => eligibleByEmail.get(email) as EligibleCleaner)
 }
 
+function defaultBroadcastSubject(state: ContractProductState) {
+  return `Available cleaning contracts in ${state}`
+}
+
+function defaultBroadcastIntro(state: ContractProductState) {
+  return `The following Secure Cleaning contract opportunities are currently available in ${state}.`
+}
+
+async function getBroadcastJobsUrl(state: ContractProductState) {
+  const accessLinkId = await getActiveJobsAccessLinkId()
+  if (!accessLinkId) throw new ContractProductError('The reusable cleaner jobs link is not active.', 409)
+  const accessToken = createCleanerJobsAccessToken(accessLinkId)
+  if (!accessToken) throw new ContractProductError('The cleaner jobs access link could not be signed.', 500)
+  return `${getSiteUrl()}/jobs/access/${encodeURIComponent(accessToken)}?state=${state}`
+}
+
+function getBroadcastTemplateValues(input: {
+  cleaner: EligibleCleaner
+  products: BroadcastProduct[]
+  jobsUrl: string
+  sender: BroadcastSender
+}): ContractProductBroadcastTemplateValues {
+  const state = input.products[0]?.state ?? ''
+  return {
+    first_name: input.cleaner.firstName,
+    last_name: input.cleaner.lastName,
+    name: input.cleaner.name,
+    company: input.cleaner.businessName,
+    email: input.cleaner.email,
+    phone: input.cleaner.phone,
+    address: input.cleaner.address,
+    city: input.cleaner.city,
+    suburb: input.cleaner.suburb,
+    postcode: input.cleaner.postcode,
+    state,
+    abn: input.cleaner.abn,
+    services: input.cleaner.services,
+    product_count: String(input.products.length),
+    product_codes: input.products.map((product) => product.productCode).join(', '),
+    jobs_link: input.jobsUrl,
+    sender_name: input.sender.displayName,
+    sender_title: input.sender.jobTitle,
+    sender_email: input.sender.email,
+    sender_phone: input.sender.phone,
+  }
+}
+
+function assertSupportedBroadcastTemplateFields(...values: string[]) {
+  const unsupported = findUnsupportedContractProductBroadcastTemplateFields(...values)
+  if (unsupported.length > 0) {
+    throw new ContractProductError(`Remove or correct unsupported template fields: ${unsupported.join(', ')}`)
+  }
+}
+
+function renderBroadcastTemplate(value: string, input: {
+  cleaner: EligibleCleaner
+  products: BroadcastProduct[]
+  jobsUrl: string
+  sender: BroadcastSender
+}, escapeValues = false) {
+  const values = getBroadcastTemplateValues(input)
+  const renderedValues = escapeValues
+    ? Object.fromEntries(Object.entries(values).map(([token, replacement]) => [token, escapeHtml(replacement)])) as ContractProductBroadcastTemplateValues
+    : values
+  return applyContractProductBroadcastTemplateFields(value, renderedValues)
+}
+
+function renderBroadcastSubject(value: string, input: Parameters<typeof renderBroadcastTemplate>[1]) {
+  return renderBroadcastTemplate(value, input).replace(/[\r\n]+/g, ' ').trim()
+}
+
+function getBroadcastIntro(input: Record<string, unknown>, state: ContractProductState): RichEmailContent {
+  const source = { ...input }
+  if (!clean(source.intro, 20_000) && !clean(source.introHtml, 120_000)) {
+    source.intro = defaultBroadcastIntro(state)
+  }
+  try {
+    return parseRichEmailContent(source, { text: 'intro', html: 'introHtml', document: 'introDocument', maxText: 20_000, maxHtml: 120_000 })
+  } catch (error) {
+    throw new ContractProductError(error instanceof Error ? error.message : 'Introductory message is required.')
+  }
+}
+
+function broadcastDraftFingerprint(input: Record<string, unknown>, values: {
+  state: ContractProductState
+  recipientMode: BroadcastRecipientMode
+  senderId: string
+  subject: string
+  intro: RichEmailContent
+}) {
+  const productIds = Array.isArray(input.productIds) ? input.productIds.filter((id): id is string => typeof id === 'string').sort() : []
+  const cleanerEmails = typeof input.cleanerEmails === 'string'
+    ? input.cleanerEmails.split(/[,;\n]+/).map((email) => email.trim().toLowerCase()).filter(Boolean).sort()
+    : []
+  return richEmailFingerprint({
+    subject: values.subject,
+    html: values.intro.html,
+    text: values.intro.text,
+    context: JSON.stringify({
+      state: values.state,
+      recipientMode: values.recipientMode,
+      senderId: values.senderId,
+      productIds,
+      cleanerId: clean(input.cleanerId, 80),
+      cleanerEmails,
+    }),
+  })
+}
+
 export async function listEligibleContractProductBroadcastCleaners(
   actor: ContractProductActor,
   input: Record<string, unknown>,
@@ -239,11 +373,22 @@ export async function listEligibleContractProductBroadcastCleaners(
 export async function previewContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>) {
   const state = assertBroadcastState(actor, input.state)
   const recipientMode = getRecipientMode(input.recipientMode)
-  const [products, recipients] = await Promise.all([
+  const subject = clean(input.subject, 240) || defaultBroadcastSubject(state)
+  const intro = getBroadcastIntro(input, state)
+  assertSupportedBroadcastTemplateFields(subject, intro.text, intro.html)
+  const [products, recipients, sender, jobsUrl] = await Promise.all([
     getBroadcastProducts(actor, state, input.productIds),
     getEligibleCleaners(state),
+    resolveBroadcastSender(actor, input.senderStaffId),
+    getBroadcastJobsUrl(state),
   ])
   const selectedRecipients = selectBroadcastRecipients(recipients, recipientMode, input.cleanerId, input.cleanerEmails)
+  if (selectedRecipients.length === 0) {
+    throw new ContractProductError('No eligible approved cleaners were found for this state.', 409)
+  }
+  const previewCleaner = selectedRecipients[0]
+  const templateInput = { cleaner: previewCleaner, products, jobsUrl, sender }
+  const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
   return {
     state,
     products,
@@ -264,20 +409,47 @@ export async function previewContractProductBroadcast(actor: ContractProductActo
     })),
     consideredCount: recipients.considered,
     excluded: recipients.excluded,
-    defaultSubject: `Available cleaning contracts in ${state}`,
-    defaultIntro: `The following Secure Cleaning contract opportunities are currently available in ${state}.`,
+    defaultSubject: subject,
+    defaultIntro: intro.text,
+    defaultIntroHtml: intro.html,
+    defaultIntroDocument: intro.document,
+    previewFingerprint: broadcastDraftFingerprint(input, {
+      state,
+      recipientMode,
+      senderId: sender.id,
+      subject,
+      intro,
+    }),
+    emailPreview: {
+      recipient: {
+        id: previewCleaner.id,
+        name: previewCleaner.name,
+        businessName: previewCleaner.businessName,
+        email: previewCleaner.email,
+      },
+      fromName: `${safeHeaderName(sender.displayName)} - Secure Cleaning`,
+      fromEmail: fromAddress,
+      replyTo: sender.email,
+      subject: renderBroadcastSubject(subject, templateInput),
+      html: buildBroadcastHtml({
+        ...templateInput,
+        introHtml: intro.html,
+        unsubscribeUrl: '#email-preview-unsubscribe',
+      }),
+      personalised: selectedRecipients.length > 1,
+    },
   }
 }
 
 function buildBroadcastHtml(input: {
   cleaner: EligibleCleaner
   products: BroadcastProduct[]
-  intro: string
+  introHtml: string
   jobsUrl: string
   unsubscribeUrl: string
   sender: BroadcastSender
 }) {
-  const messageHtml = escapeHtml(input.intro).replace(/\r?\n/g, '<br>')
+  const messageHtml = sanitizeRichEmailHtml(renderBroadcastTemplate(input.introHtml, input, true))
   const cards = input.products.map((product) => `
     <div style="border:1px solid #dbe3ea;border-radius:10px;padding:18px;margin:16px 0;">
       <div style="font-size:12px;font-weight:700;color:#0f766e;">${escapeHtml(product.productCode)} · ${escapeHtml(product.suburb)}, ${escapeHtml(product.state)}</div>
@@ -291,7 +463,7 @@ function buildBroadcastHtml(input: {
       <div style="background:#1a2744;padding:24px;"><h1 style="color:white;margin:0;font-size:23px;">Secure Cleaning</h1></div>
       <div style="padding:26px 24px;">
         <p>Hi ${escapeHtml(input.cleaner.name)},</p>
-        <p style="line-height:1.6;">${messageHtml}</p>
+        <div style="line-height:1.6;">${messageHtml}</div>
         ${cards}
         <p style="margin:26px 0;"><a href="${escapeHtml(input.jobsUrl)}" style="display:inline-block;background:#16a34a;color:white;padding:13px 20px;border-radius:7px;text-decoration:none;font-weight:700;">View all available jobs</a></p>
         <p>Kind regards,<br><br>${escapeHtml(input.sender.displayName)}<br>${escapeHtml(input.sender.jobTitle)}<br>Secure Cleaning<br>${escapeHtml(input.sender.phone)}<br>${escapeHtml(input.sender.email)}</p>
@@ -302,6 +474,33 @@ function buildBroadcastHtml(input: {
         <p>Secure Cleaning | securecleaning.com.au</p>
       </div>
     </div>`
+}
+
+function buildBroadcastText(input: {
+  cleaner: EligibleCleaner
+  products: BroadcastProduct[]
+  introText: string
+  jobsUrl: string
+  unsubscribeUrl: string
+  sender: BroadcastSender
+}) {
+  const products = input.products.map((product) => [
+    `${product.productCode} · ${product.suburb}, ${product.state}`,
+    product.heading,
+    `${product.frequency.replaceAll('_', ' ')} · ${product.timePreference.replaceAll('_', ' ')}`,
+    `Annual contract value: ${money(product.annualValueIncGstCents)} inc GST`,
+    `Purchase price: ${money(product.purchasePriceIncGstCents)} inc GST`,
+  ].join('\n')).join('\n\n')
+  return [
+    `Hi ${input.cleaner.name},`,
+    renderBroadcastTemplate(input.introText, input),
+    products,
+    `View all available jobs: ${input.jobsUrl}`,
+    `Kind regards,\n\n${input.sender.displayName}\n${input.sender.jobTitle}\nSecure Cleaning\n${input.sender.phone}\n${input.sender.email}`,
+    `These opportunities were sent because your cleaner profile is approved for work in ${input.products[0].state}.`,
+    `Unsubscribe from available-job broadcasts: ${input.unsubscribeUrl}`,
+    'Secure Cleaning | securecleaning.com.au',
+  ].join('\n\n')
 }
 
 function providerId(response: unknown) {
@@ -321,21 +520,33 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   }
   const targetCleanerEmails = recipientMode === 'multiple' ? parseRecipientEmails(input.cleanerEmails) : []
   const subject = clean(input.subject, 240)
-  const intro = clean(input.intro, 2000)
-  if (!subject || !intro) throw new ContractProductError('Subject and introductory message are required.')
+  const intro = getBroadcastIntro(input, state)
+  if (!subject || !intro.text) throw new ContractProductError('Subject and introductory message are required.')
+  assertSupportedBroadcastTemplateFields(subject, intro.text, intro.html)
+  const expectedPreviewFingerprint = broadcastDraftFingerprint(input, {
+    state,
+    recipientMode,
+    senderId: sender.id,
+    subject,
+    intro,
+  })
+  if (clean(input.previewFingerprint, 100) !== expectedPreviewFingerprint) {
+    throw new ContractProductError('This email has changed since it was previewed. Preview it again before sending.', 409)
+  }
   const db = getAdminSupabase()
   let duplicate = false
   let campaignId = ''
   let products: BroadcastProduct[] = []
   let campaign: { status: string; sent_count: number; failed_count: number; skipped_count: number } | null = null
   const { data: existingCampaign, error: existingError } = await db.from('cleaner_broadcast_campaigns')
-    .select('id, state, subject_snapshot, intro_snapshot, recipient_mode, target_cleaner_id, sender_staff_id, status, sent_count, failed_count, skipped_count')
+    .select('id, state, subject_snapshot, intro_snapshot, intro_html_snapshot, recipient_mode, target_cleaner_id, sender_staff_id, status, sent_count, failed_count, skipped_count')
     .eq('idempotency_key', idempotencyKey).eq('created_by_staff_id', actor.id).maybeSingle()
   if (existingError) throw existingError
   if (existingCampaign) {
     duplicate = true
     campaignId = String(existingCampaign.id)
-    if (existingCampaign.state !== state || existingCampaign.subject_snapshot !== subject || existingCampaign.intro_snapshot !== intro
+    if (existingCampaign.state !== state || existingCampaign.subject_snapshot !== subject || existingCampaign.intro_snapshot !== intro.text
+      || (existingCampaign.intro_html_snapshot && existingCampaign.intro_html_snapshot !== intro.html)
       || existingCampaign.recipient_mode !== recipientMode
       || existingCampaign.sender_staff_id !== sender.id
       || String(existingCampaign.target_cleaner_id ?? '') !== targetCleanerId) {
@@ -383,7 +594,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
       p_idempotency_key: idempotencyKey,
       p_state: state,
       p_subject: subject,
-      p_intro: intro,
+      p_intro: intro.text,
       p_product_ids: products.map((product) => product.id),
       p_product_snapshots: products,
       p_recipient_mode: recipientMode,
@@ -396,6 +607,18 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     })
     if (campaignError || !campaignIdValue) throw campaignError ?? new Error('Campaign was not created.')
     campaignId = String(campaignIdValue)
+    const { error: campaignSnapshotError } = await db.from('cleaner_broadcast_campaigns').update({
+      intro_document_snapshot: intro.document,
+      intro_html_snapshot: intro.html,
+    }).eq('id', campaignId).eq('status', 'sending')
+    if (campaignSnapshotError) {
+      await db.from('cleaner_broadcast_campaigns').update({
+        status: 'failed',
+        failed_count: selectedRecipients.length,
+        completed_at: new Date().toISOString(),
+      }).eq('id', campaignId).eq('status', 'sending')
+      throw campaignSnapshotError
+    }
     const { data: createdCampaign, error: campaignLoadError } = await db.from('cleaner_broadcast_campaigns')
       .select('status, sent_count, failed_count, skipped_count').eq('id', campaignId).maybeSingle()
     if (campaignLoadError || !createdCampaign) throw campaignLoadError ?? new Error('Campaign could not be loaded.')
@@ -408,11 +631,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     }
   }
 
-  const accessLinkId = await getActiveJobsAccessLinkId()
-  if (!accessLinkId) throw new ContractProductError('The reusable cleaner jobs link is not active.', 409)
-  const accessToken = createCleanerJobsAccessToken(accessLinkId)
-  if (!accessToken) throw new ContractProductError('The cleaner jobs access link could not be signed.', 500)
-  const jobsUrl = `${getSiteUrl()}/jobs/access/${encodeURIComponent(accessToken)}?state=${state}`
+  const jobsUrl = await getBroadcastJobsUrl(state)
   const runnerToken = crypto.randomUUID()
   const { data: leaseClaimed, error: leaseError } = await db.rpc('claim_cleaner_broadcast_campaign', {
     p_campaign_id: campaignId,
@@ -437,12 +656,16 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   if (recipientError) throw recipientError
   const cleanerIds = (recipientRows ?? []).map((row) => String(row.cleaner_id))
   const { data: cleanerRows, error: cleanerError } = cleanerIds.length > 0
-    ? await db.from('cleaners').select('id, email, contact_name, business_name, broadcast_unsubscribe_token').in('id', cleanerIds)
+    ? await db.from('cleaners').select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token').in('id', cleanerIds)
     : { data: [], error: null }
   if (cleanerError) throw cleanerError
   const cleanersById = new Map((cleanerRows ?? []).map((row) => [String(row.id), {
     id: String(row.id), email: String(row.email ?? '').trim().toLowerCase(),
     name: String(row.contact_name ?? '').trim() || 'Cleaner', businessName: String(row.business_name ?? '').trim(),
+    firstName: String(row.first_name ?? '').trim() || String(row.contact_name ?? '').trim().split(/\s+/)[0] || 'Cleaner',
+    lastName: String(row.last_name ?? '').trim(), city: String(row.city ?? '').trim(), suburb: String(row.suburb ?? '').trim(),
+    postcode: String(row.postcode ?? '').trim(), phone: String(row.phone ?? '').trim(), address: String(row.address ?? '').trim(),
+    abn: String(row.abn ?? '').trim(), services: Array.isArray(row.services) ? row.services.map(String).join(', ') : '',
     unsubscribeToken: String(row.broadcast_unsubscribe_token ?? ''),
   } satisfies EligibleCleaner]))
   const staleSendingIds = (recipientRows ?? []).filter((row) => row.status === 'sending').map((row) => String(row.id))
@@ -481,12 +704,28 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     const unsubscribeUrl = `${getSiteUrl()}/cleaner-email-preferences/unsubscribe?token=${encodeURIComponent(cleaner.unsubscribeToken)}`
     try {
       const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
+      const templateInput = { cleaner, products, jobsUrl, sender }
+      const finalSubject = renderBroadcastSubject(subject, templateInput)
+      const finalHtml = buildBroadcastHtml({ ...templateInput, introHtml: intro.html, unsubscribeUrl })
+      const finalText = buildBroadcastText({ ...templateInput, introText: intro.text, unsubscribeUrl })
+      const { data: snapshotted, error: snapshotError } = await db.from('cleaner_broadcast_recipients').update({
+        subject_snapshot: finalSubject,
+        final_html_snapshot: finalHtml,
+        final_text_snapshot: finalText,
+      }).eq('id', recipientId).eq('status', 'sending').select('id').maybeSingle()
+      if (snapshotError || !snapshotted) {
+        await db.from('cleaner_broadcast_recipients').update({
+          status: 'rejected',
+          failure_code: 'snapshot_write_failed',
+        }).eq('id', recipientId).eq('status', 'sending')
+        continue
+      }
       const response = await sendEmailOrThrow({
         from: `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`,
         to: cleaner.email,
         replyTo: sender.email,
-        subject,
-        html: buildBroadcastHtml({ cleaner, products, intro, jobsUrl, unsubscribeUrl, sender }),
+        subject: finalSubject,
+        html: finalHtml,
         headers: {
           'List-Unsubscribe': `<${getSiteUrl()}/api/cleaner-email-preferences/unsubscribe?token=${encodeURIComponent(cleaner.unsubscribeToken)}>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -542,4 +781,39 @@ export async function getContractProductBroadcastHistory(actor: ContractProductA
     recipientCount: Number(row.recipient_count), sentCount: Number(row.sent_count), failedCount: Number(row.failed_count),
     skippedCount: Number(row.skipped_count), createdAt: String(row.created_at), completedAt: row.completed_at ? String(row.completed_at) : null,
   }))
+}
+
+export async function getContractProductBroadcastHistoryPreview(
+  actor: ContractProductActor,
+  input: Record<string, unknown>,
+) {
+  const campaignId = clean(input.campaignId, 80)
+  if (!campaignId) throw new ContractProductError('Select an email from history.')
+  const db = getAdminSupabase()
+  let campaignQuery = db.from('cleaner_broadcast_campaigns')
+    .select('id, subject_snapshot, sender_name_snapshot, sender_email_snapshot')
+    .eq('id', campaignId)
+  if (actor.role === 'agent') campaignQuery = campaignQuery.eq('sender_staff_id', actor.id)
+  const { data: campaign, error: campaignError } = await campaignQuery.maybeSingle()
+  if (campaignError) throw campaignError
+  if (!campaign) throw new ContractProductError('The selected email history is unavailable.', 404)
+
+  const { data: recipient, error: recipientError } = await db.from('cleaner_broadcast_recipients')
+    .select('to_email, subject_snapshot, final_html_snapshot, status, sent_at')
+    .eq('campaign_id', campaignId)
+    .not('final_html_snapshot', 'is', null)
+    .order('sent_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle()
+  if (recipientError) throw recipientError
+  if (!recipient?.final_html_snapshot) {
+    throw new ContractProductError('A viewable copy was not stored for this older broadcast.', 404)
+  }
+  return {
+    subject: String(recipient.subject_snapshot ?? campaign.subject_snapshot ?? ''),
+    from: `${String(campaign.sender_name_snapshot ?? 'Secure Cleaning')} - Secure Cleaning <${getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')}>`,
+    to: String(recipient.to_email ?? ''),
+    html: String(recipient.final_html_snapshot),
+    status: String(recipient.status ?? ''),
+  }
 }

@@ -1,12 +1,21 @@
 'use client'
 
+import RichEmailEditor from '@/components/admin/RichEmailComposer'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
+import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
+import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 import { getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
+import { CONTRACT_PRODUCT_BROADCAST_TEMPLATE_FIELDS } from '@/lib/contractProductBroadcastTemplateTokens'
 import { CONTRACT_PRODUCT_STATES } from '@/lib/contractProductPolicy'
 import { getContractProductStartDateDraft, resolveContractProductStartDate } from '@/lib/contractProductListingDetails'
 import type { ContractProduct } from '@/lib/contractProducts'
+import { appendEmailMergeField } from '@/lib/emailMergeFields'
+import { createRichEmailContent, hasRichEmailContent } from '@/lib/richEmailContent'
+import type { RichEmailDocument } from '@/lib/richEmailContent'
+
 
 function cleanerTaskDisplay(task: string | { label: string; cadence: string }) {
   return typeof task === 'string'
@@ -17,7 +26,7 @@ function cleanerTaskDisplay(task: string | { label: string; cadence: string }) {
 type WorkspaceData = {
   products: ContractProduct[]
   broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single' | 'multiple'; senderName: string; senderEmail: string; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
-  templates: Array<{ id: string; name: string; subject: string; message: string; updatedAt: string }>
+  templates: Array<{ id: string; name: string; subject: string; message: string; messageHtml: string; messageDocument: RichEmailDocument; updatedAt: string }>
   senders: BroadcastSender[]
   actor: { id: string; role: string; state: string | null; displayName: string }
   jobsUrl: string
@@ -25,6 +34,30 @@ type WorkspaceData = {
 
 type BroadcastCleaner = { id: string; name: string; businessName: string; email: string }
 type BroadcastSender = { id: string; displayName: string; email: string; jobTitle: string; phone: string; role: string }
+type BroadcastPreview = {
+  defaultSubject: string
+  defaultIntro: string
+  defaultIntroHtml: string
+  defaultIntroDocument: RichEmailDocument
+  previewFingerprint: string
+  recipientCount: number
+  consideredCount: number
+  excluded: Record<string, number>
+  targetCleaner: BroadcastCleaner | null
+  targetCleaners: BroadcastCleaner[]
+  canSend: boolean
+  emailPreview: {
+    recipient: BroadcastCleaner
+    fromName: string
+    fromEmail: string
+    replyTo: string
+    subject: string
+    html: string
+    personalised: boolean
+  }
+}
+
+type BroadcastHistoryPreview = { subject: string; from: string; to: string; html: string; status: string }
 
 type ProductDraft = {
   heading: string
@@ -89,16 +122,20 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastProducts, setBroadcastProducts] = useState<string[]>([])
   const [broadcastSubject, setBroadcastSubject] = useState('')
   const [broadcastIntro, setBroadcastIntro] = useState('')
+  const [broadcastIntroHtml, setBroadcastIntroHtml] = useState('')
+  const [broadcastIntroDocument, setBroadcastIntroDocument] = useState<RichEmailDocument>(null)
+  const [broadcastEditorKey, setBroadcastEditorKey] = useState('broadcast-editor-0')
   const [broadcastRecipientMode, setBroadcastRecipientMode] = useState<'state' | 'single' | 'multiple'>('state')
   const [broadcastCleanerId, setBroadcastCleanerId] = useState('')
   const [broadcastCleanerEmails, setBroadcastCleanerEmails] = useState('')
   const [broadcastSenderId, setBroadcastSenderId] = useState('')
   const [broadcastCleaners, setBroadcastCleaners] = useState<BroadcastCleaner[]>([])
   const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
-  const [broadcastPreview, setBroadcastPreview] = useState<{ recipientCount: number; consideredCount: number; excluded: Record<string, number>; targetCleaner: BroadcastCleaner | null; targetCleaners: BroadcastCleaner[]; canSend: boolean } | null>(null)
+  const [broadcastPreview, setBroadcastPreview] = useState<BroadcastPreview | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
+  const [broadcastHistoryPreview, setBroadcastHistoryPreview] = useState<BroadcastHistoryPreview | null>(null)
 
   const load = useCallback(async (preferredId = '') => {
     const response = await fetch('/api/admin/contract-products', { cache: 'no-store' })
@@ -237,10 +274,20 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         recipientMode: broadcastRecipientMode,
         cleanerId: broadcastCleanerId,
         cleanerEmails: broadcastCleanerEmails,
+        subject: broadcastSubject,
+        intro: broadcastIntro,
+        introHtml: broadcastIntroHtml,
+        introDocument: broadcastIntroDocument,
+        senderStaffId: broadcastSenderId,
       })
       setBroadcastPreview(result)
-      if (!broadcastSubject) setBroadcastSubject(result.defaultSubject)
-      if (!broadcastIntro) setBroadcastIntro(result.defaultIntro)
+      setBroadcastSubject(result.defaultSubject)
+      setBroadcastIntro(result.defaultIntro)
+      setBroadcastIntroHtml(result.defaultIntroHtml)
+      setBroadcastIntroDocument(result.defaultIntroDocument)
+      if (!broadcastIntroHtml && result.defaultIntroHtml) {
+        setBroadcastEditorKey(`broadcast-editor-${crypto.randomUUID()}`)
+      }
       setBroadcastRequestId('')
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to preview broadcast.') }
   }
@@ -252,9 +299,11 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setBroadcastRequestId(requestId)
       const result = await action('broadcast.send', {
         state: broadcastState, productIds: broadcastProducts, subject: broadcastSubject, intro: broadcastIntro,
+        introHtml: broadcastIntroHtml, introDocument: broadcastIntroDocument,
         recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId, cleanerEmails: broadcastCleanerEmails,
         senderStaffId: broadcastSenderId,
         idempotencyKey: requestId,
+        previewFingerprint: broadcastPreview.previewFingerprint,
       })
       if (result.inProgress) {
         setMessage('This broadcast is still being processed. Keep this page open and retry in a few minutes; the same send request will resume safely.')
@@ -272,6 +321,9 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     if (!template) return
     setBroadcastSubject(template.subject)
     setBroadcastIntro(template.message)
+    setBroadcastIntroHtml(template.messageHtml)
+    setBroadcastIntroDocument(template.messageDocument)
+    setBroadcastEditorKey(`broadcast-editor-${crypto.randomUUID()}`)
     setTemplateName(template.name)
     invalidateBroadcastPreview()
     setMessage(`Template "${template.name}" loaded. You can edit it for this send.`)
@@ -290,6 +342,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         name: templateName,
         subject: broadcastSubject,
         message: broadcastIntro,
+        messageHtml: broadcastIntroHtml,
+        messageDocument: broadcastIntroDocument,
       }) as WorkspaceData['templates'][number]
       setData((current) => current ? {
         ...current,
@@ -312,6 +366,15 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setTemplateName('')
       setMessage(`Template "${template.name}" archived.`)
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to archive template.') }
+  }
+
+  async function previewBroadcastHistory(campaignId: string) {
+    try {
+      const preview = await action('broadcast.history.preview', { campaignId }) as BroadcastHistoryPreview
+      setBroadcastHistoryPreview(preview)
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to open the saved email.')
+    }
   }
 
   if (!data) return <div className="rounded-xl border border-gray-200 bg-white p-6">{message || 'Loading contract products...'}</div>
@@ -418,11 +481,37 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
           <div className="mt-4 grid gap-4">
             <label className="text-sm font-medium">Subject
               <input maxLength={240} value={broadcastSubject} onChange={(event) => { setBroadcastSubject(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
+              <span className="mt-2 block"><EmailMergeFieldPicker fields={CONTRACT_PRODUCT_BROADCAST_TEMPLATE_FIELDS} onInsert={(token) => { setBroadcastSubject((current) => appendEmailMergeField(current, token)); invalidateBroadcastPreview() }} /></span>
             </label>
-            <label className="text-sm font-medium">Message
-              <textarea rows={7} maxLength={2000} value={broadcastIntro} onChange={(event) => { setBroadcastIntro(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
-              <span className="mt-1 block text-xs font-normal text-gray-500">The greeting, product cards, available-jobs button, your signature, and unsubscribe link are added automatically.</span>
-            </label>
+            <div>
+              <RichEmailEditor
+                resetKey={broadcastEditorKey}
+                value={createRichEmailContent({ document: broadcastIntroDocument, html: broadcastIntroHtml, text: broadcastIntro })}
+                onChange={(content) => {
+                  setBroadcastIntro(content.text)
+                  setBroadcastIntroHtml(content.html)
+                  setBroadcastIntroDocument(content.document)
+                  invalidateBroadcastPreview()
+                }}
+                label="Message"
+                placeholder="Write the email introduction…"
+                minHeight={220}
+                mergeFields={CONTRACT_PRODUCT_BROADCAST_TEMPLATE_FIELDS}
+              />
+              <span className="mt-1 block text-xs text-gray-500">The greeting, product cards, available-jobs button, your signature, and unsubscribe link are protected and added automatically.</span>
+            </div>
+          </div>
+          <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-3">
+            <p className="text-sm font-semibold text-blue-950">Automatic template fields</p>
+            <p className="mt-1 text-xs text-blue-900">Choose a field from either Database fields menu. The preview replaces it with the selected cleaner, broadcast, or sender data before anything can be sent. Older double-brace templates remain supported.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              {(['Cleaner database', 'Broadcast selection', 'Team Access'] as const).map((source) => <div key={source}>
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-900">{source}</p>
+                <ul className="mt-1 space-y-1 text-xs text-blue-950">
+                  {CONTRACT_PRODUCT_BROADCAST_TEMPLATE_FIELDS.filter((field) => field.source === source).map((field) => <li key={field.token}><code className="rounded bg-white px-1 py-0.5 font-semibold">{field.token}</code> <span className="text-blue-800">- {field.description}</span></li>)}
+                </ul>
+              </div>)}
+            </div>
           </div>
           {stateJobsUrl ? <div className="mt-4 rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm">
             <strong>Automatic jobs link for {broadcastState}</strong>
@@ -431,27 +520,43 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
           </div> : <p className="mt-4 text-sm text-amber-800">The reusable available-jobs link must be configured before sending.</p>}
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy) || stateProducts.length === 0 || (broadcastRecipientMode === 'single' && !broadcastCleanerId) || (broadcastRecipientMode === 'multiple' && !broadcastCleanerEmails.trim())} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.preview' ? 'Checking...' : 'Check recipients & content'}</button>
-          {broadcastPreview ? <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0 || broadcastSenderMissing.length > 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button> : null}
+        <div className="mt-4 rounded-xl border border-gray-200 p-4">
+          <h3 className="font-semibold text-gray-900">4. Preview before sending</h3>
+          <p className="mt-1 text-xs text-gray-500">This builds the personalised subject and complete email using the same server-side template used for the real send. Changing a recipient, product, sender, subject, or message removes the preview and disables Send until you preview again.</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" onClick={() => void previewBroadcast()} disabled={Boolean(busy) || stateProducts.length === 0 || broadcastSenderMissing.length > 0 || (broadcastRecipientMode === 'single' && !broadcastCleanerId) || (broadcastRecipientMode === 'multiple' && !broadcastCleanerEmails.trim())} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.preview' ? 'Building preview...' : 'Preview email & confirm recipients'}</button>
+          </div>
+          {broadcastPreview ? <div className="mt-4 space-y-4">
+            <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
+              <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
+              {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
+              <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
+              {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">This exceeds the 50-recipient safety limit. Send to one cleaner or narrow the approved cleaner list before sending.</p> : null}
+            </div>
+            <div className="overflow-hidden rounded-xl border border-gray-300 bg-white">
+              <div className="border-b border-gray-200 bg-gray-50 p-4 text-sm">
+                <p><span className="font-semibold text-gray-600">Preview recipient:</span> {broadcastPreview.emailPreview.recipient.name} · {broadcastPreview.emailPreview.recipient.email}</p>
+                <p className="mt-1"><span className="font-semibold text-gray-600">From:</span> {broadcastPreview.emailPreview.fromName} &lt;{broadcastPreview.emailPreview.fromEmail}&gt;</p>
+                <p className="mt-1"><span className="font-semibold text-gray-600">Reply-to:</span> {broadcastPreview.emailPreview.replyTo}</p>
+                <p className="mt-1"><span className="font-semibold text-gray-600">Subject:</span> {broadcastPreview.emailPreview.subject}</p>
+                {broadcastPreview.emailPreview.personalised ? <p className="mt-2 text-xs text-teal-800">This is a sample using the first confirmed recipient. Cleaner fields are filled separately for every recipient when sent.</p> : null}
+              </div>
+              <iframe title="Product broadcast email preview" sandbox="" referrerPolicy="no-referrer" srcDoc={broadcastPreview.emailPreview.html} className="h-[720px] w-full bg-white" />
+            </div>
+            <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0 || broadcastSenderMissing.length > 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send this preview to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button>
+          </div> : null}
         </div>
-        {broadcastPreview ? <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
-          <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
-          {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
-          <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
-          {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">This exceeds the 50-recipient safety limit. Send to one cleaner or narrow the approved cleaner list before sending.</p> : null}
-        </div> : null}
       </section>
 
       <aside className="space-y-5">
         {data.actor.role === 'owner' ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold">Template library</h2><p className="mt-1 text-xs text-gray-500">Owner controls</p></div><button type="button" onClick={startNewTemplate} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">New</button></div>
-          <p className="mt-3 text-sm text-gray-600">Save the current subject and message as a reusable starting point for agents.</p>
+          <p className="mt-3 text-sm text-gray-600">Save the current subject, message, and any automatic fields as a reusable starting point for agents. The field guide beside the message shows which Cleaner database, broadcast, and Team Access details can be filled.</p>
           <label className="mt-4 block text-sm font-medium">Template name
             <input maxLength={80} value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="e.g. New NSW contracts" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" />
           </label>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" onClick={() => void saveTemplate()} disabled={Boolean(busy) || !templateName || !broadcastSubject || !broadcastIntro} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{selectedTemplateId ? 'Update template' : 'Save new template'}</button>
+            <button type="button" onClick={() => void saveTemplate()} disabled={Boolean(busy) || !templateName || !broadcastSubject || !hasRichEmailContent({ html: broadcastIntroHtml, text: broadcastIntro })} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{selectedTemplateId ? 'Update template' : 'Save new template'}</button>
             {selectedTemplateId ? <button type="button" onClick={() => void archiveTemplate()} disabled={Boolean(busy)} className="rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-700">Archive</button> : null}
           </div>
           <p className="mt-3 text-xs text-gray-500">Updating a template does not change emails already sent or the agent&apos;s current draft unless they load it again.</p>
@@ -464,9 +569,19 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
             <p className="mt-1 text-xs text-gray-500">{campaign.recipientMode === 'single' ? 'Single cleaner' : campaign.recipientMode === 'multiple' ? 'Selected cleaners' : 'State broadcast'} · {new Date(campaign.createdAt).toLocaleString('en-AU')}</p>
             <p className="mt-1 text-xs text-gray-500">Sent as {campaign.senderName || 'Secure Cleaning'}{campaign.senderEmail ? ` · ${campaign.senderEmail}` : ''}</p>
             <p className="mt-1 text-xs text-gray-500">{campaign.sentCount}/{campaign.recipientCount} sent · {campaign.failedCount} unresolved/failed</p>
+            <button type="button" onClick={() => void previewBroadcastHistory(campaign.id)} disabled={Boolean(busy)} className="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50">View sent email</button>
           </div>)}{data.broadcasts.length === 0 ? <p className="py-3 text-sm text-gray-500">No emails sent yet.</p> : null}</div>
         </section>
       </aside>
     </div>}
+    <EmailPreviewModal
+      open={Boolean(broadcastHistoryPreview)}
+      title="Sent broadcast email"
+      subject={broadcastHistoryPreview?.subject ?? ''}
+      from={broadcastHistoryPreview?.from}
+      to={broadcastHistoryPreview?.to}
+      html={broadcastHistoryPreview?.html ?? ''}
+      onClose={() => setBroadcastHistoryPreview(null)}
+    />
   </div>
 }

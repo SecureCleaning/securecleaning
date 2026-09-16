@@ -207,7 +207,7 @@ test('CRM authorization revalidates the current active staff record', () => {
 
 test('CRM sends derive sensitive addressing and fixed sections on the server', () => {
   const email = source('src/lib/clientCrmEmail.ts')
-  assert.match(email, /\.select\('id, email, contact_name, unsubscribe_token'\)/)
+  assert.match(email, /\.select\('id, email, phone, contact_name, first_name, last_name, position_title, unsubscribe_token'\)/)
   assert.match(email, /getStaffAccountProfileById\(senderStaffId\)/)
   assert.match(email, /canActorSendCrmEmailAs\(actor\.role, actor\.id, senderStaffId\)/)
   assert.match(email, /replyTo: sender\.email/)

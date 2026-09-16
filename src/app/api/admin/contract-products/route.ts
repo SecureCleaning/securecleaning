@@ -4,6 +4,7 @@ import { createCleanerJobsAccessToken } from '@/lib/cleanerJobsAccess'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
   getContractProductBroadcastHistory,
+  getContractProductBroadcastHistoryPreview,
   listEligibleContractProductBroadcastCleaners,
   listContractProductBroadcastSenders,
   previewContractProductBroadcast,
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 32 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
   const actor = await getContractProductActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Contract product access required.' }, { status: 403 })
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, result: await listEligibleContractProductBroadcastCleaners(actor, body) })
     }
     if (action === 'broadcast.preview') return NextResponse.json({ success: true, result: await previewContractProductBroadcast(actor, body) })
+    if (action === 'broadcast.history.preview') return NextResponse.json({ success: true, result: await getContractProductBroadcastHistoryPreview(actor, body) })
     if (action === 'broadcast.template.save') {
       const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited

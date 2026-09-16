@@ -1,5 +1,8 @@
 'use client'
 
+import RichEmailEditor from '@/components/admin/RichEmailComposer'
+import { createRichEmailContent } from '@/lib/richEmailContent'
+
 import { useMemo, useRef, useState } from 'react'
 import { formatCurrency, formatPriceRange } from '@/lib/quoteEngine'
 import type { QuotePricingConfig } from '@/lib/pricing'
@@ -144,6 +147,7 @@ export default function QuoteWorkflowEditor({
     error: null,
   })
   const [quoteEmailComposerOpen, setQuoteEmailComposerOpen] = useState(false)
+  const [quoteEmailRich, setQuoteEmailRich] = useState({ html: '', document: null as Record<string, unknown> | null })
   const [quoteEmailDraft, setQuoteEmailDraft] = useState({
     to: quote.finalDocument?.inputs.email ?? quote.inputs.email,
     subject: `Your updated Secure Cleaning quote — ${quote.quoteRef}`,
@@ -235,7 +239,7 @@ export default function QuoteWorkflowEditor({
       const response = await fetch(updatedQuoteApiPath, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(quoteEmailDraft),
+        body: JSON.stringify({ ...quoteEmailDraft, messageHtml: quoteEmailRich.html, messageDocument: quoteEmailRich.document }),
       })
       const result = await response.json()
       if (!response.ok || !result.success) throw new Error(result.error || 'Failed to email the updated quote.')
@@ -637,16 +641,7 @@ export default function QuoteWorkflowEditor({
               />
             </label>
           </div>
-          <label className="mt-4 block text-sm font-semibold text-gray-700">
-            Message
-            <textarea
-              rows={5}
-              value={quoteEmailDraft.message}
-              onChange={(event) => setQuoteEmailDraft((current) => ({ ...current, message: event.target.value }))}
-              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900"
-              placeholder="Add a note for the customer..."
-            />
-          </label>
+          <RichEmailEditor value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
           <div className="mt-3 flex justify-end">
             <button
               type="button"
