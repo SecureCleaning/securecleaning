@@ -456,7 +456,7 @@ function buildBroadcastHtml(input: {
     <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#172033;">
       <div style="background:#1a2744;padding:24px;"><h1 style="color:white;margin:0;font-size:23px;">Secure Cleaning</h1></div>
       <div style="padding:26px 24px;">
-        <p>Hi ${escapeHtml(input.cleaner.name)},</p>
+        <p>Hi ${escapeHtml(input.cleaner.firstName)},</p>
         <div style="line-height:1.6;">${messageHtml}</div>
         ${cards}
         <p style="margin:26px 0;"><a href="${escapeHtml(input.jobsUrl)}" style="display:inline-block;background:#16a34a;color:white;padding:13px 20px;border-radius:7px;text-decoration:none;font-weight:700;">View all available jobs</a></p>
@@ -486,7 +486,7 @@ function buildBroadcastText(input: {
     `Purchase price: ${money(product.purchasePriceIncGstCents)} inc GST`,
   ].join('\n')).join('\n\n')
   return [
-    `Hi ${input.cleaner.name},`,
+    `Hi ${input.cleaner.firstName},`,
     renderBroadcastTemplate(input.introText, input),
     products,
     `View all available jobs: ${input.jobsUrl}`,
