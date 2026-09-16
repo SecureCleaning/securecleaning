@@ -1,4 +1,5 @@
 import 'server-only'
+import { readEmailPages, acquireEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
 
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
 import { createCleanerJobsAccessToken } from '@/lib/cleanerJobsAccess'
@@ -125,13 +126,10 @@ async function resolveBroadcastSender(actor: ContractProductActor, value: unknow
 
 function parseRecipientEmails(value: unknown) {
   const raw = typeof value === 'string' ? value.trim() : ''
-  if (raw.length > 5000) throw new ContractProductError('The cleaner email list is too long.')
+  if (raw.length > 300000) throw new ContractProductError('The cleaner email list is too long.')
   const values = raw.split(/[,;\n]+/).map((email) => email.trim().toLowerCase()).filter(Boolean)
   if (values.length < 2) {
     throw new ContractProductError('Enter at least two cleaner email addresses, separated by commas or new lines.')
-  }
-  if (values.length > 50) {
-    throw new ContractProductError('You can select up to 50 cleaner email addresses in one send.')
   }
   const invalid = values.filter((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
   if (invalid.length > 0) {
@@ -172,20 +170,16 @@ async function getBroadcastProducts(actor: ContractProductActor, state: Contract
 
 async function getEligibleCleaners(state: ContractProductState) {
   const db = getAdminSupabase()
-  const { data, error } = await db.from('cleaners')
+  const candidates = await readEmailPages((from, to) => db.from('cleaners')
     .select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token')
-    .eq('status', 'approved').eq('state', state).order('created_at', { ascending: true }).limit(500)
-  if (error) throw error
-  const candidates = data ?? []
+    .eq('status', 'approved').eq('state', state).order('id').range(from, to))
   const emails = candidates.map((row) => String(row.email ?? '').trim().toLowerCase()).filter(Boolean)
   const [globalSuppressions, cleanerSuppressions] = emails.length ? await Promise.all([
-    db.from('crm_email_suppressions').select('email_normalized').in('email_normalized', emails).eq('blocks_all', true),
-    db.from('cleaner_broadcast_suppressions').select('cleaner_id'),
-  ]) : [{ data: [], error: null }, { data: [], error: null }]
-  if (globalSuppressions.error) throw globalSuppressions.error
-  if (cleanerSuppressions.error) throw cleanerSuppressions.error
-  const suppressedEmails = new Set((globalSuppressions.data ?? []).map((row) => String(row.email_normalized)))
-  const suppressedCleanerIds = new Set((cleanerSuppressions.data ?? []).map((row) => String(row.cleaner_id)))
+    readEmailPages((from, to) => db.from('crm_email_suppressions').select('email_normalized').eq('blocks_all', true).order('email_normalized').range(from, to)),
+    readEmailPages((from, to) => db.from('cleaner_broadcast_suppressions').select('cleaner_id').order('cleaner_id').range(from, to)),
+  ]) : [[], []]
+  const suppressedEmails = new Set(globalSuppressions.map((row) => String(row.email_normalized)))
+  const suppressedCleanerIds = new Set(cleanerSuppressions.map((row) => String(row.cleaner_id)))
   const seen = new Set<string>()
   const eligible: EligibleCleaner[] = []
   const excluded = { invalidEmail: 0, suppressed: 0, duplicateEmail: 0 }
@@ -394,7 +388,7 @@ export async function previewContractProductBroadcast(actor: ContractProductActo
     products,
     recipientMode,
     recipientCount: selectedRecipients.length,
-    canSend: selectedRecipients.length <= 50,
+    canSend: selectedRecipients.length > 0,
     targetCleaner: recipientMode === 'single' ? {
       id: selectedRecipients[0].id,
       name: selectedRecipients[0].name,
@@ -534,12 +528,13 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     throw new ContractProductError('This email has changed since it was previewed. Preview it again before sending.', 409)
   }
   const db = getAdminSupabase()
+  let delivery: { sender: BroadcastSender; jobsUrl: string; fromAddress: string } | null = null
   let duplicate = false
   let campaignId = ''
   let products: BroadcastProduct[] = []
   let campaign: { status: string; sent_count: number; failed_count: number; skipped_count: number } | null = null
   const { data: existingCampaign, error: existingError } = await db.from('cleaner_broadcast_campaigns')
-    .select('id, state, subject_snapshot, intro_snapshot, intro_html_snapshot, recipient_mode, target_cleaner_id, sender_staff_id, status, sent_count, failed_count, skipped_count')
+    .select('id, state, subject_snapshot, intro_snapshot, intro_html_snapshot, delivery_snapshot, recipient_mode, target_cleaner_id, sender_staff_id, status, sent_count, failed_count, skipped_count')
     .eq('idempotency_key', idempotencyKey).eq('created_by_staff_id', actor.id).maybeSingle()
   if (existingError) throw existingError
   if (existingCampaign) {
@@ -553,9 +548,8 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
       throw new ContractProductError('This send request ID belongs to a different broadcast.', 409)
     }
     if (recipientMode === 'multiple') {
-      const { data: existingRecipients, error: existingRecipientsError } = await db.from('cleaner_broadcast_recipients')
-        .select('to_email').eq('campaign_id', campaignId)
-      if (existingRecipientsError) throw existingRecipientsError
+      const existingRecipients = await readEmailPages((from, to) => db.from('cleaner_broadcast_recipients')
+        .select('to_email').eq('campaign_id', campaignId).order('id').range(from, to))
       const existingEmails = (existingRecipients ?? []).map((row) => String(row.to_email).trim().toLowerCase()).sort()
       const requestedEmails = [...targetCleanerEmails].sort()
       if (existingEmails.length !== requestedEmails.length || existingEmails.some((email, index) => email !== requestedEmails[index])) {
@@ -569,6 +563,8 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
         failedCount: Number(campaign.failed_count), skippedCount: Number(campaign.skipped_count), duplicate: true,
       }
     }
+    delivery = existingCampaign.delivery_snapshot
+    if (!delivery?.sender || !delivery.jobsUrl || !delivery.fromAddress) throw new ContractProductError('This older or incomplete broadcast cannot be resumed. Check delivery history before starting another send.', 409)
     const { data: snapshotRows, error: snapshotError } = await db.from('cleaner_broadcast_campaign_products')
       .select('product_id, product_snapshot').eq('campaign_id', campaignId)
     if (snapshotError) throw snapshotError
@@ -588,7 +584,6 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     if (selectedRecipients.some((cleaner) => !cleaner.unsubscribeToken)) {
       throw new ContractProductError('One or more cleaner records are missing email preference details.', 409)
     }
-    if (selectedRecipients.length > 50) throw new ContractProductError('This broadcast exceeds the current 50-recipient safety limit.', 409)
     products = newProducts
     const { data: campaignIdValue, error: campaignError } = await db.rpc('create_cleaner_broadcast_campaign_v3', {
       p_idempotency_key: idempotencyKey,
@@ -607,7 +602,9 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     })
     if (campaignError || !campaignIdValue) throw campaignError ?? new Error('Campaign was not created.')
     campaignId = String(campaignIdValue)
+    delivery = { sender: senderOption(sender as StaffAccount), jobsUrl: await getBroadcastJobsUrl(state), fromAddress: getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au') }
     const { error: campaignSnapshotError } = await db.from('cleaner_broadcast_campaigns').update({
+      delivery_snapshot: delivery,
       intro_document_snapshot: intro.document,
       intro_html_snapshot: intro.html,
     }).eq('id', campaignId).eq('status', 'sending')
@@ -631,7 +628,9 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     }
   }
 
-  const jobsUrl = await getBroadcastJobsUrl(state)
+  if (!delivery) throw new ContractProductError('Broadcast delivery details are missing.', 409)
+  const { jobsUrl, fromAddress } = delivery
+  const deliverySender = delivery.sender
   const runnerToken = crypto.randomUUID()
   const { data: leaseClaimed, error: leaseError } = await db.rpc('claim_cleaner_broadcast_campaign', {
     p_campaign_id: campaignId,
@@ -652,7 +651,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   }
 
   const { data: recipientRows, error: recipientError } = await db.from('cleaner_broadcast_recipients')
-    .select('id, cleaner_id, to_email, cleaner_name_snapshot, status').eq('campaign_id', campaignId).order('created_at')
+    .select('id, cleaner_id, to_email, cleaner_name_snapshot, status').eq('campaign_id', campaignId).eq('status', 'queued').order('id').limit(EMAIL_DELIVERY_STEP_SIZE)
   if (recipientError) throw recipientError
   const cleanerIds = (recipientRows ?? []).map((row) => String(row.cleaner_id))
   const { data: cleanerRows, error: cleanerError } = cleanerIds.length > 0
@@ -668,16 +667,16 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     abn: String(row.abn ?? '').trim(), services: Array.isArray(row.services) ? row.services.map(String).join(', ') : '',
     unsubscribeToken: String(row.broadcast_unsubscribe_token ?? ''),
   } satisfies EligibleCleaner]))
-  const staleSendingIds = (recipientRows ?? []).filter((row) => row.status === 'sending').map((row) => String(row.id))
-  if (staleSendingIds.length > 0) {
-    const { error } = await db.from('cleaner_broadcast_recipients')
-      .update({ status: 'unknown', failure_code: 'expired_runner_outcome_unknown' })
-      .in('id', staleSendingIds).eq('status', 'sending')
-    if (error) throw error
-  }
+  const { error: staleError } = await db.from('cleaner_broadcast_recipients')
+    .update({ status: 'unknown', failure_code: 'expired_runner_outcome_unknown' })
+    .eq('campaign_id', campaignId).eq('status', 'sending')
+  if (staleError) throw staleError
+  const deadline = Date.now() + EMAIL_DELIVERY_STEP_MS
+  let paused = false
   for (const row of (recipientRows ?? []).filter((candidate) => candidate.status === 'queued')) {
+    if (Date.now() >= deadline || !(await acquireEmailDeliverySlot())) break
     const recipientId = String(row.id)
-    const leaseUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    const leaseUntil = new Date(Date.now() + 2 * 60 * 1000).toISOString()
     const { data: renewed, error: renewError } = await db.from('cleaner_broadcast_campaigns')
       .update({ lease_expires_at: leaseUntil }).eq('id', campaignId).eq('runner_token', runnerToken)
       .eq('status', 'sending').select('id').maybeSingle()
@@ -703,8 +702,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
     if (claimed !== true) continue
     const unsubscribeUrl = `${getSiteUrl()}/cleaner-email-preferences/unsubscribe?token=${encodeURIComponent(cleaner.unsubscribeToken)}`
     try {
-      const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
-      const templateInput = { cleaner, products, jobsUrl, sender }
+      const templateInput = { cleaner, products, jobsUrl, sender: deliverySender }
       const finalSubject = renderBroadcastSubject(subject, templateInput)
       const finalHtml = buildBroadcastHtml({ ...templateInput, introHtml: intro.html, unsubscribeUrl })
       const finalText = buildBroadcastText({ ...templateInput, introText: intro.text, unsubscribeUrl })
@@ -721,9 +719,9 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
         continue
       }
       const response = await sendEmailOrThrow({
-        from: `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`,
+        from: `${safeHeaderName(deliverySender.displayName)} - Secure Cleaning <${fromAddress}>`,
         to: cleaner.email,
-        replyTo: sender.email,
+        replyTo: deliverySender.email,
         subject: finalSubject,
         html: finalHtml,
         headers: {
@@ -738,32 +736,42 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
         await db.from('cleaner_broadcast_recipients').update({ status: 'unknown', failure_code: 'provider_accepted_finalize_failed' }).eq('id', recipientId)
       }
     } catch (error) {
-      const rejected = error instanceof EmailProviderRejectedError
+      const pause = emailProviderPause(error)
+      if (pause) {
+        // These explicit provider responses establish non-acceptance; all ambiguous outcomes stay unknown.
+        const { error: resetError } = await db.from('cleaner_broadcast_recipients')
+          .update({ status: 'queued', failure_code: pause === 'quota' ? 'provider_quota' : 'provider_rate_limit' })
+          .eq('id', recipientId).eq('status', 'sending')
+        if (resetError) throw resetError
+        paused = pause === 'quota'
+        break
+      }
+      const rejected = error instanceof EmailProviderRejectedError && ['validation_error', 'missing_required_field', 'invalid_access', 'invalid_api_key'].includes(error.providerErrorName || '')
       await db.from('cleaner_broadcast_recipients').update({
         status: rejected ? 'rejected' : 'unknown',
         failure_code: rejected ? 'provider_rejected' : 'provider_outcome_unknown',
       }).eq('id', recipientId).eq('status', 'sending')
     }
   }
-  const { data: finalRows, error: finalRowsError } = await db.from('cleaner_broadcast_recipients')
-    .select('status').eq('campaign_id', campaignId)
-  if (finalRowsError) throw finalRowsError
+  const finalRows = await readEmailPages((from, to) => db.from('cleaner_broadcast_recipients')
+    .select('status').eq('campaign_id', campaignId).order('id').range(from, to))
   const sentCount = (finalRows ?? []).filter((row) => row.status === 'sent').length
   const failedCount = (finalRows ?? []).filter((row) => row.status === 'unknown' || row.status === 'rejected').length
   const skippedCount = (finalRows ?? []).filter((row) => row.status === 'skipped' || row.status === 'suppressed').length
-  const status = failedCount === 0 && skippedCount === 0 ? 'completed' : sentCount > 0 ? 'partially_failed' : 'failed'
+  const remainingCount = finalRows.filter(row => row.status === 'queued').length
+  const status = remainingCount > 0 ? 'sending' : failedCount === 0 && skippedCount === 0 ? 'completed' : sentCount > 0 ? 'partially_failed' : 'failed'
   const { data: finalizedCampaign, error: finalizeError } = await db.from('cleaner_broadcast_campaigns').update({
     status,
     sent_count: sentCount,
     failed_count: failedCount,
     skipped_count: skippedCount,
-    completed_at: new Date().toISOString(),
+    completed_at: remainingCount > 0 ? null : new Date().toISOString(),
     runner_token: null,
     lease_expires_at: null,
   }).eq('id', campaignId).eq('status', 'sending').eq('runner_token', runnerToken).select('id').maybeSingle()
   if (finalizeError) throw finalizeError
   if (!finalizedCampaign) throw new ContractProductError('This broadcast was completed by another request.', 409)
-  return { campaignId, status, sentCount, failedCount, skippedCount, duplicate }
+  return { campaignId, status, sentCount, failedCount, skippedCount, duplicate, inProgress: remainingCount > 0, remainingCount, paused }
 }
 
 export async function getContractProductBroadcastHistory(actor: ContractProductActor) {
@@ -816,4 +824,24 @@ export async function getContractProductBroadcastHistoryPreview(
     html: String(recipient.final_html_snapshot),
     status: String(recipient.status ?? ''),
   }
+}
+
+export async function continueContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>) {
+  const idempotencyKey = clean(input.idempotencyKey, 100)
+  if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('Invalid broadcast request.')
+  const db = getAdminSupabase()
+  const { data: campaign, error } = await db.from('cleaner_broadcast_campaigns')
+    .select('state,subject_snapshot,intro_snapshot,intro_html_snapshot,intro_document_snapshot,recipient_mode,target_cleaner_id,sender_staff_id,id')
+    .eq('idempotency_key', idempotencyKey).eq('created_by_staff_id', actor.id).maybeSingle()
+  if (error || !campaign) throw new ContractProductError('Broadcast request not found. Check history before starting another send.', 404)
+  const recipientEmails = campaign.recipient_mode === 'multiple' ? await readEmailPages((from, to) => db.from('cleaner_broadcast_recipients')
+    .select('to_email').eq('campaign_id', campaign.id).order('id').range(from, to)) : []
+  const draft = { idempotencyKey, state: campaign.state, subject: campaign.subject_snapshot, intro: campaign.intro_snapshot,
+    introHtml: campaign.intro_html_snapshot, introDocument: campaign.intro_document_snapshot,
+    recipientMode: campaign.recipient_mode, cleanerId: campaign.target_cleaner_id,
+    cleanerEmails: recipientEmails.map(row => row.to_email).join(','), senderStaffId: campaign.sender_staff_id }
+  const state = assertBroadcastState(actor, draft.state)
+  const intro = getBroadcastIntro(draft, state)
+  const previewFingerprint = broadcastDraftFingerprint(draft, { state, recipientMode: getRecipientMode(draft.recipientMode), senderId: draft.senderStaffId, subject: draft.subject, intro })
+  return sendContractProductBroadcast(actor, { ...draft, previewFingerprint })
 }

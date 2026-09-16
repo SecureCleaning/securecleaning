@@ -1,5 +1,6 @@
 'use client'
 
+import { useEmailQueueRunner } from '@/lib/useEmailQueueRunner'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -133,6 +134,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
   const [broadcastPreview, setBroadcastPreview] = useState<BroadcastPreview | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
+  const queue = useEmailQueueRunner()
+  useEffect(() => { setBroadcastRequestId(sessionStorage.getItem('cleaner-broadcast-request') || '') }, [])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [broadcastHistoryPreview, setBroadcastHistoryPreview] = useState<BroadcastHistoryPreview | null>(null)
@@ -292,31 +295,43 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to preview broadcast.') }
   }
 
-  async function sendBroadcast() {
-    if (!broadcastPreview || !window.confirm(`Send this broadcast to ${broadcastPreview.recipientCount} eligible cleaners?`)) return
+  async function continueBroadcast(requestId: string) {
     try {
-      const requestId = broadcastRequestId || crypto.randomUUID()
-      setBroadcastRequestId(requestId)
+      await queue.run(async () => {
+        const response = await fetch('/api/admin/contract-products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'broadcast.continue', idempotencyKey: requestId }) })
+        const data = await response.json()
+        if (!response.ok) throw new Error(data.error || 'Sending paused. Resume unsent recipients when ready.')
+        return data.result as { inProgress?: boolean; paused?: boolean; sentCount: number; failedCount: number; remainingCount?: number }
+      }, result => {
+        setMessage(result.paused ? 'Resend account quota reached. Resume after upgrading your plan or the quota resets.' : `${result.sentCount} sent, ${result.failedCount} unresolved or failed, ${result.remainingCount ?? 0} queued. ${result.inProgress ? 'Keep this page open while sending.' : 'Broadcast complete.'}`)
+        if (!result.inProgress) {
+          sessionStorage.removeItem('cleaner-broadcast-request')
+          setBroadcastRequestId(''); setBroadcastPreview(null)
+          void load(selectedId)
+        }
+      })
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Sending paused. Resume unsent recipients.') }
+  }
+
+  async function sendBroadcast() {
+    if (broadcastRequestId || queue.running || !broadcastPreview || !window.confirm(`Send this broadcast to ${broadcastPreview.recipientCount} eligible cleaners?`)) return
+    const requestId = crypto.randomUUID()
+    sessionStorage.setItem('cleaner-broadcast-request', requestId)
+    setBroadcastRequestId(requestId)
+    try {
       const result = await action('broadcast.send', {
         state: broadcastState, productIds: broadcastProducts, subject: broadcastSubject, intro: broadcastIntro,
         introHtml: broadcastIntroHtml, introDocument: broadcastIntroDocument,
         recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId, cleanerEmails: broadcastCleanerEmails,
-        senderStaffId: broadcastSenderId,
-        idempotencyKey: requestId,
-        previewFingerprint: broadcastPreview.previewFingerprint,
+        senderStaffId: broadcastSenderId, idempotencyKey: requestId, previewFingerprint: broadcastPreview.previewFingerprint,
       })
-      if (result.inProgress) {
-        setMessage('This broadcast is still being processed. Keep this page open and retry in a few minutes; the same send request will resume safely.')
-        return
-      }
-      setMessage(`Broadcast completed: ${result.sentCount ?? 0} sent, ${result.failedCount ?? 0} unresolved or failed.`)
-      setBroadcastPreview(null)
-      setBroadcastRequestId('')
-      await load(selectedId)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send broadcast.') }
+      if (result.paused) { setMessage('Resend account quota reached. Resume after the plan upgrade or quota reset.'); return }
+      await continueBroadcast(requestId)
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send broadcast. Check history before starting another send.') }
   }
 
   function loadTemplate() {
+    if (broadcastRequestId) return
     const template = data?.templates.find((candidate) => candidate.id === selectedTemplateId)
     if (!template) return
     setBroadcastSubject(template.subject)
@@ -405,6 +420,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         <h2 className="text-xl font-bold">Email available jobs</h2>
         <p className="mt-1 text-sm text-gray-600">Send to one cleaner, a selected group, or every eligible cleaner in a state. Every email includes the selected products and the state-filtered available-jobs link.</p>
 
+        {broadcastRequestId ? <div role="status" className="my-3 rounded-lg bg-blue-50 p-3 text-sm"><p>Send request saved. Keep this page open; after an interruption resume only unsent recipients.</p><button type="button" disabled={queue.running || Boolean(busy)} onClick={() => void continueBroadcast(broadcastRequestId)} className="mt-2 rounded border px-3 py-2">{queue.running ? 'Sending...' : 'Resume / check this broadcast'}</button><button type="button" disabled={queue.running || Boolean(busy)} onClick={() => { if (window.confirm('Start a separate broadcast? Check history first. This does not cancel the previous request and could send duplicate emails.')) { sessionStorage.removeItem('cleaner-broadcast-request'); setBroadcastRequestId(''); setBroadcastPreview(null) } }} className="ml-3">Start a new broadcast</button></div> : null}
+        <fieldset disabled={Boolean(broadcastRequestId)}>
         <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
           <h3 className="font-semibold text-gray-900">1. Choose recipients</h3>
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -434,8 +451,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
               </select>
               <span className="mt-1 block text-xs font-normal text-gray-500">Only approved, non-suppressed cleaners in {broadcastState} are available.</span>
             </label> : broadcastRecipientMode === 'multiple' ? <label className="text-sm font-medium sm:col-span-2">Cleaner email addresses
-              <textarea rows={3} maxLength={5000} value={broadcastCleanerEmails} onChange={(event) => { setBroadcastCleanerEmails(event.target.value); invalidateBroadcastPreview() }} placeholder="cleaner.one@example.com.au, cleaner.two@example.com.au" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5" />
-              <span className="mt-1 block text-xs font-normal text-gray-500">Enter 2–50 addresses separated by commas, semicolons, or new lines. Every address must match an approved, eligible cleaner in {broadcastState}; no email is sent until the list passes the check below.</span>
+              <textarea rows={3} maxLength={300000} value={broadcastCleanerEmails} onChange={(event) => { setBroadcastCleanerEmails(event.target.value); invalidateBroadcastPreview() }} placeholder="cleaner.one@example.com.au, cleaner.two@example.com.au" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5" />
+              <span className="mt-1 block text-xs font-normal text-gray-500">Enter two or more addresses separated by commas, semicolons, or new lines. Every address must match an approved, eligible cleaner in {broadcastState}; no email is sent until the list passes the check below.</span>
               {!broadcastCleanersLoading && broadcastCleaners.length > 0 ? <span className="mt-2 block text-xs font-normal text-gray-500">Eligible addresses: {broadcastCleaners.map((cleaner) => cleaner.email).join(', ')}</span> : null}
             </label> : <p className="text-sm text-gray-600 sm:col-span-2">{broadcastCleanersLoading ? 'Checking cleaner eligibility...' : `${broadcastCleaners.length} cleaners are currently eligible in ${broadcastState}. Final eligibility is checked again before sending.`}</p>}
           </div>
@@ -485,7 +502,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
             </label>
             <div>
               <RichEmailEditor
-                resetKey={broadcastEditorKey}
+                disabled={Boolean(broadcastRequestId)} resetKey={broadcastEditorKey}
                 value={createRichEmailContent({ document: broadcastIntroDocument, html: broadcastIntroHtml, text: broadcastIntro })}
                 onChange={(content) => {
                   setBroadcastIntro(content.text)
@@ -531,7 +548,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
               <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
               {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
               <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
-              {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">This exceeds the 50-recipient safety limit. Send to one cleaner or narrow the approved cleaner list before sending.</p> : null}
+              {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">No eligible recipients are selected.</p> : null}
             </div>
             <div className="overflow-hidden rounded-xl border border-gray-300 bg-white">
               <div className="border-b border-gray-200 bg-gray-50 p-4 text-sm">
@@ -543,9 +560,10 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
               </div>
               <iframe title="Product broadcast email preview" sandbox="" referrerPolicy="no-referrer" srcDoc={broadcastPreview.emailPreview.html} className="h-[720px] w-full bg-white" />
             </div>
-            <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0 || broadcastSenderMissing.length > 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send this preview to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button>
+            <button type="button" onClick={() => void sendBroadcast()} disabled={Boolean(busy) || queue.running || Boolean(broadcastRequestId) || !broadcastPreview.canSend || broadcastPreview.recipientCount === 0 || broadcastSenderMissing.length > 0} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'broadcast.send' ? 'Sending...' : `Send this preview to ${broadcastPreview.recipientCount} cleaner${broadcastPreview.recipientCount === 1 ? '' : 's'}`}</button>
           </div> : null}
         </div>
+        </fieldset>
       </section>
 
       <aside className="space-y-5">

@@ -1,21 +1,20 @@
 import { parseRichEmailContent, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import { applyEmailMergeFields, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
-export const CLEANER_EMAIL_LIMIT = 50
 export const CLEANER_EMAIL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export class CleanerEmailError extends Error {}
 export type CleanerEmailInput = { emails: string[]; subject: string; body: string; bodyHtml: string; bodyDocument: Record<string, unknown> | null; templateId: string | null }
 export type CleanerEmailRecipient = { id: string; email: string; contact_name: string; first_name?: string | null; last_name?: string | null; business_name: string; city?: string | null; suburb?: string | null; state?: string | null }
 export type CleanerEmailSender = { displayName: string; jobTitle: string; phone: string; email: string }
 export type CleanerEmailPreview = { fingerprint: string; recipients: Array<{ id: string; email: string; name: string; subject: string; html: string }>; sender: CleanerEmailSender }
-export type CleanerEmailResult = { recipients: Array<{ id: string; to_email: string; delivery_outcome: string; subject: string }>; duplicate: boolean }
+export type CleanerEmailResult = { recipients: Array<{ id: string; to_email: string; delivery_outcome: string; subject: string }>; duplicate: boolean; inProgress?: boolean; paused?: boolean }
 
 export function parseCleanerEmailInput(value: unknown): CleanerEmailInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new CleanerEmailError('Enter recipients, subject and message.')
   const input = value as Record<string, unknown>
   const raw = typeof input.emails === 'string' ? input.emails : ''
-  if (raw.length > 5000) throw new CleanerEmailError('The recipient list is too long.')
+  if (raw.length > 300000) throw new CleanerEmailError('The recipient list is too long.')
   const emails = raw.split(/[,;\n]+/).map(email => email.trim().toLowerCase()).filter(Boolean)
-  if (!emails.length || emails.length > CLEANER_EMAIL_LIMIT) throw new CleanerEmailError('Choose between 1 and 50 cleaner email addresses.')
+  if (!emails.length) throw new CleanerEmailError('Choose at least one cleaner email address.')
   if (emails.some(email => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email))) throw new CleanerEmailError('Enter valid email addresses, separated by commas or new lines.')
   if (new Set(emails).size !== emails.length) throw new CleanerEmailError('Remove duplicate email addresses before previewing.')
   const subject = typeof input.subject === 'string' ? input.subject.trim() : ''

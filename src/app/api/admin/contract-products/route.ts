@@ -9,6 +9,7 @@ import {
   listContractProductBroadcastSenders,
   previewContractProductBroadcast,
   sendContractProductBroadcast,
+  continueContractProductBroadcast,
 } from '@/lib/contractProductBroadcasts'
 import {
   archiveContractProductBroadcastTemplate,
@@ -27,6 +28,7 @@ import {
 import { getSiteUrl } from '@/lib/siteUrl'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function GET(request: NextRequest) {
   const actor = await getContractProductActor(request)
@@ -87,6 +89,11 @@ export async function POST(request: NextRequest) {
       const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await archiveContractProductBroadcastTemplate(actor, body) })
+    }
+    if (action === 'broadcast.continue') {
+      const limited = rateLimit(request, { key: `contract-product-broadcast-continue:${actor.id}`, limit: 120, windowMs: 60_000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await continueContractProductBroadcast(actor, body) })
     }
     if (action === 'broadcast.send') {
       const limited = rateLimit(request, { key: `contract-product-broadcast:${actor.id}`, limit: 5, windowMs: 60 * 60 * 1000 })

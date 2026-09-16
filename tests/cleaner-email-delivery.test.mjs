@@ -9,7 +9,7 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 process.env.RESEND_API_KEY = 'test-resend-key'
 const { parseCleanerEmailInput, renderCleanerEmail } = await import('../src/lib/cleanerEmailPolicy.ts')
-const { previewCleanerEmail, deliverCleanerEmail } = await import('../src/lib/cleanerEmailDelivery.ts')
+const { previewCleanerEmail, deliverCleanerEmail, continueCleanerEmail } = await import('../src/lib/cleanerEmailDelivery.ts')
 const { POST } = await import('../src/app/api/admin/cleaners/email/route.ts')
 const { ADMIN_SESSION_COOKIE, createAdminSessionToken } = await import('../src/lib/adminAuth.ts')
 const actor = { id: '11111111-1111-4111-8111-111111111111', username: 'staff', role: 'staff' }
@@ -19,7 +19,7 @@ const sender = { displayName: 'Staff Member', jobTitle: 'Operations', phone: '04
 const cleaner = { id: cleanerId, email: draft.emails, first_name: '<script>bad</script>', contact_name: 'Test Cleaner', business_name: 'Test Business', status: 'approved', broadcast_unsubscribe_token: 'test-token' }
 
 test('recipient validation rejects duplicates, invalid addresses, oversized lists, unsupported fields and header injection', () => {
-  for (const change of [{ emails: '' }, { emails: 'bad' }, { emails: 'a@example.test,A@example.test' }, { emails: Array.from({length:51},(_,i)=>`cleaner${i}@example.test`).join(',') }, { subject: 'Hello\nBcc: bad@example.test' }, { body: '{{internal_notes}}' }]) {
+  for (const change of [{ emails: '' }, { emails: 'bad' }, { emails: 'a@example.test,A@example.test' }, { emails: 'x'.repeat(300001) }, { subject: 'Hello\nBcc: bad@example.test' }, { body: '{{internal_notes}}' }]) {
     assert.throws(() => parseCleanerEmailInput({ ...draft, ...change }))
   }
   assert.equal(parseCleanerEmailInput({ ...draft, emails: ' CLEANER@EXAMPLE.TEST ' }).emails[0], 'cleaner@example.test')
@@ -41,6 +41,7 @@ test('new cleaner email API denies anonymous, viewer and regional agent sessions
   }
 })
 function backend(options = {}) {
+  const cleanerRows = options.count ? Array.from({length:options.count},(_,i)=>({...cleaner,id:`22222222-2222-4222-8222-${String(i).padStart(12,'0')}`,email:`cleaner${i}@example.test`})) : [cleaner]
   let batch = null
   let entries = []
   let sent = 0
@@ -51,31 +52,38 @@ function backend(options = {}) {
     const json = (value, status = 200) => new Response(JSON.stringify(value), {status,headers:{'Content-Type':'application/json'}})
     if (path.includes('api.resend.com')) {
       sent++
-      assert.equal(Array.isArray(body.to) ? body.to[0] : body.to, draft.emails)
+      assert.ok(cleanerRows.some(c=>c.email===(Array.isArray(body.to) ? body.to[0] : body.to)))
       assert.equal(body.cc, undefined)
       if (options.unknown) throw new Error('Provider timeout')
+      if (options.quota) return json({statusCode:429,name:'monthly_quota_exceeded',message:'Quota'},429)
       if (options.failed) return json({statusCode:422,name:'validation_error',message:'Rejected'},422)
       return json({id:'provider-test-id'})
     }
     if (path.includes('/admin_staff_accounts?')) return json({id:actor.id,username:'staff',display_name:sender.displayName,job_title:sender.jobTitle,phone:sender.phone,email:sender.email,role:'staff',active:true})
-    if (path.includes('/cleaners?')) return json([{...cleaner,status:options.rejected?'rejected':'approved'}])
+    if (path.includes('/cleaners?')) return json(cleanerRows.map(c=>({...c,status:options.rejected?'rejected':'approved'})))
     if (path.includes('/crm_email_suppressions?')) return json(options.suppressed?[{email_normalized:draft.emails}]:[])
     if (path.includes('/cleaner_broadcast_suppressions?')) return json([])
     if (path.includes('/cleaner_email_batches?')) return json(batch)
-    if (path.includes('/cleaner_emails?')) return json(entries)
+    if (path.includes('/cleaner_emails?')) {
+      if(init.method === 'PATCH'){ entries[0].delivery_outcome=body.delivery_outcome;return new Response(null,{status:204}) }
+      return json(path.includes('delivery_outcome=eq.queued') ? entries.filter(e=>e.delivery_outcome==='queued').slice(0,Number(new URL(path).searchParams.get('limit')||entries.length)) : entries)
+    }
     if (path.includes('/rpc/')) {
       const rpc = path.split('/rpc/')[1];rpcCalls.push(rpc)
-      if (rpc === 'reserve_cleaner_email_batch') {
+      if (rpc === 'reserve_cleaner_email_batch_v2') {
         if (batch) return json(false)
-        batch={id:body.p_id,actor_id:body.p_actor_id,input_hash:body.p_input_hash}
-        entries=[{id:'33333333-3333-4333-8333-333333333333',cleaner_id:cleanerId,to_email:draft.emails,subject:draft.subject,delivery_outcome:'queued'}]
+        batch={id:body.p_id,actor_id:body.p_actor_id,input_hash:body.p_input_hash,delivery:body.p_delivery}
+        entries=body.p_messages.map((m,i)=>({id:`33333333-3333-4333-8333-${String(i).padStart(12,'0')}`,cleaner_id:m.cleaner_id,to_email:m.email,subject:m.subject,delivery_outcome:'queued',final_html_snapshot:m.html,final_text_snapshot:m.text,delivery_headers:m.headers}))
         return json(true)
       }
+      if (rpc === 'acquire_cleaner_email_slot') return json(true)
       if (rpc === 'claim_cleaner_email_delivery') {
-        entries[0].delivery_outcome=options.changedAfterPreview?'skipped':'sending'
+        const entry=entries.find(e=>e.id===body.p_email_id)
+        if(entry.delivery_outcome!=='queued') return json(false)
+        entry.delivery_outcome=options.changedAfterPreview?'skipped':'sending'
         return json(!options.changedAfterPreview)
       }
-      if (rpc === 'complete_cleaner_email_delivery') { if(options.finalizeFailure) return json({message:'Synthetic database interruption'},500); entries[0].delivery_outcome=body.p_outcome; return new Response(null,{status:204}) }
+      if (rpc === 'complete_cleaner_email_delivery') { if(options.finalizeFailure) return json({message:'Synthetic database interruption'},500); entries.find(e=>e.id===body.p_email_id).delivery_outcome=body.p_outcome; return new Response(null,{status:204}) }
     }
     throw new Error(`Unexpected test endpoint: ${new URL(path).pathname}`)
   }
@@ -130,4 +138,32 @@ test('provider acceptance followed by finalization failure is never resent', asy
     assert.equal(replay.recipients[0].delivery_outcome, 'sending')
     assert.equal(mock.sent, 1)
   } finally { globalThis.fetch = previous }
+})
+
+test('accepts 501 recipients and an explicit quota rejection pauses with unsent recipients retained', async () => {
+  assert.equal(parseCleanerEmailInput({...draft,emails:Array.from({length:501},(_,i)=>`cleaner${i}@example.test`).join(',')}).emails.length,501)
+  const previous=globalThis.fetch;const mock=backend({quota:true});globalThis.fetch=mock.fetch
+  try {
+    const preview=await previewCleanerEmail(actor,draft)
+    const result=await deliverCleanerEmail(actor,{...draft,requestId:'88888888-8888-4888-8888-888888888888',fingerprint:preview.fingerprint})
+    assert.equal(result.paused,true);assert.equal(result.inProgress,true)
+    assert.equal(result.recipients[0].delivery_outcome,'queued');assert.equal(mock.sent,1)
+  } finally {globalThis.fetch=previous}
+})
+
+test('large send progresses in bounded steps and resumes only queued recipients from saved content',async()=>{
+  const previous=globalThis.fetch;const mock=backend({count:61});globalThis.fetch=mock.fetch
+  try {
+    const input={...draft,emails:Array.from({length:61},(_,i)=>`cleaner${i}@example.test`).join(',')}
+    const preview=await previewCleanerEmail(actor,input)
+    assert.equal(preview.recipients.filter(r=>r.html).length,1)
+    const id='99999999-9999-4999-8999-999999999999'
+    const first=await deliverCleanerEmail(actor,{...input,requestId:id,fingerprint:preview.fingerprint})
+    assert.equal(mock.sent,10);assert.equal(first.inProgress,true)
+    await continueCleanerEmail(actor,id);assert.equal(mock.sent,20)
+    let last
+    while(mock.sent<61){const before=mock.sent;last=await continueCleanerEmail(actor,id);assert.ok(mock.sent-before<=10)}
+    assert.equal(mock.sent,61);assert.equal(last.inProgress,false)
+    await continueCleanerEmail(actor,id);assert.equal(mock.sent,61)
+  }finally{globalThis.fetch=previous}
 })

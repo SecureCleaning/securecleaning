@@ -93,3 +93,9 @@ test('all editable email surfaces use the shared composer', () => {
   ]) assert.match(source(`src/components/${path}`), /@\/components\/admin\/RichEmailComposer/)
   assert.match(source('src/components/admin/RichEmailEditor.tsx'), /onMouseDown=.*preventDefault/)
 })
+
+test('locking the rich editor does not emit a content change that invalidates previews', () => {
+  const editor = source('src/components/admin/RichEmailEditor.tsx')
+  assert.match(editor, /setEditable\(!disabled, false\)/)
+  assert.doesNotMatch(editor, /setEditable\(!disabled\)/)
+})

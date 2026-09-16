@@ -45,7 +45,7 @@ export default function RichEmailEditor({ value, onChange, resetKey, label = 'Me
   const editorRef = useRef<EmailEditorRef | null>(null)
   const [ready, setReady] = useState(false)
 
-  useEffect(() => { editorRef.current?.editor?.setEditable(!disabled) }, [disabled, ready])
+  useEffect(() => { editorRef.current?.editor?.setEditable(!disabled, false) }, [disabled, ready])
 
   function emit(ref: EmailEditorRef) {
     const editor = ref.editor
@@ -119,7 +119,7 @@ export default function RichEmailEditor({ value, onChange, resetKey, label = 'Me
           ref={editorRef}
           content={initialContent}
           placeholder={placeholder}
-          onReady={(ref) => { editorRef.current = ref; ref.editor?.setEditable(!disabled); setReady(true) }}
+          onReady={(ref) => { editorRef.current = ref; ref.editor?.setEditable(!disabled, false); setReady(true) }}
           onUpdate={emit}
           className="rich-email-editor px-4 py-3 text-sm leading-6 text-gray-900 outline-none"
         />
