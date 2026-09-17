@@ -113,7 +113,7 @@ function createContent(input: ContractSaleTaxInvoicePdfInput) {
   }
 
   const outstanding = Math.max(0, input.totalIncGstCents - input.paidCents)
-  const balanceAfterDeposit = Math.max(0, input.totalIncGstCents - input.depositRequiredIncGstCents)
+  const depositDue = Math.min(outstanding, Math.max(0, input.depositRequiredIncGstCents - input.paidCents))
 
   fill(0, 760, PAGE_WIDTH, 82, GREEN)
   text(input.supplierName, 42, 804, 23, true, '1 1 1')
@@ -178,12 +178,12 @@ function createContent(input: ContractSaleTaxInvoicePdfInput) {
 
   const paymentBoxY = totalsTop - 145
   fill(42, paymentBoxY, 511, 72, LIGHT)
-  text('PAYMENT REQUIRED', 54, paymentBoxY + 52, 8, true, GREEN)
+  text('CURRENT PAYMENT SUMMARY', 54, paymentBoxY + 52, 8, true, GREEN)
   text('Deposit payable now', 54, paymentBoxY + 30, 11, true)
-  text(money(input.depositRequiredIncGstCents), 222, paymentBoxY + 30, 11, true, GREEN)
-  text('Remaining balance', 342, paymentBoxY + 30, 9, false, MUTED)
-  text(money(balanceAfterDeposit), 458, paymentBoxY + 30, 9, true)
-  text(`Outstanding at issue: ${money(outstanding)}`, 54, paymentBoxY + 12, 8, false, MUTED)
+  text(money(depositDue), 222, paymentBoxY + 30, 11, true, GREEN)
+  text('Outstanding balance', 342, paymentBoxY + 30, 9, false, MUTED)
+  text(money(outstanding), 458, paymentBoxY + 30, 9, true)
+  text(`Payments received (confirmed): ${money(input.paidCents)}`, 54, paymentBoxY + 12, 8, false, MUTED)
 
   let termsY = paymentBoxY - 28
   text('PAYMENT TERMS', 42, termsY, 8, true, GREEN)

@@ -520,8 +520,25 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
   }
 }
 
+// Allocations are created atomically only when an owner/manager confirms cleared funds.
+// Use the same ledger for every rendered copy; pending evidence is not a payment.
+async function invoiceWithConfirmedPayments(invoice: Row): Promise<Row> {
+  let paidCents = 0
+  const pageSize = 500
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await getAdminSupabase().from('contract_sale_payment_allocations')
+      .select('payment_id, amount_cents').eq('invoice_id', String(invoice.id)).order('payment_id').range(offset, offset + pageSize - 1)
+    if (error) throw error
+    paidCents += (data ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
+    if (!data || data.length < pageSize) break
+  }
+  return { ...invoice, paid_cents: paidCents }
+}
+
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
   const pdfInput = invoicePdfInput(invoice, sale, context)
+  const outstanding = Math.max(0, pdfInput.totalIncGstCents - pdfInput.paidCents)
+  const depositDue = Math.min(outstanding, Math.max(0, pdfInput.depositRequiredIncGstCents - pdfInput.paidCents))
   const tokens = invoiceTemplateTokens(invoice, sale, context)
   const pdf = buildContractSaleTaxInvoicePdf(pdfInput)
   const fileName = `${pdfInput.invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`
@@ -530,7 +547,7 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>Deposit payable now:</strong> ${money(Number(invoice.deposit_required_inc_gst_cents))} including GST</p><p style="margin:0"><strong>Remaining balance:</strong> ${money(Number(invoice.total_inc_gst_cents) - Number(invoice.deposit_required_inc_gst_cents))}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>Deposit payable now:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
@@ -593,8 +610,9 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
   if (invoice.delivery_status === 'unknown') throw new ContractProductError('Delivery is unresolved. Verify the recipient inbox or provider activity before deliberately resending.', 409)
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
   try {
-    const providerMessageId = await sendInvoiceEmail(invoice as Row, sale, context)
+    const providerMessageId = await sendInvoiceEmail(currentInvoice, sale, context)
     const { error: deliveryError } = await getAdminSupabase().from('contract_sale_invoices').update({ provider_message_id: providerMessageId || null, delivery_status: providerMessageId ? 'sent' : 'unknown', delivery_error: null }).eq('id', invoice.id)
     if (deliveryError) throw deliveryError
   } catch (sendError) {
@@ -615,10 +633,8 @@ export async function downloadContractSaleInvoice(actor: ContractProductActor, s
     .eq('id', clean(invoiceId, 100)).eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
-  const { data: allocations, error: allocationError } = await getAdminSupabase().from('contract_sale_payment_allocations').select('amount_cents').eq('invoice_id', invoice.id)
-  if (allocationError) throw allocationError
-  const paidCents = (allocations ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
-  const pdf = buildContractSaleTaxInvoicePdf(invoicePdfInput({ ...invoice, paid_cents: paidCents }, sale, context))
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
+  const pdf = buildContractSaleTaxInvoicePdf(invoicePdfInput(currentInvoice, sale, context))
   return { pdf, fileName: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf` }
 }
 
@@ -840,12 +856,13 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
     || clean(preparedInvoice.sender_name_snapshot, 160) !== clean(actor.displayName, 160)) {
     throw new ContractProductError('The tax invoice sender is locked by an earlier delivery. The same sender must send any replacement agreement bundle.', 409)
   }
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
   const sentAt = new Date().toISOString()
   const { data: claimed, error: claimError } = await db.from('contract_sale_agreements').update({ status: 'sent', sent_at: sentAt })
     .eq('id', agreement.id).eq('status', 'draft').select('id').maybeSingle()
   if (claimError) throw claimError
   if (!claimed) throw new ContractProductError('This agreement was already sent or changed.', 409)
-  const invoiceInput = invoicePdfInput(invoice as Row, sale, context)
+  const invoiceInput = invoicePdfInput(currentInvoice, sale, context)
   const agreementInput = {
     content: String(agreement.content_snapshot), saleCode: String(sale.sale_code),
     productCode: String(context.product.product_code), cleanerBusiness: String(agreement.cleaner_business_snapshot),

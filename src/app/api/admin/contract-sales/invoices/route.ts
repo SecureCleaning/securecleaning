@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(result.pdf, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${result.fileName.replace(/"/g, '')}"`,
+        'Content-Disposition': `${request.nextUrl.searchParams.get('preview') === '1' ? 'inline' : 'attachment'}; filename="${result.fileName.replace(/"/g, '')}"`,
         'Cache-Control': 'private, no-store',
       },
     })
