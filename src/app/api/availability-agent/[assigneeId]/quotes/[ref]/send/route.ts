@@ -1,3 +1,4 @@
+import { getQuoteAgentCc, QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
       ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
+    const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
     attemptId = randomUUID()
     if (!(await createFinalQuoteSendAttempt(params.ref, attemptId, actor, to, quote.finalDocument.version))) {
       return NextResponse.json({ success: false, error: 'This final quote already has a sent or unresolved delivery attempt.' }, { status: 409 })
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     providerCallStarted = true
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
-      to, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     console.error('[api/availability-agent/quote-send] Failed to send final quote:', error)
     return NextResponse.json({
       success: false,
-      error: disposition.error,
+      error: error instanceof QuoteAgentEmailError ? error.message : disposition.error,
       reconciliationRequired: disposition.reconciliationRequired,
       providerAccepted: disposition.providerAccepted,
     }, { status: disposition.status })

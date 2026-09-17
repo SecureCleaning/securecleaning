@@ -7,7 +7,8 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const { calculateQuote, formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getFirmQuoteDisplayPrice, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomPricingBreakdown, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { createRoomItem, parseFirmQuoteDraft, buildFirmQuotePreview, createDefaultFirmQuoteDraft, deriveQuoteInputsFromRooms, getFirmQuoteDisplayPrice, getRoomMetricExtraTotal, getRoomMoppingExtraTotal, getRoomPricingBreakdown, getRoomScheduledTaskExtraTotal } = await import('../src/lib/quoteWorkflow.ts')
+const { duplicateQuoteRoom, moveQuoteRoom } = await import('../src/lib/quoteRoomEditing.ts')
 const { buildClientScopeReport } = await import('../src/lib/scopeOfWorks.ts')
 const {
   applyGlobalRoomTaskRates,
@@ -696,4 +697,77 @@ test('stairs remain a recognized room type throughout public quote scope sanitiz
     moppingRequired: true,
     isCustom: true,
   })
+})
+
+
+test('room moves preserve identities and settings in both directions, including list boundaries', () => {
+  const rooms = ['office', 'bathroom', 'kitchen'].map((type) => createRoomItem(type))
+  const moved = moveQuoteRoom(rooms, rooms[0].id, rooms[2].id)
+  assert.deepEqual(moved, [rooms[1], rooms[2], rooms[0]])
+  assert.deepEqual(moveQuoteRoom(moved, rooms[0].id, rooms[1].id), rooms)
+  assert.strictEqual(moved[2], rooms[0])
+  assert.equal(rooms[0].type, 'office')
+  assert.strictEqual(moveQuoteRoom(rooms, 'missing', rooms[0].id), rooms)
+  assert.strictEqual(moveQuoteRoom(rooms, rooms[0].id, 'missing'), rooms)
+  assert.strictEqual(moveQuoteRoom(rooms, rooms[0].id, rooms[0].id), rooms)
+})
+
+function customizedBathroom() {
+  return {
+    ...createRoomItem('bathroom'), label: 'Upstairs bathroom', description: 'Include the shower screen',
+    quantity: 2, size: 18, floor: 2,
+    metrics: { toilets: 3, basins: 2, custom_screen: 1 },
+    customMetricFields: [{ id: 'custom_screen', label: 'Shower screen', inputType: 'integer', defaultValue: 0,
+      includedUnits: 0, pricePerUnit: 4, cadence: 'weekly', helpText: 'Both sides' }],
+    excludedMetricFieldIds: ['mirrors'],
+    scopeTaskSelections: { ...createRoomItem('bathroom').scopeTaskSelections, task_0: false },
+    moppingEnabled: true, pricingOverride: true, pricingAdjustmentPercent: 12, fixedPricePerVisit: 15,
+  }
+}
+
+test('duplicate inserts a complete independent customized bathroom immediately after its source', () => {
+  const source = customizedBathroom()
+  const last = createRoomItem('office')
+  const rooms = [source, last]
+  const copied = duplicateQuoteRoom(rooms, source.id, 'room-copy')
+  assert.deepEqual(copied.map((room) => room.id), [source.id, 'room-copy', last.id])
+  assert.deepEqual(copied[1], { ...source, id: 'room-copy', label: 'Upstairs bathroom (copy)' })
+  copied[1].metrics.toilets = 7
+  copied[1].customMetricFields[0].pricePerUnit = 30
+  copied[1].excludedMetricFieldIds.push('basins')
+  copied[1].scopeTaskSelections.task_0 = true
+  copied[1].label = 'Downstairs bathroom'
+  assert.equal(source.metrics.toilets, 3)
+  assert.equal(source.customMetricFields[0].pricePerUnit, 4)
+  assert.deepEqual(source.excludedMetricFieldIds, ['mirrors'])
+  assert.equal(source.scopeTaskSelections.task_0, false)
+  assert.equal(source.label, 'Upstairs bathroom')
+  assert.equal(rooms.length, 2)
+  assert.strictEqual(duplicateQuoteRoom(rooms, source.id, last.id), rooms)
+  assert.strictEqual(duplicateQuoteRoom(rooms, 'missing', 'new-id'), rooms)
+  assert.strictEqual(duplicateQuoteRoom(rooms, source.id, ''), rooms)
+})
+
+test('duplicate and reordered room data survive save parsing, JSON reload, and scope generation', () => {
+  const draft = createDefaultFirmQuoteDraft(baseInputs)
+  const source = customizedBathroom()
+  draft.roomItems = [createRoomItem('office'), source, createRoomItem('kitchen')]
+  draft.roomItems = duplicateQuoteRoom(draft.roomItems, source.id, 'room-copy')
+  draft.roomItems[2].label = 'Downstairs bathroom'
+  draft.roomItems = moveQuoteRoom(draft.roomItems, 'room-copy', draft.roomItems[0].id)
+  const saved = parseFirmQuoteDraft(JSON.parse(JSON.stringify(draft)), baseInputs, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+  const reloaded = parseFirmQuoteDraft(JSON.parse(JSON.stringify(saved)), baseInputs, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+  assert.deepEqual(reloaded.roomItems.map((room) => room.id), draft.roomItems.map((room) => room.id))
+  const original = reloaded.roomItems.find((room) => room.id === source.id)
+  assert.deepEqual(reloaded.roomItems[0], { ...original, id: 'room-copy', label: 'Downstairs bathroom' })
+  assert.equal(reloaded.roomItems[0].metrics.toilets, 3)
+  assert.equal(reloaded.roomItems[0].metrics.basins, 2)
+  const report = buildClientScopeReport('SC-TEST', baseInputs, calculateQuote(baseInputs), reloaded, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+  assert.deepEqual(report.rooms.map((room) => room.id), reloaded.roomItems.map((room) => room.id))
+  assert.equal(report.rooms[0].label, 'Downstairs bathroom')
+  assert.deepEqual(report.rooms[0].tasks, report.rooms.find((room) => room.id === source.id).tasks)
+  assert.deepEqual(report.rooms[0].selectedOptions, report.rooms.find((room) => room.id === source.id).selectedOptions)
+  const preview = buildFirmQuotePreview(reloaded, DEFAULT_QUOTE_PRICING_CONFIG, DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+  const reordered = { ...reloaded, roomItems: moveQuoteRoom(reloaded.roomItems, 'room-copy', source.id) }
+  assert.deepEqual(buildFirmQuotePreview(reordered, DEFAULT_QUOTE_PRICING_CONFIG, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), preview)
 })

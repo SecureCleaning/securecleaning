@@ -1,3 +1,4 @@
+import { getQuoteAgentCc, QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
@@ -39,6 +40,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     if (message && message.length > 4000) return NextResponse.json({ success: false, error: 'The email message is too long.' }, { status: 400 })
 
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
+    const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
     attemptId = randomUUID()
     const attempt = await createFinalQuoteSendAttempt(params.ref, attemptId, {
       kind: 'staff_account', id: identity.id, name: identity.username,
@@ -50,7 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     providerCallStarted = true
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
-      to, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest, { params }: { params: { ref: st
     console.error('[api/admin/quotes/[ref]/send] Failed to send final quote:', error)
     return NextResponse.json({
       success: false,
-      error: disposition.error,
+      error: error instanceof QuoteAgentEmailError ? error.message : disposition.error,
       reconciliationRequired: disposition.reconciliationRequired,
       providerAccepted: disposition.providerAccepted,
     }, { status: disposition.status })

@@ -88,7 +88,7 @@ test('private booking prefill route is token-protected and the public quote endp
   assert.match(quoteSession, /storedResult\?\.quoteRef !== quoteRef/)
   assert.match(quoteSession, /quoteRef \? null : storedDraft/)
   assert.match(email, /createQuoteBookingHandoffToken/)
-  assert.match(email, /href="\$\{onlineQuoteUrl\}"[^>]*>Open Quote/)
+  assert.match(email, /href="\$\{onlineQuoteUrl\}"[^>]*>\s*View Quote Online/)
   assert.doesNotMatch(email, /href="\$\{SITE_URL\}\/quote\/\$\{quoteRef\}"/)
 })
 

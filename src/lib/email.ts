@@ -5,8 +5,9 @@ import { buildBookingInviteIcs } from './calendarInvite'
 import { getSiteUrl } from './siteUrl'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from './publicRoomScope'
 import type { FirmQuoteDisplayPrice } from './quoteWorkflow'
-import { getAvailabilityAssignee, getAvailabilityAssigneesForLocation, getAvailabilityConfig } from './availability'
+import { getAvailabilityAssignee, getAvailabilityConfig } from './availability'
 import { createQuoteBookingHandoffToken } from './quoteBookingAccess'
+import { getQuoteAgentCc } from './quoteEmailRecipients'
 
 /**
  * Email helper module using Resend.
@@ -46,10 +47,6 @@ async function getSelectedInspectionAssigneeEmail(inputs: BookingInputs): Promis
   }
 }
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -57,28 +54,6 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;')
-}
-
-async function getQuoteAssigneeEmails(inputs: QuoteInputs): Promise<string[]> {
-  try {
-    const assignees = await getAvailabilityAssigneesForLocation(
-      { address: inputs.address, suburb: inputs.suburb, postcode: inputs.postcode },
-      inputs.city,
-    )
-
-    return Array.from(
-      new Set(
-        assignees
-          .map((assignee) => assignee.email?.trim().toLowerCase() ?? '')
-          .filter((email) => isValidEmail(email))
-          // The admin notification already goes to this address.
-          .filter((email) => email !== ADMIN_EMAIL.trim().toLowerCase()),
-      ),
-    )
-  } catch (error) {
-    console.error('[email] Failed to resolve quote assignee emails:', error)
-    return []
-  }
 }
 
 // ─── Quote Email ──────────────────────────────────────────────────────────────
@@ -140,12 +115,13 @@ export async function sendQuoteEmail(
   const bookingUrl = `${SITE_URL}/booking?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
   const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
-  const quoteAssigneeEmails = await getQuoteAssigneeEmails(inputs)
+  const agentCc = await getQuoteAgentCc(quoteRef, inputs)
 
   // Email to client
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
+    ...(agentCc.length > 0 ? { cc: agentCc } : {}),
     replyTo: ADMIN_EMAIL,
     subject: `Your Secure Cleaning Quote — ${quoteRef}`,
     html: `
@@ -208,51 +184,6 @@ export async function sendQuoteEmail(
     `,
   })
 
-  if (quoteAssigneeEmails.length > 0) {
-    await sendEmailOrThrow({
-      from: FROM_EMAIL,
-      to: quoteAssigneeEmails,
-      replyTo: ADMIN_EMAIL,
-      subject: `[Quote Copy] ${quoteRef} — ${businessLabel} (${cityLabel})`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 680px; margin: 0 auto; color: #334155;">
-          <div style="background: #1a2744; padding: 24px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Secure Cleaning</h1>
-            <p style="color: #22c55e; margin: 4px 0 0;">Internal Quote Copy</p>
-          </div>
-          <div style="padding: 28px 24px;">
-            <h2 style="color: #1a2744; margin: 0 0 16px;">${quoteRef} — ${businessLabel}</h2>
-            <p><strong>Client:</strong> ${inputs.contactName}<br>
-            <strong>Email:</strong> ${inputs.email}<br>
-            <strong>Phone:</strong> ${inputs.phone}<br>
-            <strong>Location:</strong> ${inputs.suburb} ${inputs.postcode}, ${cityLabel}<br>
-            <strong>Premises:</strong> ${inputs.premisesType} (${inputs.floorArea} sqm)<br>
-            <strong>Frequency:</strong> ${inputs.frequency.replace(/_/g, ' ')}<br>
-            <strong>Time preference:</strong> ${timeLabel}</p>
-
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 22px 0;">
-              <p style="font-size: 24px; color: #1a2744; font-weight: bold; margin: 0;">${priceRangeFmt} <span style="font-size: 14px; font-weight: normal; color: #64748b;">per visit</span></p>
-            </div>
-
-            <h3 style="color: #1a2744;">Requested areas</h3>
-            <ul style="line-height: 1.8;">
-              ${bathroomScopeSummary.map((item) => `<li>${item}</li>`).join('')}
-              ${inputs.addOns.kitchens > 0 ? `<li>Kitchens / kitchenettes: ${inputs.addOns.kitchens}</li>` : ''}
-              ${roomScopeSummary.map((item) => `<li>${item}</li>`).join('')}
-              ${inputs.addOns.glassCleaningRequired ? '<li>Glass cleaning requested — quote separately</li>' : ''}
-            </ul>
-            ${inputs.notes ? `<p><strong>Notes:</strong><br>${inputs.notes}</p>` : ''}
-
-            <p style="margin-top: 24px;">
-              <a href="${onlineQuoteUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #1a2744; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-right: 8px;">Open Quote</a>
-              <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #0b5f74; color: white; padding: 12px 18px; border-radius: 6px; text-decoration: none; font-weight: bold;">Open Scope</a>
-            </p>
-          </div>
-        </div>
-      `,
-    })
-  }
-
 }
 
 export async function sendScopeOfWorksEmail(
@@ -268,9 +199,12 @@ export async function sendScopeOfWorksEmail(
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const frequencyLabel = inputs.frequency.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase())
 
+  const agentCc = await getQuoteAgentCc(quoteRef, inputs)
+
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
+    ...(agentCc.length > 0 ? { cc: agentCc } : {}),
     replyTo: ADMIN_EMAIL,
     subject: `Your Secure Cleaning Scope of Works - ${quoteRef}`,
     html: `
@@ -302,6 +236,8 @@ export async function sendUpdatedQuoteEmail(
   inputs: QuoteInputs,
   displayPrice: FirmQuoteDisplayPrice,
   options?: {
+    // Server-resolved before claiming a final send, so lookup failures remain retryable.
+    agentCc?: string[]
     to?: string
     subject?: string
     message?: string
@@ -325,9 +261,12 @@ export async function sendUpdatedQuoteEmail(
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')
 
+  const agentCc = options?.agentCc ?? await getQuoteAgentCc(quoteRef, inputs, recipient)
+
   return sendEmailOrThrow({
     from: FROM_EMAIL,
     to: recipient,
+    ...(agentCc.length > 0 ? { cc: agentCc } : {}),
     replyTo: ADMIN_EMAIL,
     subject,
     html: `

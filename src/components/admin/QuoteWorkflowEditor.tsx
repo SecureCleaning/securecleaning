@@ -5,6 +5,7 @@ import { createRichEmailContent } from '@/lib/richEmailContent'
 
 import { useMemo, useRef, useState } from 'react'
 import { formatCurrency, formatPriceRange } from '@/lib/quoteEngine'
+import { duplicateQuoteRoom, moveQuoteRoom } from '@/lib/quoteRoomEditing'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import type { QuoteInputs, QuoteResult, PremisesType } from '@/lib/types'
 import type { QuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
@@ -126,6 +127,9 @@ export default function QuoteWorkflowEditor({
 }: Props) {
   const [inspectionReport, setInspectionReport] = useState<InspectionReport>(quote.inspectionReport)
   const [firmQuoteDraft, setFirmQuoteDraft] = useState<FirmQuoteDraft>(quote.firmQuoteDraft)
+  const roomDrag = useRef<{ roomId: string; startX: number; startY: number; targetId: string | null } | null>(null)
+  const [roomDropTarget, setRoomDropTarget] = useState<string | null>(null)
+  const [roomEditMessage, setRoomEditMessage] = useState('')
   const [finalPublished, setFinalPublished] = useState(Boolean(quote.finalDocument))
   const [documentVersion, setDocumentVersion] = useState(quote.finalDocumentVersion ?? quote.finalDocument?.version ?? null)
   const [previewMode, setPreviewMode] = useState(false)
@@ -405,6 +409,31 @@ export default function QuoteWorkflowEditor({
           : room
       )),
     }))
+  }
+
+  function moveRoom(roomId: string, targetId: string) {
+    setFirmQuoteDraft((current) => ({
+      ...current,
+      roomItems: moveQuoteRoom(current.roomItems, roomId, targetId),
+    }))
+    setRoomEditMessage('Room order updated. Save the quote to update the scope order.')
+  }
+
+  function duplicateRoom(roomId: string) {
+    const newId = `room-${crypto.randomUUID()}`
+    setFirmQuoteDraft((current) => ({
+      ...current,
+      roomItems: duplicateQuoteRoom(current.roomItems, roomId, newId),
+    }))
+    setRoomEditMessage('Room duplicated below the original with all settings copied. Rename it, then save the quote.')
+    window.requestAnimationFrame(() => {
+      const details = document.getElementById(`quote-room-${newId}`) as HTMLDetailsElement | null
+      if (!details) return
+      details.open = true
+      const label = details.querySelector<HTMLInputElement>('[data-room-label]')
+      label?.focus()
+      label?.select()
+    })
   }
 
   function addRoom(type: WorkflowRoomType = 'office') {
@@ -958,7 +987,7 @@ export default function QuoteWorkflowEditor({
               <div className="flex items-center justify-between gap-4 mb-4">
                 <div>
                   <h3 className="font-semibold" style={{ color: '#1a2744' }}>Room Types / Areas</h3>
-                  <p className="text-sm text-gray-600">Add or remove room groups. Client sqm is reference-only; working pricing uses the selected room areas and room charges.</p>
+                  <p className="text-sm text-gray-600">Drag rooms into order, use Move up/down, or duplicate a configured room. Save the quote to update the scope. Client sqm is reference-only; working pricing uses the selected room areas and room charges.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -993,9 +1022,81 @@ export default function QuoteWorkflowEditor({
                 </div>
               </div>
 
+              <p role="status" className="mb-3 text-sm text-teal-800">{roomEditMessage}</p>
               <div className="space-y-3">
-                {firmQuoteDraft.roomItems.map((room) => (
-                  <details key={room.id} className="rounded-xl border border-gray-200">
+                {firmQuoteDraft.roomItems.map((room, roomIndex) => (
+                  <div
+                    key={room.id}
+                    className={`rounded-xl border ${roomDropTarget === room.id ? 'border-teal-600 ring-2 ring-teal-200' : 'border-gray-200'}`}
+                    data-quote-room-id={room.id}
+                  >
+                    <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-3 py-2">
+                      <button
+                        type="button"
+                        disabled={saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        aria-label={`Drag to reorder ${room.label || room.type}; use Move up or Move down with a keyboard`}
+                        onPointerDown={(event) => {
+                          if (event.button !== 0) return
+                          event.currentTarget.setPointerCapture(event.pointerId)
+                          roomDrag.current = { roomId: room.id, startX: event.clientX, startY: event.clientY, targetId: null }
+                        }}
+                        onPointerMove={(event) => {
+                          const drag = roomDrag.current
+                          if (!drag) return
+                          if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) {
+                            drag.targetId = null
+                            setRoomDropTarget(null)
+                            return
+                          }
+                          const target = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-quote-room-id]')
+                          drag.targetId = target?.getAttribute('data-quote-room-id') ?? null
+                          setRoomDropTarget(drag.targetId !== drag.roomId ? drag.targetId : null)
+                          if (event.clientY < 64) window.scrollBy(0, -18)
+                          else if (event.clientY > window.innerHeight - 64) window.scrollBy(0, 18)
+                        }}
+                        onPointerUp={(event) => {
+                          const drag = roomDrag.current
+                          if (drag?.targetId && drag.targetId !== drag.roomId) moveRoom(drag.roomId, drag.targetId)
+                          roomDrag.current = null
+                          setRoomDropTarget(null)
+                          event.currentTarget.releasePointerCapture(event.pointerId)
+                        }}
+                        onPointerCancel={() => {
+                          roomDrag.current = null
+                          setRoomDropTarget(null)
+                        }}
+                        onLostPointerCapture={() => {
+                          roomDrag.current = null
+                          setRoomDropTarget(null)
+                        }}
+                        className="touch-none select-none cursor-grab rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-600 active:cursor-grabbing disabled:opacity-40"
+                      >
+                        Drag
+                      </button>
+                      <span className="mr-auto text-xs text-gray-500">Room {roomIndex + 1} of {firmQuoteDraft.roomItems.length}</span>
+                      <button
+                        type="button"
+                        aria-label={`Move ${room.label || room.type} up`}
+                        disabled={roomIndex === 0 || saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex - 1].id)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
+                      >Move up</button>
+                      <button
+                        type="button"
+                        aria-label={`Move ${room.label || room.type} down`}
+                        disabled={roomIndex === firmQuoteDraft.roomItems.length - 1 || saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex + 1].id)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
+                      >Move down</button>
+                      <button
+                        type="button"
+                        aria-label={`Duplicate ${room.label || room.type}`}
+                        disabled={saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        onClick={() => duplicateRoom(room.id)}
+                        className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-40"
+                      >Duplicate</button>
+                    </div>
+                  <details id={`quote-room-${room.id}`}>
                     <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center justify-between gap-4">
                         <div>
@@ -1050,6 +1151,7 @@ export default function QuoteWorkflowEditor({
                       <label className="text-sm xl:min-w-0">
                         <span className="mb-1 block font-medium text-gray-700">Label</span>
                         <input
+                          data-room-label
                           value={room.label}
                           onChange={(event) => updateRoom(room.id, { label: event.target.value })}
                           className="w-full min-w-0 rounded-xl border border-gray-300 px-3 py-3"
@@ -1341,6 +1443,7 @@ export default function QuoteWorkflowEditor({
                     })()}
                     </div>
                   </details>
+                  </div>
                 ))}
               </div>
             </div>

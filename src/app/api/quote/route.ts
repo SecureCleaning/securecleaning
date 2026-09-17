@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { calculateQuote, formatPriceRange, generateQuoteRef } from '@/lib/quoteEngine'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendQuoteEmail } from '@/lib/email'
+import { QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
 import { getQuotePricingConfig } from '@/lib/pricing'
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import {
@@ -186,7 +187,9 @@ export async function POST(request: NextRequest) {
       emailSent = true
     } catch (err) {
       console.error('[quote] Email send failed:', err)
-      emailError = err instanceof Error ? err.message : 'Unable to send quote email.'
+      emailError = err instanceof QuoteAgentEmailError
+        ? 'Your quote is ready online, but we could not email it. Please contact Secure Cleaning for assistance.'
+        : err instanceof Error ? err.message : 'Unable to send quote email.'
     }
 
     const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
