@@ -253,7 +253,9 @@ export function isMoppingOnlyTask(label: string) {
   return normalized.includes('mop') && !normalized.includes('vacuum') && !normalized.includes('sweep')
 }
 
-export function isMoppingPricedRoomTask(label: string) {
+export function isMoppingPricedRoomTask(label: string, globalRateCode: string | null = null) {
+  // Explicit global links take precedence; custom and legacy tasks retain wording compatibility.
+  if (globalRateCode) return globalRateCode === 'mopping'
   const normalized = label.trim().toLowerCase()
   return normalized.includes('mop') && !normalized.includes(' or ')
 }
@@ -320,13 +322,13 @@ function isPerimeterSurfaceDustingTask(label: string) {
 }
 
 export function ensureWeeklyPerimeterSurfaceDusting(roomType: RoomTypeConfig): RoomTypeConfig {
-  const existingIndex = roomType.scopeTasks.findIndex(isPerimeterSurfaceDustingTask)
+  const existingIndex = roomType.scopeTasks.findIndex((label, index) => getRoomScopeTaskGlobalRateCode(roomType, index) === 'dusting' || isPerimeterSurfaceDustingTask(label))
   const cadences = roomType.scopeTasks.map((_, index) => getRoomScopeTaskCadence(roomType, index))
   const prices = roomType.scopeTasks.map((_, index) => getRoomScopeTaskPrice(roomType, index))
   const minutes = roomType.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(roomType, index))
 
   if (existingIndex >= 0) {
-    cadences[existingIndex] = 'weekly'
+    if (getRoomScopeTaskGlobalRateCode(roomType, existingIndex) === null) cadences[existingIndex] = 'weekly'
     return { ...roomType, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes }
   }
 
@@ -349,13 +351,13 @@ function isCobwebTask(label: string) {
 
 export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfig {
   let next = ensureWeeklyPerimeterSurfaceDusting(roomType)
-  const required: Array<{ label: string; cadence: RoomTaskCadence; matches: (label: string) => boolean }> = [
-    { label: DEFAULT_VACUUM_TASK, cadence: 'every_clean', matches: isVacuumTask },
-    { label: DEFAULT_MONTHLY_COBWEB_TASK, cadence: 'monthly', matches: isCobwebTask },
+  const required: Array<{ label: string; code: string; cadence: RoomTaskCadence; matches: (label: string) => boolean }> = [
+    { label: DEFAULT_VACUUM_TASK, code: 'vacuum_sweep', cadence: 'every_clean', matches: isVacuumTask },
+    { label: DEFAULT_MONTHLY_COBWEB_TASK, code: 'cobwebs', cadence: 'monthly', matches: isCobwebTask },
   ]
 
   for (const task of required) {
-    const taskIndex = next.scopeTasks.findIndex(task.matches)
+    const taskIndex = next.scopeTasks.findIndex((label, index) => getRoomScopeTaskGlobalRateCode(next, index) === task.code || task.matches(label))
     const ids = next.scopeTasks.map((_, index) => getRoomScopeTaskId(next, index))
     const cadences = next.scopeTasks.map((_, index) => getRoomScopeTaskCadence(next, index))
     const prices = next.scopeTasks.map((_, index) => getRoomScopeTaskPrice(next, index))
@@ -363,7 +365,7 @@ export function ensureStandardRoomTasks(roomType: RoomTypeConfig): RoomTypeConfi
     const defaults = next.scopeTasks.map((_, index) => getRoomScopeTaskDefault(next, index))
 
     if (taskIndex >= 0) {
-      cadences[taskIndex] = task.cadence
+      if (getRoomScopeTaskGlobalRateCode(next, taskIndex) === null) cadences[taskIndex] = task.cadence
       next = { ...next, scopeTaskIds: ids, scopeTaskCadences: cadences, scopeTaskPrices: prices, scopeTaskMinutesPerSqm: minutes, scopeTaskDefaults: defaults }
     } else {
       next = {
@@ -447,6 +449,33 @@ export function getMatchedGlobalRoomTaskRates(
     ? getGlobalRoomTaskCodesForLabel(roomType.scopeTasks[taskIndex] ?? '')
     : explicitCode ? [explicitCode] : []
   return getGlobalRoomTaskRates(config).filter((rate) => codes.includes(rate.code))
+}
+
+/** Insert a shared default by stable code, never by its editable display name. */
+export function addGlobalRoomScopeTask(config: QuoteRoomTypeConfig, roomId: string, code: string): QuoteRoomTypeConfig {
+  const rate = getGlobalRoomTaskRates(config).find((item) => item.code === code)
+  if (!rate) return config
+  return applyGlobalRoomTaskRates({
+    ...config,
+    roomTypes: config.roomTypes.map((room) => {
+      if (room.id !== roomId || room.scopeTasks.some((_, index) =>
+        getMatchedGlobalRoomTaskRates(config, room, index).some((item) => item.code === code))) return room
+      const ids = room.scopeTasks.map((_, index) => getRoomScopeTaskId(room, index))
+      let suffix = 1
+      while (ids.includes(`${room.id}-global-${code}-${suffix}`)) suffix += 1
+      return {
+        ...room,
+        scopeTasks: [...room.scopeTasks, rate.label],
+        scopeTaskIds: [...ids, `${room.id}-global-${code}-${suffix}`],
+        scopeTaskCadences: [...room.scopeTasks.map((_, index) => getRoomScopeTaskCadence(room, index)), code === 'dusting' ? 'weekly' : code === 'cobwebs' ? 'monthly' : 'every_clean'],
+        scopeTaskPrices: [...room.scopeTasks.map((_, index) => getRoomScopeTaskPrice(room, index)), rate.pricePerRoom],
+        scopeTaskMinutesPerSqm: [...room.scopeTasks.map((_, index) => getRoomScopeTaskMinutesPerSqm(room, index)), rate.minutesPerSqm],
+        scopeTaskPricingModes: [...room.scopeTasks.map((_, index) => getRoomScopeTaskPricingMode(room, index)), rate.pricingMode],
+        scopeTaskGlobalRateCodes: [...room.scopeTasks.map((_, index) => getRoomScopeTaskGlobalRateCode(room, index)), code],
+        scopeTaskDefaults: [...room.scopeTasks.map((_, index) => getRoomScopeTaskDefault(room, index)), true],
+      }
+    }),
+  })
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {

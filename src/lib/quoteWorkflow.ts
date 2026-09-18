@@ -9,6 +9,7 @@ import {
   getRoomScopeTaskCadence,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
+  getRoomScopeTaskGlobalRateCode,
   getRoomScopeTaskMinutesPerSqm,
   getRoomScopeTaskPricingMode,
   getRoomScopeTaskPrice,
@@ -377,7 +378,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         ? Object.fromEntries(roomType.scopeTasks.map((_, taskIndex) => {
             const taskId = getRoomScopeTaskId(roomType, taskIndex)
             const saved = sourceSelections[taskId]
-            const legacyMoppingSelection = isMoppingPricedRoomTask(roomType.scopeTasks[taskIndex] ?? '')
+            const legacyMoppingSelection = isMoppingPricedRoomTask(roomType.scopeTasks[taskIndex] ?? '', getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
               ? (typeof source.moppingEnabled === 'boolean' ? source.moppingEnabled : roomType.defaultMopping)
               : isRoomScopeTaskSelected(roomType, taskIndex)
             return [taskId, typeof saved === 'boolean' ? saved : legacyMoppingSelection]
@@ -684,7 +685,7 @@ export function getRoomMoppingExtraTotal(
       return sum
     }
     const usesConfiguredAreaRate = roomType.scopeTasks.some((task, taskIndex) => (
-      isMoppingPricedRoomTask(task)
+      isMoppingPricedRoomTask(task, getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
@@ -789,7 +790,7 @@ export function getRoomPricingBreakdown(
         }, 0)
       : 0
     const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
-      isMoppingPricedRoomTask(task)
+      isMoppingPricedRoomTask(task, getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
       && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))

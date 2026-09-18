@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import {
   applyGlobalRoomTaskRates,
+  addGlobalRoomScopeTask,
   DEFAULT_MONTHLY_COBWEB_TASK,
   DEFAULT_VACUUM_TASK,
   DEFAULT_WEEKLY_DUSTING_TASK,
@@ -91,7 +92,7 @@ function createRoomType(): RoomTypeConfig {
     scopeTaskPrices: [0, 0, 0, 0, 0],
     scopeTaskMinutesPerSqm: [0.068, 0, 0, 0, 0],
     scopeTaskPricingModes: ['area', 'fixed', 'fixed', 'area', 'area'],
-    scopeTaskGlobalRateCodes: [null, null, null, null, null],
+    scopeTaskGlobalRateCodes: ['vacuum_sweep', 'wipe_surfaces', 'empty_bins', 'dusting', 'cobwebs'],
     scopeTaskDefaults: [true, true, true, true, true],
     pricingAdjustmentPercent: 0,
     fixedPricePerVisit: 0,
@@ -557,13 +558,33 @@ export default function RoomTypeConfigAdmin({
                   </div>
 
                   <div className="mt-5 border-t border-teal-100 pt-4">
-                    <div className="mb-3 flex items-center justify-between gap-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-4">
                       <div>
                         <h4 className="font-semibold text-gray-800">Client scope tasks</h4>
                         <p className="text-xs text-gray-600">Default tasks start selected in new quotes. Floor tasks use minutes per sqm and the {formatCurrency(pricingConfig.settings.hourlyRate)} hourly rate; other prices are fixed and support cents.</p>
                       </div>
-                      <button type="button" onClick={() => addScopeTask(roomType.id)} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add task</button>
+                      <button type="button" onClick={() => addScopeTask(roomType.id)} className="rounded-lg border border-teal-200 bg-white px-3 py-2 text-sm font-semibold text-teal-800">Add custom task</button>
                     </div>
+                    <label className="mb-3 block text-sm font-medium text-teal-900">
+                      Add default task from global shared tasks
+                      <select
+                        aria-label={`Add global task to ${roomType.label}`}
+                        value=""
+                        onChange={(event) => {
+                          const code = event.target.value
+                          if (code) setConfig((current) => addGlobalRoomScopeTask(current, roomType.id, code))
+                        }}
+                        className="mt-1 block w-full rounded-lg border border-teal-200 bg-white px-3 py-2"
+                      >
+                        <option value="">Choose a global task to add...</option>
+                        {getGlobalRoomTaskRates(config).map((rate) => {
+                          const included = roomType.scopeTasks.some((_, index) => getMatchedGlobalRoomTaskRates(config, roomType, index).some((match) => match.code === rate.code))
+                          return <option key={rate.code} value={rate.code} disabled={included}>{rate.label}{included ? ' (already in room)' : ''}</option>
+                        })}
+                      </select>
+                      <span className="mt-1 block text-xs font-normal text-gray-600">Added tasks are selected by default and stay linked to their global rate when renamed. For an existing task, tick Default to include it in new quotes.</span>
+                    </label>
+                    <p className="mb-3 text-xs text-amber-800">Automatic match guesses from task wording and may combine rates. Review the Global source below each task, or choose a specific pricing source to keep its link when renaming. &quot;Vacuum or mop&quot; matches vacuuming only; add Mopping separately if required.</p>
                     <div className="space-y-2">
                       {roomType.scopeTasks.map((task, taskIndex) => {
                         const globalRates = getGlobalRoomTaskRates(config)
@@ -572,13 +593,15 @@ export default function RoomTypeConfigAdmin({
                         const globallyManaged = matchedGlobalRates.length > 0
                         const taskPricingMode = getRoomScopeTaskPricingMode(roomType, taskIndex)
                         const selectedGlobalRateCode = getRoomScopeTaskGlobalRateCode(roomType, taskIndex)
+                        const missingSource = Boolean(selectedGlobalRateCode && !globalRates.some((rate) => rate.code === selectedGlobalRateCode))
                         const pricingSource = selectedGlobalRateCode === null ? '__automatic__' : selectedGlobalRateCode || '__custom__'
                         return (
-                        <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-[minmax(0,1fr)_170px_140px_140px_90px_auto] md:items-end">
+                        <div key={getRoomScopeTaskId(roomType, taskIndex)} className="grid gap-2 rounded-lg border border-teal-100 bg-white p-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_170px_140px_140px_90px_auto] md:items-end">
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Task shown on scope</span>
                             <input value={task} onChange={(event) => updateScopeTask(roomType.id, taskIndex, { label: event.target.value })} className="w-full rounded-lg border border-gray-300 px-3 py-2" />
-                            {globallyManaged ? <span className="mt-1 block text-xs font-medium text-teal-700">Global: {globalLabels.join(' + ')}</span> : null}
+                            {globallyManaged ? <span className="mt-1 block text-xs font-medium text-teal-700">Global: {globalLabels.join(' + ')}{selectedGlobalRateCode === null ? ' (automatic)' : ' (linked)'}</span> : null}
+                            {missingSource ? <span className="mt-1 block text-xs text-amber-800">Global source unavailable. Last saved rate retained; choose a replacement or Custom for this task.</span> : selectedGlobalRateCode === null && !globallyManaged ? <span className="mt-1 block text-xs text-amber-800">No global match. This task uses its own saved rate.</span> : null}
                           </label>
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Pricing source</span>
@@ -591,7 +614,8 @@ export default function RoomTypeConfigAdmin({
                               })}
                               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
                             >
-                              <option value="__automatic__">Automatic match</option>
+                              <option value="__automatic__">Automatic match (wording)</option>
+                              {missingSource ? <option value={selectedGlobalRateCode!}>Unavailable: {selectedGlobalRateCode}</option> : null}
                               <option value="__custom__">Custom for this task</option>
                               {globalRates.map((rate) => <option key={rate.code} value={rate.code}>{rate.label}</option>)}
                             </select>

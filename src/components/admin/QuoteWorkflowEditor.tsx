@@ -28,6 +28,7 @@ import {
   getDefaultRoomScopeTaskSelections,
   getGlobalMoppingMinutesPerSqm,
   getRoomScopeTaskDefinitions,
+  getRoomScopeTaskGlobalRateCode,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
   isMoppingPricedRoomTask,
@@ -101,9 +102,9 @@ function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomIt
   const included = isQuoteSpecificMetricField(room, field) ? 0 : Math.max(0, Number(field.includedUnits ?? 0))
   const allowance = included > 0 ? `${included} unit${included === 1 ? '' : 's'} included in the room price · ` : ''
   const rateLabel = field.inputType === 'boolean'
-    ? `${formatCurrency(rate)} when included`
-    : `${formatCurrency(rate)} per ${included > 0 ? 'additional ' : ''}unit`
-  return `${allowance}${rateLabel} · Current contribution ${formatCurrency(getRoomMetricFieldExtra(room, field, frequency))}`
+    ? `${formatTaskCurrency(rate)} when included`
+    : `${formatTaskCurrency(rate)} per ${included > 0 ? 'additional ' : ''}unit`
+  return `${allowance}${rateLabel} · Current contribution ${formatTaskCurrency(getRoomMetricFieldExtra(room, field, frequency))} per visit`
 }
 
 function formatTaskCurrency(amount: number) {
@@ -466,7 +467,7 @@ export default function QuoteWorkflowEditor({
         if (!roomType) return { ...room, pricingOverride: false }
         const selections = getDefaultRoomScopeTaskSelections(roomType)
         getRoomScopeTaskDefinitions(roomType)
-          .filter((task) => isMoppingPricedRoomTask(task.label))
+          .filter((task, index) => isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(roomType, index)))
           .forEach((task) => { selections[task.id] = Boolean(room.moppingEnabled) })
         return {
           ...room,
@@ -1232,8 +1233,8 @@ export default function QuoteWorkflowEditor({
                           <div className="mt-1 text-xs text-gray-500">Tick or untick tasks for this quote. Fixed task charges and scheduled frequency update the working price automatically.</div>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
-                          {getRoomScopeTaskDefinitions(typeConfig).map((task) => {
-                            const selected = isMoppingPricedRoomTask(task.label)
+                          {getRoomScopeTaskDefinitions(typeConfig).map((task, index) => {
+                            const selected = isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index))
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
@@ -1247,7 +1248,7 @@ export default function QuoteWorkflowEditor({
                                         ...(room.scopeTaskSelections ?? getDefaultRoomScopeTaskSelections(typeConfig)),
                                         [task.id]: event.target.checked,
                                       },
-                                      ...(isMoppingPricedRoomTask(task.label) ? { moppingEnabled: event.target.checked } : {}),
+                                      ...(isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index)) ? { moppingEnabled: event.target.checked } : {}),
                                     })}
                                     className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
                                   />
@@ -1279,7 +1280,7 @@ export default function QuoteWorkflowEditor({
                               const checked = event.target.checked
                               const moppingSelections = Object.fromEntries(
                                 getRoomScopeTaskDefinitions(typeConfig)
-                                  .filter((task) => isMoppingPricedRoomTask(task.label))
+                                  .filter((task, index) => isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index)))
                                   .map((task) => [task.id, checked])
                               )
                               updateRoom(room.id, {

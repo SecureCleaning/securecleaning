@@ -1,11 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import type { QuotePricingConfig, PricingItem, PricingItemUnit } from '@/lib/pricing'
+import type { QuotePricingConfig } from '@/lib/pricing'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
-
-const UNIT_OPTIONS: PricingItemUnit[] = ['fixed', 'count', 'sqm', 'flag']
 
 const LABELS: Record<string, string> = {
   hourlyRate: 'Hourly rate', minimumInvoice: 'Minimum invoice', multiFloorBase: 'Multi-floor base multiplier',
@@ -91,47 +89,13 @@ export default function PricingAdmin({ initialConfig, embedded = false }: { init
     }))
   }
 
-  function updateItem(itemId: string, updates: Partial<PricingItem>) {
-    setConfig((current) => ({
-      ...current,
-      items: current.items.map((item) => (item.id === itemId ? { ...item, ...updates } : item)),
-    }))
-  }
-
-  function addItem() {
-    const id = `item-${Date.now()}`
-    setConfig((current) => ({
-      ...current,
-      items: [
-        ...current.items,
-        {
-          id,
-          code: `custom_${current.items.length + 1}`,
-          name: 'New pricing item',
-          unitType: 'fixed',
-          rate: 0,
-          active: true,
-          notes: '',
-        },
-      ],
-    }))
-  }
-
-  function removeItem(itemId: string) {
-    setConfig((current) => ({
-      ...current,
-      items: current.items.filter((item) => item.id !== itemId),
-    }))
-  }
-
-  const knownCodes = ['bathrooms', 'kitchens', 'windows', 'consumables', 'highTouchDisinfection', 'carpetSteam']
   const formId = embedded ? 'quote-wide-pricing-editor-form' : 'pricing-editor-form'
 
   return (
     <div>
       {!embedded ? <AdminPageHeader
         title="Pricing Editor"
-        description="Manage quote calculator settings, multipliers, and pricing items. Changes affect future remote quote calculations."
+        description="Manage quote calculator settings and multipliers. Changes affect future remote quote calculations."
         actions={<button type="submit" form={formId} disabled={isSubmitting} className="inline-flex min-h-10 items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSubmitting ? 'Saving…' : 'Save pricing'}</button>}
       /> : null}
 
@@ -139,7 +103,7 @@ export default function PricingAdmin({ initialConfig, embedded = false }: { init
             <div className="flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>{embedded ? 'Quote-wide pricing rules' : 'Quote pricing configuration'}</h2>
-                <p className="text-sm text-gray-600">Hourly labour, minimum invoice, multipliers, and global add-ons used across all rooms.</p>
+                <p className="text-sm text-gray-600">Hourly labour, minimum invoice, and multipliers used across all rooms.</p>
               </div>
               {embedded
                 ? <button type="submit" form={formId} disabled={isSubmitting} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? 'Saving…' : 'Save quote-wide rules'}</button>
@@ -190,110 +154,6 @@ export default function PricingAdmin({ initialConfig, embedded = false }: { init
               </section>
             ))}
 
-            <section className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
-              <div className="flex items-center justify-between gap-4 mb-5">
-                <div>
-                  <h3 className="text-xl font-bold" style={{ color: '#1a2744' }}>Pricing items</h3>
-                  <p className="text-sm text-gray-600">
-                    Current calculator-connected codes: {knownCodes.join(', ')}.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="rounded-lg px-4 py-2 text-sm font-semibold text-white"
-                  style={{ backgroundColor: '#1a2744' }}
-                >
-                  Add Item
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                {config.items.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-gray-200 p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3">
-                      <div>
-                        <label htmlFor={`${item.id}-code`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Calculator code</label>
-                        <input
-                          id={`${item.id}-code`}
-                          type="text"
-                          value={item.code}
-                          onChange={(event) => updateItem(item.id, { code: event.target.value })}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          placeholder="e.g. bathrooms"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor={`${item.id}-name`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Display name</label>
-                        <input
-                          id={`${item.id}-name`}
-                          type="text"
-                          value={item.name}
-                          onChange={(event) => updateItem(item.id, { name: event.target.value })}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          placeholder="e.g. Bathrooms"
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor={`${item.id}-unit`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Unit charged</label>
-                        <select
-                          id={`${item.id}-unit`}
-                          value={item.unitType}
-                          onChange={(event) => updateItem(item.id, { unitType: event.target.value as PricingItemUnit })}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          {UNIT_OPTIONS.map((unit) => (
-                            <option key={unit} value={unit}>{unit}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor={`${item.id}-rate`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Rate ($)</label>
-                        <input
-                          id={`${item.id}-rate`}
-                          type="number"
-                          step="0.01"
-                          value={item.rate}
-                          onChange={(event) => updateItem(item.id, { rate: Number(event.target.value) })}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          placeholder="e.g. 10.00"
-                        />
-                      </div>
-                      <div className="flex items-end">
-                        <label className="flex min-h-10 items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={item.active}
-                            onChange={(event) => updateItem(item.id, { active: event.target.checked })}
-                          />
-                          Active item
-                        </label>
-                      </div>
-                      <div className="flex items-end">
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="w-full rounded-lg border border-red-200 px-3 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                        >
-                          Remove item
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <label htmlFor={`${item.id}-notes`} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Internal notes</label>
-                      <textarea
-                        id={`${item.id}-notes`}
-                        value={item.notes ?? ''}
-                        onChange={(event) => updateItem(item.id, { notes: event.target.value })}
-                        className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                        rows={2}
-                        placeholder="Explain what this price covers"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
 
             {status.message ? (
               <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
