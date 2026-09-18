@@ -4,6 +4,8 @@ import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
 import {
   getFirmQuoteDisplayPrice,
   getWorkflowRoomMetricFields,
+  getWorkflowRoomTypeConfig,
+  getWorkflowRoomTaskSelections,
   type FirmQuoteDraft,
   type FirmQuotePreview,
   type WorkflowRoomItem,
@@ -111,10 +113,10 @@ export function getRoomScopeSelectedOptions(
   roomTypeConfig: QuoteRoomTypeConfig,
   frequency: QuoteInputs['frequency']
 ) {
-  const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
   const options: string[] = []
 
-  if (room.moppingEnabled && !STANDARD_MOPPING_ROOM_TYPES.has(room.type)) {
+  if (room.moppingEnabled && !room.moppingRateCode && !typeConfig?.moppingRateCode && !STANDARD_MOPPING_ROOM_TYPES.has(room.type)) {
     options.push(`Mopping — ${getRoomTaskCadenceLabel(getEffectiveRoomTaskCadence(typeConfig?.moppingCadence ?? 'every_clean', frequency))}`)
   }
 
@@ -145,7 +147,7 @@ function buildRoomScope(
   roomTypeConfig: QuoteRoomTypeConfig,
   frequency: QuoteInputs['frequency']
 ): ClientScopeRoom {
-  const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
   const savedSize = Number(room.size)
 
   return {
@@ -161,7 +163,7 @@ function buildRoomScope(
       : undefined,
     floor: room.floor,
     tasks: typeConfig
-      ? getRoomScopeTaskSchedule(typeConfig, room.scopeTaskSelections, true).map((task) => ({
+      ? getRoomScopeTaskSchedule(typeConfig, getWorkflowRoomTaskSelections(room), true).map((task) => ({
           ...task,
           cadence: getEffectiveRoomTaskCadence(task.cadence, frequency),
         }))

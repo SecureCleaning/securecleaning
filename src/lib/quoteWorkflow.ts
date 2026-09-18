@@ -6,6 +6,8 @@ import {
   DEFAULT_QUOTE_ROOM_TYPE_CONFIG,
   getDefaultRoomScopeTaskSelections,
   getGlobalMoppingMinutesPerSqm,
+  getMoppingRate,
+  withSelectedMoppingRate,
   getRoomScopeTaskCadence,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
@@ -53,11 +55,38 @@ export type WorkflowRoomItem = {
   customMetricFields?: RoomMetricFieldConfig[]
   excludedMetricFieldIds?: string[]
   scopeTaskSelections?: Record<string, boolean>
+  moppingRateCode?: string
   moppingEnabled?: boolean
   moppingMinutesPerSqm?: number
   pricingOverride?: boolean
   pricingAdjustmentPercent?: number
   fixedPricePerVisit?: number
+}
+
+export function selectWorkflowRoomMoppingRate(room: WorkflowRoomItem, config: QuoteRoomTypeConfig, code: string): WorkflowRoomItem {
+  const rate = getMoppingRate(config, code)
+  if (!rate.available) return room
+  const type = getRoomTypeConfigById(config, room.type)
+  const selections = { ...room.scopeTaskSelections }
+  // Explicit standalone tasks replaced by this control stay off when switching sources again.
+  type?.scopeTasks.forEach((_, index) => {
+    const source = getRoomScopeTaskGlobalRateCode(type, index)
+    if (source && [code, room.moppingRateCode, type.moppingRateCode, 'mopping'].includes(source)) {
+      selections[getRoomScopeTaskId(type, index)] = false
+    }
+  })
+  return { ...room, moppingRateCode: code, moppingMinutesPerSqm: rate.minutesPerSqm, scopeTaskSelections: selections }
+}
+
+export function getWorkflowRoomTypeConfig(room: WorkflowRoomItem, config: QuoteRoomTypeConfig) {
+  const type = getRoomTypeConfigById(config, room.type)
+  if (!type || (!room.moppingRateCode && !type.moppingRateCode)) return type
+  // Saved legacy rooms keep standard mopping until explicitly changed or recalculated.
+  return withSelectedMoppingRate(config, type, room.moppingRateCode ?? 'mopping', Boolean(room.moppingEnabled), room.moppingMinutesPerSqm)
+}
+
+export function getWorkflowRoomTaskSelections(room: WorkflowRoomItem) {
+  return { ...room.scopeTaskSelections, [`${room.type}-mopping-selected`]: Boolean(room.moppingEnabled) }
 }
 
 export const WORKFLOW_ROOM_TYPE_LABELS: Record<WorkflowRoomType, string> = Object.fromEntries(
@@ -230,8 +259,9 @@ export function createRoomItem(
     customMetricFields: [],
     excludedMetricFieldIds: [],
     scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
+    moppingRateCode: roomType?.moppingRateCode,
     moppingEnabled: roomType?.defaultMopping ?? false,
-    moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
+    moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, roomType?.moppingRateCode, roomType?.moppingMinutesPerSqm).minutesPerSqm,
     pricingOverride: false,
     pricingAdjustmentPercent: roomType?.pricingAdjustmentPercent ?? 0,
     fixedPricePerVisit: roomType?.fixedPricePerVisit ?? 0,
@@ -276,8 +306,9 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
           ? buildPublicBathroomMetrics(room.type, metrics)
           : metrics,
         scopeTaskSelections: roomType ? getDefaultRoomScopeTaskSelections(roomType) : {},
+        moppingRateCode: roomType?.moppingRateCode,
         moppingEnabled: room.moppingRequired ?? roomType?.defaultMopping ?? false,
-        moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
+        moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, roomType?.moppingRateCode, roomType?.moppingMinutesPerSqm).minutesPerSqm,
         pricingOverride: false,
         pricingAdjustmentPercent: roomType?.pricingAdjustmentPercent ?? 0,
         fixedPricePerVisit: roomType?.fixedPricePerVisit ?? 0,
@@ -300,6 +331,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
     floor: 1,
     metrics: buildDefaultMetrics(mainType, roomTypeConfig),
     scopeTaskSelections: mainRoomType ? getDefaultRoomScopeTaskSelections(mainRoomType) : {},
+    moppingRateCode: mainRoomType?.moppingRateCode,
     moppingEnabled: mainRoomType?.defaultMopping ?? false,
     moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingOverride: false,
@@ -320,6 +352,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       floor: 1,
       metrics: buildDefaultMetrics('bathroom', roomTypeConfig),
       scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'bathroom')!),
+      moppingRateCode: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.moppingRateCode,
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'bathroom')?.defaultMopping ?? false,
       moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
       pricingOverride: false,
@@ -339,6 +372,7 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
       floor: 1,
       metrics: buildDefaultMetrics('kitchen', roomTypeConfig),
       scopeTaskSelections: getDefaultRoomScopeTaskSelections(getRoomTypeConfigById(roomTypeConfig, 'kitchen')!),
+      moppingRateCode: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.moppingRateCode,
       moppingEnabled: getRoomTypeConfigById(roomTypeConfig, 'kitchen')?.defaultMopping ?? false,
       moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
       pricingOverride: false,
@@ -347,7 +381,10 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
     })
   }
 
-  return rooms
+  return rooms.map((room) => {
+    const type = getRoomTypeConfigById(roomTypeConfig, room.type)
+    return { ...room, moppingRateCode: type?.moppingRateCode, moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, type?.moppingRateCode, type?.moppingMinutesPerSqm).minutesPerSqm }
+  })
 }
 
 function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG): WorkflowRoomItem[] {
@@ -378,7 +415,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         ? Object.fromEntries(roomType.scopeTasks.map((_, taskIndex) => {
             const taskId = getRoomScopeTaskId(roomType, taskIndex)
             const saved = sourceSelections[taskId]
-            const legacyMoppingSelection = isMoppingPricedRoomTask(roomType.scopeTasks[taskIndex] ?? '', getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
+            const legacyMoppingSelection = !source.moppingRateCode && !roomType.moppingRateCode && isMoppingPricedRoomTask(roomType.scopeTasks[taskIndex] ?? '', getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
               ? (typeof source.moppingEnabled === 'boolean' ? source.moppingEnabled : roomType.defaultMopping)
               : isRoomScopeTaskSelected(roomType, taskIndex)
             return [taskId, typeof saved === 'boolean' ? saved : legacyMoppingSelection]
@@ -401,10 +438,11 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
           ? source.excludedMetricFieldIds.filter((id): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 30)
           : [],
         scopeTaskSelections,
+        moppingRateCode: typeof source.moppingRateCode === 'string' && source.moppingRateCode.trim() ? source.moppingRateCode.trim().slice(0, 64) : undefined,
         moppingEnabled: typeof source.moppingEnabled === 'boolean'
           ? source.moppingEnabled
           : getRoomTypeConfigById(roomTypeConfig, type)?.defaultMopping ?? false,
-        moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
+        moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, typeof source.moppingRateCode === 'string' ? source.moppingRateCode.trim().slice(0, 64) : 'mopping', safePositiveNumber(source.moppingMinutesPerSqm, 0)).minutesPerSqm,
         pricingOverride: source.pricingOverride === true,
         pricingAdjustmentPercent: Number.isFinite(Number(source.pricingAdjustmentPercent))
           ? Number(source.pricingAdjustmentPercent)
@@ -543,11 +581,11 @@ export function hasSelectedPricedAreaTask(
   room: WorkflowRoomItem,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ) {
-  const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
   return roomType?.scopeTasks.some((task, taskIndex) => (
     getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
     && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
-    && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+    && isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))
   )) ?? false
 }
 
@@ -652,10 +690,10 @@ export function getRoomScheduledTaskExtraTotal(
   const frequency = draft.revisedInputs?.frequency ?? 'weekly'
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
   return roundCurrency(draft.roomItems.reduce((total, room) => {
-    const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+    const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
     if (!roomType) return total
     const perRoom = roomType.scopeTasks.reduce((taskTotal, task, taskIndex) => {
-      if (!isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)) return taskTotal
+      if (!isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))) return taskTotal
       const cadenceFactor = getRoomTaskAmortizationFactor(
         getRoomScopeTaskCadence(roomType, taskIndex),
         frequency
@@ -664,7 +702,10 @@ export function getRoomScheduledTaskExtraTotal(
         ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, hourlyRate)
         : getRoomScopeTaskPrice(roomType, taskIndex)
       if (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area') {
-        return taskTotal + rate * (roomAreas.get(room.id) ?? 0) * cadenceFactor
+        const area = getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected`
+          ? Math.max(0, room.size) * Math.max(0, room.quantity)
+          : roomAreas.get(room.id) ?? 0
+        return taskTotal + rate * area * cadenceFactor
       }
       return taskTotal + rate * Math.max(0, room.quantity) * cadenceFactor
     }, 0)
@@ -679,14 +720,15 @@ export function getRoomMoppingExtraTotal(
 ) {
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
   return draft.roomItems.reduce((sum, room) => {
-    const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+    const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
     const roomArea = roomAreas.get(room.id) ?? 0
+    if (room.moppingRateCode || roomType?.moppingRateCode) return sum
     if (!room.moppingEnabled || !roomType?.tracksSize || roomArea <= 0 || room.quantity <= 0) {
       return sum
     }
     const usesConfiguredAreaRate = roomType.scopeTasks.some((task, taskIndex) => (
       isMoppingPricedRoomTask(task, getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
-      && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+      && isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
     if (usesConfiguredAreaRate) return sum
@@ -700,7 +742,7 @@ export function getRoomMoppingExtraTotal(
 }
 
 function getRoomPricingRule(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
-  const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+  const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
   const usesTaskBasedAreaPricing = hasSelectedPricedAreaTask(room, roomTypeConfig)
   return {
     adjustmentPercent: room.pricingOverride
@@ -761,7 +803,7 @@ export function getRoomPricingBreakdown(
   const factor = 1 + (draft.pricingAdjustmentPercent || 0) / 100
 
   return Object.fromEntries(draft.roomItems.map((room) => {
-    const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
+    const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
     const roomArea = roomAreas.get(room.id) ?? 0
     const genericLabourArea = genericLabourAreas.get(room.id) ?? 0
     const roomShare = totalRoomArea > 0
@@ -776,7 +818,7 @@ export function getRoomPricingBreakdown(
     )
     const roomScheduledTaskExtra = roomType
       ? roomType.scopeTasks.reduce((sum, task, taskIndex) => {
-          if (!isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)) return sum
+          if (!isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))) return sum
           const cadenceFactor = getRoomTaskAmortizationFactor(
             getRoomScopeTaskCadence(roomType, taskIndex),
             draft.revisedInputs.frequency
@@ -785,16 +827,16 @@ export function getRoomPricingBreakdown(
             ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, pricingConfig.settings.hourlyRate)
             : getRoomScopeTaskPrice(roomType, taskIndex)
           return sum + (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
-            ? rate * roomArea * cadenceFactor
+            ? rate * (getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected` ? Math.max(0, room.size) * Math.max(0, room.quantity) : roomArea) * cadenceFactor
             : rate * Math.max(0, room.quantity) * cadenceFactor)
         }, 0)
       : 0
     const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
       isMoppingPricedRoomTask(task, getRoomScopeTaskGlobalRateCode(roomType, taskIndex))
-      && isRoomScopeTaskSelected(roomType, taskIndex, room.scopeTaskSelections)
+      && isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))
       && getRoomScopeTaskMinutesPerSqm(roomType, taskIndex) > 0
     ))
-    const roomMoppingExtra = room.moppingEnabled && roomType?.tracksSize && !usesConfiguredMoppingAreaRate
+    const roomMoppingExtra = !room.moppingRateCode && !roomType?.moppingRateCode && room.moppingEnabled && roomType?.tracksSize && !usesConfiguredMoppingAreaRate
       ? (roomArea * getGlobalMoppingMinutesPerSqm(roomTypeConfig) / 60) * pricingConfig.settings.hourlyRate *
         getRoomTaskAmortizationFactor(roomType.moppingCadence ?? 'every_clean', draft.revisedInputs.frequency)
       : 0

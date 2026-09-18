@@ -44,7 +44,7 @@ test('room tasks, mopping, and quote extras expose cadence controls and scope ou
   assert.match(quoteEditor, /Current pricing defaults loaded/)
   assert.match(roomAdmin, /Room-specific allowances are disabled/)
   assert.doesNotMatch(roomAdmin, /Additional price per room \/ visit/)
-  assert.match(quoteEditor, /Managed in Pricing &amp; Rooms and applied wherever mopping is selected/)
+  assert.match(quoteEditor, /Standard rate from Pricing &amp; Rooms/)
   assert.match(quoteEditor, /scopeTaskSelections/)
   assert.match(quoteEditor, /ROOM_TASK_CADENCE_OPTIONS/)
   assert.match(quoteEditor, /Units in each room/)

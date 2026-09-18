@@ -18,6 +18,8 @@ import {
   getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
   getWorkflowRoomMetricFields,
+  getWorkflowRoomTypeConfig,
+  selectWorkflowRoomMoppingRate,
   isQuoteSpecificMetricField,
   type FirmQuoteDraft,
   type InspectionReport,
@@ -27,6 +29,8 @@ import {
 import {
   getDefaultRoomScopeTaskSelections,
   getGlobalMoppingMinutesPerSqm,
+  getMoppingRate,
+  getMoppingRateOptions,
   getRoomScopeTaskDefinitions,
   getRoomScopeTaskGlobalRateCode,
   getRoomTaskCadenceLabel,
@@ -472,7 +476,8 @@ export default function QuoteWorkflowEditor({
         return {
           ...room,
           scopeTaskSelections: selections,
-          moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
+          moppingRateCode: roomType.moppingRateCode,
+          moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, roomType.moppingRateCode, roomType.moppingMinutesPerSqm).minutesPerSqm,
           pricingOverride: false,
           pricingAdjustmentPercent: roomType.pricingAdjustmentPercent,
           fixedPricePerVisit: roomType.fixedPricePerVisit,
@@ -711,7 +716,7 @@ export default function QuoteWorkflowEditor({
                   {getRoomTypeConfigById(roomTypeConfig, room.type)?.tracksSize && room.size > 0 ? ` · ${room.size} sqm each` : ''}
                   {room.floor > 1 ? ` · Floor ${room.floor}` : ''}
                 </div>
-                {room.moppingEnabled ? <div className="text-gray-500 mt-1">Mopping included</div> : null}
+                {room.moppingEnabled ? <div className="text-gray-500 mt-1">{room.moppingRateCode ? getMoppingRate(roomTypeConfig, room.moppingRateCode, room.moppingMinutesPerSqm).label : 'Mopping'} included</div> : null}
                 {getWorkflowRoomMetricFields(room, roomTypeConfig).length ? (
                   <div className="text-gray-500 mt-1">
                     {getWorkflowRoomMetricFields(room, roomTypeConfig)
@@ -962,7 +967,7 @@ export default function QuoteWorkflowEditor({
                 <div className="w-full rounded-xl border border-teal-100 bg-teal-50 px-4 py-3 font-semibold text-teal-800">
                   {getGlobalMoppingMinutesPerSqm(roomTypeConfig)}
                 </div>
-                <span className="mt-1 block text-xs text-gray-500">Managed in Pricing &amp; Rooms and applied wherever mopping is selected.</span>
+                <span className="mt-1 block text-xs text-gray-500">Standard rate from Pricing &amp; Rooms. Each area can select a different mopping rate below.</span>
               </label>
               <label className="text-sm">
                 <span className="mb-1 block font-medium text-gray-700">Adjustment %</span>
@@ -1111,8 +1116,9 @@ export default function QuoteWorkflowEditor({
                     </summary>
                     <div className="border-t border-gray-200 p-4">
                     {(() => {
-                      const typeConfig = getRoomTypeConfigById(roomTypeConfig, room.type)
-                      const canPriceMopping = Boolean(typeConfig?.tracksSize)
+                      const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
+                      const canPriceMopping = Boolean(typeConfig)
+                      const selectedMoppingCode = room.moppingRateCode ?? (typeConfig?.moppingRateCode ? 'mopping' : '')
                       const internalRoomPrice = roomPricingBreakdown[room.id]
                       const roomPricingCode = ['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'].includes(room.type)
                         ? 'bathrooms'
@@ -1138,6 +1144,8 @@ export default function QuoteWorkflowEditor({
                               customMetricFields: [],
                               excludedMetricFieldIds: [],
                               scopeTaskSelections: nextTypeConfig ? getDefaultRoomScopeTaskSelections(nextTypeConfig) : {},
+                              moppingRateCode: nextTypeConfig?.moppingRateCode,
+                              moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, nextTypeConfig?.moppingRateCode, nextTypeConfig?.moppingMinutesPerSqm).minutesPerSqm,
                               moppingEnabled: nextTypeConfig?.defaultMopping ?? false,
                               pricingOverride: false,
                               pricingAdjustmentPercent: nextTypeConfig?.pricingAdjustmentPercent ?? 0,
@@ -1233,12 +1241,12 @@ export default function QuoteWorkflowEditor({
                           <div className="mt-1 text-xs text-gray-500">Tick or untick tasks for this quote. Fixed task charges and scheduled frequency update the working price automatically.</div>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
-                          {getRoomScopeTaskDefinitions(typeConfig).map((task, index) => {
+                          {getRoomScopeTaskDefinitions(typeConfig).filter((task) => task.id !== `${room.type}-mopping-selected`).map((task, index) => {
                             const selected = isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index))
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
-                              <label key={task.id} className={`flex cursor-pointer items-start justify-between gap-3 rounded-lg border p-3 ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <label key={task.id} className={`flex cursor-pointer flex-col items-start justify-between gap-3 rounded-lg border p-3 2xl:flex-row ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
                                 <span className="flex min-w-0 items-start gap-3">
                                   <input
                                     type="checkbox"
@@ -1257,7 +1265,7 @@ export default function QuoteWorkflowEditor({
                                     <span className="mt-1 block text-xs text-gray-500">{getRoomTaskCadenceLabel(task.cadence)}</span>
                                   </span>
                                 </span>
-                                <span className="shrink-0 text-right text-xs font-semibold text-teal-800">
+                                <span className="max-w-full shrink-0 text-left text-xs font-semibold text-teal-800 2xl:text-right">
                                   {task.pricingMode === 'area'
                                     ? task.minutesPerSqm > 0
                                       ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity))} for this area · {task.minutesPerSqm} min / sqm</span></>
@@ -1296,9 +1304,29 @@ export default function QuoteWorkflowEditor({
                           <span>
                             <span className="block font-medium text-gray-800">Include mopping for this room</span>
                             <span className="mt-1 block text-xs text-gray-500">
-                              Mopping uses the global quote rate above and the room area selected here.
+                              Mopping uses the selected rate and this room&apos;s floor area.
                             </span>
                           </span>
+                        </label>
+                        <label className="mt-3 block text-sm font-medium text-gray-700">
+                          Mopping rate for this area
+                          <select
+                            aria-label="Mopping rate for this area"
+                            value={selectedMoppingCode}
+                            onChange={(event) => {
+                              const code = event.target.value
+                              if (code) updateRoom(room.id, selectWorkflowRoomMoppingRate(room, roomTypeConfig, code))
+                            }}
+                            className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                          >
+                            <option value="" disabled>Existing task pricing (choose to separate mopping)</option>
+                            {selectedMoppingCode && !getMoppingRate(roomTypeConfig, selectedMoppingCode).available ? <option aria-label="Mopping rate for this area"
+                            value={selectedMoppingCode}>Unavailable source - saved rate retained</option> : null}
+                            {getMoppingRateOptions(roomTypeConfig).map((rate) => <option key={rate.code} value={rate.code}>{rate.label} - {rate.minutesPerSqm} min / sqm</option>)}
+                          </select>
+                          <span className="mt-1 block text-xs font-normal text-gray-600">Choose standard or heavy mopping. This replaces the mopping portion of combined tasks; vacuuming stays separate.</span>
+                          {selectedMoppingCode ? <span className="mt-1 block text-xs text-teal-800">{getMoppingRate(roomTypeConfig, selectedMoppingCode, room.moppingMinutesPerSqm).minutesPerSqm} min / sqm x {room.size} sqm per room - {getRoomTaskCadenceLabel(typeConfig.moppingCadence ?? 'every_clean')}. Included in room task pricing.</span> : null}
+                          {room.moppingEnabled && room.size <= 0 ? <span className="mt-1 block text-xs text-amber-800">Enter this room&apos;s floor area to price mopping.</span> : null}
                         </label>
                       </div>
                     ) : null}

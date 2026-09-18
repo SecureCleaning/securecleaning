@@ -4,6 +4,10 @@ import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import {
   applyGlobalRoomTaskRates,
+  getMoppingRate,
+  getMoppingRateOptions,
+  splitRoomMoppingTasks,
+  withSelectedMoppingRate,
   addGlobalRoomScopeTask,
   DEFAULT_MONTHLY_COBWEB_TASK,
   DEFAULT_VACUUM_TASK,
@@ -39,8 +43,8 @@ function formatCurrency(value: number) {
   }).format(value)
 }
 
-function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig) {
-  const taskDefinitions = getRoomScopeTaskDefinitions(roomType)
+function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: QuotePricingConfig, config: QuoteRoomTypeConfig) {
+  const taskDefinitions = getRoomScopeTaskDefinitions(roomType.moppingRateCode ? withSelectedMoppingRate(config, roomType, roomType.moppingRateCode, roomType.defaultMopping, roomType.moppingMinutesPerSqm) : roomType)
   const totals: Record<RoomTaskCadence, number> = {
     every_clean: 0,
     weekly: 0,
@@ -439,7 +443,7 @@ export default function RoomTypeConfigAdmin({
 
           <div className="space-y-6">
             {config.roomTypes.map((roomType, roomTypeIndex) => {
-              const defaultPricingSummary = getDefaultRoomPricingSummary(roomType, pricingConfig)
+              const defaultPricingSummary = getDefaultRoomPricingSummary(roomType, pricingConfig, config)
               const hasDefaultAreaRate = getRoomScopeTaskDefinitions(roomType).some((task) => (
                 task.defaultSelected && task.pricingMode === 'area' && task.minutesPerSqm > 0
               ))
@@ -557,6 +561,30 @@ export default function RoomTypeConfigAdmin({
                     </label>
                   </div>
 
+                  <label className="mt-3 block text-sm font-medium text-gray-700">
+                    Default mopping rate
+                    <select
+                      aria-label="Default mopping rate"
+                      value={roomType.moppingRateCode ?? ''}
+                      onChange={(event) => {
+                        const code = event.target.value
+                        if (!code) return
+                        const rate = getMoppingRate(config, code)
+                        updateRoomType(roomType.id, {
+                          ...splitRoomMoppingTasks(config, roomType, code),
+                          moppingRateCode: code, moppingMinutesPerSqm: rate.minutesPerSqm,
+                        })
+                      }}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                    >
+                      <option value="" disabled>Existing task pricing (choose to separate mopping)</option>
+                      {roomType.moppingRateCode && !getMoppingRate(config, roomType.moppingRateCode).available ? <option value={roomType.moppingRateCode}>Unavailable source - saved rate retained</option> : null}
+                      {getMoppingRateOptions(config).map((rate) => <option key={rate.code} value={rate.code}>{rate.label} - {rate.minutesPerSqm} min / sqm</option>)}
+                    </select>
+                    <span className="mt-1 block text-xs font-normal text-gray-600">Choose Mopping or your heavy-mopping global rate. Vacuuming stays separate; only this mopping rate is charged. Applies to new rooms; existing quotes keep their saved choice.</span>
+                    {roomType.moppingRateCode ? <span className="mt-1 block text-xs text-teal-800">Mopping: {getMoppingRate(config, roomType.moppingRateCode, roomType.moppingMinutesPerSqm).minutesPerSqm} min / sqm, using each room&apos;s entered area even when Track sqm is off.</span> : null}
+                  </label>
+
                   <div className="mt-5 border-t border-teal-100 pt-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-4">
                       <div>
@@ -578,13 +606,14 @@ export default function RoomTypeConfigAdmin({
                       >
                         <option value="">Choose a global task to add...</option>
                         {getGlobalRoomTaskRates(config).map((rate) => {
-                          const included = roomType.scopeTasks.some((_, index) => getMatchedGlobalRoomTaskRates(config, roomType, index).some((match) => match.code === rate.code))
-                          return <option key={rate.code} value={rate.code} disabled={included}>{rate.label}{included ? ' (already in room)' : ''}</option>
+                          const managedMopping = Boolean(roomType.moppingRateCode && (rate.code === roomType.moppingRateCode || rate.code === 'mopping'))
+                          const included = managedMopping || roomType.scopeTasks.some((_, index) => getMatchedGlobalRoomTaskRates(config, roomType, index).some((match) => match.code === rate.code))
+                          return <option key={rate.code} value={rate.code} disabled={included}>{rate.label}{managedMopping ? ' (use mopping selector)' : included ? ' (already in room)' : ''}</option>
                         })}
                       </select>
                       <span className="mt-1 block text-xs font-normal text-gray-600">Added tasks are selected by default and stay linked to their global rate when renamed. For an existing task, tick Default to include it in new quotes.</span>
                     </label>
-                    <p className="mb-3 text-xs text-amber-800">Automatic match guesses from task wording and may combine rates. Review the Global source below each task, or choose a specific pricing source to keep its link when renaming. &quot;Vacuum or mop&quot; matches vacuuming only; add Mopping separately if required.</p>
+                    <p className="mb-3 text-xs text-amber-800">Automatic match guesses from task wording and may combine rates. Review the Global source below each task, or choose a specific pricing source to keep its link when renaming. &quot;Vacuum or mop&quot; matches vacuuming only. Use the mopping selector above to separate floor tasks and choose the mopping rate.</p>
                     <div className="space-y-2">
                       {roomType.scopeTasks.map((task, taskIndex) => {
                         const globalRates = getGlobalRoomTaskRates(config)

@@ -65,6 +65,8 @@ export type RoomTypeConfig = {
   defaultSize: number
   defaultMopping: boolean
   moppingCadence?: RoomTaskCadence
+  moppingRateCode?: string
+  moppingMinutesPerSqm?: number
   scopeTasks: string[]
   scopeTaskIds?: string[]
   scopeTaskCadences?: RoomTaskCadence[]
@@ -422,6 +424,7 @@ export function applyGlobalRoomTaskRates(config: QuoteRoomTypeConfig): QuoteRoom
       })
       return {
         ...normalized,
+        ...(normalized.moppingRateCode ? { moppingMinutesPerSqm: getMoppingRate(config, normalized.moppingRateCode, normalized.moppingMinutesPerSqm).minutesPerSqm } : {}),
         scopeTaskPrices: prices,
         scopeTaskMinutesPerSqm: minutes,
         scopeTaskPricingModes: pricingModes,
@@ -476,6 +479,76 @@ export function addGlobalRoomScopeTask(config: QuoteRoomTypeConfig, roomId: stri
       }
     }),
   })
+}
+
+export function getMoppingRateOptions(config: QuoteRoomTypeConfig) {
+  const otherStandardTasks = new Set(['vacuum_sweep', 'dusting', 'cobwebs'])
+  return getGlobalRoomTaskRates(config).filter((rate) => rate.pricingMode === 'area' && !otherStandardTasks.has(rate.code))
+}
+
+export function getMoppingRate(config: QuoteRoomTypeConfig, code = 'mopping', savedMinutes = 0) {
+  const rate = getMoppingRateOptions(config).find((item) => item.code === code)
+  return {
+    code,
+    label: rate?.label ?? 'Mopping',
+    minutesPerSqm: rate?.minutesPerSqm ?? Math.max(0, savedMinutes),
+    available: Boolean(rate),
+  }
+}
+
+/** Opt-in separation keeps the original vacuum task ID and all non-floor selections. */
+export function splitRoomMoppingTasks(config: QuoteRoomTypeConfig, room: RoomTypeConfig, code: string): RoomTypeConfig {
+  const tasks = room.scopeTasks.flatMap((label, index) => {
+    const binding = getRoomScopeTaskGlobalRateCode(room, index)
+    const matched = getMatchedGlobalRoomTaskRates(config, room, index)
+    const isMop = (rateCode: string) => rateCode === 'mopping' || rateCode === code || rateCode === room.moppingRateCode
+    const floorWording = !binding && /mop/i.test(label) && /vacuum|sweep/i.test(label)
+    const hasMop = Boolean(binding && isMop(binding)) || matched.some((rate) => isMop(rate.code)) || (!binding && isMoppingPricedRoomTask(label))
+    const base = {
+      label, id: getRoomScopeTaskId(room, index), cadence: getRoomScopeTaskCadence(room, index),
+      price: getRoomScopeTaskPrice(room, index), minutes: getRoomScopeTaskMinutesPerSqm(room, index),
+      mode: getRoomScopeTaskPricingMode(room, index), code: binding, selected: getRoomScopeTaskDefault(room, index),
+    }
+    if (!hasMop && !floorWording) return [base]
+    const remaining = matched.filter((rate) => !isMop(rate.code))
+    if (remaining.length) return [{
+      ...base,
+      label: remaining.some((rate) => rate.code === 'vacuum_sweep') ? DEFAULT_VACUUM_TASK : remaining.map((rate) => rate.label).join(' and '),
+      code: remaining.length === 1 ? remaining[0].code : '',
+      price: remaining.filter((rate) => rate.pricingMode === 'fixed').reduce((sum, rate) => sum + rate.pricePerRoom, 0),
+      minutes: remaining.filter((rate) => rate.pricingMode === 'area').reduce((sum, rate) => sum + rate.minutesPerSqm, 0),
+      mode: remaining.some((rate) => rate.pricingMode === 'area') ? 'area' as const : 'fixed' as const,
+    }]
+    if (floorWording) {
+      const vacuum = getGlobalRoomTaskRates(config).find((rate) => rate.code === 'vacuum_sweep')
+      return [{ ...base, label: DEFAULT_VACUUM_TASK, code: 'vacuum_sweep', price: 0, minutes: vacuum?.minutesPerSqm ?? DEFAULT_VACUUM_MINUTES_PER_SQM, mode: 'area' as const }]
+    }
+    return []
+  })
+  return {
+    ...room,
+    scopeTasks: tasks.map((task) => task.label), scopeTaskIds: tasks.map((task) => task.id),
+    scopeTaskCadences: tasks.map((task) => task.cadence), scopeTaskPrices: tasks.map((task) => task.price),
+    scopeTaskMinutesPerSqm: tasks.map((task) => task.minutes), scopeTaskPricingModes: tasks.map((task) => task.mode),
+    scopeTaskGlobalRateCodes: tasks.map((task) => task.code), scopeTaskDefaults: tasks.map((task) => task.selected),
+  }
+}
+
+export function withSelectedMoppingRate(config: QuoteRoomTypeConfig, room: RoomTypeConfig, code: string, enabled: boolean, savedMinutes = 0): RoomTypeConfig {
+  const separated = splitRoomMoppingTasks(config, room, code)
+  if (!enabled) return separated
+  const rate = getMoppingRate(config, code, savedMinutes)
+  return {
+    ...separated,
+    scopeTasks: [...separated.scopeTasks, rate.label],
+    scopeTaskIds: [...separated.scopeTaskIds!, `${room.id}-mopping-selected`],
+    scopeTaskCadences: [...separated.scopeTaskCadences!, room.moppingCadence ?? 'every_clean'],
+    scopeTaskPrices: [...separated.scopeTaskPrices!, 0],
+    scopeTaskMinutesPerSqm: [...separated.scopeTaskMinutesPerSqm!, rate.minutesPerSqm],
+    scopeTaskPricingModes: [...separated.scopeTaskPricingModes!, 'area'],
+    scopeTaskGlobalRateCodes: [...separated.scopeTaskGlobalRateCodes!, code],
+    scopeTaskDefaults: [...separated.scopeTaskDefaults!, true],
+  }
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
@@ -796,6 +869,8 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
     tracksSize: typeof source.tracksSize === 'boolean' ? source.tracksSize : fallback.tracksSize,
     defaultSize: Number.isFinite(Number(source.defaultSize)) ? Math.min(1_000_000, Math.max(0, Number(source.defaultSize))) : fallback.defaultSize,
     defaultMopping: typeof source.defaultMopping === 'boolean' ? source.defaultMopping : fallback.defaultMopping,
+    moppingRateCode: typeof source.moppingRateCode === 'string' && source.moppingRateCode.trim() ? source.moppingRateCode.trim().slice(0, 64) : undefined,
+    moppingMinutesPerSqm: Number.isFinite(Number(source.moppingMinutesPerSqm)) ? Math.max(0, Number(source.moppingMinutesPerSqm)) : undefined,
     moppingCadence: isRoomTaskCadence(source.moppingCadence) ? source.moppingCadence : fallback.moppingCadence ?? 'every_clean',
     scopeTasks,
     scopeTaskIds: scopeTasks.map((task, taskIndex) => {
