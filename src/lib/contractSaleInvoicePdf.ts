@@ -17,6 +17,7 @@ export type ContractSaleTaxInvoicePdfInput = {
   gstComponentCents: number
   depositRequiredIncGstCents: number
   paidCents: number
+  paymentPlanTerms?: string | null
   paymentTerms: string
   senderName: string
   senderTitle?: string | null
@@ -129,8 +130,8 @@ function createContent(input: ContractSaleTaxInvoicePdfInput) {
   text('INVOICE DETAILS', 330, 728, 8, true, GREEN)
   text('Issue date', 330, 710, 9, false, MUTED)
   text(formatDate(input.issuedOn), 420, 710, 9, true)
-  text('Balance due', 330, 694, 9, false, MUTED)
-  text(formatDate(input.dueOn), 420, 694, 9, true)
+  text(input.paymentPlanTerms ? 'Payment dates' : 'Balance due', 330, 694, 9, false, MUTED)
+  text(input.paymentPlanTerms ? 'See attached schedule' : formatDate(input.dueOn), 420, 694, 9, true)
   text('Currency', 330, 678, 9, false, MUTED)
   text('AUD', 420, 678, 9, true)
 
@@ -179,35 +180,45 @@ function createContent(input: ContractSaleTaxInvoicePdfInput) {
   const paymentBoxY = totalsTop - 145
   fill(42, paymentBoxY, 511, 72, LIGHT)
   text('CURRENT PAYMENT SUMMARY', 54, paymentBoxY + 52, 8, true, GREEN)
-  text('Deposit payable now', 54, paymentBoxY + 30, 11, true)
+  text(input.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now', 54, paymentBoxY + 30, 11, true)
   text(money(depositDue), 222, paymentBoxY + 30, 11, true, GREEN)
   text('Outstanding balance', 342, paymentBoxY + 30, 9, false, MUTED)
   text(money(outstanding), 458, paymentBoxY + 30, 9, true)
   text(`Payments received (confirmed): ${money(input.paidCents)}`, 54, paymentBoxY + 12, 8, false, MUTED)
 
   let termsY = paymentBoxY - 28
-  text('PAYMENT TERMS', 42, termsY, 8, true, GREEN)
-  termsY = textLines(wrap(input.paymentTerms, 100).slice(0, 4), 42, termsY - 19, 9, false, NAVY, 13)
+  text(input.paymentPlanTerms ? 'PAYMENT PLAN ATTACHED' : 'PAYMENT TERMS', 42, termsY, 8, true, GREEN)
+  termsY = textLines(wrap(input.paymentPlanTerms ? 'See the attached schedule for instalment dates and amounts. Secure Cleaning retains contract and assignment rights until payment IN FULL. A proposed plan requires signed acceptance.' : input.paymentTerms, 100).slice(0, 4), 42, termsY - 19, 9, false, NAVY, 13)
   text(`Use ${input.invoiceNumber} as the payment reference.`, 42, termsY - 3, 9, true)
 
   line(42, 102, 553, 102)
   const footerLines = wrap(input.footerNote, 105).slice(0, 2)
   textLines(footerLines, 42, 84, 8, false, MUTED, 14)
   text(`Questions: ${input.senderName}${input.senderTitle ? ` - ${input.senderTitle}` : ''} | ${input.senderEmail}`, 42, 48, 8, false, GREEN)
-  text('Page 1 of 1', 498, 48, 8, false, MUTED)
+  text('Invoice', 498, 48, 8, false, MUTED)
   return commands.join('\n')
 }
 
 export function buildContractSaleTaxInvoicePdf(input: ContractSaleTaxInvoicePdfInput) {
   const content = createContent(input)
+  const contents = [content]
+  if (input.paymentPlanTerms) {
+    const lines = input.paymentPlanTerms.split('\n').flatMap(value => wrap(value, 90))
+    for (let start = 0; start < lines.length; start += 42) {
+      const heading = `BT /F2 14 Tf ${GREEN} rg 1 0 0 1 42 794 Tm (${escapePdf(input.invoiceNumber + ' - Payment schedule')}) Tj ET`
+      contents.push([heading, ...lines.slice(start, start + 42).map((value, index) => `BT /F1 10 Tf ${NAVY} rg 1 0 0 1 42 ${760 - index * 16} Tm (${escapePdf(value)}) Tj ET`)].join('\n'))
+    }
+  }
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>`,
+    `<< /Type /Pages /Kids [${contents.map((_, index) => `${5 + index * 2} 0 R`).join(' ')}] /Count ${contents.length} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
-    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,
   ]
+  contents.forEach((page, index) => {
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${6 + index * 2} 0 R >>`)
+    objects.push(`<< /Length ${Buffer.byteLength(page, 'latin1')} >>\nstream\n${page}\nendstream`)
+  })
   let pdf = '%PDF-1.4\n%SecureCleaning\n'
   const offsets = [0]
   objects.forEach((object, index) => {

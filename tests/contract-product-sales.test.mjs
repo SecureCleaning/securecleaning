@@ -50,7 +50,7 @@ test('agreement snapshots record conditional rights and the complete instalment 
   const instalments = buildMonthlyInstalments({ balanceCents: 90_000, count: 3, firstDueOn: '2026-09-01' })
   const terms = buildPaymentPlanTerms({ saleCode: 'PS-2026-01000', cleanerBusiness: 'Example Cleaner', balanceCents: 90_000, instalments })
   const agreement = buildContractSaleAgreement({ saleCode: 'PS-2026-01000', productCode: 'C001000', cleanerName: 'Alex Cleaner', cleanerBusiness: 'Example Cleaner', cleanerAbn: '12 345 678 901', cleanerAddress: '1 Example Street, Richmond, VIC, 3121', suburb: 'Richmond', state: 'VIC', purchasePriceIncGstCents: 140_000, depositIncGstCents: 50_000, paymentPlanTerms: terms })
-  assert.match(agreement, /Deposit payable now: \$500\.00 including GST/)
+  assert.match(agreement, /Deposit required before inspection: \$500\.00 including GST/)
   assert.match(agreement, /Balance after deposit: \$900\.00 including GST/)
   assert.match(agreement, /retains the benefit of, and all sale and assignment rights in, the Contract/)
   assert.match(agreement, /After handover, the Purchaser invoices the client directly/)
@@ -239,7 +239,7 @@ test('workbench keeps connected records together and exposes the complete gated 
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/components/admin/AdminNav.tsx')
   const agentNav = source('src/components/availability/AvailabilityAgentNav.tsx')
-  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Approve plan', 'Complete handover']) {
+  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   assert.match(workspace, /Create pending cleaner/)

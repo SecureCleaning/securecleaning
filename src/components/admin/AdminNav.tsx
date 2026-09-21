@@ -5,6 +5,7 @@ const primaryTabs = [
   { href: '/admin/clients', label: 'Clients' },
   { href: '/admin/products', label: 'Products' },
   { href: '/admin/sales', label: 'Product Sales' },
+  { href: '/admin/commissions', label: 'Commissions' },
   { href: '/admin/availability', label: 'Availability' },
   { href: '/admin/calendar', label: 'Calendar' },
   { href: '/admin/cleaners', label: 'Cleaners' },

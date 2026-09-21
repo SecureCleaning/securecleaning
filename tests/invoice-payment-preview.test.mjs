@@ -22,7 +22,7 @@ const invoice = {
   payment_terms_snapshot: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
   sender_name_snapshot: 'Test Owner', sender_email_snapshot: 'owner@example.test', issued_at: '2026-09-17T00:00:00Z',
 }
-function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null } = {}) {
+function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null, planTerms = null } = {}) {
   const sent = []
   const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
   return { sent, fetch: async (url, init = {}) => {
@@ -34,6 +34,7 @@ function backend({ paid = 50000, failLedger = false, status = 'part_paid', state
     if (table === 'cleaners') return json({ contact_name: 'Alex Cleaner', email: 'cleaner@example.test', status: 'approved' })
     if (table === 'crm_opportunities') return json({ primary_contact_id: 'client-1' })
     if (table === 'quotes') return json({ quote_ref: 'Q-1' })
+    if (table === 'contract_sale_payment_plans') return json(planTerms ? { terms_snapshot: planTerms, status: 'awaiting_acceptance' } : null)
     if (table === 'clients') return json({})
     if (table === 'admin_staff_accounts') return json({ id: actor.id, username: actor.username, role: actor.role, active: true, email: actor.email, display_name: actor.displayName })
     if (table === 'contract_sale_agreements') return json({ id: 'agreement-1', version: 1, status: 'draft', content_snapshot: 'Agreement test', cleaner_email_snapshot: 'cleaner@example.test', cleaner_business_snapshot: 'Example Cleaning', created_at: '2026-09-17' })
@@ -118,4 +119,22 @@ test('PDF endpoint authorizes preview and preserves private downloads by default
     }
     assert.equal(mock.sent.length, 0)
   } finally { globalThis.fetch = previous }
+})
+
+
+test('invoice preview and resend include the full proposed payment schedule on additional pages', async () => {
+  const previous=globalThis.fetch
+  const terms=['Payment plan for PS-2026-01001','Balance covered: $5,148.00 including GST.',...Array.from({length:24},(_,i)=>`${i+1}. $214.50 due 2027-${String(Math.floor(i/2)+1).padStart(2,'0')}-${i%2?'28':'14'}`),'Secure Cleaning retains contract and assignment rights until payment IN FULL.'].join('\n')
+  const mock=backend({paid:0,planTerms:terms});globalThis.fetch=mock.fetch
+  try {
+    const preview=await downloadContractSaleInvoice(actor,'sale-1','invoice-1')
+    await resendContractSaleInvoice(actor,{saleId:'sale-1',invoiceId:'invoice-1'})
+    assert.equal(preview.pdf.toString('base64'),mock.sent[0].attachments[0].content)
+    const pdf=preview.pdf.toString('latin1')
+    assert.match(pdf,/PAYMENT PLAN ATTACHED/)
+    assert.match(pdf,/PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE/)
+    assert.match(pdf,/24. \$214.50 due 2027-12-28/)
+    assert.match(pdf,/\/Count 2/)
+    if(process.env.INVOICE_PLAN_QA_OUTPUT) writeFileSync(process.env.INVOICE_PLAN_QA_OUTPUT,preview.pdf)
+  } finally {globalThis.fetch=previous}
 })

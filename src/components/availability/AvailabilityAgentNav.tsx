@@ -66,6 +66,11 @@ export default function AvailabilityAgentNav({
               Cleaners
             </a>
           ) : null}
+          {assigneeId ? (
+            <a href={`/availability/commissions/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
+              Commissions
+            </a>
+          ) : null}
           <a href="/" className="text-gray-600 hover:text-gray-900">
             Secure Cleaning home
           </a>

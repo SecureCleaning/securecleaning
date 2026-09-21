@@ -1,3 +1,4 @@
+import { parsePlanInstalments } from '@/lib/commissionPolicy'
 import { parseRichEmailContent, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import { plainTextToEmailHtml } from '@/lib/richEmailContent'
 import 'server-only'
@@ -114,6 +115,7 @@ export type ContractSale = {
     id: string
     status: string
     terms: string
+    openingPaidCents: number
     instalments: Array<{ sequenceNumber: number; dueOn: string; amountCents: number }>
   }
   activity: Array<{ id: string; action: string; details: Record<string, unknown>; createdAt: string }>
@@ -303,7 +305,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    saleIds.length ? db.from('contract_sale_payment_plans').select('id, sale_id, version, status, terms_snapshot').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_payment_plans').select('id, sale_id, version, status, terms_snapshot, opening_paid_cents').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('admin_audit_log').select('id, entity_ref, action, details, created_at').eq('entity_type', 'contract_sale').in('entity_ref', saleIds).order('created_at', { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
   ])
   for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult]) if (result.error) throw result.error
@@ -340,7 +342,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   for (const plan of (plansResult.data ?? []) as Row[]) {
     const key = String(plan.sale_id)
     const current = plansBySale.get(key)
-    if (!current || (plan.status === 'active' && current.status !== 'active')) plansBySale.set(key, plan)
+    if (!current || (['awaiting_acceptance', 'active'].includes(String(plan.status)) && !['awaiting_acceptance', 'active'].includes(String(current.status)))) plansBySale.set(key, plan)
   }
 
   const sales: ContractSale[] = saleRows.map((sale) => {
@@ -384,7 +386,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
         timeZone: String(row.time_zone), location: String(row.location_snapshot), inviteStatus: String(row.invite_status), notes: String(row.notes ?? ''),
       } : null })(),
       agreement: agreement ? { id: String(agreement.id), version: Number(agreement.version), type: String(agreement.agreement_type), status: String(agreement.status), content: String(agreement.content_snapshot), signedAt: typeof agreement.signed_at === 'string' ? agreement.signed_at : null, signedFileName: typeof agreement.signed_file_name === 'string' ? agreement.signed_file_name : null } : null,
-      paymentPlan: plan ? { id: String(plan.id), status: String(plan.status), terms: String(plan.terms_snapshot), instalments: (instalmentsResult.data ?? []).filter((item) => String(item.payment_plan_id) === String(plan.id)).map((item) => ({ sequenceNumber: Number(item.sequence_number), dueOn: String(item.due_on), amountCents: Number(item.amount_cents) })) } : null,
+      paymentPlan: plan ? { id: String(plan.id), status: String(plan.status), terms: String(plan.terms_snapshot), openingPaidCents: Number(plan.opening_paid_cents ?? 0), instalments: (instalmentsResult.data ?? []).filter((item) => String(item.payment_plan_id) === String(plan.id)).map((item) => ({ sequenceNumber: Number(item.sequence_number), dueOn: String(item.due_on), amountCents: Number(item.amount_cents) })) } : null,
       activity: (activityResult.data ?? []).filter((item) => String(item.entity_ref) === String(sale.id)).map((item) => ({ id: String(item.id), action: String(item.action), details: (item.details ?? {}) as Record<string, unknown>, createdAt: String(item.created_at) })),
     }
   })
@@ -512,6 +514,7 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
     gstComponentCents: Number(invoice.gst_component_cents),
     depositRequiredIncGstCents: Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS),
     paidCents: Number(invoice.paid_cents ?? 0),
+    paymentPlanTerms: typeof invoice.plan_terms === 'string' ? invoice.plan_terms : null,
     paymentTerms: renderContractSaleInvoiceTemplateText(String(invoice.payment_terms_snapshot), tokens),
     senderName: String(invoice.sender_name_snapshot),
     senderTitle: typeof invoice.sender_title_snapshot === 'string' ? invoice.sender_title_snapshot : null,
@@ -522,7 +525,7 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
 
 // Allocations are created atomically only when an owner/manager confirms cleared funds.
 // Use the same ledger for every rendered copy; pending evidence is not a payment.
-async function invoiceWithConfirmedPayments(invoice: Row): Promise<Row> {
+async function invoiceWithConfirmedPayments(invoice: Row, saleId: string, agreementPlanId?: string | null): Promise<Row> {
   let paidCents = 0
   const pageSize = 500
   for (let offset = 0; ; offset += pageSize) {
@@ -532,7 +535,12 @@ async function invoiceWithConfirmedPayments(invoice: Row): Promise<Row> {
     paidCents += (data ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
     if (!data || data.length < pageSize) break
   }
-  return { ...invoice, paid_cents: paidCents }
+  let planQuery = getAdminSupabase().from('contract_sale_payment_plans').select('terms_snapshot,status').eq('sale_id', saleId).in('status', ['awaiting_acceptance', 'active', 'completed'])
+  if (agreementPlanId) planQuery = planQuery.eq('id', agreementPlanId)
+  const { data: plan, error: planError } = agreementPlanId === null ? { data: null, error: null } : await planQuery.order('version', { ascending: false }).limit(1).maybeSingle()
+  if (planError) throw planError
+  if (agreementPlanId && !plan) throw new ContractProductError('The agreement payment plan has changed. Refresh before sending.', 409)
+  return { ...invoice, paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
 }
 
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
@@ -547,7 +555,7 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>Deposit payable now:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
@@ -610,7 +618,7 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
   if (invoice.delivery_status === 'unknown') throw new ContractProductError('Delivery is unresolved. Verify the recipient inbox or provider activity before deliberately resending.', 409)
-  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row, String(sale.id))
   try {
     const providerMessageId = await sendInvoiceEmail(currentInvoice, sale, context)
     const { error: deliveryError } = await getAdminSupabase().from('contract_sale_invoices').update({ provider_message_id: providerMessageId || null, delivery_status: providerMessageId ? 'sent' : 'unknown', delivery_error: null }).eq('id', invoice.id)
@@ -633,7 +641,7 @@ export async function downloadContractSaleInvoice(actor: ContractProductActor, s
     .eq('id', clean(invoiceId, 100)).eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
-  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row, String(sale.id))
   const pdf = buildContractSaleTaxInvoicePdf(invoicePdfInput(currentInvoice, sale, context))
   return { pdf, fileName: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf` }
 }
@@ -810,12 +818,12 @@ export async function createContractSaleAgreement(actor: ContractProductActor, i
   const context = await loadSaleContext(sale)
   const db = getAdminSupabase()
   const { data: latest, error: latestError } = await db.from('contract_sale_agreements').select('version').eq('sale_id', sale.id).order('version', { ascending: false }).limit(1).maybeSingle()
-  const { data: plan, error: planError } = await db.from('contract_sale_payment_plans').select('terms_snapshot').eq('sale_id', sale.id).eq('status', 'active').maybeSingle()
+  const { data: plan, error: planError } = await db.from('contract_sale_payment_plans').select('id, terms_snapshot').eq('sale_id', sale.id).in('status', ['awaiting_acceptance', 'active']).order('version', { ascending: false }).limit(1).maybeSingle()
   if (latestError) throw latestError
   if (planError) throw planError
   const cleanerAddress = [context.cleaner.address, context.cleaner.suburb, context.cleaner.state, context.cleaner.postcode].filter(Boolean).join(', ')
   const content = buildContractSaleAgreement({ saleCode: String(sale.sale_code), productCode: String(context.product.product_code), cleanerName: context.cleaner.contact_name, cleanerBusiness: context.cleaner.business_name, cleanerAbn: context.cleaner.abn, cleanerAddress, suburb: context.product.suburb, state: context.product.state, purchasePriceIncGstCents: Number(sale.agreed_purchase_price_inc_gst_cents), depositIncGstCents: Number(sale.deposit_inc_gst_cents), paymentPlanTerms: plan?.terms_snapshot })
-  const { data, error } = await db.from('contract_sale_agreements').insert({ sale_id: sale.id, version: Number(latest?.version ?? 0) + 1, agreement_type: plan ? 'payment_plan' : 'standard', content_snapshot: content, cleaner_name_snapshot: context.cleaner.contact_name, cleaner_business_snapshot: context.cleaner.business_name, cleaner_email_snapshot: context.cleaner.email, created_by_staff_id: actor.id }).select('id').single()
+  const { data, error } = await db.from('contract_sale_agreements').insert({ sale_id: sale.id, version: Number(latest?.version ?? 0) + 1, agreement_type: plan ? 'payment_plan' : 'standard', payment_plan_id: plan?.id ?? null, content_snapshot: content, cleaner_name_snapshot: context.cleaner.contact_name, cleaner_business_snapshot: context.cleaner.business_name, cleaner_email_snapshot: context.cleaner.email, created_by_staff_id: actor.id }).select('id').single()
   if (error) throw error
   await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.agreement.created', { ...actorAudit(actor), agreementId: data.id })
   return { agreementId: String(data.id) }
@@ -826,7 +834,7 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
   const agreementId = clean(input.agreementId, 100)
   const db = getAdminSupabase()
   const [{ data: agreement, error }, { data: preparedInvoice, error: invoiceError }] = await Promise.all([
-    db.from('contract_sale_agreements').select('id, version, status, content_snapshot, cleaner_email_snapshot, cleaner_business_snapshot, created_at').eq('id', agreementId).eq('sale_id', sale.id).maybeSingle(),
+    db.from('contract_sale_agreements').select('id, version, status, content_snapshot, cleaner_email_snapshot, cleaner_business_snapshot, created_at, payment_plan_id').eq('id', agreementId).eq('sale_id', sale.id).maybeSingle(),
     db.from('contract_sale_invoices').select(INVOICE_DOCUMENT_SELECT).eq('sale_id', sale.id).eq('invoice_type', 'sale').neq('status', 'void').maybeSingle(),
   ])
   if (error) throw error
@@ -834,6 +842,9 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
   if (!agreement || agreement.status !== 'draft') throw new ContractProductError('Only an unsent draft agreement can be sent. Create a new version for a deliberate resend.', 409)
   if (!preparedInvoice) throw new ContractProductError('Prepare the full tax invoice before sending the document bundle.', 409)
   if (preparedInvoice.delivery_status === 'unknown') throw new ContractProductError('Invoice delivery is unresolved. Verify provider activity before sending another document bundle.', 409)
+  const { data: expectedPlan, error: expectedPlanError } = await db.from('contract_sale_payment_plans').select('id').eq('sale_id', sale.id).in('status', ['awaiting_acceptance', 'active']).order('version', { ascending: false }).limit(1).maybeSingle()
+  if (expectedPlanError) throw expectedPlanError
+  if (expectedPlan && agreement.payment_plan_id !== expectedPlan.id) throw new ContractProductError('Create a new agreement version for the current payment plan before sending.', 409)
   const senderEmail = normalizeInvoiceEmail(actor.email)
   if (!senderEmail || !clean(actor.displayName, 160)) throw new ContractProductError('Your staff account needs a display name and valid email before sending documents.', 409)
   const email = normalizeInvoiceEmail(agreement.cleaner_email_snapshot)
@@ -856,7 +867,7 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
     || clean(preparedInvoice.sender_name_snapshot, 160) !== clean(actor.displayName, 160)) {
     throw new ContractProductError('The tax invoice sender is locked by an earlier delivery. The same sender must send any replacement agreement bundle.', 409)
   }
-  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row)
+  const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row, String(sale.id), agreement.payment_plan_id ?? null)
   const sentAt = new Date().toISOString()
   const { data: claimed, error: claimError } = await db.from('contract_sale_agreements').update({ status: 'sent', sent_at: sentAt })
     .eq('id', agreement.id).eq('status', 'draft').select('id').maybeSingle()
@@ -917,12 +928,18 @@ export async function createContractSalePaymentPlan(actor: ContractProductActor,
   if (!invoice || invoice.status === 'paid') throw new ContractProductError('Issue the full tax invoice before creating a payment plan.', 409)
   const { data: existing, error: existingError } = await db.from('contract_sale_payment_plans').select('id').eq('sale_id', sale.id).eq('status', 'active').maybeSingle()
   if (existingError) throw existingError
-  if (existing) throw new ContractProductError('An active payment plan already exists for this sale.', 409)
+  // A replacement plan preserves the active plan until its new agreement is signed.
+  void existing
   const context = await loadSaleContext(sale)
   const { data: allocations, error: allocationError } = await db.from('contract_sale_payment_allocations').select('amount_cents').eq('invoice_id', invoice.id)
   if (allocationError) throw allocationError
   const outstandingBalance = Number(invoice.total_inc_gst_cents) - (allocations ?? []).reduce((sum, item) => sum + Number(item.amount_cents), 0)
-  const instalments = buildMonthlyInstalments({ balanceCents: outstandingBalance, count: Number(input.count), firstDueOn: assertDate(input.firstDueOn) })
+  let instalments
+  try {
+    instalments = input.instalments !== undefined
+      ? parsePlanInstalments(input.instalments, outstandingBalance)
+      : buildMonthlyInstalments({ balanceCents: outstandingBalance, count: Number(input.count), firstDueOn: assertDate(input.firstDueOn) })
+  } catch (error) { throw new ContractProductError(error instanceof Error ? error.message : 'Invalid payment schedule.') }
   const terms = buildPaymentPlanTerms({ saleCode: String(sale.sale_code), cleanerBusiness: context.cleaner.business_name, balanceCents: outstandingBalance, instalments })
   const { data: planId, error } = await db.rpc('create_contract_sale_payment_plan', {
     p_sale_id: sale.id, p_balance_invoice_id: invoice.id, p_terms_snapshot: terms,
