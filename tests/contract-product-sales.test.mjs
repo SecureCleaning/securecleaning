@@ -250,6 +250,8 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, /Download PDF/)
   assert.match(workspace, /Save invoice template/)
   assert.match(workspace, /Saving the template does not change issued invoices/)
+  assert.doesNotMatch(workspace, /\{invoice\.paymentTerms\}/)
+  assert.match(workspace, /Current payment terms and bank details are shown in Preview invoice/)
   assert.match(workspace, /Secure online acceptance remains a later enhancement/)
   assert.match(workspace, /Create updated agreement version/)
   assert.match(workspace, /Final purchase price \(inc GST\)/)

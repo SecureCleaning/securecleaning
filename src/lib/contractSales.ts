@@ -462,6 +462,7 @@ export async function updateContractSaleInvoiceTemplate(actor: ContractProductAc
 
 export async function applyContractSaleInvoiceBankDetails(actor: ContractProductActor, input: Record<string, unknown>) {
   if (actor.role !== 'owner') throw new ContractProductError('Only the owner can apply bank details to an existing invoice.', 403)
+  if (input.includePaymentTerms !== undefined && typeof input.includePaymentTerms !== 'boolean') throw new ContractProductError('Select whether to include payment terms.')
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const invoiceId = clean(input.invoiceId, 100)
   const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
@@ -476,6 +477,7 @@ export async function applyContractSaleInvoiceBankDetails(actor: ContractProduct
     bank_account_name_snapshot: template.bankAccountName, bank_name_snapshot: template.bankName,
     bank_bsb_snapshot: template.bankBsb, bank_account_number_snapshot: template.bankAccountNumber,
     payment_reference_template_snapshot: template.paymentReferenceTemplate,
+    ...(input.includePaymentTerms === true ? { payment_terms_snapshot: validateInvoiceTemplateText(template.paymentTermsTemplate, 'Payment terms', 20, 1500) } : {}),
   })
   if (revisionError) throw revisionError
   return { invoiceId }
@@ -559,6 +561,7 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
     gstComponentCents: Number(invoice.gst_component_cents),
     depositRequiredIncGstCents: Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS),
     paidCents: Number(invoice.paid_cents ?? 0),
+    paymentTermsRevised: invoice.payment_terms_revised === true,
     paymentPlanTerms: typeof invoice.plan_terms === 'string' ? invoice.plan_terms : null,
     paymentTerms: renderContractSaleInvoiceTemplateText(String(invoice.payment_terms_snapshot), tokens),
     bankAccountName: String(invoice.bank_account_name_snapshot ?? '') || null,
@@ -594,7 +597,12 @@ async function invoiceWithConfirmedPayments(invoice: Row, saleId: string, agreem
     .select('bank_account_name_snapshot,bank_name_snapshot,bank_bsb_snapshot,bank_account_number_snapshot,payment_reference_template_snapshot')
     .eq('invoice_id', String(invoice.id)).order('id', { ascending: false }).limit(1).maybeSingle()
   if (correctionError) throw correctionError
-  return { ...invoice, ...correction, paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
+  // A later bank-only correction must not undo the last explicit terms correction.
+  const { data: termsRevision, error: termsError } = await getAdminSupabase().from('contract_sale_invoice_bank_revisions')
+    .select('payment_terms_snapshot').eq('invoice_id', String(invoice.id)).not('payment_terms_snapshot', 'is', null)
+    .order('id', { ascending: false }).limit(1).maybeSingle()
+  if (termsError) throw termsError
+  return { ...invoice, ...correction, ...(termsRevision ? { payment_terms_snapshot: termsRevision.payment_terms_snapshot, payment_terms_revised: true } : {}), paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
 }
 
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
@@ -612,7 +620,7 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${pdfInput.paymentPlanTerms && pdfInput.paymentTermsRevised ? `<p><strong>Updated invoice payment terms (agreed payment schedule unchanged):</strong> ${escapeHtml(pdfInput.paymentTerms)}</p>` : ''}${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
