@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 
 export type AgentQuoteRow = {
   quoteRef: string
@@ -32,6 +33,7 @@ export default function AgentQuoteDashboard({
   city: string
   quotes: AgentQuoteRow[]
 }) {
+  useQuoteListRefresh()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const filteredQuotes = useMemo(() => {

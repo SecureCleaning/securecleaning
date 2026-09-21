@@ -174,7 +174,7 @@ function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0): Contract
   }
 }
 
-const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
+const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
 
 async function getAuthorizedProduct(actor: ContractProductActor, productId: string) {
   const db = getAdminSupabase()
@@ -284,7 +284,7 @@ export async function getContractProducts(actor: ContractProductActor) {
   const { data, error } = await query
   if (error) throw error
   const rows = (data ?? []) as ProductRow[]
-  const quoteIds = rows.map((row) => String(row.source_quote_id))
+  const quoteIds = rows.flatMap((row) => row.source_quote_id ? [String(row.source_quote_id)] : [])
   const productIds = rows.map((row) => String(row.id))
   const [quotes, interests] = await Promise.all([
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
@@ -366,6 +366,7 @@ export async function refreshContractProductScope(actor: ContractProductActor, i
     throw new ContractProductError('Withdraw an available product before refreshing its scope.', 409)
   }
 
+  if (!current.source_quote_id) throw new ContractProductError('The source quote was deleted. This product retains its saved scope.', 409)
   const db = getAdminSupabase()
   const { data: quote, error: quoteError } = await db.from('quotes')
     .select('id, inputs, result, firm_quote_workflow, final_quote_document, final_quote_document_version')

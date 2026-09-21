@@ -3,6 +3,7 @@ import type { AdminDashboardData } from '@/components/admin/AdminDashboard'
 import { getSites } from '@/lib/sites'
 import { getAdminOverviewData } from '@/lib/adminOverview'
 import { getAvailabilityConfig } from '@/lib/availability'
+import { getDashboardQuotes } from '@/lib/dashboardQuotes'
 
 export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   const db = getAdminSupabase()
@@ -22,7 +23,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     overview,
     availabilityConfig,
   ] = await Promise.all([
-    db.from('quotes').select('id, quote_ref, status, valid_until, created_at, inputs, follow_up_status, follow_up_notes').order('created_at', { ascending: false }).limit(20),
+    getDashboardQuotes(db),
     db.from('bookings').select('id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id, inspection_status, inspection_scheduled_for, inspection_completed_at, dispatch_notes').order('created_at', { ascending: false }).limit(20),
     db.from('clients').select('id, business_name, contact_name, email, city, created_at').order('created_at', { ascending: false }).limit(20),
     db.from('leads').select('id, email, business_name, city, source, created_at, follow_up_status, follow_up_notes').order('created_at', { ascending: false }).limit(20),
@@ -37,7 +38,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     getAvailabilityConfig(),
   ])
 
-  if (quotesRes.error) console.error('[adminDashboard] quotes load failed:', quotesRes.error)
+  if (quotesRes.error) throw quotesRes.error
   if (bookingsRes.error) console.error('[adminDashboard] bookings load failed:', bookingsRes.error)
   if (clientsRes.error) console.error('[adminDashboard] clients load failed:', clientsRes.error)
   if (leadsRes.error) console.error('[adminDashboard] leads load failed:', leadsRes.error)

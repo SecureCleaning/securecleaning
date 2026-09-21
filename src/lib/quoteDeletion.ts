@@ -6,6 +6,9 @@ export type QuoteDeletionPreview = {
   status: string
   blocked: boolean
   blockers: string[]
+  previewToken: string
+  finalDocumentSent: boolean
+  retentionReasons: Array<{ type: string; count: number }>
   contractProducts: number
   contractSales: number
   linkedBookings: number
@@ -16,6 +19,7 @@ export type QuoteDeletionPreview = {
   documentVersionsToRemove: number
 }
 
+export class QuoteDeletionAuthorizationError extends Error {}
 export class QuoteDeletionNotFoundError extends Error {}
 export class QuoteDeletionBlockedError extends Error {}
 
@@ -27,61 +31,11 @@ function requireQuoteReference(quoteRef: string) {
 
 export async function getQuoteDeletionPreview(quoteRef: string): Promise<QuoteDeletionPreview> {
   requireQuoteReference(quoteRef)
-  const db = getAdminSupabase()
-
-  const { data: quote, error: quoteError } = await db
-    .from('quotes')
-    .select('id, quote_ref, status, final_quote_sent_at')
-    .eq('quote_ref', quoteRef)
-    .maybeSingle()
-
-  if (quoteError) throw quoteError
-  if (!quote) throw new QuoteDeletionNotFoundError('Quote not found.')
-
-  const [products, sales, bookings, opportunityLinks, winningOpportunities, confirmedSendAttempts, sendAttempts, documentVersions] = await Promise.all([
-    db.from('contract_products').select('id', { count: 'exact', head: true }).eq('source_quote_id', quote.id),
-    db.from('contract_product_sales').select('id', { count: 'exact', head: true }).eq('source_quote_id', quote.id),
-    db.from('bookings').select('id', { count: 'exact', head: true }).eq('quote_id', quote.id),
-    db.from('crm_opportunity_quotes').select('quote_id', { count: 'exact', head: true }).eq('quote_id', quote.id),
-    db.from('crm_opportunities').select('id', { count: 'exact', head: true }).eq('winning_quote_id', quote.id),
-    db.from('quote_send_attempts').select('id', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref).in('status', ['provider_accepted', 'finalized']),
-    db.from('quote_send_attempts').select('id', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref),
-    db.from('quote_final_document_versions').select('quote_ref', { count: 'exact', head: true }).eq('quote_ref', quote.quote_ref),
-  ])
-
-  const firstError = [products, sales, bookings, opportunityLinks, winningOpportunities, confirmedSendAttempts, sendAttempts, documentVersions]
-    .find((result) => result.error)?.error
-  if (firstError) throw firstError
-
-  const contractProducts = products.count ?? 0
-  const contractSales = sales.count ?? 0
-  const linkedBookings = bookings.count ?? 0
-  const winningOpportunityCount = winningOpportunities.count ?? 0
-  const providerConfirmedSendAttemptCount = confirmedSendAttempts.count ?? 0
-  const blockers = [
-    ...(quote.status === 'accepted' ? ['It has been accepted.'] : []),
-    ...(quote.final_quote_sent_at ? ['Its final document has been sent.'] : []),
-    ...(linkedBookings > 0 ? [`It is linked to ${linkedBookings} booking(s).`] : []),
-    ...(winningOpportunityCount > 0 ? ['It is the winning quote for an opportunity.'] : []),
-    ...(contractProducts > 0 ? [`It is linked to ${contractProducts} contract product(s).`] : []),
-    ...(contractSales > 0 ? [`It is linked to ${contractSales} product sale(s).`] : []),
-    ...(providerConfirmedSendAttemptCount > 0 ? ['Its final email has provider-confirmed delivery evidence.'] : []),
-  ]
-
-  return {
-    quoteRef: quote.quote_ref,
-    status: quote.status,
-    blocked: blockers.length > 0,
-    blockers,
-    contractProducts,
-    contractSales,
-    linkedBookings,
-    opportunityLinksToRemove: opportunityLinks.count ?? 0,
-    winningOpportunities: winningOpportunityCount,
-    providerConfirmedSendAttempts: providerConfirmedSendAttemptCount,
-    sendAttemptsToRemove: sendAttempts.count ?? 0,
-    documentVersionsToRemove: documentVersions.count ?? 0,
-  }
+  const { data, error } = await getAdminSupabase().rpc('admin_preview_quote_deletion', { p_quote_ref: quoteRef })
+  if (error?.code === 'P0002') throw new QuoteDeletionNotFoundError('Quote not found.')
+  if (error) throw error
+  const preview = data as QuoteDeletionPreview
+  return { ...preview, blockers: preview.blocked ? ['An email send is still being processed. Resolve it before deleting this quote.'] : [] }
 }
 
 export async function deleteQuoteByRef(
@@ -89,6 +43,7 @@ export async function deleteQuoteByRef(
   confirmation: string,
   reason: string,
   actor: { id: string; name: string; role: 'owner' },
+  options: { linkedRecords: 'keep' | 'delete'; override: boolean; previewToken: string },
 ) {
   requireQuoteReference(quoteRef)
   if (confirmation !== quoteRef) {
@@ -99,17 +54,27 @@ export async function deleteQuoteByRef(
     throw new Error('Enter a deletion reason between 10 and 500 characters.')
   }
 
+  if (!options || !['keep', 'delete'].includes(options.linkedRecords) || typeof options.override !== 'boolean' || !/^[a-f0-9]{32}$/.test(options.previewToken)) {
+    throw new Error('Review the deletion options before confirming.')
+  }
   const db = getAdminSupabase()
-  const { data, error } = await db.rpc('admin_delete_quote', {
+  const { data, error } = await db.rpc('admin_delete_quote_with_override', {
     p_quote_ref: quoteRef,
     p_reason: normalizedReason,
     p_actor: actor,
+    p_linked_records: options.linkedRecords,
+    p_override: options.override,
+    p_preview_token: options.previewToken,
   })
 
   if (error) {
+    if (error.code === '28000') throw new QuoteDeletionAuthorizationError('Active owner access required. Sign in again.')
     if (error.code === '23503') {
-      throw new QuoteDeletionBlockedError('This quote is linked to a contract product or sale and cannot be deleted.')
+      throw new QuoteDeletionBlockedError('Linked records have retained history. Choose to keep product/sale records, or refresh the preview.')
     }
+    if (error.code === '40001') throw new QuoteDeletionBlockedError('The quote or its links changed. Close and reopen this dialog to review them again.')
+    if (error.code === '42501') throw new QuoteDeletionBlockedError('Confirm the owner override to delete this linked or previously sent quote.')
+    if (error.code === '55000') throw new QuoteDeletionBlockedError('An email send is still being processed. Resolve it before deleting the quote.')
     if (error.code === 'P0002') throw new QuoteDeletionNotFoundError('Quote not found.')
     throw error
   }

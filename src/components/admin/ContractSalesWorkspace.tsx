@@ -79,6 +79,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [newCleaner, setNewCleaner] = useState({ businessName: '', firstName: '', lastName: '', email: '', phone: '', suburb: '' })
+  const [startSaleError, setStartSaleError] = useState('')
   const [saleDraft, setSaleDraft] = useState({ finalPrice: '', commencementDate: '', notes: '' })
   const [inspection, setInspection] = useState({ date: '', time: '10:00', durationMinutes: '60', location: '', notes: '' })
   const [payment, setPayment] = useState({ invoiceId: '', amount: '', receivedOn: today(), method: 'bank_transfer', reference: '', evidenceNote: '' })
@@ -139,10 +140,15 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   }
 
   async function startSale() {
+    setStartSaleError('')
     try {
       const result = await action('sale.create', { productId: selectedProductId, cleanerId: selectedCleanerId }, '')
       setCreatingSale(false); setSelectedSaleId(result.saleId); setMessage('Product reserved and product sale created.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to start sale.') }
+    } catch (error) {
+      const failure = error instanceof Error ? error.message : 'Unable to start sale.'
+      setStartSaleError(failure)
+      setMessage(failure)
+    }
   }
 
   async function createCleaner() {
@@ -243,12 +249,13 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
             <label className="text-sm font-medium">Available product<select value={selectedProductId} onChange={(event) => { setSelectedProductId(event.target.value); setSelectedCleanerId('') }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select product</option>{availableProducts.map((item) => <option key={item.id} value={item.id}>{item.productCode} · {item.suburb}, {item.state}</option>)}</select></label>
             <label className="text-sm font-medium">Approved cleaner<select value={selectedCleanerId} onChange={(event) => setSelectedCleanerId(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select cleaner</option>{stateCleaners.map((cleaner) => <option key={cleaner.id} value={cleaner.id} disabled={cleaner.status !== 'approved'}>{cleaner.businessName} · {cleaner.status.replaceAll('_', ' ')} · compliance {cleaner.complianceStatus.replaceAll('_', ' ')}</option>)}</select>{selectedCleaner && selectedCleaner.complianceStatus !== 'current' ? <span className="mt-2 block rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-normal text-amber-900">Compliance is recorded as {selectedCleaner.complianceStatus.replaceAll('_', ' ')}. This is a warning only; the approved cleaner status controls sale eligibility.</span> : <span className="mt-1 block text-xs font-normal text-gray-500">Compliance is shown for review but does not block an approved cleaner from being selected.</span>}</label>
           </div>
-          <button type="button" onClick={() => void startSale()} disabled={!selectedProductId || !selectedCleanerId || Boolean(busy)} className="mt-4 rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-50">Reserve product &amp; start sale</button>
+          <button type="button" onClick={() => void startSale()} disabled={!selectedProductId || !selectedCleanerId || Boolean(busy)} className="mt-4 rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{busy === 'sale.create' ? 'Starting sale...' : 'Reserve product & start sale'}</button>
+          {startSaleError ? <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">{startSaleError}</p> : null}
           <details className="mt-6 rounded-xl border border-gray-200 p-4"><summary className="cursor-pointer font-semibold">Add a new cleaner</summary><p className="mt-2 text-sm text-gray-600">The new record starts as pending approval and cannot receive an invoice until approved.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{(['businessName', 'firstName', 'lastName', 'email', 'phone', 'suburb'] as const).map((field) => <label key={field} className="text-sm font-medium">{field.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}<input type={field === 'email' ? 'email' : 'text'} value={newCleaner[field]} onChange={(event) => setNewCleaner({ ...newCleaner, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>)}</div><button type="button" onClick={() => void createCleaner()} disabled={!product || Boolean(busy)} className="mt-4 rounded-lg border border-teal-700 px-4 py-2 font-semibold text-teal-800">Create pending cleaner</button></details>
         </section> : <>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-mono text-sm font-semibold text-teal-700">{sale.saleCode}</p><h2 className="text-xl font-bold">{sale.productCode} · {sale.cleanerBusiness}</h2><p className="text-sm text-gray-600">{sale.suburb}, {sale.state} · {money(sale.agreedPurchasePriceIncGstCents)} inc GST</p></div><span className={`rounded-full px-3 py-1 text-sm font-semibold ${statusTone(sale.status)}`}>{sale.status.replaceAll('_', ' ')}</span></div>
-            <nav aria-label="Connected records" className="mt-5 flex flex-wrap gap-2"><Link href={quoteHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Quote</Link><Link href={clientsHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Client</Link><Link href={`${productsHref}?product=${encodeURIComponent(sale.productId)}`} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Product</Link><span className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Product sale</span></nav>
+            <nav aria-label="Connected records" className="mt-5 flex flex-wrap gap-2">{quoteHref ? <Link href={quoteHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Quote</Link> : null}<Link href={clientsHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Client</Link><Link href={`${productsHref}?product=${encodeURIComponent(sale.productId)}`} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Product</Link><span className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Product sale</span></nav>
           </section>
 
           <section className="grid gap-2 sm:grid-cols-4 xl:grid-cols-8">{[

@@ -8,11 +8,27 @@ type Props = {
   onDeleted: (quoteRef: string) => void
 }
 
+function retentionLabel(type: string) {
+  const labels: Record<string, string> = {
+    contract_sale_invoices: 'Invoices', contract_sale_payments: 'Payments',
+    contract_sale_payment_allocations: 'Payment allocations', contract_sale_payment_plans: 'Payment plans',
+    contract_sale_inspections: 'Inspections', contract_sale_agreements: 'Agreements and document references',
+    contract_commission_assignments: 'Commission records', contract_sale_site_assignments: 'Site handovers',
+  }
+  return labels[type] ?? 'Linked history'
+}
+
 export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
   const [open, setOpen] = useState(false)
   const [preview, setPreview] = useState<QuoteDeletionPreview | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [reason, setReason] = useState('')
+  const [linkedRecords, setLinkedRecords] = useState<'' | 'keep' | 'delete'>('')
+  const [override, setOverride] = useState(false)
+  const hasLinks = Boolean(preview && (preview.contractProducts || preview.contractSales))
+  const needsOverride = Boolean(preview && (hasLinks || preview.status === 'accepted' || preview.finalDocumentSent || preview.linkedBookings || preview.winningOpportunities || preview.providerConfirmedSendAttempts))
+  const retentionBlocked = linkedRecords === 'delete' && Boolean(preview?.retentionReasons.length)
+  const optionsIncomplete = (hasLinks && !linkedRecords) || (needsOverride && !override) || retentionBlocked
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,6 +39,8 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
     setPreview(null)
     setConfirmation('')
     setReason('')
+    setLinkedRecords('')
+    setOverride(false)
 
     try {
       const response = await fetch(`/api/admin/quotes/${encodeURIComponent(quoteRef)}/deletion`)
@@ -42,11 +60,13 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
     setPreview(null)
     setConfirmation('')
     setReason('')
+    setLinkedRecords('')
+    setOverride(false)
     setError(null)
   }
 
   async function deleteQuote() {
-    if (!preview || preview.blocked || confirmation !== quoteRef) return
+    if (!preview || preview.blocked || optionsIncomplete || confirmation !== quoteRef) return
     setLoading(true)
     setError(null)
 
@@ -54,7 +74,7 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
       const response = await fetch(`/api/admin/quotes/${encodeURIComponent(quoteRef)}/deletion`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmation, reason }),
+        body: JSON.stringify({ confirmation, reason, linkedRecords: linkedRecords || 'keep', override, previewToken: preview.previewToken }),
       })
       const result = await response.json()
       if (!response.ok || !result.success) throw new Error(result.error || 'Unable to delete this quote.')
@@ -64,6 +84,8 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
       setPreview(null)
       setConfirmation('')
       setReason('')
+    setLinkedRecords('')
+    setOverride(false)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to delete this quote.')
       setLoading(false)
@@ -90,11 +112,11 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
             if (event.key === 'Escape') closeDialog()
           }}
         >
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 text-left shadow-xl">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 text-left shadow-xl">
             <h2 id={`delete-quote-title-${quoteRef}`} className="text-xl font-bold text-gray-900">Delete {quoteRef}?</h2>
             <p className="mt-2 text-sm text-gray-600">
-              This permanently removes the quote, its saved document versions, and its email delivery records. Clients,
-              bookings, and CRM opportunities are preserved.
+              This removes the quote from all owner and agent views. Clients, bookings and CRM opportunities remain.
+              Uploaded documents are kept. A restricted deletion archive retains the quote and its history.
             </p>
 
             {loading && !preview ? <p className="mt-4 text-sm text-gray-600">Checking linked records…</p> : null}
@@ -111,12 +133,31 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
                 ) : (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
                     <div>{preview.opportunityLinksToRemove} CRM quote link(s) will be removed; the opportunities remain.</div>
-                    <div>{preview.sendAttemptsToRemove} email delivery record(s) and {preview.documentVersionsToRemove} saved document version(s) will be removed.</div>
+                    <div>{preview.sendAttemptsToRemove} email delivery record(s) and {preview.documentVersionsToRemove} saved document version(s) will be retained in the deletion archive.</div>
+                    {preview.linkedBookings > 0 ? <div>{preview.linkedBookings} booking(s) will remain, with their quote link removed.</div> : null}
+                    {preview.winningOpportunities > 0 ? <div>{preview.winningOpportunities} won opportunity record(s) will remain, with their winning quote link removed.</div> : null}
                   </div>
                 )}
 
                 {!preview.blocked ? (
                   <div className="space-y-3">
+                    {hasLinks ? <label className="block text-sm font-semibold text-gray-800">
+                      Linked records: {preview.contractProducts} product(s), {preview.contractSales} sale(s)
+                      <select value={linkedRecords} disabled={loading} onChange={(event) => setLinkedRecords(event.target.value as '' | 'keep' | 'delete')} className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2">
+                        <option value="">Choose what to do with linked records</option>
+                        <option value="keep">Keep product and sale records</option>
+                        <option value="delete">Delete product and sale records too</option>
+                      </select>
+                      <span className="mt-2 block font-normal text-gray-600">Uploaded documents are kept with either choice.</span>
+                    </label> : null}
+                    {retentionBlocked ? <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                      These sale records have history that must remain. Choose “Keep product and sale records” to delete only the quote.
+                      <ul className="mt-2 list-disc pl-5">{preview.retentionReasons.map((item) => <li key={item.type}>{retentionLabel(item.type)}: {item.count}</li>)}</ul>
+                    </div> : null}
+                    {needsOverride ? <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+                      <input type="checkbox" checked={override} disabled={loading} onChange={(event) => setOverride(event.target.checked)} className="mt-1" />
+                      <span>I authorize the owner override for this {preview.status} quote and the linked-record choice above. Any previously delivered quote email cannot be recalled.</span>
+                    </label> : null}
                     <label className="block text-sm font-semibold text-gray-800">
                       Reason for deletion
                       <textarea
@@ -154,7 +195,7 @@ export default function DeleteQuoteButton({ quoteRef, onDeleted }: Props) {
                 <button
                   type="button"
                   onClick={deleteQuote}
-                  disabled={loading || confirmation !== quoteRef || reason.trim().length < 10 || reason.trim().length > 500}
+                  disabled={loading || optionsIncomplete || confirmation !== quoteRef || reason.trim().length < 10 || reason.trim().length > 500}
                   className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? 'Deleting…' : 'Permanently delete quote'}

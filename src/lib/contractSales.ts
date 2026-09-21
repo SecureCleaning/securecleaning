@@ -146,7 +146,7 @@ export type ContractSaleInvoiceTemplate = {
   updatedAt: string | null
 }
 
-const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
+const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
 const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
 const INVOICE_DOCUMENT_SELECT = 'id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
@@ -260,7 +260,9 @@ async function loadSaleContext(sale: Row) {
     db.from('contract_products').select('id, product_code, state, suburb').eq('id', sale.product_id).single(),
     db.from('cleaners').select('id, business_name, contact_name, email, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
     db.from('crm_opportunities').select('primary_contact_id, site_id').eq('id', sale.opportunity_id).single(),
-    db.from('quotes').select('quote_ref').eq('id', sale.source_quote_id).single(),
+    sale.source_quote_id
+      ? db.from('quotes').select('quote_ref').eq('id', sale.source_quote_id).single()
+      : Promise.resolve({ data: sale.deleted_source_quote_ref ? { quote_ref: String(sale.deleted_source_quote_ref) } : null, error: null }),
     sale.assigned_staff_id
       ? db.from('admin_staff_accounts').select('id, display_name, email').eq('id', sale.assigned_staff_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -294,7 +296,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const saleIds = saleRows.map((sale) => String(sale.id))
   const cleanerIds = Array.from(new Set(saleRows.map((sale) => String(sale.cleaner_id))))
   const opportunityIds = Array.from(new Set(saleRows.map((sale) => String(sale.opportunity_id))))
-  const quoteIds = Array.from(new Set(saleRows.map((sale) => String(sale.source_quote_id))))
+  const quoteIds = Array.from(new Set(saleRows.flatMap((sale) => sale.source_quote_id ? [String(sale.source_quote_id)] : [])))
   const siteIds = Array.from(new Set(saleRows.map((sale) => String(sale.site_id ?? '')).filter(Boolean)))
   const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult] = await Promise.all([
     cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
