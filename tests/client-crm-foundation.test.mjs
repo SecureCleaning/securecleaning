@@ -450,9 +450,10 @@ test('client CRM presents structured business, contact, and site editing', () =>
   const data = source('src/lib/clientCrmData.ts')
   const route = source('src/app/api/admin/client-crm/route.ts')
 
-  for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address', 'Suburb', 'Postcode']) {
+  for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.match(workspace, /LocalityAutocomplete[^>]*suburb=\{profileEdit.suburb\}[^>]*postcode=\{profileEdit.postcode\}/)
   assert.match(workspace, /action: 'client-record\.update'/)
   assert.match(route, /action === 'client-record\.update'/)
   assert.match(data, /db\.rpc\('update_client_crm_profile'/)
@@ -471,7 +472,7 @@ test('new CRM opportunities require a first name while allowing a missing surnam
   assert.match(data, /const lastName = clean\(input\.lastName, 100\)/)
   assert.doesNotMatch(data, /Provide both the contact first name and last name/)
   assert.match(data, /const contactName = firstName[\s\S]*\[firstName, lastName\]\.filter\(Boolean\)\.join\(' '\)/)
-  assert.match(data, /!businessName \|\| !firstName \|\| !contactName/)
+  assert.match(data, /!firstName \|\| !contactName/)
 })
 
 test('a provisional client exposes address fields and reloads the canonical site opportunity after save', () => {

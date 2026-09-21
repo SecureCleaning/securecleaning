@@ -2,9 +2,10 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { CLIENT_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
 import { findMatchingZones, getAvailabilityConfig } from '@/lib/availability'
-import { canAgentSelfAssignCrmRegion } from '@/lib/clientCrmAssignment'
+import { canAgentSelfAssignCrmRegion, getCrmAgentRegion } from '@/lib/clientCrmAssignment'
 import { listStaffAccounts, type StaffAccount } from '@/lib/staffAccounts'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
+import { crmPostcodeMatchesRegion } from '@/lib/clientCrmLocation'
 import { normalizeCrmPhone } from '@/lib/clientCrmOpportunity'
 import {
   buildContactSourceExplanation,
@@ -522,7 +523,9 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
       || template.visibility === 'shared'
     ))
 
-  return { opportunities, templates, agents, senders, actor }
+  const availabilityConfig = await getAvailabilityConfig()
+  const defaultCity = getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
+  return { opportunities, templates, agents, senders, actor, defaultCity }
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -540,8 +543,8 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
   const address = clean(input.address, 300)
   const suburb = clean(input.suburb, 120)
   const postcode = normalizeCrmPostcode(input.postcode)
-  if (!opportunityId || !businessName || (!firstName && !lastName) || !isValidCrmEmail(email)) {
-    throw new ClientCrmError('Provide the business, contact name, and a valid email.')
+  if (!opportunityId || (!firstName && !lastName) || !isValidCrmEmail(email)) {
+    throw new ClientCrmError('Provide the contact name and a valid email.')
   }
 
   const db = getAdminSupabase()
@@ -686,7 +689,10 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const address = clean(input.address, 300)
   const suburb = clean(input.suburb, 120)
   const postcode = normalizeCrmPostcode(input.postcode)
-  const city = cityFromInput(input.city)
+  const availabilityConfig = await getAvailabilityConfig()
+  const city = input.city == null || input.city === ''
+    ? getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
+    : cityFromInput(input.city)
   const sourceType = normalizeCrmSourceType(input.sourceType) ?? 'manual'
   const contactBasis = normalizeCrmContactBasis(input.contactBasis)
   const sourceProvider = clean(input.sourceProvider, 200)
@@ -695,18 +701,20 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const notes = clean(input.notes, 5000)
   const requestedAssigneeId = clean(input.assignedStaffId, 100)
 
-  if (!businessName || !firstName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
-    throw new ClientCrmError('Provide the business, first name, valid email, city, postcode, and contact basis.')
+  if (!firstName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
+    throw new ClientCrmError('Provide the first name, valid email, service region, postcode, and contact basis.')
   }
   if (requiresNamedSourceProvider(sourceType, contactBasis) && !sourceProvider) {
     throw new ClientCrmError('Name the lead provider or public source before creating this opportunity.')
   }
 
+  if (!crmPostcodeMatchesRegion(postcode, city)) {
+    throw new ClientCrmError('The postcode does not match the selected service region.')
+  }
   const candidates = await getCrmAssignmentCandidates({ address, suburb, postcode, city })
   let assignedStaffId: string | null = null
   let assignmentMethod = 'unassigned'
   if (actor.role === 'agent') {
-    const availabilityConfig = await getAvailabilityConfig()
     if (!canAgentSelfAssignCrmRegion({
       availabilityAssigneeId: actor.availabilityAssigneeId,
       city,
