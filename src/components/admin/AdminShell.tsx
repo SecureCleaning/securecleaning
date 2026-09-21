@@ -1,26 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useSiteHeaderHeight } from '@/lib/useSiteHeaderHeight'
 import { usePathname } from 'next/navigation'
 import AdminNav from '@/components/admin/AdminNav'
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const [isLocking, setIsLocking] = useState(false)
   const pathname = usePathname()
-  const [headerHeight, setHeaderHeight] = useState<number | null>(null)
-
-  useEffect(() => {
-    const header = document.querySelector('.site-header')
-    if (!header) {
-      setHeaderHeight(0)
-      return
-    }
-    const updateHeight = () => setHeaderHeight(header.getBoundingClientRect().height)
-    updateHeight()
-    const observer = new ResizeObserver(updateHeight)
-    observer.observe(header)
-    return () => observer.disconnect()
-  }, [])
+  const headerHeight = useSiteHeaderHeight()
 
   async function handleLock() {
     setIsLocking(true)

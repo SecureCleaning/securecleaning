@@ -51,7 +51,7 @@ export default async function AvailabilityQuotesPage({ params }: { params: Promi
 
   return (
     <div className="min-h-screen bg-gray-50 py-12">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"><AvailabilityAgentNav assigneeId={assignee.id} showLogout /></div>
+      <AvailabilityAgentNav assigneeId={assignee.id} showLogout containerClassName="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8" />
       <AgentQuoteDashboard assigneeId={assignee.id} assigneeName={assignee.name} city={assignee.city} quotes={quotes} />
     </div>
   )
