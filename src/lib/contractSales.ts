@@ -142,13 +142,18 @@ export type ContractSaleInvoiceTemplate = {
   emailIntroHtml?: string
   emailIntroDocument?: Record<string, unknown> | null
   paymentTermsTemplate: string
+  bankAccountName: string
+  bankName: string
+  bankBsb: string
+  bankAccountNumber: string
+  paymentReferenceTemplate: string
   footerNote: string
   updatedAt: string | null
 }
 
 const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
 const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
-const INVOICE_DOCUMENT_SELECT = 'id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
+const INVOICE_DOCUMENT_SELECT = 'id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
 const SECURE_CLEANING_NAME = 'Secure Cleaning'
 const SECURE_CLEANING_ABN = '81 674 121 825'
@@ -164,6 +169,7 @@ export const DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE: ContractSaleInvoiceTemplate
   emailIntroTemplate: 'Please find attached the full tax invoice for contract product {product_code}.',
   paymentTermsTemplate: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
   footerNote: 'This document is a tax invoice. All amounts are in Australian dollars and the total amount payable includes GST.',
+  bankAccountName: '', bankName: '', bankBsb: '', bankAccountNumber: '', paymentReferenceTemplate: '{invoice_number}',
   updatedAt: null,
 }
 
@@ -209,6 +215,9 @@ function mapInvoiceTemplate(row: Row | null | undefined): ContractSaleInvoiceTem
     emailSubjectTemplate: String(row.email_subject_template), emailIntroTemplate: String(row.email_intro_template),
     emailIntroHtml: String(row.email_intro_html ?? ''), emailIntroDocument: row.email_intro_document as Record<string, unknown> | null,
     paymentTermsTemplate: String(row.payment_terms_template), footerNote: String(row.footer_note),
+    bankAccountName: String(row.bank_account_name ?? ''), bankName: String(row.bank_name ?? ''),
+    bankBsb: String(row.bank_bsb ?? ''), bankAccountNumber: String(row.bank_account_number ?? ''),
+    paymentReferenceTemplate: String(row.payment_reference_template ?? '{invoice_number}'),
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
   }
 }
@@ -423,12 +432,25 @@ export async function updateContractSaleInvoiceTemplate(actor: ContractProductAc
   const emailIntroTemplate = validateInvoiceTemplateText(richIntro.text, 'Email introduction template', 10, 1500)
   validateInvoiceTemplateText(richIntro.html, 'Email introduction formatting', 1, 120000)
   const paymentTermsTemplate = validateInvoiceTemplateText(input.paymentTermsTemplate, 'Payment terms template', 20, 1500)
+  const bankAccountName = clean(input.bankAccountName, 160)
+  const bankName = clean(input.bankName, 120)
+  const bankBsb = clean(input.bankBsb, 16)
+  const bankAccountNumber = clean(input.bankAccountNumber, 32)
+  const bankBsbDigits = bankBsb.replace(/\D/g, '')
+  const bankAccountDigits = bankAccountNumber.replace(/\D/g, '')
+  const hasBankDetails = Boolean(bankAccountName || bankName || bankBsbDigits || bankAccountDigits)
+  if (hasBankDetails && (bankAccountName.length < 2 || !/^\d{3}[ -]?\d{3}$/.test(bankBsb) || !/^[0-9 -]+$/.test(bankAccountNumber) || bankAccountDigits.length < 4 || bankAccountDigits.length > 16)) {
+    throw new ContractProductError('Complete the account name, six-digit BSB, and bank account number, or leave all bank details blank.')
+  }
+  const paymentReferenceTemplate = validateInvoiceTemplateText(input.paymentReferenceTemplate ?? '{invoice_number}', 'Payment reference', 1, 120)
   const footerNote = validateInvoiceTemplateText(input.footerNote, 'Invoice footer', 20, 500)
   const values = {
     supplier_name: supplierName, supplier_abn: supplierAbn, supplier_email: supplierEmail,
     invoice_title: invoiceTitle, line_item_template: lineItemTemplate,
     email_subject_template: emailSubjectTemplate, email_intro_template: emailIntroTemplate, email_intro_html: richIntro.html, email_intro_document: richIntro.document,
-    payment_terms_template: paymentTermsTemplate, footer_note: footerNote,
+    payment_terms_template: paymentTermsTemplate, bank_account_name: bankAccountName, bank_name: bankName,
+    bank_bsb: bankBsbDigits ? `${bankBsbDigits.slice(0, 3)}-${bankBsbDigits.slice(3)}` : '',
+    bank_account_number: bankAccountNumber, payment_reference_template: paymentReferenceTemplate, footer_note: footerNote,
     updated_by_staff_id: actor.id, updated_at: new Date().toISOString(),
   }
   const { data, error } = await getAdminSupabase().from('contract_sale_invoice_templates')
@@ -436,6 +458,27 @@ export async function updateContractSaleInvoiceTemplate(actor: ContractProductAc
   if (error) throw error
   await writeAuditLogStrict('contract_sale_invoice_template', INVOICE_TEMPLATE_ID, 'contract_sale.invoice_template.updated', actorAudit(actor))
   return { invoiceTemplate: mapInvoiceTemplate(data as Row) }
+}
+
+export async function applyContractSaleInvoiceBankDetails(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (actor.role !== 'owner') throw new ContractProductError('Only the owner can apply bank details to an existing invoice.', 403)
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  const invoiceId = clean(input.invoiceId, 100)
+  const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
+    .select('id,status').eq('id', invoiceId).eq('sale_id', String(sale.id)).maybeSingle()
+  if (error) throw error
+  if (!invoice || invoice.status === 'void' || sale.status === 'cancelled') throw new ContractProductError('Select a current invoice.', 409)
+  const template = await loadInvoiceTemplate()
+  if (!template.bankAccountName || !template.bankBsb || !template.bankAccountNumber) throw new ContractProductError('Save the bank account fields in the invoice template first.')
+  if (input.templateUpdatedAt !== template.updatedAt) throw new ContractProductError('The saved bank details changed. Refresh and review them before applying.', 409)
+  const { error: revisionError } = await getAdminSupabase().from('contract_sale_invoice_bank_revisions').insert({
+    invoice_id: invoiceId, actor_staff_id: actor.id,
+    bank_account_name_snapshot: template.bankAccountName, bank_name_snapshot: template.bankName,
+    bank_bsb_snapshot: template.bankBsb, bank_account_number_snapshot: template.bankAccountNumber,
+    payment_reference_template_snapshot: template.paymentReferenceTemplate,
+  })
+  if (revisionError) throw revisionError
+  return { invoiceId }
 }
 
 export async function createCleanerInsideContractSale(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -518,6 +561,11 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
     paidCents: Number(invoice.paid_cents ?? 0),
     paymentPlanTerms: typeof invoice.plan_terms === 'string' ? invoice.plan_terms : null,
     paymentTerms: renderContractSaleInvoiceTemplateText(String(invoice.payment_terms_snapshot), tokens),
+    bankAccountName: String(invoice.bank_account_name_snapshot ?? '') || null,
+    bankName: String(invoice.bank_name_snapshot ?? '') || null,
+    bankBsb: String(invoice.bank_bsb_snapshot ?? '') || null,
+    bankAccountNumber: String(invoice.bank_account_number_snapshot ?? '') || null,
+    paymentReference: renderContractSaleInvoiceTemplateText(String(invoice.payment_reference_template_snapshot ?? '{invoice_number}'), tokens),
     senderName: String(invoice.sender_name_snapshot),
     senderTitle: typeof invoice.sender_title_snapshot === 'string' ? invoice.sender_title_snapshot : null,
     senderEmail: String(invoice.sender_email_snapshot),
@@ -542,7 +590,11 @@ async function invoiceWithConfirmedPayments(invoice: Row, saleId: string, agreem
   const { data: plan, error: planError } = agreementPlanId === null ? { data: null, error: null } : await planQuery.order('version', { ascending: false }).limit(1).maybeSingle()
   if (planError) throw planError
   if (agreementPlanId && !plan) throw new ContractProductError('The agreement payment plan has changed. Refresh before sending.', 409)
-  return { ...invoice, paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
+  const { data: correction, error: correctionError } = await getAdminSupabase().from('contract_sale_invoice_bank_revisions')
+    .select('bank_account_name_snapshot,bank_name_snapshot,bank_bsb_snapshot,bank_account_number_snapshot,payment_reference_template_snapshot')
+    .eq('invoice_id', String(invoice.id)).order('id', { ascending: false }).limit(1).maybeSingle()
+  if (correctionError) throw correctionError
+  return { ...invoice, ...correction, paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
 }
 
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
@@ -551,13 +603,16 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
   const depositDue = Math.min(outstanding, Math.max(0, pdfInput.depositRequiredIncGstCents - pdfInput.paidCents))
   const tokens = invoiceTemplateTokens(invoice, sale, context)
   const pdf = buildContractSaleTaxInvoicePdf(pdfInput)
+  const bankDetails = pdfInput.bankAccountName && pdfInput.bankBsb && pdfInput.bankAccountNumber
+    ? `<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Bank payment details</strong></p><p style="margin:0 0 4px">Account name: ${escapeHtml(pdfInput.bankAccountName)}</p>${pdfInput.bankName ? `<p style="margin:0 0 4px">Bank: ${escapeHtml(pdfInput.bankName)}</p>` : ''}<p style="margin:0 0 4px">BSB: ${escapeHtml(pdfInput.bankBsb)}</p><p style="margin:0">Account number: ${escapeHtml(pdfInput.bankAccountNumber)}</p></div>`
+    : ''
   const fileName = `${pdfInput.invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`
   const result = await sendEmailOrThrow({
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p><p>Please use <strong>${escapeHtml(String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
@@ -588,6 +643,9 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
   const { data: invoice, error } = await db.from('contract_sale_invoices').insert({
     idempotency_key: idempotencyKey, sale_id: sale.id, invoice_type: invoiceType, description_snapshot: invoiceTemplate.lineItemTemplate,
     total_inc_gst_cents: total, gst_component_cents: calculateInclusiveGstComponent(total), deposit_required_inc_gst_cents: CONTRACT_SALE_DEPOSIT_INC_GST_CENTS, due_on: dueOn,
+    bank_account_name_snapshot: invoiceTemplate.bankAccountName, bank_name_snapshot: invoiceTemplate.bankName,
+    bank_bsb_snapshot: invoiceTemplate.bankBsb, bank_account_number_snapshot: invoiceTemplate.bankAccountNumber,
+    payment_reference_template_snapshot: invoiceTemplate.paymentReferenceTemplate,
     payment_terms_snapshot: invoiceTemplate.paymentTermsTemplate, recipient_name_snapshot: context.cleaner.contact_name,
     recipient_business_snapshot: context.cleaner.business_name, recipient_email_snapshot: recipientEmail,
     recipient_address_snapshot: [context.cleaner.address, context.cleaner.suburb, context.cleaner.postcode].filter(Boolean).join(', ') || null,
@@ -597,7 +655,7 @@ export async function issueContractSaleInvoice(actor: ContractProductActor, inpu
     email_intro_template_snapshot: invoiceTemplate.emailIntroTemplate, email_intro_html_snapshot: invoiceTemplate.emailIntroHtml || null, footer_note_snapshot: invoiceTemplate.footerNote,
     sender_name_snapshot: actor.displayName, sender_title_snapshot: actor.jobTitle || null,
     sender_email_snapshot: actor.email, issued_by_staff_id: actor.id,
-  }).select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at').single()
+  }).select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at').single()
   if (error?.code === '23505') {
     const { data: replay } = await db.from('contract_sale_invoices').select('id, sale_id, invoice_type, total_inc_gst_cents').eq('idempotency_key', idempotencyKey).maybeSingle()
     if (replay && String(replay.sale_id) === String(sale.id) && replay.invoice_type === invoiceType && Number(replay.total_inc_gst_cents) === total) {
@@ -615,7 +673,7 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   const invoiceId = clean(input.invoiceId, 100)
   const context = await loadSaleContext(sale)
   const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
-    .select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status')
+    .select('id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status')
     .eq('id', invoiceId).eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)
@@ -639,7 +697,7 @@ export async function downloadContractSaleInvoice(actor: ContractProductActor, s
   const sale = await getAuthorizedSale(actor, clean(saleId, 100))
   const context = await loadSaleContext(sale)
   const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
-    .select('id, invoice_number, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status')
+    .select('id, invoice_number, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status')
     .eq('id', clean(invoiceId, 100)).eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!invoice || invoice.status === 'void') throw new ContractProductError('Active invoice not found.', 404)

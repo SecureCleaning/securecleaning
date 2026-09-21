@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
+  applyContractSaleInvoiceBankDetails,
   cancelContractSale,
   completeContractSaleHandover,
   completeContractSaleInspection,
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
     if (action === 'sale.create') return NextResponse.json({ success: true, result: await createContractSale(actor, body) })
     if (action === 'sale.update') return NextResponse.json({ success: true, result: await updateContractSale(actor, body) })
     if (action === 'invoice-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInvoiceTemplate(actor, body) })
+    if (action === 'invoice-bank.apply') return NextResponse.json({ success: true, result: await applyContractSaleInvoiceBankDetails(actor, body) })
     if (action === 'invoice.issue') {
       const limited = rateLimit(request, { key: `contract-sale-invoice:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited

@@ -18,6 +18,11 @@ export type ContractSaleTaxInvoicePdfInput = {
   depositRequiredIncGstCents: number
   paidCents: number
   paymentPlanTerms?: string | null
+  bankAccountName?: string | null
+  bankName?: string | null
+  bankBsb?: string | null
+  bankAccountNumber?: string | null
+  paymentReference?: string
   paymentTerms: string
   senderName: string
   senderTitle?: string | null
@@ -95,6 +100,11 @@ function wrap(value: string, maxChars: number) {
   }
   if (current) lines.push(current)
   return lines.length ? lines : ['']
+}
+
+function bankLines(input: ContractSaleTaxInvoicePdfInput) {
+  if (!input.bankAccountName || !input.bankBsb || !input.bankAccountNumber) return []
+  return [`Account name: ${input.bankAccountName}`, ...(input.bankName ? [`Bank: ${input.bankName}`] : []), `BSB: ${input.bankBsb}   Account number: ${input.bankAccountNumber}`].flatMap(value => wrap(value, 100))
 }
 
 function createContent(input: ContractSaleTaxInvoicePdfInput) {
@@ -189,18 +199,26 @@ function createContent(input: ContractSaleTaxInvoicePdfInput) {
   let termsY = paymentBoxY - 28
   text(input.paymentPlanTerms ? 'PAYMENT PLAN ATTACHED' : 'PAYMENT TERMS', 42, termsY, 8, true, GREEN)
   termsY = textLines(wrap(input.paymentPlanTerms ? 'See the attached schedule for instalment dates and amounts. Secure Cleaning retains contract and assignment rights until payment IN FULL. A proposed plan requires signed acceptance.' : input.paymentTerms, 100).slice(0, 4), 42, termsY - 19, 9, false, NAVY, 13)
-  text(`Use ${input.invoiceNumber} as the payment reference.`, 42, termsY - 3, 9, true)
+  termsY = textLines(wrap(`Use ${input.paymentReference || input.invoiceNumber} as the payment reference.`, 100), 42, termsY - 3, 9, true, NAVY, 13)
+  const longTerms = !input.paymentPlanTerms && wrap(input.paymentTerms, 100).length > 4
+  if (longTerms) { text('Full payment terms continue on the attached page.', 42, termsY - 14, 8, false, MUTED); termsY -= 14 }
+  const bank = bankLines(input)
+  const bankContinues = bank.length > 0 && termsY - 28 - bank.length * 12 < 112
+  if (bank.length) {
+    text(bankContinues ? 'BANK PAYMENT DETAILS - SEE ATTACHED PAGE' : 'BANK PAYMENT DETAILS', 42, termsY - 14, 8, true, GREEN)
+    if (!bankContinues) textLines(bank, 42, termsY - 29, 8, false, NAVY, 12)
+  }
 
   line(42, 102, 553, 102)
   const footerLines = wrap(input.footerNote, 105).slice(0, 2)
   textLines(footerLines, 42, 84, 8, false, MUTED, 14)
   text(`Questions: ${input.senderName}${input.senderTitle ? ` - ${input.senderTitle}` : ''} | ${input.senderEmail}`, 42, 48, 8, false, GREEN)
   text('Invoice', 498, 48, 8, false, MUTED)
-  return commands.join('\n')
+  return { content: commands.join('\n'), bankContinues }
 }
 
 export function buildContractSaleTaxInvoicePdf(input: ContractSaleTaxInvoicePdfInput) {
-  const content = createContent(input)
+  const { content, bankContinues } = createContent(input)
   const contents = [content]
   if (input.paymentPlanTerms) {
     const lines = input.paymentPlanTerms.split('\n').flatMap(value => wrap(value, 90))
@@ -208,6 +226,10 @@ export function buildContractSaleTaxInvoicePdf(input: ContractSaleTaxInvoicePdfI
       const heading = `BT /F2 14 Tf ${GREEN} rg 1 0 0 1 42 794 Tm (${escapePdf(input.invoiceNumber + ' - Payment schedule')}) Tj ET`
       contents.push([heading, ...lines.slice(start, start + 42).map((value, index) => `BT /F1 10 Tf ${NAVY} rg 1 0 0 1 42 ${760 - index * 16} Tm (${escapePdf(value)}) Tj ET`)].join('\n'))
     }
+  }
+  const details = [...(bankContinues ? bankLines(input) : []), ...(bankContinues ? [`Payment reference: ${input.paymentReference || input.invoiceNumber}`, ''] : []), ...(!input.paymentPlanTerms && wrap(input.paymentTerms, 100).length > 4 ? ['Full payment terms', ...input.paymentTerms.split('\n').flatMap(value => wrap(value, 90))] : [])].flatMap(value => wrap(value, 90))
+  for (let start = 0; start < details.length; start += 38) {
+    contents.push([`BT /F2 14 Tf ${GREEN} rg 1 0 0 1 42 794 Tm (${escapePdf(input.invoiceNumber + ' - Payment details')}) Tj ET`, ...details.slice(start, start + 38).map((value, index) => `BT /F1 10 Tf ${NAVY} rg 1 0 0 1 42 ${760 - index * 16} Tm (${escapePdf(value)}) Tj ET`)].join('\n'))
   }
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
