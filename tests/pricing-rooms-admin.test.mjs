@@ -7,7 +7,7 @@ function source(path) {
 }
 
 test('pricing and rooms share one admin destination with quote-wide rules kept advanced', () => {
-  const nav = source('src/components/admin/AdminNav.tsx')
+  const nav = source('src/lib/menuConfiguration.ts')
   const roomPage = source('src/app/admin/room-types/page.tsx')
   const oldPricingPage = source('src/app/admin/pricing/page.tsx')
 

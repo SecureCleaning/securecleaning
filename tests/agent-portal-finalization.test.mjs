@@ -12,7 +12,7 @@ test('agent portal has a dedicated entry point and portal navigation', () => {
   const adminPage = read('src/lib/adminPage.tsx')
   assert.match(entry, /Secure Cleaning Agent Portal/)
   assert.match(entry, /Open agent portal/)
-  assert.match(nav, /href="\/agent"/)
+  assert.match(read('src/lib/menuConfiguration.ts'), /href: '\/agent'/)
   assert.match(nav, /window\.location\.assign\('\/agent'\)/)
   assert.match(adminPage, /href="\/agent"/)
   assert.equal(existsSync(`${root}/src/app/availability/login/page.tsx`), false)

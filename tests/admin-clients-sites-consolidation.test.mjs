@@ -7,17 +7,15 @@ function source(path) {
 }
 
 test('admin navigation consolidates sites under clients and keeps secondary tools compact', () => {
-  const nav = source('src/components/admin/AdminNav.tsx')
+  const nav = source('src/lib/menuConfiguration.ts')
+  const navigation = source('src/components/navigation/ConfigurableNavigation.tsx')
   const shell = source('src/components/admin/AdminShell.tsx')
 
   assert.match(nav, /label: 'Clients'/)
   assert.doesNotMatch(nav, /href: '\/admin\/sites'/)
-  assert.match(nav, /const primaryTabs/)
-  assert.match(nav, /const secondaryTabs/)
-  assert.match(nav, /<details className="group relative">/)
-  assert.match(nav, />\s*More /)
-  assert.match(nav, /flex flex-wrap items-center/)
-  assert.doesNotMatch(nav, /overflow-x-auto|min-w-max/)
+  assert.match(navigation, /aria-expanded=\{expanded\}/)
+  assert.match(navigation, /sm:flex-row sm:flex-wrap/)
+  assert.doesNotMatch(navigation, /overflow-x-auto|min-w-max/)
   assert.match(shell, /items-start/)
 })
 

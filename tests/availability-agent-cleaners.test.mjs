@@ -97,10 +97,10 @@ test('agent responses expose full regional cleaner records while keeping email h
 })
 
 test('agent portal exposes state-scoped cleaner record and document mutations', () => {
-  const nav = read('src/components/availability/AvailabilityAgentNav.tsx')
+  const nav = read('src/lib/menuConfiguration.ts')
   const page = read('src/app/availability/cleaners/[assigneeId]/page.tsx')
   const component = read('src/components/availability/AgentCleaners.tsx')
-  assert.match(nav, /availability\/cleaners\/\$\{assigneeId\}/)
+  assert.match(nav, /availability\/cleaners\/\{assigneeId\}/)
   assert.match(page, /hasAvailabilityAgentSession\(assigneeId\)/)
   assert.match(component, /can create and manage all cleaner record details/)
   assert.match(component, /method: creating \? 'POST' : 'PATCH'/)

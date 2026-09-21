@@ -237,8 +237,8 @@ test('workbench keeps connected records together and exposes the complete gated 
   const agentCleaners = source('src/components/availability/AgentCleaners.tsx')
   const cleanerDomain = source('src/lib/cleaners.ts')
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
-  const adminNav = source('src/components/admin/AdminNav.tsx')
-  const agentNav = source('src/components/availability/AvailabilityAgentNav.tsx')
+  const adminNav = source('src/lib/menuConfiguration.ts')
+  const agentNav = source('src/lib/menuConfiguration.ts')
   for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }

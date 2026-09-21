@@ -5,7 +5,8 @@ import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { resolveInvoiceSelection } from '@/lib/invoiceDirectoryPolicy'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import type { ContractProduct } from '@/lib/contractProducts'
 import type { ContractSale, ContractSaleCleanerOption, ContractSaleInvoiceTemplate } from '@/lib/contractSales'
@@ -58,17 +59,23 @@ function AgreementPreview({ content }: { content: string }) {
   </article>
 }
 
-export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = '', initialProductId = '' }: {
+export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = '', initialProductId = '', initialSaleId = '', initialInvoiceId = '', initialTab = 'overview' }: {
   portal?: 'admin' | 'agent'
   assigneeId?: string
   initialProductId?: string
+  initialSaleId?: string
+  initialInvoiceId?: string
+  initialTab?: 'overview' | 'invoices'
 }) {
+  const invoiceSelectionApplied = useRef(false)
   const [data, setData] = useState<Data | null>(null)
   const [selectedSaleId, setSelectedSaleId] = useState('')
-  const [creatingSale, setCreatingSale] = useState(Boolean(initialProductId))
+  const selectedSaleRef = useRef(selectedSaleId)
+  selectedSaleRef.current = selectedSaleId
+  const [creatingSale, setCreatingSale] = useState(Boolean(initialProductId && !initialSaleId && !initialInvoiceId))
   const [selectedProductId, setSelectedProductId] = useState(initialProductId)
   const [selectedCleanerId, setSelectedCleanerId] = useState('')
-  const [tab, setTab] = useState<SaleTab>('overview')
+  const [tab, setTab] = useState<SaleTab>(initialTab)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [newCleaner, setNewCleaner] = useState({ businessName: '', firstName: '', lastName: '', email: '', phone: '', suburb: '' })
@@ -86,20 +93,30 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     const result = await response.json()
     if (!response.ok) throw new Error(result.error || 'Unable to load product sales.')
     const next = result as Data
+    const requestedSale = !creatingSale && (initialSaleId || initialInvoiceId)
+      ? resolveInvoiceSelection(next.sales, next.actor, initialSaleId, initialInvoiceId) : null
     setData(next)
     setInvoiceTemplateDraft(next.invoiceTemplate)
-    const matchingSale = next.sales.find((sale) => sale.id === preferredSaleId)
+    const matchingSale = next.sales.find((sale) => sale.id === (preferredSaleId || selectedSaleRef.current))
+      ?? requestedSale
       ?? next.sales.find((sale) => sale.productId === initialProductId)
       ?? (initialProductId || creatingSale ? undefined : next.sales[0])
     setSelectedSaleId(matchingSale?.id ?? '')
     if (matchingSale) {
+      if (initialInvoiceId && matchingSale.id === initialSaleId && !invoiceSelectionApplied.current) {
+        const invoice = matchingSale.invoices.find(item => item.id === initialInvoiceId)!
+        setPayment(current => ({ ...current, invoiceId: ['paid', 'void'].includes(invoice.status) ? '' : invoice.id }))
+        invoiceSelectionApplied.current = true
+      }
+      setPayment(current => current.invoiceId && !matchingSale.invoices.some(item => item.id === current.invoiceId)
+        ? { ...current, invoiceId: '', amount: '', reference: '', evidenceNote: '' } : current)
       setSelectedProductId(matchingSale.productId)
       setSaleDraft({ finalPrice: (matchingSale.agreedPurchasePriceIncGstCents / 100).toFixed(2), commencementDate: matchingSale.commencementDate, notes: matchingSale.notes })
       setInspection((current) => ({ ...current, location: matchingSale.siteAddress }))
     } else if (!next.products.some((product) => product.id === selectedProductId)) {
       setSelectedProductId(next.products.find((product) => product.status === 'available')?.id ?? '')
     }
-  }, [creatingSale, initialProductId, selectedProductId])
+  }, [creatingSale, initialProductId, initialSaleId, initialInvoiceId, selectedProductId])
 
   useEffect(() => { void load().catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load.')) }, [load])
   const sale = data?.sales.find((item) => item.id === selectedSaleId) ?? null
