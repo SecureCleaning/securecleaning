@@ -10,7 +10,7 @@ test('admin navigation consolidates sites under clients and keeps secondary tool
   const nav = source('src/components/admin/AdminNav.tsx')
   const shell = source('src/components/admin/AdminShell.tsx')
 
-  assert.match(nav, /label: 'Clients & Sites'/)
+  assert.match(nav, /label: 'Clients'/)
   assert.doesNotMatch(nav, /href: '\/admin\/sites'/)
   assert.match(nav, /const primaryTabs/)
   assert.match(nav, /const secondaryTabs/)

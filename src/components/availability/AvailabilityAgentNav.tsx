@@ -48,7 +48,7 @@ export default function AvailabilityAgentNav({
         ) : null}
         {assigneeId ? (
           <a href={`/availability/products/${assigneeId}`} className="font-semibold text-teal-700 hover:text-teal-800">
-            Contract products
+            Products
           </a>
         ) : null}
         {assigneeId ? (

@@ -2,8 +2,8 @@ import Link from 'next/link'
 
 const primaryTabs = [
   { href: '/admin', label: 'Overview' },
-  { href: '/admin/clients', label: 'Clients & Sites' },
-  { href: '/admin/products', label: 'Contract Products' },
+  { href: '/admin/clients', label: 'Clients' },
+  { href: '/admin/products', label: 'Products' },
   { href: '/admin/sales', label: 'Product Sales' },
   { href: '/admin/availability', label: 'Availability' },
   { href: '/admin/calendar', label: 'Calendar' },
