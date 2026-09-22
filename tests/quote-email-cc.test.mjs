@@ -211,6 +211,23 @@ test('final/revised quote and scope link preserve client content in a single sha
   assert.match(fixture.payloads[1].html, /variant=final/)
 })
 
+test('updated quote email uses either the authored greeting or the automatic greeting once', async () => {
+  const authored = emailFixture()
+  await authored.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 150, high: 150 }, {
+    message: 'Hi Jim,\n\nHere is your updated quote.',
+    messageHtml: '<p>Hi Jim,</p><p>Here is your updated quote.</p>',
+  })
+  assert.equal((authored.payloads[0].html.match(/<p>Hi Jim,<\/p>/g) ?? []).length, 1)
+  assert.doesNotMatch(authored.payloads[0].html, /<p>Hi Sample Client,<\/p>/)
+
+  const automatic = emailFixture()
+  await automatic.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 150, high: 150 }, {
+    message: 'Here is your updated quote.',
+    messageHtml: '<p>Here is your updated quote.</p>',
+  })
+  assert.equal((automatic.payloads[0].html.match(/<p>Hi Sample Client,<\/p>/g) ?? []).length, 1)
+})
+
 test('direct final sends resolve CC and empty deduped CC does not send an empty provider header', async () => {
   const fixture = emailFixture({ cc: [] })
   await fixture.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 150, high: 150 })

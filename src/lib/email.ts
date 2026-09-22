@@ -56,6 +56,10 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#039;')
 }
 
+function startsWithGreeting(value: string): boolean {
+  return /^(?:hi|hello|dear|good\s+(?:morning|afternoon|evening))\b/i.test(value.trim())
+}
+
 // ─── Quote Email ──────────────────────────────────────────────────────────────
 
 export async function sendEmailOrThrow(payload: Record<string, unknown>) {
@@ -256,6 +260,9 @@ export async function sendUpdatedQuoteEmail(
   const recipient = options?.to?.trim() || inputs.email.trim()
   const subject = options?.subject?.trim() || `Your updated Secure Cleaning quote — ${quoteRef}`
   const message = options?.message?.trim() || 'Following our review of your requirements, your updated quote is ready to view online.'
+  const automaticGreetingHtml = startsWithGreeting(message)
+    ? ''
+    : `<p>Hi ${escapeHtml(inputs.contactName)},</p>`
   const messageHtml = options?.messageHtml ? sanitizeRichEmailHtml(options.messageHtml) : message
     .split(/\n\s*\n/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
@@ -276,7 +283,7 @@ export async function sendUpdatedQuoteEmail(
           <p style="color: #22c55e; margin: 4px 0 0;">Updated Quote Confirmation</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${escapeHtml(inputs.contactName)},</p>
+          ${automaticGreetingHtml}
           ${messageHtml}
           <p>Your updated quote for <strong>${escapeHtml(businessLabel)}</strong> is ready to view online.</p>
 
