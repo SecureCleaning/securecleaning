@@ -3,7 +3,7 @@ import { parseRichEmailContent, sanitizeRichEmailHtml } from '@/lib/richEmailSer
 import { plainTextToEmailHtml } from '@/lib/richEmailContent'
 import 'server-only'
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { getAdminSupabase } from '@/lib/supabase'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
 import { writeAuditLogStrict } from '@/lib/auditLog'
@@ -11,6 +11,10 @@ import type { ContractProductActor } from '@/lib/contractProductAuth'
 import { getContractProducts, ContractProductError } from '@/lib/contractProducts'
 import { createCleanerForState, type CleanerPayload } from '@/lib/cleaners'
 import { getDateTimeInTimeZone } from '@/lib/calendarInvite'
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
+import { upsertContractSaleInspectionEvent } from '@/lib/googleCalendar'
+import { applyEmailMergeFields, findUnsupportedEmailMergeFields, INSPECTION_EMAIL_MERGE_FIELD_KEYS } from '@/lib/emailMergeFields'
+import { buildContractSaleChecklistPdf, type ContractSaleChecklistData } from '@/lib/contractSaleChecklistPdf'
 import {
   buildContractSaleTaxInvoicePdf,
   renderContractSaleInvoiceTemplateText,
@@ -73,15 +77,24 @@ export type ContractSale = {
   cleanerName: string
   cleanerBusiness: string
   cleanerEmail: string
+  cleanerPhone: string
   cleanerStatus: string
   assignedStaffId: string | null
   status: ContractSaleStatus
   state: string
   suburb: string
   siteId: string | null
+  siteName: string
   siteAddress: string
+  siteAccessNotes: string
+  siteAlarmNotes: string
+  siteInductionNotes: string
+  siteKeyholderName: string
+  siteKeyholderPhone: string
+  clientBusiness: string
   clientName: string
   clientEmail: string
+  clientPhone: string
   agreedPurchasePriceIncGstCents: number
   depositIncGstCents: number
   priceFinalised: boolean
@@ -100,7 +113,15 @@ export type ContractSale = {
     timeZone: string
     location: string
     inviteStatus: string
+    calendarStatus: string
+    calendarError: string
     notes: string
+  }
+  checklist: null | {
+    id: string
+    status: string
+    data: ContractSaleChecklistData
+    uploads: Array<{ id: string; fileName: string; mimeType: string; uploadedAt: string }>
   }
   agreement: null | {
     id: string
@@ -119,6 +140,22 @@ export type ContractSale = {
     instalments: Array<{ sequenceNumber: number; dueOn: string; amountCents: number }>
   }
   activity: Array<{ id: string; action: string; details: Record<string, unknown>; createdAt: string }>
+}
+
+export type ContractSaleInspectionTemplate = {
+  availabilitySubject: string
+  availabilityBodyText: string
+  availabilityBodyHtml: string
+  availabilityBodyDocument?: Record<string, unknown> | null
+  clientSubject: string
+  clientBodyText: string
+  clientBodyHtml: string
+  clientBodyDocument?: Record<string, unknown> | null
+  cleanerSubject: string
+  cleanerBodyText: string
+  cleanerBodyHtml: string
+  cleanerBodyDocument?: Record<string, unknown> | null
+  updatedAt: string | null
 }
 
 export type ContractSaleCleanerOption = {
@@ -159,6 +196,7 @@ const SECURE_CLEANING_NAME = 'Secure Cleaning'
 const SECURE_CLEANING_ABN = '81 674 121 825'
 const SECURE_CLEANING_EMAIL = 'info@securecleaning.com.au'
 const INVOICE_TEMPLATE_ID = 'default'
+const INSPECTION_TEMPLATE_ID = 'default'
 export const DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE: ContractSaleInvoiceTemplate = {
   supplierName: SECURE_CLEANING_NAME,
   supplierAbn: SECURE_CLEANING_ABN,
@@ -170,6 +208,19 @@ export const DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE: ContractSaleInvoiceTemplate
   paymentTermsTemplate: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
   footerNote: 'This document is a tax invoice. All amounts are in Australian dollars and the total amount payable includes GST.',
   bankAccountName: '', bankName: '', bankBsb: '', bankAccountNumber: '', paymentReferenceTemplate: '{invoice_number}',
+  updatedAt: null,
+}
+
+export const DEFAULT_CONTRACT_SALE_INSPECTION_TEMPLATE: ContractSaleInspectionTemplate = {
+  availabilitySubject: 'Site inspection availability - <<site_name>>',
+  availabilityBodyText: 'Hi <<client_first_name>>,\n\nWe are ready to arrange the site inspection for <<site_name>>. Please reply with the days and times that suit you, along with any access requirements we should know before attending.\n\nKind regards,\n<<sender_name>>\n<<sender_title>>\nSecure Cleaning\n<<sender_phone>>\n<<sender_email>>',
+  availabilityBodyHtml: '',
+  clientSubject: 'Site inspection confirmed - <<site_name>> - <<inspection_date>>',
+  clientBodyText: 'Hi <<client_first_name>>,\n\nThis confirms the Secure Cleaning site inspection at <<site_name>>.\n\nDate: <<inspection_date>>\nTime: <<inspection_time>>\nDuration: <<inspection_duration>>\nLocation: <<inspection_location>>\n\nA calendar invitation is attached. Please let us know if anything changes.\n\nKind regards,\n<<sender_name>>\n<<sender_title>>\nSecure Cleaning\n<<sender_phone>>\n<<sender_email>>',
+  clientBodyHtml: '',
+  cleanerSubject: 'Site inspection booked - <<site_name>> - <<inspection_date>>',
+  cleanerBodyText: 'Hi <<cleaner_first_name>>,\n\nThe client has confirmed the site inspection for <<site_name>>.\n\nDate: <<inspection_date>>\nTime: <<inspection_time>>\nDuration: <<inspection_duration>>\nLocation: <<inspection_location>>\n\nPlease attend with <<sender_name>>. A calendar invitation is attached.\n\nKind regards,\n<<sender_name>>\n<<sender_title>>\nSecure Cleaning\n<<sender_phone>>\n<<sender_email>>',
+  cleanerBodyHtml: '',
   updatedAt: null,
 }
 
@@ -228,6 +279,71 @@ async function loadInvoiceTemplate() {
   return mapInvoiceTemplate(data as Row | null)
 }
 
+function mapInspectionTemplate(row: Row | null | undefined): ContractSaleInspectionTemplate {
+  if (!row) return { ...DEFAULT_CONTRACT_SALE_INSPECTION_TEMPLATE }
+  return {
+    availabilitySubject: String(row.availability_subject), availabilityBodyText: String(row.availability_body_text),
+    availabilityBodyHtml: String(row.availability_body_html ?? ''), availabilityBodyDocument: row.availability_body_document as Record<string, unknown> | null,
+    clientSubject: String(row.client_subject), clientBodyText: String(row.client_body_text), clientBodyHtml: String(row.client_body_html ?? ''),
+    clientBodyDocument: row.client_body_document as Record<string, unknown> | null,
+    cleanerSubject: String(row.cleaner_subject), cleanerBodyText: String(row.cleaner_body_text), cleanerBodyHtml: String(row.cleaner_body_html ?? ''),
+    cleanerBodyDocument: row.cleaner_body_document as Record<string, unknown> | null,
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  }
+}
+
+async function loadInspectionTemplate() {
+  const { data, error } = await getAdminSupabase().from('contract_sale_inspection_templates').select('*').eq('id', INSPECTION_TEMPLATE_ID).maybeSingle()
+  if (error) throw error
+  return mapInspectionTemplate(data as Row | null)
+}
+
+type InspectionEmailKind = 'availability' | 'client' | 'cleaner'
+
+function parseInspectionEmailDraft(input: Record<string, unknown>, prefix: InspectionEmailKind) {
+  const subject = clean(input[`${prefix}Subject`], 200)
+  if (subject.length < 3) throw new ContractProductError('Enter an email subject.')
+  const rich = parseRichEmailContent(input, {
+    text: `${prefix}BodyText`, html: `${prefix}BodyHtml`, document: `${prefix}BodyDocument`, maxText: 5000,
+  })
+  if (rich.text.trim().length < 10) throw new ContractProductError('Enter at least 10 characters for the email message.')
+  const unsupported = findUnsupportedEmailMergeFields(INSPECTION_EMAIL_MERGE_FIELD_KEYS, subject, rich.text, rich.html)
+  if (unsupported.length) throw new ContractProductError(`Remove unsupported inspection email fields: ${unsupported.join(', ')}.`)
+  return { subject, bodyText: rich.text, bodyHtml: rich.html, bodyDocument: rich.document }
+}
+
+function inspectionEmailFingerprint(value: unknown) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+function firstName(value: unknown) {
+  return clean(value, 160).split(/\s+/)[0] || 'there'
+}
+
+function renderInspectionEmail(draft: ReturnType<typeof parseInspectionEmailDraft>, values: Record<string, string>) {
+  const subject = applyEmailMergeFields(draft.subject, values)
+  const bodyText = applyEmailMergeFields(draft.bodyText, values)
+  const safeValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, escapeHtml(value)]))
+  const sourceHtml = draft.bodyHtml.trim() ? sanitizeRichEmailHtml(draft.bodyHtml) : plainTextToEmailHtml(draft.bodyText)
+  const bodyHtml = sanitizeRichEmailHtml(applyEmailMergeFields(sourceHtml, safeValues))
+  const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><div style="border-bottom:4px solid #0c766e;padding:18px 0"><strong style="font-size:24px;color:#0c766e">Secure Cleaning</strong></div><div style="padding:22px 0">${bodyHtml}</div></div>`
+  return { subject, bodyText, bodyHtml, bodyDocument: draft.bodyDocument, html }
+}
+
+const CHECKLIST_KEYS: Array<keyof ContractSaleChecklistData> = [
+  'inspectionDate', 'commencementDate', 'clientBusiness', 'clientContact', 'clientPhone', 'clientEmail',
+  'cleanerBusiness', 'cleanerContact', 'cleanerPhone', 'cleanerEmail', 'siteName', 'siteAddress',
+  'cleaningDays', 'cleaningTime', 'frequency', 'scopeSummary', 'initialClean', 'accessHours',
+  'accessInstructions', 'inductionRequirements', 'alarmSecurity', 'keyholderDetails', 'lightSwitches',
+  'cleanerStorage', 'consumables', 'waterAccess', 'rubbishDisposal', 'cleanerBook', 'hazards', 'equipment',
+  'keysItemsHandedOver', 'notes',
+]
+
+function parseChecklist(value: unknown): ContractSaleChecklistData {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+  return Object.fromEntries(CHECKLIST_KEYS.map((key) => [key, clean(source[key], key === 'scopeSummary' || key === 'notes' ? 5000 : 2000)])) as ContractSaleChecklistData
+}
+
 function assertDate(value: unknown, required = true) {
   const date = clean(value, 20)
   if ((!date && required) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) {
@@ -266,14 +382,14 @@ async function getAuthorizedSale(actor: ContractProductActor, saleId: string) {
 async function loadSaleContext(sale: Row) {
   const db = getAdminSupabase()
   const [product, cleaner, opportunity, quote, staff] = await Promise.all([
-    db.from('contract_products').select('id, product_code, state, suburb').eq('id', sale.product_id).single(),
-    db.from('cleaners').select('id, business_name, contact_name, email, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
+    db.from('contract_products').select('id, product_code, state, suburb, start_date, frequency, time_preference, cleaner_scope_snapshot').eq('id', sale.product_id).single(),
+    db.from('cleaners').select('id, business_name, contact_name, email, phone, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
     db.from('crm_opportunities').select('primary_contact_id, site_id').eq('id', sale.opportunity_id).single(),
     sale.source_quote_id
       ? db.from('quotes').select('quote_ref').eq('id', sale.source_quote_id).single()
       : Promise.resolve({ data: sale.deleted_source_quote_ref ? { quote_ref: String(sale.deleted_source_quote_ref) } : null, error: null }),
     sale.assigned_staff_id
-      ? db.from('admin_staff_accounts').select('id, display_name, email').eq('id', sale.assigned_staff_id).maybeSingle()
+      ? db.from('admin_staff_accounts').select('id, display_name, email, job_title, phone, availability_assignee_id').eq('id', sale.assigned_staff_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ])
   for (const result of [product, cleaner, opportunity, quote, staff]) if (result.error) throw result.error
@@ -281,9 +397,9 @@ async function loadSaleContext(sale: Row) {
     throw new ContractProductError('The linked product, cleaner, client opportunity, or quote is no longer available.', 409)
   }
   const [client, site] = await Promise.all([
-    db.from('clients').select('contact_name, email').eq('id', opportunity.data.primary_contact_id).maybeSingle(),
+    db.from('clients').select('business_name, contact_name, email, phone').eq('id', opportunity.data.primary_contact_id).maybeSingle(),
     opportunity.data.site_id
-      ? db.from('sites').select('id, address, suburb, postcode, city').eq('id', opportunity.data.site_id).maybeSingle()
+      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').eq('id', opportunity.data.site_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ])
   if (client.error) throw client.error
@@ -293,7 +409,7 @@ async function loadSaleContext(sale: Row) {
 
 export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const db = getAdminSupabase()
-  const [products, invoiceTemplate] = await Promise.all([getContractProducts(actor), loadInvoiceTemplate()])
+  const [products, invoiceTemplate, inspectionTemplate] = await Promise.all([getContractProducts(actor), loadInvoiceTemplate(), loadInspectionTemplate()])
   const productIds = products.map((product) => product.id)
   let saleRows: Row[] = []
   if (productIds.length) {
@@ -307,19 +423,21 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const opportunityIds = Array.from(new Set(saleRows.map((sale) => String(sale.opportunity_id))))
   const quoteIds = Array.from(new Set(saleRows.flatMap((sale) => sale.source_quote_id ? [String(sale.source_quote_id)] : [])))
   const siteIds = Array.from(new Set(saleRows.map((sale) => String(sale.site_id ?? '')).filter(Boolean)))
-  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult] = await Promise.all([
-    cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
+  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
+    cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
-    siteIds.length ? db.from('sites').select('id, address').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
+    siteIds.length ? db.from('sites').select('id, site_name, address, suburb, postcode, city, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_invoices').select(INVOICE_SELECT).in('sale_id', saleIds).order('issued_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
-    saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, calendar_status, calendar_error, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payment_plans').select('id, sale_id, version, status, terms_snapshot, opening_paid_cents').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('admin_audit_log').select('id, entity_ref, action, details, created_at').eq('entity_type', 'contract_sale').in('entity_ref', saleIds).order('created_at', { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_site_checklists').select('id, sale_id, status, checklist_data').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_checklist_uploads').select('id, sale_id, checklist_id, file_name, mime_type, uploaded_at').in('sale_id', saleIds).order('uploaded_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
   ])
-  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult]) if (result.error) throw result.error
+  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
   const invoiceIds = (invoicesResult.data ?? []).map((row) => String(row.id))
   const planIds = (plansResult.data ?? []).map((row) => String(row.id))
   const [allocationsResult, instalmentsResult] = await Promise.all([
@@ -331,7 +449,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
 
   const contactIds = Array.from(new Set((opportunityResult.data ?? []).map((row) => String(row.primary_contact_id))))
   const { data: contacts, error: contactError } = contactIds.length
-    ? await db.from('clients').select('id, contact_name, email').in('id', contactIds)
+    ? await db.from('clients').select('id, business_name, contact_name, email, phone').in('id', contactIds)
     : { data: [], error: null }
   if (contactError) throw contactError
   const byId = <T extends { id: unknown }>(rows: T[]) => new Map(rows.map((row) => [String(row.id), row]))
@@ -373,10 +491,15 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       id: String(sale.id), saleCode: String(sale.sale_code), productId: String(sale.product_id),
       productCode: String(productSnapshot.product_code ?? product?.productCode ?? ''), opportunityId: String(sale.opportunity_id), sourceQuoteRef: String(quote?.quote_ref ?? ''),
       cleanerId: String(sale.cleaner_id), cleanerName: String(cleanerSnapshot.contact_name ?? cleaner?.contact_name ?? ''), cleanerBusiness: String(cleanerSnapshot.business_name ?? cleaner?.business_name ?? ''),
-      cleanerEmail: String(cleanerSnapshot.email ?? cleaner?.email ?? ''), cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
+      cleanerEmail: String(cleanerSnapshot.email ?? cleaner?.email ?? ''), cleanerPhone: String(cleanerSnapshot.phone ?? cleaner?.phone ?? ''), cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
       status: String(sale.status) as ContractSaleStatus, state: String(productSnapshot.state ?? product?.state ?? ''), suburb: String(productSnapshot.suburb ?? product?.suburb ?? ''),
-      siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteAddress: String(siteSnapshot.address ?? site?.address ?? ''),
-      clientName: String(clientSnapshot.contact_name ?? contact?.contact_name ?? ''), clientEmail: String(clientSnapshot.email ?? contact?.email ?? ''),
+      siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteName: String(siteSnapshot.site_name ?? site?.site_name ?? ''),
+      siteAddress: [siteSnapshot.address ?? site?.address, siteSnapshot.suburb ?? site?.suburb, siteSnapshot.postcode ?? site?.postcode].filter(Boolean).join(', '),
+      siteAccessNotes: String(siteSnapshot.access_notes ?? site?.access_notes ?? ''), siteAlarmNotes: String(siteSnapshot.alarm_notes ?? site?.alarm_notes ?? ''),
+      siteInductionNotes: String(siteSnapshot.induction_notes ?? site?.induction_notes ?? ''), siteKeyholderName: String(siteSnapshot.keyholder_name ?? site?.keyholder_name ?? ''),
+      siteKeyholderPhone: String(siteSnapshot.keyholder_phone ?? site?.keyholder_phone ?? ''),
+      clientBusiness: String(clientSnapshot.business_name ?? contact?.business_name ?? ''),
+      clientName: String(clientSnapshot.contact_name ?? contact?.contact_name ?? ''), clientEmail: String(clientSnapshot.email ?? contact?.email ?? ''), clientPhone: String(clientSnapshot.phone ?? contact?.phone ?? ''),
       agreedPurchasePriceIncGstCents: Number(sale.agreed_purchase_price_inc_gst_cents), depositIncGstCents: Number(sale.deposit_inc_gst_cents), priceFinalised: typeof sale.price_finalised_at === 'string',
       commencementDate: String(sale.commencement_date ?? ''), notes: String(sale.internal_notes ?? ''),
       handoverAt: typeof sale.handover_at === 'string' ? sale.handover_at : null, createdAt: String(sale.created_at), updatedAt: String(sale.updated_at),
@@ -394,7 +517,12 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       })),
       inspection: (() => { const row = (inspectionsResult.data ?? []).find((item) => String(item.sale_id) === String(sale.id)); return row ? {
         id: String(row.id), status: String(row.status), startsAt: String(row.starts_at), durationMinutes: Number(row.duration_minutes),
-        timeZone: String(row.time_zone), location: String(row.location_snapshot), inviteStatus: String(row.invite_status), notes: String(row.notes ?? ''),
+        timeZone: String(row.time_zone), location: String(row.location_snapshot), inviteStatus: String(row.invite_status),
+        calendarStatus: String(row.calendar_status ?? 'email_fallback'), calendarError: String(row.calendar_error ?? ''), notes: String(row.notes ?? ''),
+      } : null })(),
+      checklist: (() => { const row = (checklistsResult.data ?? []).find((item) => String(item.sale_id) === String(sale.id)); return row ? {
+        id: String(row.id), status: String(row.status), data: parseChecklist(row.checklist_data),
+        uploads: (checklistUploadsResult.data ?? []).filter((item) => String(item.sale_id) === String(sale.id)).map((item) => ({ id: String(item.id), fileName: String(item.file_name), mimeType: String(item.mime_type), uploadedAt: String(item.uploaded_at) })),
       } : null })(),
       agreement: agreement ? { id: String(agreement.id), version: Number(agreement.version), type: String(agreement.agreement_type), status: String(agreement.status), content: String(agreement.content_snapshot), signedAt: typeof agreement.signed_at === 'string' ? agreement.signed_at : null, signedFileName: typeof agreement.signed_file_name === 'string' ? agreement.signed_file_name : null } : null,
       paymentPlan: plan ? { id: String(plan.id), status: String(plan.status), terms: String(plan.terms_snapshot), openingPaidCents: Number(plan.opening_paid_cents ?? 0), instalments: (instalmentsResult.data ?? []).filter((item) => String(item.payment_plan_id) === String(plan.id)).map((item) => ({ sequenceNumber: Number(item.sequence_number), dueOn: String(item.due_on), amountCents: Number(item.amount_cents) })) } : null,
@@ -410,6 +538,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     products,
     sales,
     invoiceTemplate,
+    inspectionTemplate,
     cleaners: (cleanerOptions ?? []).map((row) => ({ id: String(row.id), businessName: String(row.business_name), contactName: String(row.contact_name), email: String(row.email), state: String(row.state ?? ''), status: String(row.status), complianceStatus: String(row.compliance_status ?? '') })) as ContractSaleCleanerOption[],
     actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
   }
@@ -462,6 +591,7 @@ export async function updateContractSaleInvoiceTemplate(actor: ContractProductAc
 
 export async function applyContractSaleInvoiceBankDetails(actor: ContractProductActor, input: Record<string, unknown>) {
   if (actor.role !== 'owner') throw new ContractProductError('Only the owner can apply bank details to an existing invoice.', 403)
+  if (input.includePaymentTerms !== undefined && typeof input.includePaymentTerms !== 'boolean') throw new ContractProductError('Select whether to include payment terms.')
   const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
   const invoiceId = clean(input.invoiceId, 100)
   const { data: invoice, error } = await getAdminSupabase().from('contract_sale_invoices')
@@ -476,6 +606,7 @@ export async function applyContractSaleInvoiceBankDetails(actor: ContractProduct
     bank_account_name_snapshot: template.bankAccountName, bank_name_snapshot: template.bankName,
     bank_bsb_snapshot: template.bankBsb, bank_account_number_snapshot: template.bankAccountNumber,
     payment_reference_template_snapshot: template.paymentReferenceTemplate,
+    ...(input.includePaymentTerms === true ? { payment_terms_snapshot: validateInvoiceTemplateText(template.paymentTermsTemplate, 'Payment terms', 20, 1500) } : {}),
   })
   if (revisionError) throw revisionError
   return { invoiceId }
@@ -559,6 +690,7 @@ function invoicePdfInput(invoice: Row, sale: Row, context: Awaited<ReturnType<ty
     gstComponentCents: Number(invoice.gst_component_cents),
     depositRequiredIncGstCents: Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS),
     paidCents: Number(invoice.paid_cents ?? 0),
+    paymentTermsRevised: invoice.payment_terms_revised === true,
     paymentPlanTerms: typeof invoice.plan_terms === 'string' ? invoice.plan_terms : null,
     paymentTerms: renderContractSaleInvoiceTemplateText(String(invoice.payment_terms_snapshot), tokens),
     bankAccountName: String(invoice.bank_account_name_snapshot ?? '') || null,
@@ -594,7 +726,12 @@ async function invoiceWithConfirmedPayments(invoice: Row, saleId: string, agreem
     .select('bank_account_name_snapshot,bank_name_snapshot,bank_bsb_snapshot,bank_account_number_snapshot,payment_reference_template_snapshot')
     .eq('invoice_id', String(invoice.id)).order('id', { ascending: false }).limit(1).maybeSingle()
   if (correctionError) throw correctionError
-  return { ...invoice, ...correction, paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
+  // A later bank-only correction must not undo the last explicit terms correction.
+  const { data: termsRevision, error: termsError } = await getAdminSupabase().from('contract_sale_invoice_bank_revisions')
+    .select('payment_terms_snapshot').eq('invoice_id', String(invoice.id)).not('payment_terms_snapshot', 'is', null)
+    .order('id', { ascending: false }).limit(1).maybeSingle()
+  if (termsError) throw termsError
+  return { ...invoice, ...correction, ...(termsRevision ? { payment_terms_snapshot: termsRevision.payment_terms_snapshot, payment_terms_revised: true } : {}), paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
 }
 
 async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
@@ -612,7 +749,7 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     to: invoice.recipient_email_snapshot,
     replyTo: invoice.sender_email_snapshot,
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
-    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${pdfInput.paymentPlanTerms && pdfInput.paymentTermsRevised ? `<p><strong>Updated invoice payment terms (agreed payment schedule unchanged):</strong> ${escapeHtml(pdfInput.paymentTerms)}</p>` : ''}${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
@@ -753,6 +890,160 @@ export async function confirmContractSalePayment(actor: ContractProductActor, in
   return { saleId: String(sale.id), paymentId }
 }
 
+export async function updateContractSaleInspectionTemplate(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (!['owner', 'manager'].includes(actor.role)) throw new ContractProductError('Only an owner or manager can edit inspection email defaults.', 403)
+  const availability = parseInspectionEmailDraft(input, 'availability')
+  const client = parseInspectionEmailDraft(input, 'client')
+  const cleaner = parseInspectionEmailDraft(input, 'cleaner')
+  const values = {
+    availability_subject: availability.subject, availability_body_text: availability.bodyText,
+    availability_body_html: availability.bodyHtml, availability_body_document: availability.bodyDocument,
+    client_subject: client.subject, client_body_text: client.bodyText, client_body_html: client.bodyHtml, client_body_document: client.bodyDocument,
+    cleaner_subject: cleaner.subject, cleaner_body_text: cleaner.bodyText, cleaner_body_html: cleaner.bodyHtml, cleaner_body_document: cleaner.bodyDocument,
+    updated_by_staff_id: actor.id, updated_at: new Date().toISOString(),
+  }
+  const { data, error } = await getAdminSupabase().from('contract_sale_inspection_templates')
+    .upsert({ id: INSPECTION_TEMPLATE_ID, ...values }, { onConflict: 'id' }).select('*').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale_inspection_template', INSPECTION_TEMPLATE_ID, 'contract_sale.inspection_template.updated', actorAudit(actor))
+  return { inspectionTemplate: mapInspectionTemplate(data as Row) }
+}
+
+function inspectionTimeZone(state: unknown) {
+  const zones: Record<string, string> = {
+    ACT: 'Australia/Sydney', NSW: 'Australia/Sydney', NT: 'Australia/Darwin', QLD: 'Australia/Brisbane',
+    SA: 'Australia/Adelaide', TAS: 'Australia/Hobart', VIC: 'Australia/Melbourne', WA: 'Australia/Perth',
+  }
+  return zones[String(state)] ?? ''
+}
+
+function inspectionMergeValues(sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>, actor: ContractProductActor, input: Record<string, unknown>) {
+  const date = clean(input.date, 20)
+  const time = clean(input.time, 10)
+  const duration = Math.round(Number(input.durationMinutes))
+  const location = clean(input.location, 500) || [context.site?.address, context.site?.suburb, context.site?.postcode].filter(Boolean).join(', ')
+  const timeZone = inspectionTimeZone(context.product.state)
+  let displayDate = date
+  let displayTime = time
+  if (date && time && timeZone) {
+    const startsAt = getDateTimeInTimeZone(date, time, timeZone)
+    if (!Number.isNaN(startsAt.getTime())) {
+      displayDate = new Intl.DateTimeFormat('en-AU', { dateStyle: 'long', timeZone }).format(startsAt)
+      displayTime = new Intl.DateTimeFormat('en-AU', { timeStyle: 'short', timeZone }).format(startsAt)
+    }
+  }
+  return {
+    client_first_name: firstName(context.client?.contact_name), client_name: String(context.client?.contact_name ?? ''),
+    client_business: String(context.client?.business_name ?? ''), cleaner_first_name: firstName(context.cleaner.contact_name),
+    cleaner_name: String(context.cleaner.contact_name), cleaner_business: String(context.cleaner.business_name),
+    site_name: String(context.site?.site_name || context.client?.business_name || context.site?.address || 'the cleaning site'),
+    site_address: [context.site?.address, context.site?.suburb, context.site?.postcode].filter(Boolean).join(', '),
+    inspection_date: displayDate || 'To be confirmed', inspection_time: displayTime || 'To be confirmed',
+    inspection_duration: Number.isFinite(duration) && duration > 0 ? `${duration} minutes` : 'To be confirmed',
+    inspection_location: location || 'To be confirmed', sale_code: String(sale.sale_code), product_code: String(context.product.product_code),
+    sender_name: actor.displayName, sender_title: actor.jobTitle || '', sender_email: actor.email || '', sender_phone: actor.phone || '',
+  }
+}
+
+async function inspectionEmailContext(actor: ContractProductActor, input: Record<string, unknown>) {
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  if (sale.status === 'cancelled') throw new ContractProductError('A cancelled product sale cannot send inspection email.', 409)
+  const context = await loadSaleContext(sale)
+  if (!normalizeInvoiceEmail(actor.email)) throw new ContractProductError('Your staff account needs a valid work email.', 409)
+  return { sale, context, values: inspectionMergeValues(sale, context, actor, input) }
+}
+
+export async function previewContractSaleInspectionEmail(actor: ContractProductActor, input: Record<string, unknown>) {
+  const kind = clean(input.kind, 30) as InspectionEmailKind
+  if (!['availability', 'client', 'cleaner'].includes(kind)) throw new ContractProductError('Select an inspection email to preview.')
+  const { sale, context, values } = await inspectionEmailContext(actor, input)
+  const draft = parseInspectionEmailDraft(input, kind)
+  const rendered = renderInspectionEmail(draft, values)
+  const to = kind === 'cleaner' ? normalizeInvoiceEmail(context.cleaner.email) : normalizeInvoiceEmail(context.client?.email)
+  if (!to) throw new ContractProductError(`${kind === 'cleaner' ? 'Cleaner' : 'Client'} email is missing or invalid.`, 409)
+  const fingerprint = inspectionEmailFingerprint({ saleId: sale.id, kind, to, senderId: actor.id, rendered, appointment: [input.date, input.time, input.durationMinutes, input.location] })
+  return { kind, to, from: actor.email, ...rendered, fingerprint }
+}
+
+export async function sendContractSaleInspectionAvailabilityRequest(actor: ContractProductActor, input: Record<string, unknown>) {
+  const requestId = clean(input.requestId, 100)
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) throw new ContractProductError('Refresh and try sending again.')
+  const preview = await previewContractSaleInspectionEmail(actor, { ...input, kind: 'availability' })
+  if (input.previewFingerprint !== preview.fingerprint) throw new ContractProductError('This email changed after preview. Preview it again before sending.', 409)
+  const db = getAdminSupabase()
+  const { sale, context } = await inspectionEmailContext(actor, input)
+  const pendingMessage = {
+    sale_id: sale.id, message_type: 'availability_request', recipient_name_snapshot: context.client?.contact_name || 'Client',
+    recipient_email_snapshot: preview.to, subject_snapshot: preview.subject, body_text_snapshot: preview.bodyText,
+    body_html_snapshot: preview.bodyHtml, body_document_snapshot: preview.bodyDocument, sender_staff_id: actor.id,
+    sender_name_snapshot: actor.displayName, sender_email_snapshot: actor.email, preview_fingerprint: preview.fingerprint,
+    request_id: requestId, delivery_status: 'unknown', provider_message_id: null, delivery_error: 'Delivery attempt is being processed.',
+  }
+  const { data: claimed, error: claimError } = await db.from('contract_sale_inspection_messages').insert(pendingMessage).select('id').single()
+  if (claimError?.code === '23505') {
+    const { data: replay, error: replayError } = await db.from('contract_sale_inspection_messages').select('id,delivery_status')
+      .eq('request_id', requestId).eq('sale_id', sale.id).eq('sender_staff_id', actor.id).maybeSingle()
+    if (replayError) throw replayError
+    if (replay) return { messageId: String(replay.id), deliveryStatus: String(replay.delivery_status), replayed: true }
+    throw new ContractProductError('That availability request ID was already used for another message. Refresh and preview again.', 409)
+  }
+  if (claimError) throw claimError
+  let providerMessageId = ''
+  let deliveryStatus: 'sent' | 'failed' | 'unknown' = 'unknown'
+  let deliveryError = ''
+  try {
+    const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: preview.to, replyTo: actor.email, subject: preview.subject, html: preview.html }) as { id?: string } | null
+    providerMessageId = result?.id ?? ''; deliveryStatus = 'sent'
+  } catch (error) {
+    deliveryStatus = error instanceof EmailProviderRejectedError ? 'failed' : 'unknown'
+    deliveryError = clean(error instanceof Error ? error.message : 'Provider outcome unknown', 500)
+  }
+  const { data, error } = await db.from('contract_sale_inspection_messages').update({
+    delivery_status: deliveryStatus, provider_message_id: providerMessageId || null, delivery_error: deliveryError || null,
+  }).eq('id', claimed.id).eq('delivery_status', 'unknown').select('id').maybeSingle()
+  if (error) throw error
+  if (!data) throw new ContractProductError('The availability request outcome was already finalized. Check the message history before retrying.', 409)
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.inspection.availability_sent', { ...actorAudit(actor), messageId: data.id, deliveryStatus })
+  if (deliveryStatus !== 'sent') throw new ContractProductError(deliveryStatus === 'unknown' ? 'The availability request has an unknown delivery outcome. Check provider activity before retrying.' : 'The availability request was rejected by the email provider.', 502)
+  return { messageId: String(data.id), deliveryStatus }
+}
+
+export async function previewContractSaleInspectionConfirmations(actor: ContractProductActor, input: Record<string, unknown>) {
+  const client = await previewContractSaleInspectionEmail(actor, { ...input, kind: 'client' })
+  const cleaner = await previewContractSaleInspectionEmail(actor, { ...input, kind: 'cleaner' })
+  const fingerprint = inspectionEmailFingerprint({ client: client.fingerprint, cleaner: cleaner.fingerprint })
+  return { client, cleaner, fingerprint }
+}
+
+export async function saveContractSaleChecklist(actor: ContractProductActor, input: Record<string, unknown>) {
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  if (sale.status === 'cancelled') throw new ContractProductError('A cancelled product sale cannot update its checklist.', 409)
+  const checklist = parseChecklist(input.checklist)
+  if (!checklist.siteAddress || !checklist.clientContact || !checklist.cleanerContact) throw new ContractProductError('The checklist needs the site, client and cleaner details.')
+  const db = getAdminSupabase()
+  const { data: existing, error: readError } = await db.from('contract_sale_site_checklists').select('id,status,prepared_by_staff_id').eq('sale_id', sale.id).maybeSingle()
+  if (readError) throw readError
+  if (existing?.status === 'uploaded') throw new ContractProductError('The completed checklist copy is already archived and cannot be replaced.', 409)
+  const { data, error } = await db.from('contract_sale_site_checklists').upsert({
+    ...(existing ? { id: existing.id } : {}), sale_id: sale.id, checklist_data: checklist,
+    status: existing?.status === 'handed_over' ? 'handed_over' : 'draft', prepared_by_staff_id: existing?.prepared_by_staff_id ?? actor.id,
+    updated_by_staff_id: actor.id, updated_at: new Date().toISOString(),
+  }, { onConflict: 'sale_id' }).select('id,status').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.checklist.saved', { ...actorAudit(actor), checklistId: data.id })
+  return { checklistId: String(data.id), status: String(data.status) }
+}
+
+export async function downloadContractSaleChecklist(actor: ContractProductActor, saleId: string) {
+  const sale = await getAuthorizedSale(actor, clean(saleId, 100))
+  const { data, error } = await getAdminSupabase().from('contract_sale_site_checklists').select('id,checklist_data,status').eq('sale_id', sale.id).maybeSingle()
+  if (error) throw error
+  if (!data) throw new ContractProductError('Save the site checklist before printing.', 409)
+  const context = await loadSaleContext(sale)
+  const pdf = buildContractSaleChecklistPdf({ saleCode: String(sale.sale_code), productCode: String(context.product.product_code), checklist: parseChecklist(data.checklist_data) })
+  return { pdf, fileName: `${String(sale.sale_code).replace(/[^A-Za-z0-9_-]/g, '-')}-site-checklist.pdf` }
+}
+
 function inspectionIcs(input: { uid: string; startsAt: Date; durationMinutes: number; location: string; description: string }) {
   const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
   const end = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000)
@@ -792,16 +1083,21 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
   const cleanerEmail = normalizeInvoiceEmail(context.cleaner.email)
   const staffEmail = normalizeInvoiceEmail(actor.email)
   if (!clientEmail || !cleanerEmail || !staffEmail) throw new ContractProductError('The client, cleaner, and staff account all need valid email addresses.', 409)
-  const timeZoneByState: Record<string, string> = {
-    ACT: 'Australia/Sydney', NSW: 'Australia/Sydney', NT: 'Australia/Darwin', QLD: 'Australia/Brisbane',
-    SA: 'Australia/Adelaide', TAS: 'Australia/Hobart', VIC: 'Australia/Melbourne', WA: 'Australia/Perth',
-  }
-  const timeZone = timeZoneByState[String(context.product.state)]
+  const timeZone = inspectionTimeZone(context.product.state)
   if (!timeZone) throw new ContractProductError('The product needs a supported Australian state before an inspection can be scheduled.', 409)
   const startsAt = getDateTimeInTimeZone(date, time, timeZone)
   if (Number.isNaN(startsAt.getTime())) throw new ContractProductError('Enter a valid inspection date and time.')
   const location = clean(input.location, 500) || [context.site?.address, context.site?.suburb, context.site?.postcode].filter(Boolean).join(', ')
   if (!location) throw new ContractProductError('Enter the inspection location.')
+  const confirmationPreview = await previewContractSaleInspectionConfirmations(actor, input)
+  if (input.previewFingerprint !== confirmationPreview.fingerprint) throw new ContractProductError('The appointment or email wording changed after preview. Preview both confirmations again.', 409)
+  const clientRequestId = clean(input.clientRequestId, 100)
+  const cleanerRequestId = clean(input.cleanerRequestId, 100)
+  if (![clientRequestId, cleanerRequestId].every((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))) {
+    throw new ContractProductError('Refresh and preview the inspection emails again.', 409)
+  }
+  const clientDraft = parseInspectionEmailDraft(input, 'client')
+  const cleanerDraft = parseInspectionEmailDraft(input, 'cleaner')
   type InviteOutcome = { recipient: 'client' | 'cleaner' | 'staff'; email: string; status: 'sending' | 'sent' | 'failed' | 'unknown'; providerMessageId?: string; error?: string }
   const sameAppointment = existingInspection?.starts_at === startsAt.toISOString()
   const outcomes: InviteOutcome[] = sameAppointment && Array.isArray(existingInspection?.provider_message_ids)
@@ -813,26 +1109,58 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
     client_email_snapshot: clientEmail, cleaner_name_snapshot: context.cleaner.contact_name,
     cleaner_email_snapshot: cleanerEmail, staff_name_snapshot: actor.displayName, staff_email_snapshot: staffEmail,
     notes: clean(input.notes, 1000) || null, invite_status: 'pending', provider_message_ids: outcomes, invite_error: null, scheduled_by_staff_id: actor.id,
+    client_subject_snapshot: confirmationPreview.client.subject, client_body_text_snapshot: confirmationPreview.client.bodyText,
+    client_body_html_snapshot: confirmationPreview.client.bodyHtml, client_body_document_snapshot: clientDraft.bodyDocument,
+    cleaner_subject_snapshot: confirmationPreview.cleaner.subject, cleaner_body_text_snapshot: confirmationPreview.cleaner.bodyText,
+    cleaner_body_html_snapshot: confirmationPreview.cleaner.bodyHtml, cleaner_body_document_snapshot: cleanerDraft.bodyDocument,
   }
   const { data: inspection, error } = await db.from('contract_sale_inspections').upsert(row, { onConflict: 'sale_id' }).select('id').single()
   if (error) throw error
   const description = `Product sale ${sale.sale_code}\nClient: ${context.client?.contact_name || 'Client'}\nCleaner: ${context.cleaner.business_name}\nNotes: ${clean(input.notes, 1000) || 'None'}`
   const ics = inspectionIcs({ uid: String(inspection.id), startsAt, durationMinutes, location, description })
-  const recipients: Array<{ recipient: InviteOutcome['recipient']; email: string }> = [
-    { recipient: 'client', email: clientEmail }, { recipient: 'cleaner', email: cleanerEmail }, { recipient: 'staff', email: staffEmail },
+  const availability = await getAvailabilityConfig()
+  const calendarId = (actor.availabilityAssigneeId ? getAvailabilityAssignee(availability, actor.availabilityAssigneeId)?.calendarId : '')
+    || process.env.GOOGLE_CALENDAR_ID || ''
+  const calendar = calendarId ? await upsertContractSaleInspectionEvent({
+    inspectionId: String(inspection.id), calendarId, startsAt, durationMinutes, timeZone,
+    summary: `Secure Cleaning site inspection - ${context.site?.site_name || context.client?.business_name || sale.sale_code}`,
+    description, location,
+  }) : { status: 'failed' as const, reason: 'No calendar is configured for the sending staff member' }
+  const calendarStatus = calendar.status === 'failed' ? 'email_fallback' : calendar.status
+  const { error: calendarUpdateError } = await db.from('contract_sale_inspections').update({
+    calendar_id_snapshot: calendarId || null, calendar_event_id: calendar.eventId ?? null,
+    calendar_status: calendarStatus, calendar_error: calendar.reason ?? null,
+  }).eq('id', inspection.id)
+  if (calendarUpdateError) throw calendarUpdateError
+  const staffHtml = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><p>Your Secure Cleaning site inspection has been scheduled.</p><p><strong>${escapeHtml(date)} at ${escapeHtml(time)}</strong><br>${escapeHtml(location)}</p><p>${escapeHtml(description).replaceAll('\n', '<br>')}</p><p>${calendar.status === 'failed' ? 'The direct calendar write was unavailable. Use the attached calendar invitation.' : 'The appointment was written to your configured calendar. The attached invitation is a backup copy.'}</p></div>`
+  const recipients: Array<{ recipient: InviteOutcome['recipient']; email: string; name: string; subject: string; html: string; bodyText: string; bodyHtml: string; bodyDocument: Record<string, unknown> | null; requestId?: string }> = [
+    { recipient: 'client', email: clientEmail, name: context.client?.contact_name || 'Client', subject: confirmationPreview.client.subject, html: confirmationPreview.client.html, bodyText: confirmationPreview.client.bodyText, bodyHtml: confirmationPreview.client.bodyHtml, bodyDocument: clientDraft.bodyDocument, requestId: clientRequestId },
+    { recipient: 'cleaner', email: cleanerEmail, name: context.cleaner.contact_name, subject: confirmationPreview.cleaner.subject, html: confirmationPreview.cleaner.html, bodyText: confirmationPreview.cleaner.bodyText, bodyHtml: confirmationPreview.cleaner.bodyHtml, bodyDocument: cleanerDraft.bodyDocument, requestId: cleanerRequestId },
+    { recipient: 'staff', email: staffEmail, name: actor.displayName, subject: `Site inspection - ${sale.sale_code}`, html: staffHtml, bodyText: description, bodyHtml: staffHtml, bodyDocument: null },
   ]
   for (const target of recipients) {
     const prior = outcomes.find((item) => item.recipient === target.recipient && item.email === target.email)
     if (prior && ['sent', 'unknown', 'sending'].includes(prior.status)) continue
-    const claimed: InviteOutcome = { ...target, status: 'sending' }
+    const claimed: InviteOutcome = { recipient: target.recipient, email: target.email, status: 'sending' }
     const priorIndex = outcomes.findIndex((item) => item.recipient === target.recipient)
     if (priorIndex >= 0) outcomes[priorIndex] = claimed
     else outcomes.push(claimed)
     const { error: claimError } = await db.from('contract_sale_inspections').update({ provider_message_ids: outcomes }).eq('id', inspection.id)
     if (claimError) throw claimError
     try {
-      const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: target.email, replyTo: staffEmail, subject: `Site inspection — ${sale.sale_code}`, html: `<p>A Secure Cleaning site inspection has been scheduled.</p><p><strong>${escapeHtml(date)} at ${escapeHtml(time)}</strong><br>${escapeHtml(location)}</p><p>${escapeHtml(description).replaceAll('\n', '<br>')}</p>`, attachments: [{ filename: `inspection-${sale.sale_code}.ics`, content: Buffer.from(ics).toString('base64') }] }) as { id?: string } | null
+      const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: target.email, replyTo: staffEmail, subject: target.subject, html: target.html, attachments: [{ filename: `inspection-${sale.sale_code}.ics`, content: Buffer.from(ics).toString('base64') }] }) as { id?: string } | null
       Object.assign(claimed, { status: 'sent' as const, providerMessageId: result?.id ?? '' })
+      if (target.recipient !== 'staff') {
+        const { error: historyError } = await db.from('contract_sale_inspection_messages').insert({
+          sale_id: sale.id, inspection_id: inspection.id, message_type: target.recipient === 'client' ? 'client_confirmation' : 'cleaner_confirmation',
+          recipient_name_snapshot: target.name, recipient_email_snapshot: target.email, subject_snapshot: target.subject,
+          body_text_snapshot: target.bodyText, body_html_snapshot: target.bodyHtml, body_document_snapshot: target.bodyDocument,
+          sender_staff_id: actor.id, sender_name_snapshot: actor.displayName, sender_email_snapshot: staffEmail,
+          preview_fingerprint: confirmationPreview.fingerprint, request_id: target.requestId,
+          delivery_status: 'sent', provider_message_id: result?.id ?? null,
+        })
+        if (historyError) throw historyError
+      }
     } catch (sendError) {
       Object.assign(claimed, { status: sendError instanceof EmailProviderRejectedError ? 'failed' as const : 'unknown' as const, error: clean(sendError instanceof Error ? sendError.message : 'Provider outcome unknown', 500) })
     }
@@ -1016,6 +1344,7 @@ export async function completeContractSaleHandover(actor: ContractProductActor, 
   const { data, error } = await getAdminSupabase().rpc('complete_contract_sale_handover', { p_sale_id: sale.id, p_commenced_on: commencedOn, p_actor_id: actor.id, p_actor_role: actor.role, p_actor_state: actor.productState })
   if (error?.code === '42501') throw new ContractProductError('You cannot complete this handover.', 403)
   if (error) throw new ContractProductError(error.message, 409)
+  await getAdminSupabase().from('contract_sale_site_checklists').update({ status: 'handed_over', handed_over_at: new Date().toISOString(), updated_by_staff_id: actor.id, updated_at: new Date().toISOString() }).eq('sale_id', sale.id).eq('status', 'draft')
   return { saleId: String(sale.id), status: String(data) }
 }
 
@@ -1061,4 +1390,44 @@ export async function downloadSignedContractSaleAgreement(actor: ContractProduct
   const { data, error } = await getAdminSupabase().storage.from('contract-sale-agreements').download(agreement.signed_storage_path)
   if (error) throw error
   return { blob: data, fileName: agreement.signed_file_name || 'signed-agreement.pdf' }
+}
+
+export async function uploadContractSaleChecklistCopy(actor: ContractProductActor, input: { saleId: string; file: File }) {
+  const sale = await getAuthorizedSale(actor, input.saleId)
+  if (!sale.handover_at) throw new ContractProductError('Complete operational handover before uploading the photographed checklist.', 409)
+  const allowed = ['application/pdf', 'image/jpeg', 'image/png']
+  if (!allowed.includes(input.file.type) || input.file.size <= 0 || input.file.size > 15 * 1024 * 1024) throw new ContractProductError('Upload a PDF, JPG or PNG smaller than 15 MB.')
+  const db = getAdminSupabase()
+  const { data: checklist, error: checklistError } = await db.from('contract_sale_site_checklists').select('id').eq('sale_id', sale.id).maybeSingle()
+  if (checklistError) throw checklistError
+  if (!checklist) throw new ContractProductError('Save the site checklist before uploading its completed copy.', 409)
+  const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120) || 'completed-site-checklist'
+  const path = `${sale.id}/${checklist.id}/${randomUUID()}-${safeName}`
+  const fileBuffer = Buffer.from(await input.file.arrayBuffer())
+  const validMagic = input.file.type === 'application/pdf' ? fileBuffer.subarray(0, 5).toString('ascii') === '%PDF-'
+    : input.file.type === 'image/png' ? fileBuffer.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))
+      : fileBuffer[0] === 0xff && fileBuffer[1] === 0xd8 && fileBuffer[fileBuffer.length - 2] === 0xff && fileBuffer[fileBuffer.length - 1] === 0xd9
+  if (!validMagic) throw new ContractProductError('The selected checklist file does not match its file type.')
+  const { error: uploadError } = await db.storage.from('contract-sale-checklists').upload(path, fileBuffer, { contentType: input.file.type, upsert: false })
+  if (uploadError) throw uploadError
+  const { data, error } = await db.from('contract_sale_checklist_uploads').insert({
+    sale_id: sale.id, checklist_id: checklist.id, file_name: safeName, mime_type: input.file.type,
+    file_size_bytes: input.file.size, storage_path: path, uploaded_by_staff_id: actor.id,
+  }).select('id').single()
+  if (error) { await db.storage.from('contract-sale-checklists').remove([path]); throw error }
+  const { error: statusError } = await db.from('contract_sale_site_checklists').update({ status: 'uploaded', updated_by_staff_id: actor.id, updated_at: new Date().toISOString() }).eq('id', checklist.id)
+  if (statusError) throw statusError
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.checklist.uploaded', { ...actorAudit(actor), checklistId: checklist.id, uploadId: data.id, fileName: safeName })
+  return { uploadId: String(data.id), fileName: safeName }
+}
+
+export async function downloadContractSaleChecklistCopy(actor: ContractProductActor, saleId: string, uploadId: string) {
+  const sale = await getAuthorizedSale(actor, saleId)
+  const { data: upload, error: readError } = await getAdminSupabase().from('contract_sale_checklist_uploads')
+    .select('file_name,mime_type,storage_path').eq('id', uploadId).eq('sale_id', sale.id).maybeSingle()
+  if (readError) throw readError
+  if (!upload) throw new ContractProductError('Completed checklist copy not found.', 404)
+  const { data, error } = await getAdminSupabase().storage.from('contract-sale-checklists').download(upload.storage_path)
+  if (error) throw error
+  return { blob: data, fileName: String(upload.file_name), mimeType: String(upload.mime_type) }
 }

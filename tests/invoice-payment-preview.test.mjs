@@ -22,7 +22,7 @@ const invoice = {
   payment_terms_snapshot: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
   sender_name_snapshot: 'Test Owner', sender_email_snapshot: 'owner@example.test', issued_at: '2026-09-17T00:00:00Z',
 }
-function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null, planTerms = null, correction = null } = {}) {
+function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null, planTerms = null, correction = null, termsRevision = null } = {}) {
   const sent = []
   const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
   return { sent, fetch: async (url, init = {}) => {
@@ -35,7 +35,7 @@ function backend({ paid = 50000, failLedger = false, status = 'part_paid', state
     if (table === 'crm_opportunities') return json({ primary_contact_id: 'client-1' })
     if (table === 'quotes') return json({ quote_ref: 'Q-1' })
     if (table === 'contract_sale_payment_plans') return json(planTerms ? { terms_snapshot: planTerms, status: 'awaiting_acceptance' } : null)
-    if (table === 'contract_sale_invoice_bank_revisions') return json(correction)
+    if (table === 'contract_sale_invoice_bank_revisions') return json(parsed.searchParams.get('select') === 'payment_terms_snapshot' ? termsRevision : correction)
     if (table === 'clients') return json({})
     if (table === 'admin_staff_accounts') return json({ id: actor.id, username: actor.username, role: actor.role, active: true, email: actor.email, display_name: actor.displayName })
     if (table === 'contract_sale_agreements') return json({ id: 'agreement-1', version: 1, status: 'draft', content_snapshot: 'Agreement test', cleaner_email_snapshot: 'cleaner@example.test', cleaner_business_snapshot: 'Example Cleaning', created_at: '2026-09-17' })
@@ -177,7 +177,7 @@ test('bank correction is owner-only and rejects void invoices before any write',
 test('applying bank details uses the reviewed saved template, records actor and never rewrites the invoice or sends email',async()=>{
  const previous=globalThis.fetch
  const mock=backend();let revision=null
- const template={bank_account_name:'Example Account',bank_name:'',bank_bsb:'123-456',bank_account_number:'12345678',payment_reference_template:'{invoice_number}',updated_at:'2026-09-21T00:00:00Z'}
+ const template={bank_account_name:'Example Account',bank_name:'',bank_bsb:'123-456',bank_account_number:'12345678',payment_reference_template:'{invoice_number}',payment_terms_template:'Updated payment terms for this invoice.',updated_at:'2026-09-21T00:00:00Z'}
  try {
   globalThis.fetch=async(url,init={})=>{
    const table=new URL(url).pathname.split('/').pop()
@@ -193,6 +193,8 @@ test('applying bank details uses the reviewed saved template, records actor and 
   assert.equal(revision.bank_bsb_snapshot,template.bank_bsb)
   assert.equal(revision.invoice_id,'invoice-1')
   assert.equal('payment_terms_snapshot' in revision,false)
+  await applyContractSaleInvoiceBankDetails(actor,{saleId:'sale-1',invoiceId:'invoice-1',templateUpdatedAt:template.updated_at,includePaymentTerms:true})
+  assert.equal(revision.payment_terms_snapshot,template.payment_terms_template)
   assert.equal(mock.sent.length,0)
  } finally {globalThis.fetch=previous}
 })
@@ -207,4 +209,30 @@ test('long saved payment terms remain visible beyond the first four lines',async
   assert.match(text,/Final payment instruction is visible/)
   assert.match(preview.pdf.toString('latin1'),/Full payment terms/)
  } finally {globalThis.fetch=previous;invoice.payment_terms_snapshot=original}
+})
+
+
+test('custom payment reference and explicit updated terms reach preview, resend and bundle together', async()=>{
+ const previous=globalThis.fetch
+ try {
+  for(const planTerms of [null,'Agreed instalment: $4,648.00 due 2026-12-01.']) {
+   const mock=backend({planTerms,correction:{bank_account_name_snapshot:'Example Account',bank_name_snapshot:'Example Bank',bank_bsb_snapshot:'123-456',bank_account_number_snapshot:'12345678',payment_reference_template_snapshot:'SALE-{invoice_number}'},termsRevision:{payment_terms_snapshot:'Please quote your invoice number when paying. Updated instructions received.'}})
+   globalThis.fetch=mock.fetch
+   const preview=await downloadContractSaleInvoice(actor,'sale-1','invoice-1')
+   const pdf=preview.pdf.toString('latin1')
+   assert.match(pdf,/Payment reference: SALE-SCINV-2026-01001/)
+   assert.doesNotMatch(pdf,/Use SCINV-2026-01001 as the payment reference/)
+   assert.match(pdf,/Updated instructions received/)
+   if(planTerms) { assert.match(pdf,/Agreed instalment/); assert.match(pdf,/agreed payment schedule unchanged/) }
+   await resendContractSaleInvoice(actor,{saleId:'sale-1',invoiceId:'invoice-1'})
+   assert.equal(mock.sent[0].attachments[0].content,preview.pdf.toString('base64'))
+   assert.match(mock.sent[0].html,/SALE-SCINV-2026-01001/)
+   assert.match(mock.sent[0].html,/Updated instructions received/)
+   if(!planTerms) {
+    await sendContractSaleAgreement(actor,{saleId:'sale-1',agreementId:'agreement-1'})
+    assert.equal(mock.sent[1].attachments[0].content,preview.pdf.toString('base64'))
+    if(process.env.INVOICE_TERMS_QA_OUTPUT) writeFileSync(process.env.INVOICE_TERMS_QA_OUTPUT,preview.pdf)
+   }
+  }
+ } finally {globalThis.fetch=previous}
 })

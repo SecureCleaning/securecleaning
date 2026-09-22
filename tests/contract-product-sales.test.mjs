@@ -234,14 +234,16 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
 
 test('workbench keeps connected records together and exposes the complete gated workflow', () => {
   const workspace = source('src/components/admin/ContractSalesWorkspace.tsx')
+  const inspectionPanel = source('src/components/admin/ContractSaleInspectionPanel.tsx')
   const agentCleaners = source('src/components/availability/AgentCleaners.tsx')
   const cleanerDomain = source('src/lib/cleaners.ts')
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/lib/menuConfiguration.ts')
   const agentNav = source('src/lib/menuConfiguration.ts')
-  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Schedule &amp; send invites', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
+  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  assert.match(inspectionPanel, /Schedule &amp; send separate invites/)
   assert.match(workspace, /Create pending cleaner/)
   assert.match(workspace, />New sale<\/button>/)
   assert.match(workspace, /paymentRequestId/)
@@ -250,6 +252,8 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, /Download PDF/)
   assert.match(workspace, /Save invoice template/)
   assert.match(workspace, /Saving the template does not change issued invoices/)
+  assert.doesNotMatch(workspace, /\{invoice\.paymentTerms\}/)
+  assert.match(workspace, /Current payment terms and bank details are shown in Preview invoice/)
   assert.match(workspace, /Secure online acceptance remains a later enhancement/)
   assert.match(workspace, /Create updated agreement version/)
   assert.match(workspace, /Final purchase price \(inc GST\)/)

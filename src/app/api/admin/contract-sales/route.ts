@@ -11,6 +11,10 @@ import {
   createContractSale,
   createContractSaleAgreement,
   createContractSalePaymentPlan,
+  previewContractSaleInspectionConfirmations,
+  previewContractSaleInspectionEmail,
+  saveContractSaleChecklist,
+  sendContractSaleInspectionAvailabilityRequest,
   getContractSaleWorkspace,
   issueContractSaleInvoice,
   recordContractSalePayment,
@@ -19,6 +23,7 @@ import {
   sendContractSaleAgreement,
   updateContractSale,
   updateContractSaleInvoiceTemplate,
+  updateContractSaleInspectionTemplate,
 } from '@/lib/contractSales'
 import { ContractProductError } from '@/lib/contractProducts'
 
@@ -47,6 +52,15 @@ export async function POST(request: NextRequest) {
     if (action === 'sale.create') return NextResponse.json({ success: true, result: await createContractSale(actor, body) })
     if (action === 'sale.update') return NextResponse.json({ success: true, result: await updateContractSale(actor, body) })
     if (action === 'invoice-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInvoiceTemplate(actor, body) })
+    if (action === 'inspection-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInspectionTemplate(actor, body) })
+    if (action === 'inspection-email.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionEmail(actor, body) })
+    if (action === 'inspection-confirmations.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionConfirmations(actor, body) })
+    if (action === 'inspection-availability.send') {
+      const limited = rateLimit(request, { key: `contract-sale-inspection-availability:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await sendContractSaleInspectionAvailabilityRequest(actor, body) })
+    }
+    if (action === 'inspection-checklist.save') return NextResponse.json({ success: true, result: await saveContractSaleChecklist(actor, body) })
     if (action === 'invoice-bank.apply') return NextResponse.json({ success: true, result: await applyContractSaleInvoiceBankDetails(actor, body) })
     if (action === 'invoice.issue') {
       const limited = rateLimit(request, { key: `contract-sale-invoice:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })

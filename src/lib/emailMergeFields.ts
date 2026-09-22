@@ -54,6 +54,29 @@ export const BROADCAST_EMAIL_MERGE_FIELDS = [
   field('sender_phone', 'Sender phone', 'Selected sender work phone', 'Team Access'),
 ] as const satisfies readonly EmailMergeField[]
 
+export const INSPECTION_EMAIL_MERGE_FIELDS = [
+  field('client_first_name', 'Client first name', "Client contact's first name", 'Product sale'),
+  field('client_name', 'Client full name', 'Client contact name', 'Product sale'),
+  field('client_business', 'Client business', 'Client business or organisation', 'Product sale'),
+  field('cleaner_first_name', 'Cleaner first name', "Cleaner contact's first name", 'Product sale'),
+  field('cleaner_name', 'Cleaner full name', 'Cleaner contact name', 'Product sale'),
+  field('cleaner_business', 'Cleaner business', 'Cleaner business name', 'Product sale'),
+  field('site_name', 'Site name', 'Saved site name or address', 'Product sale'),
+  field('site_address', 'Site address', 'Full inspection address', 'Product sale'),
+  field('inspection_date', 'Inspection date', 'Confirmed local appointment date', 'Appointment'),
+  field('inspection_time', 'Inspection time', 'Confirmed local appointment time', 'Appointment'),
+  field('inspection_duration', 'Duration', 'Inspection duration in minutes', 'Appointment'),
+  field('inspection_location', 'Inspection location', 'Confirmed appointment location', 'Appointment'),
+  field('sale_code', 'Product sale reference', 'Product sale code', 'Product sale'),
+  field('product_code', 'Product code', 'Cleaning contract product code', 'Product sale'),
+  field('sender_name', 'Sender name', 'Sending staff member', 'Team Access'),
+  field('sender_title', 'Sender title', 'Sending staff position title', 'Team Access'),
+  field('sender_email', 'Sender email', 'Sending staff email', 'Team Access'),
+  field('sender_phone', 'Sender phone', 'Sending staff phone', 'Team Access'),
+] as const satisfies readonly EmailMergeField[]
+
+export const INSPECTION_EMAIL_MERGE_FIELD_KEYS = new Set(INSPECTION_EMAIL_MERGE_FIELDS.map((item) => item.key))
+
 const LEGACY_CLIENT_KEYS = ['contact_name', 'business_name', 'site_address', 'source_provider']
 const LEGACY_CLEANER_KEYS = ['contact_name', 'business_name', 'cleaner_email']
 
