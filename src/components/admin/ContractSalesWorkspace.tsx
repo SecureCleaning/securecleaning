@@ -73,6 +73,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [creatingSale, setCreatingSale] = useState(Boolean(initialProductId && !initialSaleId && !initialInvoiceId))
   const [selectedProductId, setSelectedProductId] = useState(initialProductId)
   const [selectedCleanerId, setSelectedCleanerId] = useState('')
+  const [saleSearch, setSaleSearch] = useState('')
   const [tab, setTab] = useState<SaleTab>(initialTab)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
@@ -122,6 +123,21 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const selectedCleaner = stateCleaners.find((cleaner) => cleaner.id === selectedCleanerId) ?? null
   const activeSaleProductIds = new Set((data?.sales ?? []).filter((item) => item.status !== 'cancelled').map((item) => item.productId))
   const availableProducts = (data?.products ?? []).filter((item) => item.status === 'available' && !activeSaleProductIds.has(item.id))
+  const filteredSales = useMemo(() => {
+    const query = saleSearch.trim().toLocaleLowerCase('en-AU')
+    if (!query) return data?.sales ?? []
+    return (data?.sales ?? []).filter((item) => [
+      item.saleCode,
+      item.productCode,
+      item.clientName,
+      item.clientEmail,
+      item.cleanerName,
+      item.cleanerBusiness,
+      item.suburb,
+      item.state,
+      item.status.replaceAll('_', ' '),
+    ].some((value) => value.toLocaleLowerCase('en-AU').includes(query)))
+  }, [data?.sales, saleSearch])
 
   async function action(actionName: string, payload: Record<string, unknown>, preferredSaleId = selectedSaleId) {
     setBusy(actionName); setMessage('')
@@ -237,9 +253,12 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     <div className="mb-5 grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2"><h2 className="font-bold">Product sales</h2><button type="button" onClick={() => { setCreatingSale(true); setSelectedSaleId(''); setSelectedProductId(availableProducts[0]?.id ?? ''); setSelectedCleanerId('') }} className="rounded-lg border border-teal-700 px-3 py-1.5 text-xs font-semibold text-teal-800">New sale</button></div>
+        <label className="mt-3 block text-xs font-semibold text-gray-700">Search product sales<span className="sr-only"> by sale, client, cleaner, location or status</span><input type="search" value={saleSearch} onChange={(event) => setSaleSearch(event.target.value)} placeholder="Sale, client or cleaner" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
+        {saleSearch ? <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500"><span>{filteredSales.length} of {data.sales.length} sales</span><button type="button" onClick={() => setSaleSearch('')} className="font-semibold text-teal-700 underline">Clear search</button></div> : null}
         <div className="mt-3 max-h-[64vh] space-y-2 overflow-y-auto">
-          {data.sales.map((item) => <button key={item.id} type="button" onClick={() => { setCreatingSale(false); setSelectedSaleId(item.id); setSelectedProductId(item.productId); setSaleDraft({ finalPrice: (item.agreedPurchasePriceIncGstCents / 100).toFixed(2), commencementDate: item.commencementDate, notes: item.notes }) }} className={`w-full rounded-xl border p-3 text-left ${selectedSaleId === item.id ? 'border-teal-500 bg-teal-50' : 'border-gray-200'}`}><strong className="block">{item.saleCode}</strong><span className="block text-sm">{item.productCode} · {item.cleanerBusiness}</span><span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{item.status.replaceAll('_', ' ')}</span></button>)}
+          {filteredSales.map((item) => <button key={item.id} type="button" onClick={() => { setCreatingSale(false); setSelectedSaleId(item.id); setSelectedProductId(item.productId); setSaleDraft({ finalPrice: (item.agreedPurchasePriceIncGstCents / 100).toFixed(2), commencementDate: item.commencementDate, notes: item.notes }) }} className={`w-full rounded-xl border p-3 text-left ${selectedSaleId === item.id ? 'border-teal-500 bg-teal-50' : 'border-gray-200'}`}><strong className="block">{item.saleCode}</strong><span className="block text-xs font-semibold uppercase tracking-wide text-gray-500">{item.productCode}</span><span className="mt-1 block text-sm"><span className="font-semibold">Client:</span> {item.clientName || 'Not provided'}</span><span className="block text-sm text-gray-600"><span className="font-semibold">Cleaner:</span> {item.cleanerBusiness || item.cleanerName || 'Not provided'}</span><span className={`mt-2 inline-flex rounded-full px-2 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{item.status.replaceAll('_', ' ')}</span></button>)}
           {data.sales.length === 0 ? <p className="text-sm text-gray-500">No product sales yet.</p> : null}
+          {data.sales.length > 0 && filteredSales.length === 0 ? <p role="status" className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">No product sales match your search.</p> : null}
         </div>
       </aside>
 
@@ -256,7 +275,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
           <details className="mt-6 rounded-xl border border-gray-200 p-4"><summary className="cursor-pointer font-semibold">Add a new cleaner</summary><p className="mt-2 text-sm text-gray-600">The new record starts as pending approval and cannot receive an invoice until approved.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{(['businessName', 'firstName', 'lastName', 'email', 'phone', 'suburb'] as const).map((field) => <label key={field} className="text-sm font-medium">{field.replace(/([A-Z])/g, ' $1').replace(/^./, (value) => value.toUpperCase())}<input type={field === 'email' ? 'email' : 'text'} value={newCleaner[field]} onChange={(event) => setNewCleaner({ ...newCleaner, [field]: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label>)}</div><button type="button" onClick={() => void createCleaner()} disabled={!product || Boolean(busy)} className="mt-4 rounded-lg border border-teal-700 px-4 py-2 font-semibold text-teal-800">Create pending cleaner</button></details>
         </section> : <>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-mono text-sm font-semibold text-teal-700">{sale.saleCode}</p><h2 className="text-xl font-bold">{sale.productCode} · {sale.cleanerBusiness}</h2><p className="text-sm text-gray-600">{sale.suburb}, {sale.state} · {money(sale.agreedPurchasePriceIncGstCents)} inc GST</p></div><span className={`rounded-full px-3 py-1 text-sm font-semibold ${statusTone(sale.status)}`}>{sale.status.replaceAll('_', ' ')}</span></div>
+            <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-mono text-sm font-semibold text-teal-700">{sale.saleCode}</p><h2 className="text-xl font-bold">{sale.productCode} · {sale.cleanerBusiness}</h2><p className="text-sm text-gray-600">{sale.suburb}, {sale.state} · {money(sale.agreedPurchasePriceIncGstCents)} inc GST</p></div><div className="ml-auto text-right"><span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${statusTone(sale.status)}`}>{sale.status.replaceAll('_', ' ')}</span><div className="mt-3"><span className="block text-xs font-bold uppercase tracking-wide text-gray-500">Client</span><strong className="block text-base text-gray-900">{sale.clientName || 'Not provided'}</strong>{sale.clientEmail ? <span className="block text-sm text-gray-600">{sale.clientEmail}</span> : null}</div></div></div>
             <nav aria-label="Connected records" className="mt-5 flex flex-wrap gap-2">{quoteHref ? <Link href={quoteHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Quote</Link> : null}<Link href={clientsHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Client</Link><Link href={`${productsHref}?product=${encodeURIComponent(sale.productId)}`} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Product</Link><span className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Product sale</span></nav>
           </section>
 
