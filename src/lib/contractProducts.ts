@@ -466,36 +466,6 @@ export async function getAvailableCleanerJobs(state?: ContractProductState | nul
   })
 }
 
-export async function registerContractProductInterest(input: {
-  productCode: string
-  accessLinkId: string
-  email: string
-  note?: string
-}) {
-  const db = getAdminSupabase()
-  const email = input.email.trim().toLowerCase().slice(0, 320)
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false
-  const accessLink = await getJobsAccessLink(input.accessLinkId)
-  if (!accessLink) return false
-  const { data: product } = await db.from('contract_products').select('id, state').eq('product_code', input.productCode).eq('status', 'available').maybeSingle()
-  if (!product) return false
-  if (accessLink.state && accessLink.state !== product.state) return false
-  const { data: cleaner } = await db.from('cleaners').select('id, email, state, status, contact_name, phone')
-    .eq('email', email).eq('status', 'approved').maybeSingle()
-  if (!cleaner || String(cleaner.state ?? '').toUpperCase() !== product.state) return false
-  const { error } = await db.from('contract_product_interests').upsert({
-    product_id: product.id,
-    cleaner_id: cleaner.id,
-    access_link_id: input.accessLinkId,
-    contact_name: clean(cleaner.contact_name, 160) || 'Cleaner',
-    email_normalized: email,
-    phone: clean(cleaner.phone, 40) || null,
-    note: clean(input.note, 1000) || null,
-  }, { onConflict: 'product_id,cleaner_id', ignoreDuplicates: true })
-  if (error) throw error
-  return true
-}
-
 export async function getActiveJobsAccessLinkId() {
   const { data, error } = await getAdminSupabase().from('contract_product_access_links')
     .select('id').eq('active', true).is('state', null).or('expires_at.is.null,expires_at.gt.' + new Date().toISOString())
