@@ -1034,13 +1034,19 @@ export async function saveContractSaleChecklist(actor: ContractProductActor, inp
   return { checklistId: String(data.id), status: String(data.status) }
 }
 
-export async function downloadContractSaleChecklist(actor: ContractProductActor, saleId: string) {
+export async function downloadContractSaleChecklist(actor: ContractProductActor, saleId: string, includeScope = false) {
   const sale = await getAuthorizedSale(actor, clean(saleId, 100))
   const { data, error } = await getAdminSupabase().from('contract_sale_site_checklists').select('id,checklist_data,status').eq('sale_id', sale.id).maybeSingle()
   if (error) throw error
   if (!data) throw new ContractProductError('Save the site checklist before printing.', 409)
   const context = await loadSaleContext(sale)
-  const pdf = buildContractSaleChecklistPdf({ saleCode: String(sale.sale_code), productCode: String(context.product.product_code), checklist: parseChecklist(data.checklist_data) })
+  const pdf = buildContractSaleChecklistPdf({
+    saleCode: String(sale.sale_code),
+    productCode: String(context.product.product_code),
+    checklist: parseChecklist(data.checklist_data),
+    includeScope,
+    scope: context.product.cleaner_scope_snapshot,
+  })
   return { pdf, fileName: `${String(sale.sale_code).replace(/[^A-Za-z0-9_-]/g, '-')}-site-checklist.pdf` }
 }
 

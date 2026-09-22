@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         'Cache-Control': 'private, no-store',
       } })
     }
-    const result = await downloadContractSaleChecklist(actor, saleId)
+    const result = await downloadContractSaleChecklist(actor, saleId, request.nextUrl.searchParams.get('includeScope') === '1')
     return new NextResponse(result.pdf, { headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `${request.nextUrl.searchParams.get('preview') === '1' ? 'inline' : 'attachment'}; filename="${result.fileName.replace(/"/g, '')}"`,
