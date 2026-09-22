@@ -79,3 +79,44 @@ export async function createBookingFollowUpEvent(
 
   return { created: true }
 }
+
+export async function upsertContractSaleInspectionEvent(input: {
+  inspectionId: string
+  calendarId: string
+  startsAt: Date
+  durationMinutes: number
+  timeZone: string
+  summary: string
+  description: string
+  location: string
+}): Promise<{ status: 'created' | 'updated' | 'failed'; eventId?: string; reason?: string }> {
+  const auth = getCalendarClient()
+  if (!auth || !input.calendarId.trim()) return { status: 'failed', reason: 'Missing Google Calendar credentials or staff calendar id' }
+  if (!process.env.GOOGLE_CALENDAR_REFRESH_TOKEN) return { status: 'failed', reason: 'Missing Google Calendar refresh token' }
+  auth.setCredentials({ refresh_token: process.env.GOOGLE_CALENDAR_REFRESH_TOKEN })
+  const calendar = google.calendar({ version: 'v3', auth })
+  const eventId = `scinspection${input.inspectionId.replace(/[^a-f0-9]/gi, '').toLowerCase()}`
+  const end = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000)
+  const requestBody = {
+    summary: input.summary,
+    description: input.description,
+    location: input.location,
+    start: { dateTime: input.startsAt.toISOString(), timeZone: input.timeZone },
+    end: { dateTime: end.toISOString(), timeZone: input.timeZone },
+    transparency: 'opaque',
+  }
+  try {
+    await calendar.events.update({ calendarId: input.calendarId, eventId, requestBody, sendUpdates: 'none' })
+    return { status: 'updated', eventId }
+  } catch (error) {
+    const status = (error as { code?: number; response?: { status?: number } })?.code
+      ?? (error as { response?: { status?: number } })?.response?.status
+    if (status !== 404) return { status: 'failed', eventId, reason: error instanceof Error ? error.message : 'Calendar update failed' }
+  }
+  try {
+    await calendar.events.insert({ calendarId: input.calendarId, requestBody: { ...requestBody, id: eventId }, sendUpdates: 'none' })
+    return { status: 'created', eventId }
+  } catch (error) {
+    return { status: 'failed', eventId, reason: error instanceof Error ? error.message : 'Calendar creation failed' }
+  }
+}
