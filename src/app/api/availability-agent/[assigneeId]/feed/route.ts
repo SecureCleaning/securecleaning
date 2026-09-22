@@ -50,7 +50,7 @@ export async function GET(
   }
 
   const events = (await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: false }))
-    .filter((event) => event.kind === 'booking')
+    .filter((event) => event.kind === 'booking' || event.kind === 'blockout')
 
   const body = [
     'BEGIN:VCALENDAR',
@@ -58,18 +58,22 @@ export async function GET(
     'PRODID:-//Secure Cleaning//Agent Feed//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
-    ...events.flatMap((event) => [
-      'BEGIN:VEVENT',
-      `UID:${escapeIcsText(`${event.id}@securecleaning.com.au`)}`,
-      `DTSTAMP:${toUtcIcsDate(new Date())}`,
-      `DTSTART:${toUtcIcsDate(new Date(event.startsAt))}`,
-      `DTEND:${toUtcIcsDate(new Date(event.endsAt))}`,
-      `SUMMARY:${escapeIcsText(event.title)}`,
-      `DESCRIPTION:${escapeIcsText(event.description || event.subtitle || '')}`,
-      `LOCATION:${escapeIcsText(event.location || '')}`,
-      'STATUS:CONFIRMED',
-      'END:VEVENT',
-    ]),
+    ...events.flatMap((event) => {
+      const isBlockout = event.kind === 'blockout'
+      return [
+        'BEGIN:VEVENT',
+        `UID:${escapeIcsText(`${event.id}@securecleaning.com.au`)}`,
+        `DTSTAMP:${toUtcIcsDate(new Date())}`,
+        `DTSTART:${toUtcIcsDate(new Date(event.startsAt))}`,
+        `DTEND:${toUtcIcsDate(new Date(event.endsAt))}`,
+        `SUMMARY:${escapeIcsText(isBlockout ? 'Unavailable' : event.title)}`,
+        `DESCRIPTION:${escapeIcsText(isBlockout ? '' : event.description || event.subtitle || '')}`,
+        `LOCATION:${escapeIcsText(isBlockout ? '' : event.location || '')}`,
+        'TRANSP:OPAQUE',
+        'STATUS:CONFIRMED',
+        'END:VEVENT',
+      ]
+    }),
     'END:VCALENDAR',
   ].join('\r\n')
 
