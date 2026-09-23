@@ -1,3 +1,5 @@
+import type { CleanerScopeSnapshotV1, CleanerScopeTask } from '@/lib/contractProductPolicy'
+
 export type ContractSaleChecklistData = {
   inspectionDate: string
   commencementDate: string
@@ -39,6 +41,7 @@ const GREEN = '0.047 0.463 0.431'
 const NAVY = '0.102 0.153 0.267'
 const MUTED = '0.350 0.390 0.450'
 const LIGHT = '0.945 0.965 0.960'
+const BORDER = '0.790 0.820 0.830'
 
 function ascii(value: unknown) {
   return String(value ?? '').normalize('NFKD').replace(/[^\x20-\x7E]/g, '-').replace(/\s+/g, ' ').trim()
@@ -58,54 +61,189 @@ function wrap(value: string, maxChars: number) {
     else current = next
   }
   if (current) lines.push(current)
-  return lines.length ? lines : ['']
+  return lines
+}
+
+function fitLines(value: string, maxChars: number, maxLines: number) {
+  const lines = wrap(value, maxChars)
+  if (lines.length <= maxLines) return lines
+  const visible = lines.slice(0, maxLines)
+  visible[maxLines - 1] = `${visible[maxLines - 1].slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`
+  return visible
 }
 
 function formatDate(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || 'To be confirmed'
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return value || ''
   const date = new Date(`${value}T00:00:00Z`)
   return new Intl.DateTimeFormat('en-AU', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(date)
 }
 
-type Field = { label: string; value: string; lines?: number }
-
-function fieldLines(field: Field) {
-  const valueLines = wrap(field.value || ' ', 66)
-  if (field.value.trim()) return valueLines
-  return Array.from({ length: Math.min(field.lines ?? 1, 3) }, () => ' ')
-}
-
-function fieldHeight(field: Field) {
-  return Math.max(34, 22 + fieldLines(field).length * 12)
-}
-
-function pageContent(title: string, saleCode: string, productCode: string, fields: Field[], page: number, pageCount: number) {
+function canvas() {
   const commands: string[] = []
-  const text = (value: string, x: number, y: number, size = 9, bold = false, colour = NAVY) => {
-    commands.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${colour} rg 1 0 0 1 ${x} ${y} Tm (${escapePdf(value)}) Tj ET`)
+  return {
+    text(value: string, x: number, y: number, size = 8, bold = false, colour = NAVY) {
+      commands.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${colour} rg 1 0 0 1 ${x} ${y} Tm (${escapePdf(value)}) Tj ET`)
+    },
+    line(x1: number, y1: number, x2: number, y2: number, colour = BORDER, width = 0.7) {
+      commands.push(`${colour} RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S`)
+    },
+    fill(x: number, y: number, width: number, height: number, colour: string) {
+      commands.push(`${colour} rg ${x} ${y} ${width} ${height} re f`)
+    },
+    stroke(x: number, y: number, width: number, height: number, colour = BORDER) {
+      commands.push(`${colour} RG 0.7 w ${x} ${y} ${width} ${height} re S`)
+    },
+    output() { return commands.join('\n') },
   }
-  const line = (x1: number, y1: number, x2: number, y2: number, colour = '0.820 0.840 0.860') => commands.push(`${colour} RG 1 w ${x1} ${y1} m ${x2} ${y2} l S`)
-  const fill = (x: number, y: number, width: number, height: number, colour: string) => commands.push(`${colour} rg ${x} ${y} ${width} ${height} re f`)
+}
 
-  fill(0, 760, PAGE_WIDTH, 82, GREEN)
-  text('Secure Cleaning', 42, 802, 22, true, '1 1 1')
-  text(title, 345, 802, 17, true, '1 1 1')
-  text(`${saleCode} | ${productCode}`, 345, 780, 9, false, '1 1 1')
+type Canvas = ReturnType<typeof canvas>
 
-  let y = 728
-  for (const field of fields) {
-    const valueLines = fieldLines(field)
-    const height = fieldHeight(field)
-    fill(42, y - height + 8, 511, height, LIGHT)
-    text(field.label.toUpperCase(), 52, y - 6, 7.5, true, GREEN)
-    valueLines.forEach((value, index) => text(value, 210, y - 6 - index * 12, 9, false, NAVY))
-    y -= height + 7
+function header(c: Canvas, title: string, saleCode: string, productCode: string, scopeAttached: boolean, page?: string) {
+  c.fill(0, 778, PAGE_WIDTH, 64, GREEN)
+  c.text('Secure Cleaning', 32, 809, 19, true, '1 1 1')
+  c.text(title, 327, 809, 15, true, '1 1 1')
+  c.text(`${saleCode} | ${productCode}`, 327, 789, 8, false, '1 1 1')
+  if (title === 'NEW SITE CHECKLIST') c.text(`SCOPE OF WORKS: ${scopeAttached ? 'ATTACHED' : 'NOT ATTACHED'}`, 32, 789, 7.5, true, '1 1 1')
+  if (page) c.text(page, 520, 789, 7.5, false, '1 1 1')
+}
+
+function sectionBar(c: Canvas, title: string, y: number) {
+  c.fill(32, y - 3, 531, 17, GREEN)
+  c.text(title.toUpperCase(), 40, y + 2, 8, true, '1 1 1')
+}
+
+function field(c: Canvas, input: { x: number; top: number; width: number; height: number; label: string; value: string; maxLines?: number }) {
+  const { x, top, width, height, label, value } = input
+  c.fill(x, top - height, width, height, LIGHT)
+  c.stroke(x, top - height, width, height)
+  c.text(label.toUpperCase(), x + 6, top - 10, 6.4, true, GREEN)
+  const lines = fitLines(value, Math.max(12, Math.floor((width - 12) / 4.7)), input.maxLines ?? 2)
+  if (lines.length) lines.forEach((line, index) => c.text(line, x + 6, top - 23 - index * 9, 7.5, false, NAVY))
+  else c.line(x + 6, top - 25, x + width - 6, top - 25, '0.730 0.760 0.780', 0.5)
+}
+
+function checklistPageContent(input: { saleCode: string; productCode: string; checklist: ContractSaleChecklistData; scopeAttached: boolean }) {
+  const c = canvas()
+  const data = input.checklist
+  header(c, 'NEW SITE CHECKLIST', input.saleCode, input.productCode, input.scopeAttached)
+  sectionBar(c, 'Site and contact details', 755)
+  const left = 32
+  const gap = 8
+  const width = (531 - gap) / 2
+  const right = left + width + gap
+  const details = [
+    [{ label: 'Inspection date', value: formatDate(data.inspectionDate) }, { label: 'Commencement date', value: formatDate(data.commencementDate) }],
+    [{ label: 'Client', value: [data.clientBusiness, data.clientContact].filter(Boolean).join(' - ') }, { label: 'Cleaner', value: [data.cleanerBusiness, data.cleanerContact].filter(Boolean).join(' - ') }],
+    [{ label: 'Client contact', value: [data.clientPhone, data.clientEmail].filter(Boolean).join(' | ') }, { label: 'Cleaner contact', value: [data.cleanerPhone, data.cleanerEmail].filter(Boolean).join(' | ') }],
+    [{ label: 'Site', value: data.siteName }, { label: 'Cleaning schedule', value: [data.cleaningDays, data.cleaningTime, data.frequency].filter(Boolean).join(' | ') }],
+    [{ label: 'Site address', value: data.siteAddress }, { label: 'Initial / spring clean', value: data.initialClean }],
+  ]
+  let top = 735
+  for (const [leftField, rightField] of details) {
+    field(c, { x: left, top, width, height: 38, ...leftField, maxLines: 2 })
+    field(c, { x: right, top, width, height: 38, ...rightField, maxLines: 2 })
+    top -= 40
   }
 
-  line(42, 62, 553, 62)
-  text('Secure Cleaning - confidential site handover information', 42, 44, 7.5, false, MUTED)
-  text(`Page ${page} of ${pageCount}`, 498, 44, 7.5, false, MUTED)
-  return commands.join('\n')
+  sectionBar(c, 'Site setup checklist', 523)
+  const operational = [
+    [
+      ['Access hours', data.accessHours], ['Access instructions', data.accessInstructions],
+      ['Induction requirements', data.inductionRequirements], ['Alarm / security', data.alarmSecurity],
+      ['Keyholder details', data.keyholderDetails], ['Light switches / shutdown', data.lightSwitches],
+      ['Cleaner storage', data.cleanerStorage], ['Keys / items handed over', data.keysItemsHandedOver],
+    ],
+    [
+      ['Consumables', data.consumables], ['Water access', data.waterAccess],
+      ['Rubbish / recycling', data.rubbishDisposal], ['Cleaner communication book', data.cleanerBook],
+      ['Hazards', data.hazards], ['Equipment', data.equipment],
+      ['Scope reviewed with cleaner', ''], ['Client special instructions', ''],
+    ],
+  ] as const
+  operational.forEach((column, columnIndex) => {
+    let fieldTop = 503
+    column.forEach(([label, value]) => {
+      field(c, { x: columnIndex ? right : left, top: fieldTop, width, height: 31, label, value, maxLines: 1 })
+      fieldTop -= 32.5
+    })
+  })
+
+  sectionBar(c, 'Additional notes', 231)
+  c.stroke(32, 66, 531, 148)
+  const noteLines = fitLines(data.notes, 112, 4)
+  noteLines.forEach((line, index) => c.text(line, 40, 196 - index * 13, 8, false, NAVY))
+  for (let index = 0; index < 7; index += 1) c.line(40, 143 - index * 12, 555, 143 - index * 12, '0.760 0.790 0.810', 0.45)
+  c.line(32, 50, 563, 50)
+  c.text('Secure Cleaning - confidential site handover information', 32, 34, 7, false, MUTED)
+  c.text('Checklist page 1 of 1', 476, 34, 7, false, MUTED)
+  return c.output()
+}
+
+type ScopeLine = { text: string; bold?: boolean; indent?: number; colour?: string }
+
+function taskText(task: CleanerScopeTask) {
+  if (typeof task === 'string') return task
+  const cadence = ascii(task.cadence).replace(/_/g, ' ')
+  return `${task.label}${cadence ? ` - ${cadence}` : ''}`
+}
+
+function scopeBlocks(scope: CleanerScopeSnapshotV1) {
+  const blocks: ScopeLine[][] = []
+  const overview = [
+    `Premises: ${scope.premisesType || 'Commercial site'}`,
+    `Frequency: ${scope.frequency || 'To be confirmed'} | Floors: ${scope.floors || '-'} | Floor area: ${scope.floorArea || '-'} sqm`,
+    scope.summary ? `Summary: ${scope.summary}` : '',
+    scope.selectedOptions.length ? `Selected services: ${scope.selectedOptions.join(', ')}` : '',
+  ].filter(Boolean).flatMap((value) => fitLines(value, 92, 4).map((text) => ({ text })))
+  blocks.push([{ text: 'SITE SCOPE OVERVIEW', bold: true, colour: GREEN }, ...overview])
+  scope.rooms.forEach((room, roomIndex) => {
+    const metrics = [`Qty ${room.quantity}`]
+    if (room.size > 0) metrics.push(`${room.size} sqm each`)
+    if (room.floor > 0) metrics.push(`Floor ${room.floor}`)
+    const block: ScopeLine[] = [{ text: `${roomIndex + 1}. ${room.label} - ${metrics.join(' | ')}`, bold: true, colour: GREEN }]
+    if (room.description) block.push(...fitLines(room.description, 88, 3).map((text) => ({ text, indent: 8 })))
+    room.tasks.forEach((task) => block.push(...fitLines(`- ${taskText(task)}`, 86, 3).map((text) => ({ text, indent: 12 }))))
+    ;(room.selectedOptions ?? []).forEach((option) => block.push(...fitLines(`- ${option}`, 86, 2).map((text) => ({ text, indent: 12 }))))
+    blocks.push(block)
+  })
+  return blocks
+}
+
+function paginateScope(scope: CleanerScopeSnapshotV1) {
+  const capacity = 51
+  const pages: ScopeLine[][] = []
+  let page: ScopeLine[] = []
+  for (const block of scopeBlocks(scope)) {
+    const required = block.length + (page.length ? 1 : 0)
+    if (page.length && page.length + required > capacity) { pages.push(page); page = [] }
+    if (block.length <= capacity) {
+      if (page.length) page.push({ text: '' })
+      page.push(...block)
+      continue
+    }
+    for (const line of block) {
+      if (page.length >= capacity) { pages.push(page); page = [] }
+      page.push(line)
+    }
+  }
+  if (page.length) pages.push(page)
+  return pages
+}
+
+function scopePageContent(input: { saleCode: string; productCode: string; lines: ScopeLine[]; page: number; pageCount: number }) {
+  const c = canvas()
+  header(c, 'SCOPE OF WORKS', input.saleCode, input.productCode, true, `${input.page} / ${input.pageCount}`)
+  let y = 754
+  for (const line of input.lines) {
+    if (!line.text) { y -= 6; continue }
+    c.text(line.text, 38 + (line.indent ?? 0), y, line.bold ? 8.5 : 7.7, Boolean(line.bold), line.colour ?? NAVY)
+    y -= line.bold ? 13 : 11
+  }
+  c.line(32, 50, 563, 50)
+  c.text('Secure Cleaning - scope supplied for site handover', 32, 34, 7, false, MUTED)
+  c.text(`Scope page ${input.page} of ${input.pageCount}`, 480, 34, 7, false, MUTED)
+  return c.output()
 }
 
 function pdfFromPages(contents: string[]) {
@@ -129,51 +267,17 @@ function pdfFromPages(contents: string[]) {
   return Buffer.from(pdf, 'latin1')
 }
 
-export function buildContractSaleChecklistPdf(input: { saleCode: string; productCode: string; checklist: ContractSaleChecklistData }) {
-  const c = input.checklist
-  const sections: Field[][] = [
-    [
-      { label: 'Inspection date', value: formatDate(c.inspectionDate) },
-      { label: 'Commencement date', value: formatDate(c.commencementDate) },
-      { label: 'Client', value: [c.clientBusiness, c.clientContact, c.clientPhone, c.clientEmail].filter(Boolean).join(' | '), lines: 3 },
-      { label: 'Cleaner', value: [c.cleanerBusiness, c.cleanerContact, c.cleanerPhone, c.cleanerEmail].filter(Boolean).join(' | '), lines: 3 },
-      { label: 'Site', value: [c.siteName, c.siteAddress].filter(Boolean).join(' - '), lines: 3 },
-      { label: 'Cleaning schedule', value: [c.cleaningDays, c.cleaningTime, c.frequency].filter(Boolean).join(' | '), lines: 3 },
-      { label: 'Scope summary', value: c.scopeSummary, lines: 7 },
-      { label: 'Initial / spring clean', value: c.initialClean, lines: 3 },
-    ],
-    [
-      { label: 'Access hours', value: c.accessHours, lines: 4 },
-      { label: 'Access instructions', value: c.accessInstructions, lines: 6 },
-      { label: 'Induction requirements', value: c.inductionRequirements, lines: 5 },
-      { label: 'Alarm / security', value: c.alarmSecurity, lines: 6 },
-      { label: 'Keyholder', value: c.keyholderDetails, lines: 4 },
-      { label: 'Light switches / shutdown', value: c.lightSwitches, lines: 4 },
-      { label: 'Cleaner storage', value: c.cleanerStorage, lines: 4 },
-    ],
-    [
-      { label: 'Consumables', value: c.consumables, lines: 5 },
-      { label: 'Water access', value: c.waterAccess, lines: 4 },
-      { label: 'Rubbish / recycling', value: c.rubbishDisposal, lines: 5 },
-      { label: 'Cleaner communication book', value: c.cleanerBook, lines: 4 },
-      { label: 'Hazards', value: c.hazards, lines: 6 },
-      { label: 'Equipment', value: c.equipment, lines: 5 },
-      { label: 'Keys / items handed over', value: c.keysItemsHandedOver, lines: 5 },
-      { label: 'Additional notes', value: c.notes, lines: 8 },
-    ],
-  ]
-  const pages = sections.flatMap((section) => {
-    const chunks: Field[][] = []
-    let current: Field[] = []
-    let used = 0
-    for (const field of section) {
-      const required = fieldHeight(field) + 7
-      if (current.length && used + required > 640) { chunks.push(current); current = []; used = 0 }
-      current.push(field); used += required
-    }
-    if (current.length) chunks.push(current)
-    return chunks
-  })
-  const contents = pages.map((fields, index) => pageContent('NEW SITE CHECKLIST', input.saleCode, input.productCode, fields, index + 1, pages.length))
+export function buildContractSaleChecklistPdf(input: {
+  saleCode: string
+  productCode: string
+  checklist: ContractSaleChecklistData
+  includeScope?: boolean
+  scope?: CleanerScopeSnapshotV1 | null
+}) {
+  const contents = [checklistPageContent({ saleCode: input.saleCode, productCode: input.productCode, checklist: input.checklist, scopeAttached: Boolean(input.includeScope && input.scope) })]
+  if (input.includeScope && input.scope) {
+    const pages = paginateScope(input.scope)
+    contents.push(...pages.map((lines, index) => scopePageContent({ saleCode: input.saleCode, productCode: input.productCode, lines, page: index + 1, pageCount: pages.length })))
+  }
   return pdfFromPages(contents)
 }

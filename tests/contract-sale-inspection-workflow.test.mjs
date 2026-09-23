@@ -48,7 +48,7 @@ test('inspection migration keeps message and completed-checklist history private
   assert.match(migration, /REVOKE ALL[\s\S]*FROM PUBLIC, anon, authenticated, service_role/)
 })
 
-test('printable site checklist is a branded three-page A4 PDF with the handover fields', () => {
+test('printable site checklist is a condensed one-page A4 sheet with an optional detailed scope', () => {
   const checklist = {
     inspectionDate: '2026-09-24', commencementDate: '2026-10-01', clientBusiness: 'Example Client', clientContact: 'Alex Client',
     clientPhone: '0400 000 001', clientEmail: 'client@example.com', cleanerBusiness: 'Example Cleaning', cleanerContact: 'Casey Cleaner',
@@ -59,12 +59,35 @@ test('printable site checklist is a branded three-page A4 PDF with the handover 
     consumables: 'Client supplies paper products', waterAccess: 'Kitchen and cleaner room', rubbishDisposal: 'Rear loading area', cleanerBook: 'Stored in cleaner room',
     hazards: 'Wet floor near rear entry', equipment: 'Vacuum and mop stored onsite', keysItemsHandedOver: 'Two keys and one swipe card', notes: 'Photograph completed checklist after handover',
   }
+  const scope = {
+    formatVersion: 1, state: 'NSW', suburb: 'Sydney', premisesType: 'office', floorArea: 120, floors: 1,
+    frequency: 'weekly', timePreference: 'after hours', estimatedHours: 3, summary: 'Office cleaning scope', selectedOptions: ['Consumables'],
+    rooms: [{ type: 'office', label: 'Main office', description: 'Open-plan work area', quantity: 1, size: 80, floor: 1, tasks: [{ label: 'Vacuum floors', cadence: 'every_clean' }], selectedOptions: ['Empty bins'] }],
+  }
   const pdf = buildContractSaleChecklistPdf({ saleCode: 'PS-2026-01002', productCode: 'C001008', checklist })
   const text = pdf.toString('latin1')
 
   assert.ok(pdf.subarray(0, 5).equals(Buffer.from('%PDF-')))
-  assert.match(text, /\/Count 3/)
+  assert.match(text, /\/Count 1/)
   assert.match(text, /Secure Cleaning/)
   assert.match(text, /NEW SITE CHECKLIST/)
   assert.match(text, /KEYS \/ ITEMS HANDED OVER/)
+  assert.match(text, /SCOPE OF WORKS: NOT ATTACHED/)
+
+  const withScope = buildContractSaleChecklistPdf({ saleCode: 'PS-2026-01002', productCode: 'C001008', checklist, includeScope: true, scope })
+  const scopeText = withScope.toString('latin1')
+  assert.match(scopeText, /\/Count 2/)
+  assert.match(scopeText, /SCOPE OF WORKS: ATTACHED/)
+  assert.match(scopeText, /SCOPE OF WORKS/)
+  assert.match(scopeText, /Main office/)
+})
+
+test('checklist printing keeps the scope opt-in and server-derived', () => {
+  const panel = source('src/components/admin/ContractSaleInspectionPanel.tsx')
+  const route = source('src/app/api/admin/contract-sales/checklists/route.ts')
+  const domain = source('src/lib/contractSales.ts')
+  assert.match(panel, /Attach the full scope of works/)
+  assert.match(panel, /includeScope=1/)
+  assert.match(route, /searchParams\.get\('includeScope'\) === '1'/)
+  assert.match(domain, /scope: context\.product\.cleaner_scope_snapshot/)
 })

@@ -35,6 +35,7 @@ export class ContractProductError extends Error {
 export type ContractProduct = {
   id: string
   productCode: string
+  clientDisplayName: string
   opportunityId: string
   sourceQuoteId: string
   sourceQuoteRef: string
@@ -138,10 +139,11 @@ async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
   }
 }
 
-function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0): ContractProduct {
+function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0, clientDisplayName = ''): ContractProduct {
   return {
     id: String(row.id),
     productCode: String(row.product_code ?? ''),
+    clientDisplayName,
     opportunityId: String(row.opportunity_id ?? ''),
     sourceQuoteId: String(row.source_quote_id ?? ''),
     sourceQuoteRef: quoteRef,
@@ -286,19 +288,42 @@ export async function getContractProducts(actor: ContractProductActor) {
   const rows = (data ?? []) as ProductRow[]
   const quoteIds = rows.flatMap((row) => row.source_quote_id ? [String(row.source_quote_id)] : [])
   const productIds = rows.map((row) => String(row.id))
-  const [quotes, interests] = await Promise.all([
+  const opportunityIds = [...new Set(rows.map((row) => String(row.opportunity_id ?? '')).filter(Boolean))]
+  const [quotes, interests, opportunities] = await Promise.all([
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
     productIds.length ? db.from('contract_product_interests').select('product_id').in('product_id', productIds) : Promise.resolve({ data: [], error: null }),
+    opportunityIds.length ? db.from('crm_opportunities').select('id, organisation_id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (quotes.error) throw quotes.error
   if (interests.error) throw interests.error
+  if (opportunities.error) throw opportunities.error
+  const opportunityRows = (opportunities.data ?? []) as ProductRow[]
+  const organisationIds = [...new Set(opportunityRows.map((row) => String(row.organisation_id ?? '')).filter(Boolean))]
+  const contactIds = [...new Set(opportunityRows.map((row) => String(row.primary_contact_id ?? '')).filter(Boolean))]
+  const [organisations, contacts] = await Promise.all([
+    organisationIds.length ? db.from('crm_organisations').select('id, business_name, legal_name').in('id', organisationIds) : Promise.resolve({ data: [], error: null }),
+    contactIds.length ? db.from('clients').select('id, business_name, contact_name').in('id', contactIds) : Promise.resolve({ data: [], error: null }),
+  ])
+  if (organisations.error) throw organisations.error
+  if (contacts.error) throw contacts.error
   const quoteRefs = new Map((quotes.data ?? []).map((row) => [String(row.id), String(row.quote_ref)]))
+  const organisationNames = new Map((organisations.data ?? []).map((row) => [String(row.id), clean(row.business_name, 200) || clean(row.legal_name, 200)]))
+  const contactNames = new Map((contacts.data ?? []).map((row) => [String(row.id), clean(row.business_name, 200) || clean(row.contact_name, 200)]))
+  const clientNames = new Map(opportunityRows.map((row) => [
+    String(row.id),
+    organisationNames.get(String(row.organisation_id ?? '')) || contactNames.get(String(row.primary_contact_id ?? '')) || '',
+  ]))
   const interestCounts = new Map<string, number>()
   for (const row of interests.data ?? []) {
     const id = String(row.product_id)
     interestCounts.set(id, (interestCounts.get(id) ?? 0) + 1)
   }
-  return rows.map((row) => mapProduct(row, quoteRefs.get(String(row.source_quote_id)) ?? '', interestCounts.get(String(row.id)) ?? 0))
+  return rows.map((row) => mapProduct(
+    row,
+    quoteRefs.get(String(row.source_quote_id)) ?? '',
+    interestCounts.get(String(row.id)) ?? 0,
+    clientNames.get(String(row.opportunity_id)) ?? '',
+  ))
 }
 
 export async function updateContractProduct(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -464,36 +489,6 @@ export async function getAvailableCleanerJobs(state?: ContractProductState | nul
       listedAt: product.listedAt,
     }
   })
-}
-
-export async function registerContractProductInterest(input: {
-  productCode: string
-  accessLinkId: string
-  email: string
-  note?: string
-}) {
-  const db = getAdminSupabase()
-  const email = input.email.trim().toLowerCase().slice(0, 320)
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false
-  const accessLink = await getJobsAccessLink(input.accessLinkId)
-  if (!accessLink) return false
-  const { data: product } = await db.from('contract_products').select('id, state').eq('product_code', input.productCode).eq('status', 'available').maybeSingle()
-  if (!product) return false
-  if (accessLink.state && accessLink.state !== product.state) return false
-  const { data: cleaner } = await db.from('cleaners').select('id, email, state, status, contact_name, phone')
-    .eq('email', email).eq('status', 'approved').maybeSingle()
-  if (!cleaner || String(cleaner.state ?? '').toUpperCase() !== product.state) return false
-  const { error } = await db.from('contract_product_interests').upsert({
-    product_id: product.id,
-    cleaner_id: cleaner.id,
-    access_link_id: input.accessLinkId,
-    contact_name: clean(cleaner.contact_name, 160) || 'Cleaner',
-    email_normalized: email,
-    phone: clean(cleaner.phone, 40) || null,
-    note: clean(input.note, 1000) || null,
-  }, { onConflict: 'product_id,cleaner_id', ignoreDuplicates: true })
-  if (error) throw error
-  return true
 }
 
 export async function getActiveJobsAccessLinkId() {
