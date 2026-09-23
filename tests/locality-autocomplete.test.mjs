@@ -108,3 +108,14 @@ test('customer locality forms ask for state before address and suburb search', (
   assert.match(addressSearch, /Select a state first/)
   assert.match(localitySearch, /Select a state first/)
 })
+
+test('locality search display follows saved suburb and postcode changes', () => {
+  const localitySearch = readFileSync(`${root}/src/components/shared/LocalityAutocomplete.tsx`, 'utf8')
+
+  assert.match(localitySearch, /useState\(\(\) => formatLocalityQuery\(suburb, postcode\)\)/)
+  assert.match(
+    localitySearch,
+    /useEffect\(\(\) => \{\s*setQuery\(formatLocalityQuery\(suburb, postcode\)\)\s*\}, \[suburb, postcode\]\)/
+  )
+  assert.doesNotMatch(localitySearch, /suburb && postcode && !query/)
+})

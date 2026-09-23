@@ -22,6 +22,10 @@ interface LocalityAutocompleteProps {
   onChange: (updates: { suburb: string; postcode: string; latitude?: number; longitude?: number }) => void
 }
 
+function formatLocalityQuery(suburb: string, postcode: string) {
+  return [suburb.trim(), postcode.trim()].filter(Boolean).join(' ')
+}
+
 export default function LocalityAutocomplete({
   city,
   suburb,
@@ -31,7 +35,7 @@ export default function LocalityAutocomplete({
   required,
   onChange,
 }: LocalityAutocompleteProps) {
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(() => formatLocalityQuery(suburb, postcode))
   const [suggestions, setSuggestions] = useState<LocalitySuggestion[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
@@ -112,10 +116,8 @@ export default function LocalityAutocomplete({
   }
 
   useEffect(() => {
-    if (suburb && postcode && !query) {
-      setQuery(`${suburb} ${postcode}`)
-    }
-  }, [suburb, postcode, query])
+    setQuery(formatLocalityQuery(suburb, postcode))
+  }, [suburb, postcode])
 
   return (
     <div ref={containerRef} className="space-y-4">
