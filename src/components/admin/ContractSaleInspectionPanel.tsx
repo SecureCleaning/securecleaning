@@ -112,7 +112,8 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
     if (!availabilityPreview) return
     try {
       await post('inspection-availability.send', { ...emailPayload('availability'), previewFingerprint: availabilityPreview.fingerprint, requestId: availabilityRequestId })
-      setMessage('Client availability request sent.'); setAvailabilityPreview(null); setAvailabilityRequestId(crypto.randomUUID()); await onRefresh()
+      setMessage('Client availability request sent.'); setAvailabilityPreview(null); setAvailabilityRequestId(crypto.randomUUID())
+      window.dispatchEvent(new Event('secure-cleaning:sale-alerts-changed')); await onRefresh()
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send the availability request.') }
   }
 
@@ -127,7 +128,8 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
     try {
       await post('inspection.schedule', { ...appointment, ...emailPayload('client'), ...emailPayload('cleaner'), previewFingerprint: confirmationPreview.fingerprint, clientRequestId: confirmationRequestIds.client, cleanerRequestId: confirmationRequestIds.cleaner })
       setMessage('Inspection scheduled. Separate client and cleaner confirmations were sent, and the staff calendar was updated or supplied with an email fallback.')
-      setConfirmationPreview(null); setConfirmationRequestIds({ client: crypto.randomUUID(), cleaner: crypto.randomUUID() }); await onRefresh()
+      setConfirmationPreview(null); setConfirmationRequestIds({ client: crypto.randomUUID(), cleaner: crypto.randomUUID() })
+      window.dispatchEvent(new Event('secure-cleaning:sale-alerts-changed')); await onRefresh()
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to schedule the inspection.') }
   }
 
