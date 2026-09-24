@@ -1,4 +1,5 @@
 import { getAdminSupabase } from '@/lib/supabase'
+import { needsBookingAssignment, needsInspectionAction } from '@/lib/bookingWorkflow'
 
 export interface ReportingSnapshot {
   quoteCount: number
@@ -7,7 +8,7 @@ export interface ReportingSnapshot {
   completedBookings: number
   activeOperators: number
   unassignedBookings: number
-  scheduledInspections: number
+  inspectionActions: number
   quoteFollowUpBreakdown: Record<string, number>
   leadFollowUpBreakdown: Record<string, number>
 }
@@ -41,13 +42,8 @@ export async function getReportingSnapshot(): Promise<ReportingSnapshot> {
     pendingBookings: bookings.filter((item) => item.status === 'pending').length,
     completedBookings: bookings.filter((item) => item.status === 'completed').length,
     activeOperators: operators.filter((item) => item.is_active).length,
-    unassignedBookings: bookings.filter((item) => {
-      const assignedAgent = item.inputs && typeof item.inputs === 'object'
-        ? (item.inputs as Record<string, unknown>).preferredInspectionAssigneeId
-        : null
-      return (!item.assigned_operator_id && !assignedAgent) || !item.site_id
-    }).length,
-    scheduledInspections: bookings.filter((item) => item.inspection_status === 'scheduled').length,
+    unassignedBookings: bookings.filter(needsBookingAssignment).length,
+    inspectionActions: bookings.filter(needsInspectionAction).length,
     quoteFollowUpBreakdown: tally(quotes.map((item) => item.follow_up_status), 'new'),
     leadFollowUpBreakdown: tally(leads.map((item) => item.follow_up_status), 'new'),
   }

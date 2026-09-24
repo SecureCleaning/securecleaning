@@ -5,12 +5,12 @@ type ReportingSnapshot = {
   completedBookings: number
   activeOperators: number
   unassignedBookings: number
-  scheduledInspections: number
+  inspectionActions: number
   quoteFollowUpBreakdown: Record<string, number>
   leadFollowUpBreakdown: Record<string, number>
 }
 
-type ReportingDestination = 'quotes' | 'bookings'
+export type ReportingDestination = 'quotes' | 'bookings-pending' | 'bookings-unassigned' | 'bookings-inspections'
 
 export default function ReportingPanel({
   snapshot,
@@ -22,9 +22,9 @@ export default function ReportingPanel({
   return (
     <div className="grid h-full grid-cols-2 gap-2 lg:grid-cols-4">
       <MetricCard label="All quotes" value={snapshot.quoteCount} onClick={() => onMetricClick('quotes')} />
-      <MetricCard label="Pending bookings" value={snapshot.pendingBookings} onClick={() => onMetricClick('bookings')} />
-      <MetricCard label="Unassigned" value={snapshot.unassignedBookings} onClick={() => onMetricClick('bookings')} />
-      <MetricCard label="Inspections" value={snapshot.scheduledInspections} onClick={() => onMetricClick('bookings')} />
+      <MetricCard label="Pending bookings" value={snapshot.pendingBookings} onClick={() => onMetricClick('bookings-pending')} />
+      <MetricCard label="Needs assignment" value={snapshot.unassignedBookings} onClick={() => onMetricClick('bookings-unassigned')} />
+      <MetricCard label="Inspection actions" value={snapshot.inspectionActions} onClick={() => onMetricClick('bookings-inspections')} />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLogStrict } from '@/lib/auditLog'
 import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
 import { isValidAdminAlertId } from '@/lib/adminAlertId'
+import { needsBookingAssignment } from '@/lib/bookingWorkflow'
 
 export { isValidAdminAlertId } from '@/lib/adminAlertId'
 
@@ -58,8 +59,10 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
     db.from('quotes').select('quote_ref, created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings').select('booking_ref, created_at, status').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings')
-      .select('booking_ref, created_at, inspection_status, inspection_scheduled_for')
+      .select('booking_ref, created_at, status, inspection_status, inspection_scheduled_for')
       .eq('inspection_status', 'scheduled')
+      .neq('status', 'completed')
+      .neq('status', 'cancelled')
       .not('inspection_scheduled_for', 'is', null)
       .lt('inspection_scheduled_for', nowIso)
       .order('inspection_scheduled_for', { ascending: true })
@@ -101,10 +104,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   }
 
   for (const booking of unassignedBookingsRes.data ?? []) {
-    const assignedAgent = booking.inputs && typeof booking.inputs === 'object'
-      ? (booking.inputs as Record<string, unknown>).preferredInspectionAssigneeId
-      : null
-    if (booking.assigned_operator_id || assignedAgent) continue
+    if (!needsBookingAssignment(booking)) continue
 
     const happenedAt = new Date(booking.created_at ?? '').getTime()
     alertsById.set(`booking-unassigned-${booking.booking_ref}`, {

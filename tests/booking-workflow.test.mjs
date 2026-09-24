@@ -19,7 +19,7 @@ test('issue routing sends dispatch alerts to the inspection workflow controls', 
   const dispatchPanel = read('src/components/admin/DispatchPanel.tsx')
 
   assert.match(source, /alert\.kind === 'new_booking'/)
-  assert.match(source, /openDispatchEditor\(alert\.entity_ref, alert\.id\)/)
+  assert.match(source, /openDispatchEditor\(alert\.entity_ref, alert\.id, alert\.kind === 'unassigned_booking' \? 'unassigned' : 'inspections'\)/)
   assert.match(dispatchPanel, /Assign the site and operator here/)
   assert.match(dispatchPanel, /onBookingOperatorChange/)
   assert.match(dispatchPanel, /Regional agents/)

@@ -24,7 +24,7 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
     availabilityConfig,
   ] = await Promise.all([
     getDashboardQuotes(db),
-    db.from('bookings').select('id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id, inspection_status, inspection_scheduled_for, inspection_completed_at, dispatch_notes').order('created_at', { ascending: false }).limit(20),
+    db.from('bookings').select('id, booking_ref, status, first_clean_date, created_at, inputs, site_id, assigned_operator_id, inspection_status, inspection_scheduled_for, inspection_completed_at, dispatch_notes').order('created_at', { ascending: false }),
     db.from('clients').select('id, business_name, contact_name, email, city, created_at').order('created_at', { ascending: false }).limit(20),
     db.from('leads').select('id, email, business_name, city, source, created_at, follow_up_status, follow_up_notes').order('created_at', { ascending: false }).limit(20),
     db.from('owner_operators').select('id, business_name, operator_name, city, is_verified, is_active, premises_types').order('created_at', { ascending: false }).limit(20),

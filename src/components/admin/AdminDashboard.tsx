@@ -6,11 +6,17 @@ import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 import BookingEditor from './BookingEditor'
 import DispatchPanel from './DispatchPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
-import ReportingPanel from './ReportingPanel'
+import ReportingPanel, { type ReportingDestination } from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
 import DeleteQuoteButton from './DeleteQuoteButton'
 import { getRelevantOperators } from '@/lib/operatorMatching'
 import { compareQuoteStatuses, getQuoteStatusEditOptions, getQuoteStatusOptions, matchesQuoteSearch, type QuoteStatusSortDirection } from '@/lib/quoteList'
+import {
+  isActiveBooking,
+  isClosedBooking,
+  matchesBookingQueue,
+  type BookingQueue,
+} from '@/lib/bookingWorkflow'
 
 type DashboardStats = {
   quotesPending: number
@@ -133,7 +139,7 @@ type ReportingSnapshot = {
   completedBookings: number
   activeOperators: number
   unassignedBookings: number
-  scheduledInspections: number
+  inspectionActions: number
   quoteFollowUpBreakdown: Record<string, number>
   leadFollowUpBreakdown: Record<string, number>
 }
@@ -197,6 +203,14 @@ function formatDate(value?: string | null) {
 }
 
 const bookingStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled']
+const bookingQueues: Array<{ key: BookingQueue; label: string }> = [
+  { key: 'active', label: 'Active' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'unassigned', label: 'Needs assignment' },
+  { key: 'inspections', label: 'Inspection actions' },
+  { key: 'closed', label: 'Closed / history' },
+  { key: 'all', label: 'All' },
+]
 
 export default function AdminDashboard({ initialData, canDeleteQuotes = false }: Props) {
   useQuoteListRefresh()
@@ -221,6 +235,8 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   const currentQuotePage = Math.min(quotePage, lastQuotePage)
   const visibleQuotes = matchingQuotes.slice(currentQuotePage * 25, (currentQuotePage + 1) * 25)
   const [bookings, setBookings] = useState(initialData.bookings)
+  const [bookingQueue, setBookingQueue] = useState<BookingQueue>('active')
+  const [bookingSearch, setBookingSearch] = useState('')
   const [selectedBookingRef, setSelectedBookingRef] = useState(initialData.bookings[0]?.booking_ref ?? '')
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
   const [leads, setLeads] = useState(initialData.leads)
@@ -234,6 +250,34 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
     message: null,
     error: null,
   })
+
+  useEffect(() => {
+    const requestedQueue = new URL(window.location.href).searchParams.get('queue') as BookingQueue | null
+    if (!requestedQueue || !bookingQueues.some((queue) => queue.key === requestedQueue)) return
+    const matching = initialData.bookings.filter((booking) => matchesBookingQueue(booking, requestedQueue))
+    setBookingQueue(requestedQueue)
+    setActiveTab('bookings')
+    setSelectedBookingRef(matching[0]?.booking_ref ?? '')
+  }, [initialData.bookings])
+
+  const normalizedBookingSearch = bookingSearch.trim().toLowerCase()
+  const queueBookings = bookings.filter((booking) => matchesBookingQueue(booking, bookingQueue))
+  const visibleBookings = queueBookings.filter((booking) => {
+    if (!normalizedBookingSearch) return true
+    return [
+      booking.booking_ref,
+      booking.inputs?.businessName,
+      booking.inputs?.address,
+      booking.inputs?.suburb,
+      booking.inputs?.postcode,
+    ].join(' ').toLowerCase().includes(normalizedBookingSearch)
+  })
+
+  useEffect(() => {
+    if (activeTab !== 'bookings') return
+    if (visibleBookings.some((booking) => booking.booking_ref === selectedBookingRef)) return
+    setSelectedBookingRef(visibleBookings[0]?.booking_ref ?? '')
+  }, [activeTab, selectedBookingRef, visibleBookings])
 
   useEffect(() => {
     if (!alertsOpen) return
@@ -268,19 +312,60 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
     }, 0)
   }
 
-  function openBookingEditor(bookingRef: string, alertId?: string) {
+  function replaceQueueInUrl(queue: BookingQueue) {
+    const url = new URL(window.location.href)
+    url.searchParams.set('queue', queue)
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
+  function openBookingQueue(nextQueue: BookingQueue, target: 'queue' | 'dispatch' = 'queue') {
+    const matching = bookings.filter((booking) => matchesBookingQueue(booking, nextQueue))
+    setBookingQueue(nextQueue)
+    setBookingSearch('')
+    setActiveTab('bookings')
+    setSelectedBookingRef(matching[0]?.booking_ref ?? '')
+
+    replaceQueueInUrl(nextQueue)
+
+    window.setTimeout(() => {
+      document.getElementById(target === 'dispatch' ? 'dispatch-editor' : 'booking-queue')
+        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
+  function openReportingDestination(destination: ReportingDestination) {
+    if (destination === 'quotes') {
+      openWorkArea('quotes')
+      return
+    }
+    if (destination === 'bookings-unassigned') {
+      openBookingQueue('unassigned', 'dispatch')
+      return
+    }
+    if (destination === 'bookings-inspections') {
+      openBookingQueue('inspections', 'dispatch')
+      return
+    }
+    openBookingQueue('pending')
+  }
+
+  function openBookingEditor(bookingRef: string, alertId?: string, nextQueue: BookingQueue = bookingQueue) {
     setSelectedBookingRef(bookingRef)
     setSelectedAlertId(alertId ?? null)
+    setBookingQueue(nextQueue)
     setActiveTab('bookings')
+    replaceQueueInUrl(nextQueue)
     window.setTimeout(() => {
       document.getElementById('booking-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
   }
 
-  function openDispatchEditor(bookingRef: string, alertId?: string) {
+  function openDispatchEditor(bookingRef: string, alertId?: string, nextQueue: BookingQueue = bookingQueue) {
     setSelectedBookingRef(bookingRef)
     setSelectedAlertId(alertId ?? null)
+    setBookingQueue(nextQueue)
     setActiveTab('bookings')
+    replaceQueueInUrl(nextQueue)
     window.setTimeout(() => {
       document.getElementById('dispatch-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 0)
@@ -295,11 +380,11 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
     }
 
     if (alert.kind === 'new_booking') {
-      openBookingEditor(alert.entity_ref, alert.id)
+      openBookingEditor(alert.entity_ref, alert.id, 'pending')
       return
     }
 
-    openDispatchEditor(alert.entity_ref, alert.id)
+    openDispatchEditor(alert.entity_ref, alert.id, alert.kind === 'unassigned_booking' ? 'unassigned' : 'inspections')
   }
 
   async function dismissAlert(alert: AdminAlertRow) {
@@ -330,8 +415,15 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
       if (alertsResponse.ok && alertsResult?.success) {
         setAlerts(alertsResult.alerts as AdminAlertRow[])
       }
+
+      if (!reportingResponse.ok || !reportingResult?.success || !alertsResponse.ok || !alertsResult?.success) {
+        throw new Error('Dashboard refresh failed.')
+      }
     } catch {
-      // Leave the last known overview state in place if refresh fails.
+      setActionState((current) => ({
+        ...current,
+        error: 'The record was saved, but the dashboard counters could not be refreshed. Reload this page to retry.',
+      }))
     }
   }
 
@@ -371,6 +463,14 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   }
 
   async function handleBookingStatusChange(bookingRef: string, status: string) {
+    const booking = bookings.find((item) => item.booking_ref === bookingRef)
+    if (
+      status === 'completed'
+      && booking
+      && (booking.inspection_status === 'pending' || booking.inspection_status === 'scheduled' || !booking.inspection_status)
+      && !window.confirm('This booking still has an unresolved inspection. Completing the booking will move it to Closed / history, where the inspection can be completed or cancelled separately. Continue?')
+    ) return
+
     const ok = await runAction({ action: 'booking.status', bookingRef, status }, `Booking ${bookingRef} updated to ${status}.`)
     if (!ok) return
 
@@ -456,7 +556,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
 
   function tabCount(tab: TabKey) {
     if (tab === 'quotes') return quotes.length
-    if (tab === 'bookings') return bookings.length
+    if (tab === 'bookings') return bookings.filter(isActiveBooking).length
     return leads.length
   }
 
@@ -476,7 +576,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
               Open queue
             </button>
           </div>
-          <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openWorkArea} />
+          <ReportingPanel snapshot={reportingSnapshot} onMetricClick={openReportingDestination} />
         </div>
         <nav className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 bg-gray-50/70 px-3 py-2" aria-label="Admin shortcuts">
           <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Quick access</span>
@@ -686,15 +786,46 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
 
         {activeTab === 'bookings' && (
         <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <div id="booking-queue" className="scroll-mt-24 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Booking queue</h2>
-                  <p className="mt-1 text-sm text-gray-600">Open a booking to edit customer details, inspection workflow, or assignments.</p>
+                  <p className="mt-1 text-sm text-gray-600">Each queue uses the same rules as its dashboard counter. Closed bookings stay in history.</p>
                 </div>
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{bookings.length} shown</span>
+                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600">{visibleBookings.length} shown</span>
               </div>
+              <div className="mt-3 flex flex-wrap gap-2" aria-label="Booking queue filters">
+                {bookingQueues.map((queue) => {
+                  const isSelected = bookingQueue === queue.key
+                  const count = bookings.filter((booking) => matchesBookingQueue(booking, queue.key)).length
+                  return (
+                    <button
+                      key={queue.key}
+                      type="button"
+                      onClick={() => openBookingQueue(queue.key, queue.key === 'unassigned' || queue.key === 'inspections' ? 'dispatch' : 'queue')}
+                      aria-pressed={isSelected}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                        isSelected
+                          ? 'border-green-600 bg-green-600 text-white'
+                          : 'border-gray-200 bg-white text-gray-700 hover:border-green-300'
+                      }`}
+                    >
+                      {queue.label} {count}
+                    </button>
+                  )
+                })}
+              </div>
+              <label className="mt-3 block text-sm font-medium text-gray-700">
+                Search this queue
+                <input
+                  type="search"
+                  value={bookingSearch}
+                  onChange={(event) => setBookingSearch(event.target.value)}
+                  placeholder="Reference, business, address or postcode"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+                />
+              </label>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -711,7 +842,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                   </tr>
                 </thead>
                 <tbody>
-                  {bookings.map((booking) => {
+                  {visibleBookings.map((booking) => {
                     const linkedAgentId = booking.linkedAgentId
                       ?? booking.inputs?.preferredInspectionAssigneeId
                       ?? operators.find((operator) => operator.id === booking.assigned_operator_id)?.availabilityAssigneeId
@@ -748,12 +879,18 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                         <select
                           value={booking.status}
                           onChange={(event) => handleBookingStatusChange(booking.booking_ref, event.target.value)}
-                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white"
+                          disabled={actionState.loading !== null}
+                          className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white disabled:bg-gray-100 disabled:text-gray-500"
                         >
                           {bookingStatuses.map((status) => (
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>
+                        {isClosedBooking(booking) && (booking.inspection_status === 'pending' || booking.inspection_status === 'scheduled' || !booking.inspection_status) ? (
+                          <div className="mt-1 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-900">
+                            Inspection unresolved
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3">
                         <select
@@ -839,13 +976,20 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                     </tr>
                     )
                   })}
+                  {visibleBookings.length === 0 ? (
+                    <tr className="border-t border-gray-100">
+                      <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                        No bookings match this queue. Use Closed / history to review completed or cancelled records.
+                      </td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
           </div>
           <div id="booking-editor" className="scroll-mt-24">
             <BookingEditor
-              bookings={bookings}
+              bookings={visibleBookings}
               selectedBookingRef={selectedBookingRef}
               onSelectedBookingRefChange={setSelectedBookingRef}
               onBookingUpdated={(updatedBooking) => {
@@ -867,7 +1011,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
           </div>
           <div id="dispatch-editor" className="scroll-mt-24">
             <DispatchPanel
-              bookings={bookings}
+              bookings={visibleBookings}
               sites={sites}
               operators={operators}
               availabilityAgents={initialData.availabilityAgents}
