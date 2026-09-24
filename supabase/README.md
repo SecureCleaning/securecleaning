@@ -2,6 +2,13 @@
 
 `schema.sql` is the clean-database baseline. Applied environments must then run additive migration files in repository order; migrations are never copied backward into historical files or replaced by ad-hoc production SQL.
 
+Apply `data_api_explicit_grants_migration.sql` after every existing table-creating
+migration and before 2026-10-30. It makes the current Data API privileges explicit
+for all application tables and sequences before Supabase stops granting access to new
+objects automatically. Future migrations that create a table or sequence must include
+the required least-privilege `GRANT` in that same migration. Private operational tables
+receive no new browser-role grants; only `site_content` is granted directly to browser roles.
+
 For the final quote workflow, apply:
 
 1. `audit_log_migration.sql`
