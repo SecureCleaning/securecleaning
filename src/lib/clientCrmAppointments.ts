@@ -54,9 +54,6 @@ async function loadAppointmentContext(actor: ClientCrmActor, opportunityId: stri
   if (!opportunity || !actorCanAccessOpportunity(actor, opportunity.assigned_staff_id)) {
     throw new ClientCrmError('Opportunity not found.', 404)
   }
-  if (['won', 'lost', 'cancelled'].includes(String(opportunity.stage ?? ''))) {
-    throw new ClientCrmError('Reopen this opportunity before creating an inspection appointment.', 409)
-  }
   if (!opportunity.primary_contact_id || !opportunity.site_id || !opportunity.organisation_id) {
     throw new ClientCrmError('Save a primary contact and confirmed site before creating an appointment.', 409)
   }
@@ -146,20 +143,6 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
       throw new ClientCrmError('This appointment request conflicts with another saved booking.', 409)
     }
     return { bookingRef, scheduledFor: String(existing.inspection_scheduled_for ?? ''), created: false }
-  }
-
-  const { data: activeAppointment, error: activeError } = await db.from('bookings')
-    .select('booking_ref, inspection_scheduled_for')
-    .eq('opportunity_id', opportunityId)
-    .neq('status', 'cancelled')
-    .eq('inspection_status', 'scheduled')
-    .gte('inspection_scheduled_for', new Date().toISOString())
-    .order('inspection_scheduled_for', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (activeError) throw activeError
-  if (activeAppointment) {
-    throw new ClientCrmError(`This opportunity already has appointment ${activeAppointment.booking_ref}. Cancel or complete it before adding another.`, 409)
   }
 
   const staff = await listStaffAccounts()

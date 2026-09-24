@@ -529,9 +529,6 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
-  if (actor.role === 'agent') {
-    throw new ClientCrmError('Only an owner or manager can change shared client and site details.', 403)
-  }
   const opportunityId = clean(input.opportunityId, 100)
   const businessName = clean(input.businessName, 200)
   const firstName = clean(input.firstName, 100)

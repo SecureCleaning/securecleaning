@@ -55,7 +55,7 @@ test('creation accepts absent business names, defaults NSW, preserves named busi
     }
     await assert.rejects(createManualCrmOpportunity({ ...actor, availabilityAssigneeId: null }, draft))
     assert.equal(writes.length, count)
-    await assert.rejects(updateCrmProfile(actor, {}), /Only an owner or manager/)
+    await assert.rejects(updateCrmProfile(actor, {}), /Provide the contact name and a valid email/)
   } finally { global.fetch = original }
 })
 test('optional-name migration retains the exact profile authorization, concurrency and audit checks', () => {
@@ -72,7 +72,7 @@ test('profile editing sends blank or named businesses and preserves stale-write 
   global.fetch = async (url, options) => {
     const path = new URL(String(url)).pathname
     let result
-    if (path.endsWith('/crm_opportunities')) result = { id: 'opportunity', primary_contact_id: 'contact', site_id: null }
+    if (path.endsWith('/crm_opportunities')) result = { id: 'opportunity', assigned_staff_id: actor.id, primary_contact_id: 'contact', site_id: null }
     else if (path.endsWith('/rpc/find_client_crm_contacts_by_email')) result = []
     else if (path.endsWith('/rpc/update_client_crm_profile')) {
       writes.push(JSON.parse(options.body))
@@ -89,6 +89,9 @@ test('profile editing sends blank or named businesses and preserves stale-write 
       assert.equal(writes.at(-1).p_business_name, businessName.trim())
       assert.equal(writes.at(-1).p_expected_opportunity_updated_at, input.expectedOpportunityUpdatedAt)
     }
+    await updateCrmProfile(actor, input)
+    assert.equal(writes.at(-1).p_actor_id, actor.id)
+    assert.equal(writes.at(-1).p_actor_role, 'agent')
     failure = '40001'
     await assert.rejects(updateCrmProfile(owner, input), error => error.status === 409)
     failure = '42501'

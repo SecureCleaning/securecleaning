@@ -449,6 +449,7 @@ test('client CRM presents structured business, contact, and site editing', () =>
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')
   const route = source('src/app/api/admin/client-crm/route.ts')
+  const migration = source('supabase/client_crm_agent_edit_migration.sql')
 
   for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -457,7 +458,15 @@ test('client CRM presents structured business, contact, and site editing', () =>
   assert.match(workspace, /action: 'client-record\.update'/)
   assert.match(route, /action === 'client-record\.update'/)
   assert.match(data, /db\.rpc\('update_client_crm_profile'/)
-  assert.match(data, /actor\.role === 'agent'[\s\S]*Only an owner or manager can change shared client and site details/)
+  assert.match(workspace, /Edit client details/)
+  assert.match(workspace, /disabled=\{!profileEditing\}/)
+  assert.match(workspace, /Save client details/)
+  assert.match(workspace, />Cancel</)
+  assert.doesNotMatch(data, /Only an owner or manager can change shared client and site details/)
+  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager', 'agent'\)/)
+  assert.match(migration, /p_actor_role = 'agent' AND opportunity_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.match(migration, /REVOKE ALL ON FUNCTION update_client_crm_profile[\s\S]*FROM PUBLIC, anon, authenticated/)
+  assert.match(migration, /GRANT EXECUTE ON FUNCTION update_client_crm_profile[\s\S]*TO service_role/)
 })
 
 test('new CRM opportunities require a first name while allowing a missing surname', () => {
@@ -496,7 +505,7 @@ test('CRM can create a staff-selected inspection appointment outside public avai
   const email = source('src/lib/email.ts')
   const invite = source('src/lib/calendarInvite.ts')
 
-  assert.match(workspace, /Book inspection appointment/)
+  assert.match(workspace, /Book another appointment/)
   assert.match(workspace, /action: 'inspection\.create'/)
   assert.match(workspace, /type="date"/)
   assert.match(workspace, /type="time"/)
@@ -519,6 +528,9 @@ test('CRM can create a staff-selected inspection appointment outside public avai
   assert.match(appointments, /inspectionAvailabilityOverridden: true/)
   assert.match(appointments, /sendBookingConfirmationEmail\(bookingRef, bookingInputs\)/)
   assert.match(appointments, /createBookingFollowUpEvent\(bookingRef, bookingInputs\)/)
+  assert.doesNotMatch(appointments, /Reopen this opportunity before creating an inspection appointment/)
+  assert.doesNotMatch(appointments, /already has appointment/)
+  assert.match(workspace, /disabled=\{!appointmentRecordReady \|\| profileHasUnsavedChanges\}/)
   assert.match(email, /inspectionBookingSource === 'crm_manual'/)
   assert.match(invite, /inspectionBookingSource === 'crm_manual'/)
 })
