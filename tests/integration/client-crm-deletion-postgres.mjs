@@ -28,8 +28,10 @@ await db.exec(`
 `)
 
 const migration = readFileSync(`${root}/supabase/client_crm_deletion_migration.sql`, 'utf8')
+const bookingLineageFix = readFileSync(`${root}/supabase/client_crm_deletion_booking_lineage_fix_migration.sql`, 'utf8')
 await db.exec(migration)
-await db.exec(migration)
+await db.exec(bookingLineageFix)
+await db.exec(bookingLineageFix)
 
 const owner = '11111111-1111-4111-8111-111111111111'
 await db.query(`INSERT INTO admin_staff_accounts VALUES($1,'test-owner','owner',true)`, [owner])
@@ -118,8 +120,19 @@ const cross = await createChain('cross')
 const outside = await createChain('outside')
 await db.query(`UPDATE bookings SET site_id=$1 WHERE id=$2`, [cross.site, outside.booking])
 blocked = (await db.query(`SELECT admin_preview_client_crm_deletion($1) preview`, [cross.opportunity])).rows[0].preview
-assert.equal(blocked.crossOrganisationLinks, 1)
-assert.match(blocked.blockers.join(' '), /Cross-client CRM links/)
+assert.equal(blocked.incomingReferences, 1)
+assert.match(blocked.blockers.join(' '), /outside this client chain/)
+
+const staleSite = await createChain('stale-site')
+const externalSiteOwner = await createChain('external-site-owner')
+await db.query(`UPDATE bookings SET site_id=$1 WHERE id=$2`, [externalSiteOwner.site, staleSite.booking])
+const staleSitePreview = (await db.query(`SELECT admin_preview_client_crm_deletion($1) preview`, [staleSite.opportunity])).rows[0].preview
+assert.equal(staleSitePreview.blocked, false)
+assert.equal(staleSitePreview.bookings, 1)
+assert.equal(staleSitePreview.crossOrganisationLinks, 0)
+await db.query(`SELECT admin_delete_client_crm_record($1,'Remove stale external-site test data',$2::jsonb,true,true,$3)`, [staleSite.opportunity, actor, staleSitePreview.previewToken])
+assert.equal((await db.query(`SELECT count(*)::int n FROM bookings WHERE id=$1`, [staleSite.booking])).rows[0].n, 0)
+assert.equal((await db.query(`SELECT count(*)::int n FROM sites WHERE id=$1`, [externalSiteOwner.site])).rows[0].n, 1)
 
 const incoming = await createChain('incoming')
 const external = await createChain('external')
@@ -141,5 +154,5 @@ assert.deepEqual(archivePrivileges.rows.map((row) => row.privilege_type), ['INSE
 await db.query(`UPDATE admin_staff_accounts SET active=false WHERE id=$1`, [owner])
 await assert.rejects(db.query(`SELECT admin_delete_client_crm_record($1,'Remove internal test CRM data',$2::jsonb,true,true,$3)`, [stale.opportunity, actor, refreshed.previewToken]), /Active owner access required/)
 
-console.log('PASS: CRM deletion migration, archive/audit atomicity, blockers, stale tokens, owner revalidation, cross-client guards and grants')
+console.log('PASS: CRM deletion migration, booking ownership, archive/audit atomicity, blockers, stale tokens, owner revalidation, cross-client guards and grants')
 await db.close()

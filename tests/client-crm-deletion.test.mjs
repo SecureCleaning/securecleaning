@@ -23,6 +23,7 @@ test('CRM deletion is owner-only and requires reviewed confirmation', () => {
 
 test('CRM deletion archives the chain and retains quote and financial safeguards', () => {
   const migration = source('supabase/client_crm_deletion_migration.sql')
+  const bookingLineageFix = source('supabase/client_crm_deletion_booking_lineage_fix_migration.sql')
 
   assert.match(migration, /SECURITY DEFINER/)
   assert.match(migration, /FOR SHARE/)
@@ -41,6 +42,12 @@ test('CRM deletion archives the chain and retains quote and financial safeguards
   assert.match(migration, /'client_crm_deleted'/)
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.admin_delete_client_crm_record/)
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.admin_delete_client_crm_record/)
+  assert.match(bookingLineageFix, /WHERE client_id = ANY\(contact_ids\) OR opportunity_id = ANY\(opportunity_ids\);/)
+  assert.match(bookingLineageFix, /WHERE id <> ALL\(booking_ids\) AND site_id = ANY\(site_ids\)/)
+  assert.doesNotMatch(
+    bookingLineageFix,
+    /WHERE id = ANY\(booking_ids\) AND \([\s\S]*site_id IS NOT NULL AND site_id <> ALL\(site_ids\)/
+  )
 })
 
 test('only owners see the CRM customer deletion control', () => {
