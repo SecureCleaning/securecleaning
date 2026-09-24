@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 import BookingEditor from './BookingEditor'
@@ -10,6 +10,7 @@ import ReportingPanel from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
 import DeleteQuoteButton from './DeleteQuoteButton'
 import { getRelevantOperators } from '@/lib/operatorMatching'
+import { compareQuoteStatuses, getQuoteStatusEditOptions, getQuoteStatusOptions, matchesQuoteSearch, type QuoteStatusSortDirection } from '@/lib/quoteList'
 
 type DashboardStats = {
   quotesPending: number
@@ -29,7 +30,10 @@ type QuoteRow = {
   follow_up_notes?: string | null
   inputs?: {
     businessName?: string
+    contactName?: string
     city?: string
+    suburb?: string
+    postcode?: string
     email?: string
     premisesType?: string
     frequency?: string
@@ -192,7 +196,6 @@ function formatDate(value?: string | null) {
   })
 }
 
-const quoteStatuses = ['pending', 'sent', 'accepted', 'expired', 'declined']
 const bookingStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled']
 
 export default function AdminDashboard({ initialData, canDeleteQuotes = false }: Props) {
@@ -201,8 +204,19 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
   const [quoteSearch, setQuoteSearch] = useState('')
+  const [quoteStatus, setQuoteStatus] = useState('all')
+  const [quoteStatusSort, setQuoteStatusSort] = useState<QuoteStatusSortDirection>('priority')
   const [quotePage, setQuotePage] = useState(0)
-  const matchingQuotes = quotes.filter((quote) => [quote.quote_ref, quote.inputs?.businessName, quote.inputs?.city].join(' ').toLowerCase().includes(quoteSearch.trim().toLowerCase()))
+  const quoteStatusOptions = useMemo(() => getQuoteStatusOptions(quotes.map((quote) => quote.status)), [quotes])
+  const matchingQuotes = useMemo(() => quotes
+    .filter((quote) => quoteStatus === 'all' || quote.status === quoteStatus)
+    .filter((quote) => matchesQuoteSearch({
+      businessName: quote.inputs?.businessName,
+      contactName: quote.inputs?.contactName,
+      suburb: quote.inputs?.suburb,
+      postcode: quote.inputs?.postcode,
+    }, quoteSearch))
+    .sort((left, right) => compareQuoteStatuses(left.status, right.status, quoteStatusSort)), [quotes, quoteSearch, quoteStatus, quoteStatusSort])
   const lastQuotePage = Math.max(0, Math.ceil(matchingQuotes.length / 25) - 1)
   const currentQuotePage = Math.min(quotePage, lastQuotePage)
   const visibleQuotes = matchingQuotes.slice(currentQuotePage * 25, (currentQuotePage + 1) * 25)
@@ -533,9 +547,30 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
               <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quotes</h2>
-              <label className="mt-3 block text-sm">Search all quotes
-                <input value={quoteSearch} onChange={(event) => { setQuoteSearch(event.target.value); setQuotePage(0) }} placeholder="Reference, business or city" className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" />
-              </label>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                <label className="flex-1 text-sm">
+                  <span className="block font-medium text-gray-700">Search quotes</span>
+                  <input
+                    value={quoteSearch}
+                    onChange={(event) => { setQuoteSearch(event.target.value); setQuotePage(0) }}
+                    placeholder="Company, client name, suburb or postcode"
+                    className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2"
+                  />
+                </label>
+                <label className="text-sm sm:w-48">
+                  <span className="block font-medium text-gray-700">Status</span>
+                  <select
+                    value={quoteStatus}
+                    onChange={(event) => { setQuoteStatus(event.target.value); setQuotePage(0) }}
+                    className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
+                  >
+                    <option value="all">All statuses</option>
+                    {quoteStatusOptions.map((status) => (
+                      <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -545,11 +580,27 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                     <th className="px-3 py-2 text-left">Business</th>
                     <th className="px-3 py-2 text-left">City</th>
                     <th className="px-3 py-2 text-left">Frequency</th>
-                    <th className="px-3 py-2 text-left">Status</th>
+                    <th className="px-3 py-2 text-left" aria-sort={quoteStatusSort === 'priority' ? 'ascending' : 'descending'}>
+                      <button
+                        type="button"
+                        onClick={() => { setQuoteStatusSort((current) => current === 'priority' ? 'reverse' : 'priority'); setQuotePage(0) }}
+                        className="inline-flex items-center gap-1 font-semibold hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                        aria-label={`Sort status ${quoteStatusSort === 'priority' ? 'in reverse order' : 'in priority order'}`}
+                      >
+                        Status <span aria-hidden="true">{quoteStatusSort === 'priority' ? '↑' : '↓'}</span>
+                      </button>
+                    </th>
                     <th className="px-3 py-2 text-left">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
+                  {visibleQuotes.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-600">
+                        No quotes match this search and status.
+                      </td>
+                    </tr>
+                  ) : null}
                   {visibleQuotes.map((quote) => (
                     <tr key={quote.id} className="border-t border-gray-100 align-top">
                       <td className="px-3 py-2 font-mono">
@@ -565,7 +616,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                           onChange={(event) => handleQuoteStatusChange(quote.quote_ref, event.target.value)}
                           className="rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs"
                         >
-                          {quoteStatuses.map((status) => (
+                          {getQuoteStatusEditOptions(quote.status).map((status) => (
                             <option key={status} value={status}>{status}</option>
                           ))}
                         </select>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
+import { compareQuoteStatuses, getQuoteStatusOptions, matchesQuoteSearch, type QuoteStatusSortDirection } from '@/lib/quoteList'
 
 export type AgentQuoteRow = {
   quoteRef: string
@@ -36,19 +37,15 @@ export default function AgentQuoteDashboard({
   useQuoteListRefresh()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
+  const [statusSort, setStatusSort] = useState<QuoteStatusSortDirection>('priority')
   const filteredQuotes = useMemo(() => {
-    const query = search.trim().toLowerCase()
     return quotes.filter((quote) => {
       if (status !== 'all' && quote.status !== status) return false
-      if (!query) return true
-      return [quote.quoteRef, quote.businessName, quote.contactName, quote.suburb, quote.postcode]
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    })
-  }, [quotes, search, status])
+      return matchesQuoteSearch(quote, search)
+    }).sort((left, right) => compareQuoteStatuses(left.status, right.status, statusSort))
+  }, [quotes, search, status, statusSort])
 
-  const statuses = Array.from(new Set(quotes.map((quote) => quote.status))).sort()
+  const statuses = getQuoteStatusOptions(quotes.map((quote) => quote.status))
 
   return (
     <main className="min-h-screen bg-gray-50 py-12">
@@ -67,7 +64,7 @@ export default function AgentQuoteDashboard({
           <div className="flex flex-col gap-3 sm:flex-row">
             <label className="flex-1">
               <span className="mb-1 block text-sm font-medium text-gray-700">Search quotes</span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Reference, company, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Company, client name, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <label className="sm:w-48">
               <span className="mb-1 block text-sm font-medium text-gray-700">Status</span>
@@ -80,7 +77,7 @@ export default function AgentQuoteDashboard({
 
           <div className="mt-5 overflow-x-auto">
             {filteredQuotes.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">No quotes are currently assigned to this region.</div>
+              <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-600">No quotes match this search and status.</div>
             ) : (
               <table className="w-full min-w-[760px] border-collapse text-left text-sm">
                 <thead>
@@ -90,6 +87,16 @@ export default function AgentQuoteDashboard({
                     <th className="px-3 py-3">Location</th>
                     <th className="px-3 py-3">Service</th>
                     <th className="px-3 py-3">Received</th>
+                    <th className="px-3 py-3" aria-sort={statusSort === 'priority' ? 'ascending' : 'descending'}>
+                      <button
+                        type="button"
+                        onClick={() => setStatusSort((current) => current === 'priority' ? 'reverse' : 'priority')}
+                        className="inline-flex items-center gap-1 font-semibold hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                        aria-label={`Sort status ${statusSort === 'priority' ? 'in reverse order' : 'in priority order'}`}
+                      >
+                        Status <span aria-hidden="true">{statusSort === 'priority' ? '↑' : '↓'}</span>
+                      </button>
+                    </th>
                     <th className="px-3 py-3"><span className="sr-only">Open</span></th>
                   </tr>
                 </thead>
@@ -98,12 +105,12 @@ export default function AgentQuoteDashboard({
                     <tr key={quote.quoteRef} className="border-b border-gray-100 last:border-0">
                       <td className="px-3 py-4 align-top">
                         <div className="font-semibold text-gray-900">{quote.quoteRef}</div>
-                        <span className="mt-1 inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold capitalize text-gray-700">{quote.status.replaceAll('_', ' ')}</span>
                       </td>
                       <td className="px-3 py-4 align-top"><div className="font-semibold text-gray-900">{quote.businessName || 'Private customer'}</div><div className="text-gray-600">{quote.contactName || '—'}</div></td>
                       <td className="px-3 py-4 align-top text-gray-700">{quote.suburb || '—'} {quote.postcode}</td>
                       <td className="px-3 py-4 align-top capitalize text-gray-700">{quote.premisesType?.replaceAll('_', ' ') || '—'}<div className="text-xs text-gray-500">{quote.frequency?.replaceAll('_', ' ') || ''}</div></td>
                       <td className="px-3 py-4 align-top whitespace-nowrap text-gray-700">{formatDate(quote.createdAt)}</td>
+                      <td className="px-3 py-4 align-top"><span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold capitalize text-gray-700">{quote.status.replaceAll('_', ' ')}</span></td>
                       <td className="px-3 py-4 text-right align-top"><a href={`/availability/quotes/${encodeURIComponent(assigneeId)}/${encodeURIComponent(quote.quoteRef)}`} className="inline-flex rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700">Edit quote</a></td>
                     </tr>
                   ))}
