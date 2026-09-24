@@ -33,6 +33,7 @@ DECLARE
     'contract_commission_payouts',
     'contract_commission_settings',
     'contract_product_access_links',
+    'contract_product_activity',
     'contract_product_interest_notifications',
     'contract_product_interests',
     'contract_product_sales',

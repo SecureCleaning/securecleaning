@@ -32,6 +32,12 @@ For contract product sales, start from `schema.sql`, then apply `audit_log_migra
 9. `contract_sale_tax_invoice_workflow_migration.sql`
 10. `contract_sale_document_bundle_workflow_migration.sql`
 
+After `contract_products_interest_notifications_migration.sql`, apply
+`contract_product_activity_migration.sql` before deploying the product activity UI. It
+backfills one private activity entry for each existing interest, records every new
+submission separately, and keeps the displayed interest status synchronized. The table
+is service-role only and is never used by the public job-listing response.
+
 The post-monthly UUID migration is deliberately ordered after the monthly-frequency
 function replacement. It is rerunnable, preserves the monthly annual-visit mapping,
 and restores the built-in UUID generator under the restricted function search path.

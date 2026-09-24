@@ -65,6 +65,20 @@ export type ContractProduct = {
   createdAt: string
   updatedAt: string
   interestCount: number
+  activity: ContractProductActivity[]
+}
+
+export type ContractProductActivity = {
+  id: string
+  type: 'interest_registered'
+  contactName: string
+  email: string
+  phone: string
+  note: string
+  matchStatus: 'approved_cleaner' | 'unmatched'
+  interestStatus: 'new' | 'contacted' | 'shortlisted' | 'declined' | 'selected'
+  notificationStatus: 'pending' | 'sending' | 'sent' | 'failed' | 'unknown'
+  occurredAt: string
 }
 
 export type CleanerJobListing = Pick<ContractProduct,
@@ -139,7 +153,7 @@ async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
   }
 }
 
-function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0, clientDisplayName = ''): ContractProduct {
+function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductActivity[] = [], clientDisplayName = ''): ContractProduct {
   return {
     id: String(row.id),
     productCode: String(row.product_code ?? ''),
@@ -172,7 +186,8 @@ function mapProduct(row: ProductRow, quoteRef = '', interestCount = 0, clientDis
     listedAt: typeof row.listed_at === 'string' ? row.listed_at : null,
     createdAt: String(row.created_at ?? ''),
     updatedAt: String(row.updated_at ?? ''),
-    interestCount,
+    interestCount: activity.length,
+    activity,
   }
 }
 
@@ -289,13 +304,13 @@ export async function getContractProducts(actor: ContractProductActor) {
   const quoteIds = rows.flatMap((row) => row.source_quote_id ? [String(row.source_quote_id)] : [])
   const productIds = rows.map((row) => String(row.id))
   const opportunityIds = [...new Set(rows.map((row) => String(row.opportunity_id ?? '')).filter(Boolean))]
-  const [quotes, interests, opportunities] = await Promise.all([
+  const [quotes, activity, opportunities] = await Promise.all([
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
-    productIds.length ? db.from('contract_product_interests').select('product_id').in('product_id', productIds) : Promise.resolve({ data: [], error: null }),
+    productIds.length ? db.from('contract_product_activity').select('id, product_id, event_type, contact_name, email_normalized, phone, note, match_status, interest_status, notification_status, occurred_at').in('product_id', productIds).order('occurred_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, organisation_id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
   ])
   if (quotes.error) throw quotes.error
-  if (interests.error) throw interests.error
+  if (activity.error) throw activity.error
   if (opportunities.error) throw opportunities.error
   const opportunityRows = (opportunities.data ?? []) as ProductRow[]
   const organisationIds = [...new Set(opportunityRows.map((row) => String(row.organisation_id ?? '')).filter(Boolean))]
@@ -313,15 +328,30 @@ export async function getContractProducts(actor: ContractProductActor) {
     String(row.id),
     organisationNames.get(String(row.organisation_id ?? '')) || contactNames.get(String(row.primary_contact_id ?? '')) || '',
   ]))
-  const interestCounts = new Map<string, number>()
-  for (const row of interests.data ?? []) {
-    const id = String(row.product_id)
-    interestCounts.set(id, (interestCounts.get(id) ?? 0) + 1)
+  const activityByProduct = new Map<string, ContractProductActivity[]>()
+  for (const row of activity.data ?? []) {
+    const productId = String(row.product_id)
+    const items = activityByProduct.get(productId) ?? []
+    items.push({
+      id: String(row.id),
+      type: 'interest_registered',
+      contactName: clean(row.contact_name, 160),
+      email: clean(row.email_normalized, 320),
+      phone: clean(row.phone, 40),
+      note: clean(row.note, 1000),
+      matchStatus: row.match_status === 'approved_cleaner' ? 'approved_cleaner' : 'unmatched',
+      interestStatus: ['contacted', 'shortlisted', 'declined', 'selected'].includes(String(row.interest_status))
+        ? String(row.interest_status) as ContractProductActivity['interestStatus'] : 'new',
+      notificationStatus: ['sending', 'sent', 'failed', 'unknown'].includes(String(row.notification_status))
+        ? String(row.notification_status) as ContractProductActivity['notificationStatus'] : 'pending',
+      occurredAt: String(row.occurred_at ?? ''),
+    })
+    activityByProduct.set(productId, items)
   }
   return rows.map((row) => mapProduct(
     row,
     quoteRefs.get(String(row.source_quote_id)) ?? '',
-    interestCounts.get(String(row.id)) ?? 0,
+    activityByProduct.get(String(row.id)) ?? [],
     clientNames.get(String(row.opportunity_id)) ?? '',
   ))
 }

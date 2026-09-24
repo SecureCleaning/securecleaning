@@ -228,6 +228,30 @@ export async function registerContractProductInterest(input: {
   }, { onConflict: 'product_id,email_normalized' }).select('id').single()
   if (interestError) throw interestError
 
+  const { data: activity, error: activityError } = await db.from('contract_product_activity').insert({
+    product_id: product.id,
+    interest_id: interest.id,
+    event_type: 'interest_registered',
+    contact_name: cleaner?.contactName ?? 'Unregistered cleaner',
+    email_normalized: email,
+    phone: cleaner?.phone ?? null,
+    note: note || null,
+    match_status: cleaner ? 'approved_cleaner' : 'unmatched',
+    interest_status: 'new',
+    notification_status: 'pending',
+    occurred_at: submittedAt,
+  }).select('id').single()
+  if (activityError) throw activityError
+
   await sendInterestNotifications({ interestId: String(interest.id), product, cleaner, submittedEmail: email, note })
+  const { data: agentNotification, error: notificationError } = await db.from('contract_product_interest_notifications')
+    .select('status').eq('interest_id', interest.id).eq('audience', 'agent').maybeSingle()
+  if (notificationError) console.error('[contractProductInterest] Failed to load agent delivery status:', notificationError)
+  else {
+    const { error: activityUpdateError } = await db.from('contract_product_activity').update({
+      notification_status: agentNotification?.status ?? 'pending',
+    }).eq('id', activity.id)
+    if (activityUpdateError) console.error('[contractProductInterest] Failed to update product activity delivery status:', activityUpdateError)
+  }
   return { accepted: true as const, matched: Boolean(cleaner) }
 }
