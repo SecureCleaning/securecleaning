@@ -19,7 +19,7 @@ const {
   resolveDefaultCrmSenderId,
 } = await import('../src/lib/clientCrmPolicy.ts')
 
-const { buildCrmFooter, buildCrmSignature } = await import('../src/lib/clientCrmEmail.ts')
+const { buildCrmFooter, buildCrmSignature, getCrmSenderFromAddress } = await import('../src/lib/clientCrmEmail.ts')
 const { buildCrmQuoteDraftInputs } = await import('../src/lib/clientCrmQuoteDraft.ts')
 const {
   buildCrmOpportunityIdentity,
@@ -161,6 +161,21 @@ test('the centrally generated footer includes disclosure and unsubscribe link', 
   assert.doesNotMatch(footer, /ABN/)
 })
 
+test('CRM outreach uses the selected Secure Cleaning sender address', () => {
+  assert.equal(
+    getCrmSenderFromAddress('renata@securecleaning.com.au', 'quotes@securecleaning.com.au'),
+    'renata@securecleaning.com.au',
+  )
+  assert.equal(
+    getCrmSenderFromAddress('info@securecleaning.com.au', 'quotes@send.securecleaning.com.au'),
+    'info@securecleaning.com.au',
+  )
+  assert.equal(
+    getCrmSenderFromAddress('external@example.com', 'quotes@securecleaning.com.au'),
+    'quotes@securecleaning.com.au',
+  )
+})
+
 test('CRM email details link to their canonical editors and omit the ABN', () => {
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const teamAccess = source('src/components/admin/StaffAccessAdmin.tsx')
@@ -211,6 +226,9 @@ test('CRM sends derive sensitive addressing and fixed sections on the server', (
   assert.match(email, /getStaffAccountProfileById\(senderStaffId\)/)
   assert.match(email, /canActorSendCrmEmailAs\(actor\.role, actor\.id, senderStaffId\)/)
   assert.match(email, /replyTo: sender\.email/)
+  assert.match(email, /getCrmSenderFromAddress\(sender\.email, configuredFrom\)/)
+  assert.match(email, /from: fromHeader/)
+  assert.match(email, /selected sender must use a verified Secure Cleaning work email/i)
   assert.match(email, /buildCrmSignature\(sender\)/)
   assert.match(email, /buildCrmFooter\(sourceExplanation, unsubscribeUrl\)/)
   assert.match(email, /List-Unsubscribe/)
@@ -238,6 +256,7 @@ test('owner and manager sender selection is explicit while agents remain locked 
   assert.match(data, /getAllowedCrmSenders/)
   assert.match(data, /account\.active && \['owner', 'manager', 'agent'\]\.includes\(account\.role\)/)
   assert.match(workspace, /Send as/)
+  assert.match(workspace, /Sent from \{selectedSender\.email\}\. Replies return directly to this address\./)
   assert.match(workspace, /senderStaffId: compose\.senderStaffId/)
   assert.match(workspace, /selectedLead\.assignedStaffId/)
   assert.match(workspace, /canManageShared \? <select value=\{compose\.senderStaffId\}/)

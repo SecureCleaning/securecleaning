@@ -774,6 +774,7 @@ export default function ClientCrmWorkspace({
               </div>
               <p className="mt-1 text-gray-600">Source: {selectedLead.sourceExplanation || 'Missing - sending blocked'}</p>
               {selectedSender ? <p className="mt-2 whitespace-pre-line text-gray-700">{`Kind regards,\n\n${selectedSender.displayName}\n${selectedSender.jobTitle}\nSecure Cleaning\n${selectedSender.phone}\n${selectedSender.email}\nsecurecleaning.com.au`}</p> : null}
+              {selectedSender ? <p className="mt-2 text-xs font-semibold text-teal-800">Sent from {selectedSender.email}. Replies return directly to this address.</p> : null}
               <p className="mt-2 text-xs text-gray-500">Source wording is saved with this client workflow. Sender details come from Team Access. The unsubscribe link and company footer are added automatically.</p>
             </div>
             <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewEmail()} disabled={!canPrepareEmail || busy === 'email-preview'} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email-preview' ? 'Preparing preview...' : 'Preview email'}</button><button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button></div>

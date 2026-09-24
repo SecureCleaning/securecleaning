@@ -49,6 +49,20 @@ function getVerifiedFromAddress(value: string) {
     : 'quotes@securecleaning.com.au'
 }
 
+export function getCrmSenderFromAddress(senderEmail: string, configuredFromValue: string) {
+  const sender = normalizeCrmEmail(senderEmail)
+  const fallback = getVerifiedFromAddress(configuredFromValue).toLowerCase()
+  const senderDomain = sender.split('@')[1] ?? ''
+  const fallbackDomain = fallback.split('@')[1] ?? ''
+  const isSecureCleaningDomain = (domain: string) => (
+    domain === 'securecleaning.com.au' || domain.endsWith('.securecleaning.com.au')
+  )
+  return senderDomain && (
+    senderDomain === fallbackDomain
+    || (isSecureCleaningDomain(senderDomain) && isSecureCleaningDomain(fallbackDomain))
+  ) ? sender : fallback
+}
+
 function getProviderMessageId(value: unknown) {
   if (!value || typeof value !== 'object') return null
   const id = (value as Record<string, unknown>).id
@@ -242,7 +256,11 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   const oneClickUnsubscribeUrl = `${getSiteUrl()}/api/email-preferences/unsubscribe?token=${contact.unsubscribe_token}`
   const sourceExplanation = String(intake.source_explanation)
   const footer = buildCrmFooter(sourceExplanation, unsubscribeUrl)
-  const fromAddress = getVerifiedFromAddress(process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au')
+  const configuredFrom = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
+  const fromAddress = getCrmSenderFromAddress(sender.email, configuredFrom)
+  if (fromAddress !== normalizeCrmEmail(sender.email)) {
+    throw new ClientCrmError('The selected sender must use a verified Secure Cleaning work email before sending client outreach.', 409)
+  }
   const fromHeader = `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`
   const finalHtml = buildClientCrmHtml({ bodyHtml: content.html, signature, sourceExplanation, unsubscribeUrl })
   const finalText = `${content.text}\n\n${signature}\n\n${footer}`
