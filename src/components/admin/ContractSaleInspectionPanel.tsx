@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import ActionToast, { type ActionToastTone } from '@/components/ActionToast'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 import { INSPECTION_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
 import type { ContractProduct } from '@/lib/contractProducts'
@@ -69,6 +70,12 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
   const [includeScope, setIncludeScope] = useState(false)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<ActionToastTone>('success')
+
+  function showMessage(text: string, tone: ActionToastTone = 'success') {
+    setMessageTone(tone)
+    setMessage(text)
+  }
 
   useEffect(() => {
     const parts = sale.inspection ? appointmentParts(sale.inspection.startsAt, sale.inspection.timeZone) : null
@@ -106,32 +113,32 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
 
   async function previewAvailability() {
     try { setAvailabilityPreview(await post('inspection-email.preview', { kind: 'availability', ...emailPayload('availability') })) }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to preview the availability request.') }
+    catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to preview the availability request.', 'error') }
   }
 
   async function sendAvailability() {
     if (!availabilityPreview) return
     try {
       await post('inspection-availability.send', { ...emailPayload('availability'), previewFingerprint: availabilityPreview.fingerprint, requestId: availabilityRequestId })
-      setMessage('Client availability request sent.'); setAvailabilityPreview(null); setAvailabilityRequestId(crypto.randomUUID())
+      showMessage('Client availability request sent.'); setAvailabilityPreview(null); setAvailabilityRequestId(crypto.randomUUID())
       window.dispatchEvent(new Event('secure-cleaning:sale-alerts-changed')); await onRefresh()
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send the availability request.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to send the availability request.', 'error') }
   }
 
   async function previewConfirmations() {
     try {
       setConfirmationPreview(await post('inspection-confirmations.preview', { ...appointment, ...emailPayload('client'), ...emailPayload('cleaner') }))
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to preview the confirmation emails.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to preview the confirmation emails.', 'error') }
   }
 
   async function schedule() {
     if (!confirmationPreview) return
     try {
       await post('inspection.schedule', { ...appointment, ...emailPayload('client'), ...emailPayload('cleaner'), previewFingerprint: confirmationPreview.fingerprint, clientRequestId: confirmationRequestIds.client, cleanerRequestId: confirmationRequestIds.cleaner })
-      setMessage('Inspection scheduled. Separate client and cleaner confirmations were sent, and the staff calendar was updated or supplied with an email fallback.')
+      showMessage('Inspection scheduled. Separate client and cleaner confirmations were sent, and the staff calendar was updated or supplied with an email fallback.')
       setConfirmationPreview(null); setConfirmationRequestIds({ client: crypto.randomUUID(), cleaner: crypto.randomUUID() })
       window.dispatchEvent(new Event('secure-cleaning:sale-alerts-changed')); await onRefresh()
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to schedule the inspection.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to schedule the inspection.', 'error') }
   }
 
   async function saveDefaults() {
@@ -141,13 +148,13 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
         clientSubject: drafts.client.subject, clientBodyText: drafts.client.bodyText, clientBodyHtml: drafts.client.bodyHtml, clientBodyDocument: drafts.client.bodyDocument,
         cleanerSubject: drafts.cleaner.subject, cleanerBodyText: drafts.cleaner.bodyText, cleanerBodyHtml: drafts.cleaner.bodyHtml, cleanerBodyDocument: drafts.cleaner.bodyDocument,
       })
-      setMessage('Inspection email defaults saved.'); await onRefresh()
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save inspection email defaults.') }
+      showMessage('Inspection email defaults saved.'); await onRefresh()
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save inspection email defaults.', 'error') }
   }
 
   async function saveChecklist() {
-    try { await post('inspection-checklist.save', { checklist }); setMessage('Site checklist saved.'); await onRefresh() }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save the site checklist.') }
+    try { await post('inspection-checklist.save', { checklist }); showMessage('Site checklist saved.'); await onRefresh() }
+    catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the site checklist.', 'error') }
   }
 
   async function uploadChecklist(file: File | null) {
@@ -158,8 +165,8 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
       const response = await fetch('/api/admin/contract-sales/checklists', { method: 'POST', body: form })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to upload the completed checklist.')
-      setMessage('Completed checklist copy uploaded.'); await onRefresh()
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to upload the completed checklist.') }
+      showMessage('Completed checklist copy uploaded.'); await onRefresh()
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to upload the completed checklist.', 'error') }
     finally { setBusy('') }
   }
 
@@ -175,7 +182,7 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
   ] as const, [])
 
   return <div className="space-y-5">
-    {message ? <p role="status" className="rounded-lg border border-gray-200 bg-white p-3 text-sm">{message}</p> : null}
+    <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <h3 className="text-lg font-bold">1. Ask the client for availability</h3>
       <p className="mt-1 text-sm text-gray-600">Optional. Use this after a phone call or whenever a written request is useful. It does not book an appointment.</p>
@@ -211,7 +218,7 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
       {sale.handoverAt ? <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4"><h4 className="font-bold text-green-900">Completed checklist copy</h4><p className="mt-1 text-sm text-green-800">Upload a photo, PNG or PDF after handover. Files remain private against this product sale.</p><label className="mt-3 inline-flex cursor-pointer rounded-lg bg-green-700 px-4 py-2 font-semibold text-white">Upload completed checklist<input type="file" accept="application/pdf,image/jpeg,image/png" className="sr-only" onChange={(event) => void uploadChecklist(event.target.files?.[0] ?? null)} /></label>{sale.checklist?.uploads.map((upload) => <a key={upload.id} href={`/api/admin/contract-sales/checklists?saleId=${sale.id}&uploadId=${upload.id}&preview=1`} target="_blank" rel="noopener noreferrer" className="ml-3 inline-flex rounded-lg border border-green-300 bg-white px-3 py-2 text-sm font-semibold text-green-800">View {upload.fileName}</a>)}</div> : <p className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">The completed checklist upload becomes available after operational handover.</p>}
     </section>
 
-    {sale.inspection?.status === 'scheduled' ? <button type="button" onClick={async () => { try { await post('inspection.complete', { notes: appointment.notes }); setMessage('Inspection marked complete.'); await onRefresh() } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to complete the inspection.') } }} disabled={Boolean(busy)} className="rounded-lg border border-green-600 px-4 py-2 font-semibold text-green-700 disabled:opacity-50">Mark inspection completed</button> : null}
+    {sale.inspection?.status === 'scheduled' ? <button type="button" onClick={async () => { try { await post('inspection.complete', { notes: appointment.notes }); showMessage('Inspection marked complete.'); await onRefresh() } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to complete the inspection.', 'error') } }} disabled={Boolean(busy)} className="rounded-lg border border-green-600 px-4 py-2 font-semibold text-green-700 disabled:opacity-50">Mark inspection completed</button> : null}
 
     <EmailPreviewModal open={Boolean(availabilityPreview)} title="Client availability request preview" subject={availabilityPreview?.subject ?? ''} from={availabilityPreview?.from} to={availabilityPreview?.to} html={availabilityPreview?.html ?? ''} sending={busy === 'inspection-availability.send'} onClose={() => setAvailabilityPreview(null)} onSend={() => void sendAvailability()} sendLabel="Send availability request" />
   </div>

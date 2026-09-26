@@ -9,6 +9,7 @@ import CrmFollowUpPanel from './CrmFollowUpPanel'
 import ReportingPanel, { type ReportingDestination } from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
 import DeleteQuoteButton from './DeleteQuoteButton'
+import ActionToast from '@/components/ActionToast'
 import { getRelevantOperators } from '@/lib/operatorMatching'
 import { compareQuoteStatuses, getQuoteStatusEditOptions, getQuoteStatusOptions, matchesQuoteSearch, type QuoteStatusSortDirection } from '@/lib/quoteList'
 import {
@@ -589,16 +590,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
         </nav>
       </section>
 
-      {actionState.message ? (
-        <div role="status" aria-live="polite" className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-          {actionState.message}
-        </div>
-      ) : null}
-      {actionState.error ? (
-        <div role="alert" aria-live="assertive" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {actionState.error}
-        </div>
-      ) : null}
+      <ActionToast message={actionState.error ?? actionState.message} tone={actionState.error ? 'error' : 'success'} onDismiss={() => setActionState((current) => ({ ...current, message: null, error: null }))} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
       <div id="admin-workarea" tabIndex={-1} className="min-w-0 scroll-mt-24 focus:outline-none">

@@ -5,6 +5,7 @@ import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { useState } from 'react'
 import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import ActionToast from '@/components/ActionToast'
 import { getAgentCleanerPageCount } from '@/lib/cleanerAgentPolicy'
 import type { AgentCleanerDetail, AgentCleanerEmailHistory, AgentCleanerRecord, AgentCleanerSummary, CleanerComment, CleanerDocument, CleanerEmailTemplate, CleanerStatus } from '@/lib/cleaners'
 import { appendEmailMergeField, CLEANER_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
@@ -133,7 +134,7 @@ export default function AgentCleaners({ assigneeId, agentName, state, initialCle
     catch (error) { setNotice({ type: 'error', message: error instanceof Error ? error.message : 'Unable to send email.' }) } finally { setBusy(false) }
   }
 
-  const noticeBox = notice ? <div role={notice.type === 'error' ? 'alert' : 'status'} className={`rounded-lg border px-4 py-3 text-sm ${notice.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-green-200 bg-green-50 text-green-800'}`}>{notice.message}</div> : null
+  const noticeBox = <ActionToast message={notice?.message} tone={notice?.type} onDismiss={() => setNotice(null)} />
   const field = (key: keyof CleanerForm, label: string, options?: { type?: string; wide?: boolean; readOnly?: boolean }) => {
     if (key === 'complianceStatus') {
       return <label className="text-sm"><span className="mb-1 block font-medium text-gray-700">{label}</span><select value={form.complianceStatus} onChange={(event) => setForm({ ...form, complianceStatus: event.target.value })} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2">{CLEANER_COMPLIANCE_STATUSES.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select><span className="mt-1 block text-xs text-gray-500">Informational only. Approved status controls sale eligibility.</span></label>

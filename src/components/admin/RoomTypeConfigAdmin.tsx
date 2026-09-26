@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
+import ActionToast from '@/components/ActionToast'
 import {
   applyGlobalRoomTaskRates,
   getMoppingRate,
@@ -816,11 +817,7 @@ export default function RoomTypeConfigAdmin({
             })}
           </div>
 
-          {status.message ? (
-            <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-              {status.message}
-            </p>
-          ) : null}
+          <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
         </form>
       </div>
   )

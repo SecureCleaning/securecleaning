@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
+import ActionToast from '@/components/ActionToast'
 
 const LABELS: Record<string, string> = {
   hourlyRate: 'Hourly rate', minimumInvoice: 'Minimum invoice', multiFloorBase: 'Multi-floor base multiplier',
@@ -155,11 +156,7 @@ export default function PricingAdmin({ initialConfig, embedded = false }: { init
             ))}
 
 
-            {status.message ? (
-              <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                {status.message}
-              </p>
-            ) : null}
+            <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
         </form>
       </div>
   )

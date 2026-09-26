@@ -3,6 +3,7 @@
 import PaymentPlanEditor from '@/components/admin/PaymentPlanEditor'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import ContractSaleInspectionPanel from '@/components/admin/ContractSaleInspectionPanel'
+import ActionToast from '@/components/ActionToast'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 
 import Link from 'next/link'
@@ -22,6 +23,7 @@ type Data = {
 }
 
 type SaleTab = 'overview' | 'agreement' | 'invoices' | 'inspection' | 'activity'
+type FeedbackTone = 'success' | 'error'
 
 function money(cents: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(cents / 100)
@@ -77,6 +79,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [tab, setTab] = useState<SaleTab>(initialTab)
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<FeedbackTone>('success')
   const [newCleaner, setNewCleaner] = useState({ businessName: '', firstName: '', lastName: '', email: '', phone: '', suburb: '' })
   const [startSaleError, setStartSaleError] = useState('')
   const [saleDraft, setSaleDraft] = useState({ finalPrice: '', commencementDate: '', notes: '' })
@@ -86,6 +89,11 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [cancelReason, setCancelReason] = useState('')
   const [showInvoiceTemplate, setShowInvoiceTemplate] = useState(false)
   const [invoiceTemplateDraft, setInvoiceTemplateDraft] = useState<ContractSaleInvoiceTemplate | null>(null)
+
+  const showMessage = useCallback((text: string, tone: FeedbackTone = 'success') => {
+    setMessageTone(tone)
+    setMessage(text)
+  }, [])
 
   const load = useCallback(async (preferredSaleId = '') => {
     const response = await fetch('/api/admin/contract-sales', { cache: 'no-store' })
@@ -116,7 +124,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     }
   }, [creatingSale, initialProductId, initialSaleId, initialInvoiceId, selectedProductId])
 
-  useEffect(() => { void load().catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load.')) }, [load])
+  useEffect(() => { void load().catch((error) => showMessage(error instanceof Error ? error.message : 'Unable to load.', 'error')) }, [load, showMessage])
   const sale = data?.sales.find((item) => item.id === selectedSaleId) ?? null
   const product = data?.products.find((item) => item.id === (sale?.productId ?? selectedProductId)) ?? null
   const stateCleaners = useMemo(() => (data?.cleaners ?? []).filter((cleaner) => !product || cleaner.state === product.state), [data, product])
@@ -156,11 +164,11 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     setStartSaleError('')
     try {
       const result = await action('sale.create', { productId: selectedProductId, cleanerId: selectedCleanerId }, '')
-      setCreatingSale(false); setSelectedSaleId(result.saleId); setMessage('Product reserved and product sale created.')
+      setCreatingSale(false); setSelectedSaleId(result.saleId); showMessage('Product reserved and product sale created.')
     } catch (error) {
       const failure = error instanceof Error ? error.message : 'Unable to start sale.'
       setStartSaleError(failure)
-      setMessage(failure)
+      showMessage(failure, 'error')
     }
   }
 
@@ -168,10 +176,10 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     if (!product) return
     try {
       const result = await action('cleaner.create', { ...newCleaner, state: product.state }, '')
-      setMessage('Cleaner created as pending approval. Approve the cleaner record before starting the sale.')
+      showMessage('Cleaner created as pending approval. Approve the cleaner record before starting the sale.')
       setSelectedCleanerId(result.cleanerId)
       setNewCleaner({ businessName: '', firstName: '', lastName: '', email: '', phone: '', suburb: '' })
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to create cleaner.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to create cleaner.', 'error') }
   }
 
   async function run(actionName: string, payload: Record<string, unknown>, success: string) {
@@ -182,17 +190,17 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
         setPayment({ invoiceId: '', amount: '', receivedOn: today(), method: 'bank_transfer', reference: '', evidenceNote: '' })
         setPaymentRequestId(crypto.randomUUID())
       }
-      setMessage(success)
+      showMessage(success)
     }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to complete this action.') }
+    catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to complete this action.', 'error') }
   }
 
   async function saveInvoiceTemplate() {
     if (!invoiceTemplateDraft) return
     try {
       await action('invoice-template.update', invoiceTemplateDraft)
-      setMessage('Invoice template saved for future invoices. For an existing invoice, use Apply saved payment details beside its preview.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save the invoice template.') }
+      showMessage('Invoice template saved for future invoices. For an existing invoice, use Apply saved payment details beside its preview.')
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the invoice template.', 'error') }
   }
 
   async function uploadAgreement(file: File | null) {
@@ -203,8 +211,8 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
       const response = await fetch('/api/admin/contract-sales/agreements', { method: 'POST', body: form })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to upload agreement.')
-      await load(sale.id); setMessage('Signed agreement uploaded.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to upload agreement.') }
+      await load(sale.id); showMessage('Signed agreement uploaded.')
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to upload agreement.', 'error') }
     finally { setBusy('') }
   }
 
@@ -223,7 +231,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   return <div>
     <div className="mb-3"><Link className="font-semibold text-teal-700 underline" href={portal === 'agent' ? `/availability/commissions/${encodeURIComponent(assigneeId)}` : '/admin/commissions'}>View commissions</Link></div>
     <AdminPageHeader title="Product Sales" description="Confirm the final price, prepare the tax invoice and agreement in either order, send both documents together, then collect the deposit and coordinate the handover." backHref={portal === 'agent' ? '/agent' : '/admin'} backLabel={portal === 'agent' ? 'Back to agent portal' : 'Back to overview'} />
-    {message ? <p role="status" className="mb-4 rounded-lg border border-gray-200 bg-white p-3 text-sm">{message}</p> : null}
+    <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
 
     {(data.actor.role === 'owner' || data.actor.role === 'manager') && invoiceTemplateDraft ? <section className="mb-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
       <button type="button" onClick={() => setShowInvoiceTemplate((current) => !current)} aria-expanded={showInvoiceTemplate} className="flex w-full items-center justify-between gap-4 p-5 text-left"><span><strong className="block text-lg">Invoice template</strong><span className="text-sm font-normal text-gray-600">Edit the global supplier, email and tax-invoice wording used for future product sales.</span></span><span className="text-sm font-semibold text-teal-700">{showInvoiceTemplate ? 'Close' : 'Edit template'}</span></button>
@@ -294,7 +302,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
           {tab === 'agreement' ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-bold">Sale agreement</h3><p className="mt-1 text-sm text-gray-600">Create the versioned agreement from the confirmed final price. The agreement and tax invoice may be prepared in either order; the send action emails both PDFs together.</p><div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><strong>Current signing method:</strong> returned signed PDF. Secure online acceptance remains a later enhancement until identity, intent, document-version and audit evidence are implemented.</div>{sale.agreement ? <><AgreementPreview content={sale.agreement.content} /><div className="mt-3 flex flex-wrap items-center gap-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusTone(sale.agreement.status)}`}>Version {sale.agreement.version} · {sale.agreement.status}</span>{primaryInvoice ? <a href={`/api/admin/contract-sales/invoices?saleId=${sale.id}&invoiceId=${primaryInvoice.id}&preview=1`} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-teal-600 px-4 py-2 text-sm font-semibold text-teal-800">Preview invoice</a> : null}{sale.agreement.status === 'draft' ? <button type="button" disabled={!primaryInvoice || Boolean(busy)} onClick={() => void run('agreement.send', { agreementId: sale.agreement!.id }, 'Agreement and tax invoice sent to the cleaner as PDF attachments.')} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Send agreement &amp; tax invoice</button> : null}{sale.agreement.status === 'draft' && !primaryInvoice ? <span className="text-xs text-amber-800">Prepare the tax invoice before sending.</span> : null}{sale.agreement.signedFileName ? <a href={`/api/admin/contract-sales/agreements?saleId=${sale.id}&agreementId=${sale.agreement.id}`} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold">Download signed PDF</a> : <label className="cursor-pointer rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white">Upload signed PDF<input type="file" accept="application/pdf" className="sr-only" onChange={(event) => void uploadAgreement(event.target.files?.[0] ?? null)} /></label>}{sale.paymentPlan && sale.agreement.type !== 'payment_plan' ? <button type="button" onClick={() => void run('agreement.create', {}, 'Payment-plan agreement version created.')} className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white">Create payment-plan agreement</button> : <button type="button" onClick={() => void run('agreement.create', {}, 'Updated agreement draft created as a new immutable version.')} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold">Create updated agreement version</button>}</div></> : <button type="button" disabled={!sale.priceFinalised || Boolean(busy)} onClick={() => void run('agreement.create', {}, 'Agreement draft created from the final purchase price.')} className="mt-4 rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Create agreement draft</button>}</section> : null}
 
           {tab === 'invoices' ? <section className="space-y-5"><div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="text-lg font-bold">Sale tax invoice</h3><p className="text-sm text-gray-600">Prepare one full Australian tax invoice for the confirmed purchase price. Only the $500 GST-inclusive deposit is payable immediately. Preparing does not email it; the Agreement tab sends both PDFs together. Preview opens the current invoice in a new tab, including confirmed payments. It is an updated copy, not an archived attachment from an earlier email.</p></div>{!primaryInvoice ? <button type="button" disabled={!sale.priceFinalised || Boolean(busy)} onClick={() => void run('invoice.issue', { idempotencyKey: crypto.randomUUID() }, 'Full tax invoice prepared. Create the agreement, then send both PDFs together.')} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Prepare full tax invoice</button> : null}</div>{!primaryInvoice && !sale.priceFinalised ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Save the final GST-inclusive purchase price in Overview before preparing the invoice.</p> : null}<div className="mt-4 space-y-2">{sale.invoices.map((invoice) => <div key={invoice.id} className="grid gap-3 rounded-xl border border-gray-200 p-4 text-sm lg:grid-cols-[1fr_auto_auto_auto]"><div><strong>{invoice.invoiceNumber}</strong><p>{invoice.invoiceType === 'sale' ? 'Full sale tax invoice' : `Legacy ${invoice.invoiceType} invoice`}</p><p className="text-gray-500">Current payment terms and bank details are shown in Preview invoice.</p><p className="text-gray-500">Delivery: {invoice.deliveryStatus}{invoice.deliveryStatus === 'pending' ? ' · prepared, not yet emailed' : ' · PDF attachment'}</p>{invoice.invoiceType === 'sale' ? <p className="mt-1 font-medium text-teal-800">Deposit required {money(invoice.depositRequiredIncGstCents)} · Remaining after deposit {money(invoice.totalIncGstCents - invoice.depositRequiredIncGstCents)}</p> : null}</div><div className="font-semibold">Total {money(invoice.totalIncGstCents)}<span className="block text-xs text-gray-500">Paid {money(invoice.paidCents)} · Outstanding {money(invoice.totalIncGstCents - invoice.paidCents)}</span></div><span className={`h-fit rounded-full px-2 py-1 text-xs font-semibold ${statusTone(invoice.status)}`}>{invoice.status}</span><div className="flex h-fit flex-wrap gap-2">{data.actor.role === 'owner' && invoice.status !== 'void' && sale.status !== 'cancelled' ? <button type="button" disabled={Boolean(busy)} onClick={() => { if (window.confirm(`Apply the saved bank details and payment terms to ${invoice.invoiceNumber}?\n${data.invoiceTemplate.bankAccountName}\nBSB: ${data.invoiceTemplate.bankBsb}\nAccount: ${data.invoiceTemplate.bankAccountNumber}\nPayment reference: ${data.invoiceTemplate.paymentReferenceTemplate}\nPayment terms: ${data.invoiceTemplate.paymentTermsTemplate}\nThis updates current previews, downloads and future resends. It does not send an email or change the invoice amount, signed agreement or agreed payment-plan schedule.`)) void run('invoice-bank.apply', { invoiceId: invoice.id, templateUpdatedAt: data.invoiceTemplate.updatedAt, includePaymentTerms: true }, 'Saved bank details and payment terms applied to this invoice. Open Preview invoice to review. No email sent.') }} className="rounded-lg border border-gray-300 px-3 py-2 font-semibold">Apply saved payment details</button> : null}{invoice.status !== 'void' ? <a href={`/api/admin/contract-sales/invoices?saleId=${sale.id}&invoiceId=${invoice.id}&preview=1`} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-teal-600 px-3 py-2 font-semibold text-teal-800">Preview invoice</a> : null}<a href={`/api/admin/contract-sales/invoices?saleId=${sale.id}&invoiceId=${invoice.id}`} className="rounded-lg border border-gray-300 px-3 py-2 font-semibold">Download PDF</a>{invoice.status !== 'void' && invoice.deliveryStatus !== 'pending' ? <button type="button" disabled={Boolean(busy) || invoice.deliveryStatus === 'unknown'} onClick={() => void run('invoice.resend', { invoiceId: invoice.id }, 'Tax invoice email resent with its PDF attachment.')} className="rounded-lg border border-gray-300 px-3 py-2 font-semibold">Resend invoice only</button> : null}</div></div>)}</div></div>
-            <PaymentPlanEditor key={`${sale.id}-${sale.paymentPlan?.id ?? 'new'}-${primaryInvoice?.paidCents ?? 0}`} sale={sale} busy={Boolean(busy)} onSave={async instalments => { await action('payment-plan.create', { saleId: sale.id, instalments }); setMessage('Schedule approved. Create the payment-plan agreement and send both documents for cleaner acceptance.') }} />
+            <PaymentPlanEditor key={`${sale.id}-${sale.paymentPlan?.id ?? 'new'}-${primaryInvoice?.paidCents ?? 0}`} sale={sale} busy={Boolean(busy)} onSave={async instalments => { await action('payment-plan.create', { saleId: sale.id, instalments }); showMessage('Schedule approved. Create the payment-plan agreement and send both documents for cleaner acceptance.') }} />
             <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-bold">Record payment evidence</h3><p className="mt-1 text-sm text-gray-600">After recording, an owner or manager must select Confirm cleared. Confirmed payments reduce the invoice balance immediately and appear in previews, downloads and resends; pending evidence does not.</p><div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3"><label className="text-sm font-medium">Invoice<select value={payment.invoiceId} onChange={(event) => setPayment({ ...payment, invoiceId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"><option value="">Select invoice</option>{sale.invoices.filter((invoice) => !['paid', 'void'].includes(invoice.status)).map((invoice) => <option key={invoice.id} value={invoice.id}>{invoice.invoiceNumber} · {money(invoice.totalIncGstCents - invoice.paidCents)} outstanding</option>)}</select></label><label className="text-sm font-medium">Amount<input type="number" step="0.01" min="0.01" value={payment.amount} onChange={(event) => setPayment({ ...payment, amount: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label><label className="text-sm font-medium">Received on<input type="date" value={payment.receivedOn} onChange={(event) => setPayment({ ...payment, receivedOn: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label><label className="text-sm font-medium">Method<select value={payment.method} onChange={(event) => setPayment({ ...payment, method: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2"><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cash">Cash</option><option value="other">Other</option></select></label><label className="text-sm font-medium">Reference<input value={payment.reference} onChange={(event) => setPayment({ ...payment, reference: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label><label className="text-sm font-medium">Evidence note<input value={payment.evidenceNote} onChange={(event) => setPayment({ ...payment, evidenceNote: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2" /></label></div><button type="button" disabled={Boolean(busy)} onClick={() => void run('payment.record', { ...payment, idempotencyKey: paymentRequestId }, 'Payment evidence recorded for confirmation.')} className="mt-4 rounded-lg bg-gray-900 px-4 py-2 font-semibold text-white disabled:opacity-50">Record payment</button><div className="mt-4 space-y-2">{sale.payments.map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 p-3 text-sm"><span><strong>{money(item.amountCents)}</strong> · {item.receivedOn} · {item.reference}</span><div className="flex items-center gap-2"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${statusTone(item.status)}`}>{item.status}</span>{item.status === 'pending' && item.invoiceId && ['owner', 'manager'].includes(data.actor.role) ? <button type="button" onClick={() => void run('payment.confirm', { paymentId: item.id, invoiceId: item.invoiceId }, 'Payment confirmed. Preview or resend the invoice to show the updated balance.')} className="rounded-lg border border-green-600 px-3 py-1.5 font-semibold text-green-700">Confirm cleared</button> : null}</div></div>)}</div></div>
 
 

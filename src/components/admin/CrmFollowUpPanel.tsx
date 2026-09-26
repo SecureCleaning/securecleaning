@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import ActionToast from '@/components/ActionToast'
 
 type QuoteItem = {
   quote_ref: string
@@ -188,8 +189,7 @@ export default function CrmFollowUpPanel({
         <button type="button" onClick={saveLead} disabled={!leadHasChanges || savingTarget !== null} className="w-full rounded-lg px-4 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1a2744' }}>{savingTarget === 'lead' ? 'Saving lead follow-up…' : leadHasChanges ? 'Save lead follow-up' : 'No changes to save'}</button>
       </div> : null}
 
-      {status ? <div role="status" aria-live="polite" className="lg:col-span-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{status}</div> : null}
-      {error ? <div role="alert" className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <ActionToast message={error ?? status} tone={error ? 'error' : 'success'} onDismiss={() => { setStatus(null); setError(null) }} />
     </div>
   )
 }

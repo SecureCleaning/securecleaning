@@ -7,6 +7,7 @@ import Link from 'next/link'
 import LocalityAutocomplete from '@/components/shared/LocalityAutocomplete'
 import type { CrmServiceRegion } from '@/lib/clientCrmAssignment'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
+import ActionToast from '@/components/ActionToast'
 import DeleteClientCrmButton from '@/components/admin/DeleteClientCrmButton'
 import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
@@ -625,7 +626,7 @@ export default function ClientCrmWorkspace({
         actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={() => setView('pipeline')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'pipeline' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Pipeline</button><button type="button" onClick={() => setView('new')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'new' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>New opportunity</button><button type="button" onClick={() => setView('templates')} className={`rounded-lg px-3 py-2 text-sm font-semibold ${view === 'templates' ? 'bg-teal-700 text-white' : 'border border-gray-200 bg-white text-gray-700'}`}>Templates</button>{showSitesLink ? <Link href="/admin/clients?view=sites" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Site details</Link> : null}</div>}
       />
 
-      {status ? <div role={status.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-xl border p-4 text-sm ${status.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`}>{status.message}</div> : null}
+      <ActionToast message={status?.message} tone={status?.type} onDismiss={() => setStatus(null)} />
       {view === 'new' ? <form onSubmit={createLead} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-900">Create an opportunity</h2>
         <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. Agents can create records within their assigned state; postcode coverage suggests the agent for owner or manager entries. An existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>

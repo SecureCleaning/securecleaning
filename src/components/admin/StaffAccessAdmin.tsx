@@ -5,6 +5,7 @@ import Link from 'next/link'
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
 import { canAccessClientCrm } from '@/lib/clientCrmPolicy'
 import AdminPageHeader from './AdminPageHeader'
+import ActionToast from '@/components/ActionToast'
 
 const ROLE_OPTIONS: Array<{ value: AdminRole; label: string; description: string }> = [
   { value: 'owner', label: 'Owner', description: 'Full access, including staff accounts.' },
@@ -158,7 +159,7 @@ export default function StaffAccessAdmin({ initialAccountId = '', returnHref = '
           {canAccessClientCrm(draft.role) ? <div className="rounded-xl border border-teal-100 bg-teal-50 p-4"><div className="text-sm font-semibold text-teal-900">Client email signature preview</div><div className="mt-2 whitespace-pre-line text-sm leading-6 text-teal-950">{`Kind regards,\n\n${draft.displayName || 'Full name'}\n${draft.jobTitle || 'Position title'}\nSecure Cleaning\n${draft.phone || 'Work phone'}\n${draft.email || 'Work email'}\nsecurecleaning.com.au`}</div><p className="mt-2 text-xs text-teal-800">The verified Secure Cleaning mailbox sends the email. Replies go directly to this work email.</p></div> : null}
           {editingId ? <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" checked={draft.active} onChange={(event) => setDraft({ ...draft, active: event.target.checked })} /> Active account</label> : null}
           <div className="flex flex-wrap gap-3"><button type="submit" disabled={isSaving} className="rounded-lg px-5 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#1fb56c' }}>{isSaving ? 'Saving...' : editingId ? 'Save account' : 'Create account'}</button>{editingId ? <button type="button" onClick={resetForm} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">Cancel</button> : null}</div>
-          {status.message ? <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-700'}`}>{status.message}</p> : null}
+          <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
         </form>
 
         <section className="mt-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">

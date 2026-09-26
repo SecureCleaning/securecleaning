@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import type { City, PremisesType } from '@/lib/types'
 import type { SiteRecord } from '@/lib/sites'
+import ActionToast from '@/components/ActionToast'
 
 const cityOptions: City[] = ['melbourne', 'sydney']
 const premisesOptions: PremisesType[] = ['office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse', 'function_centre', 'sports_facility', 'other']
@@ -244,8 +245,7 @@ export default function SitesManager({
             Active site
           </label>
 
-          {status ? <div className="text-sm text-green-600">{status}</div> : null}
-          {error ? <div className="text-sm text-red-600">{error}</div> : null}
+          <ActionToast message={error ?? status} tone={error ? 'error' : 'success'} onDismiss={() => { setStatus(null); setError(null) }} />
 
           <button type="submit" disabled={isSaving} className="w-full rounded-lg px-4 py-3 font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>
             {isSaving ? 'Saving…' : editingSiteId ? 'Update Site' : 'Create Site'}

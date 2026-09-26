@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { getCommissionWorkspace } from '@/lib/commissions'
 import { commissionCents } from '@/lib/commissionPolicy'
+import ActionToast from '@/components/ActionToast'
 
 type Data = Awaited<ReturnType<typeof getCommissionWorkspace>>
 const money = (value: unknown) => new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(Number(value || 0) / 100)
@@ -10,6 +11,7 @@ const button = 'rounded-lg border border-teal-700 px-4 py-2 font-semibold text-t
 export default function CommissionsWorkspace() {
   const [data, setData] = useState<Data | null>(null)
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('success')
   const [busy, setBusy] = useState(false)
   const [rates, setRates] = useState({ win: '25', sale: '25' })
   const [price, setPrice] = useState('5500')
@@ -22,15 +24,15 @@ export default function CommissionsWorkspace() {
     setData(result)
     if (result.settings) setRates({ win: String(result.settings.win_bps / 100), sale: String(result.settings.sale_bps / 100) })
   }, [])
-  useEffect(() => { void load().catch(error => setMessage(error.message)) }, [load])
+  useEffect(() => { void load().catch(error => { setMessageTone('error'); setMessage(error.message) }) }, [load])
   async function save(payload: Record<string, unknown>) {
     setBusy(true); setMessage('')
     try {
       const response = await fetch('/api/admin/commissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to save.')
-      setEntry(current => ({ ...current, saleId: '', requestId: '' })); await load(); setMessage('Saved. Commission balances updated.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save.') }
+      setEntry(current => ({ ...current, saleId: '', requestId: '' })); await load(); setMessageTone('success'); setMessage('Saved. Commission balances updated.')
+    } catch (error) { setMessageTone('error'); setMessage(error instanceof Error ? error.message : 'Unable to save.') }
     finally { setBusy(false) }
   }
   if (!data) return <p role="status">{message || 'Loading commissions...'}</p>
@@ -49,7 +51,7 @@ export default function CommissionsWorkspace() {
   }
   return <div className="space-y-5">
     <div><h1 className="text-2xl font-bold">{owner ? 'Agent commissions' : 'My commissions'}</h1><p className="text-sm text-gray-600">Commission excludes GST. Only confirmed cleared funds count. Without an active agreed plan, the invoice must be paid in full.</p></div>
-    {message ? <p role="status" className="rounded-lg bg-blue-50 p-3">{message}</p> : null}
+    <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[['Available to invoice', due], ['Invoiced / awaiting payment', awaiting], ['Not yet available', pending], ['Commission paid', paid]].map(([label, amount]) => <div key={String(label)} className="rounded-xl border bg-white p-4"><span className="text-sm text-gray-600">{label}</span><strong className="block text-2xl">{money(amount)}</strong></div>)}</div>
     {owner ? <>
       <section className="rounded-xl border bg-white p-5"><h2 className="font-bold">Owner settings and calculator</h2><div className="mt-3 grid gap-4 sm:grid-cols-3"><label>Site won %<input className={field} type="number" min="0" max="100" step="0.01" value={rates.win} onChange={e => setRates({ ...rates, win: e.target.value })} /></label><label>Sale %<input className={field} type="number" min="0" max="100" step="0.01" value={rates.sale} onChange={e => setRates({ ...rates, sale: e.target.value })} /></label><label>Sale price including GST<input className={field} type="number" min="0.01" step="0.01" value={price} onChange={e => setPrice(e.target.value)} /></label></div><p className="my-3">Combined {rate / 100}% · Estimated commission {estimate === null ? 'Enter valid amounts' : money(estimate)}</p><button disabled={busy || estimate === null} className={button} onClick={() => void save({ action: 'settings', winBps: Math.round(Number(rates.win) * 100), saleBps: Math.round(Number(rates.sale) * 100) })}>Save defaults for future assignments</button><p className="mt-2 text-sm text-gray-600">Existing assignments retain their locked rates.</p></section>

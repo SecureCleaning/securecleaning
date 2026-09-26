@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import type { AdminDashboardData } from './AdminDashboard'
 import { getRelevantOperators } from '@/lib/operatorMatching'
 import DismissAlertButton from './DismissAlertButton'
+import ActionToast from '@/components/ActionToast'
 
 type BookingItem = AdminDashboardData['bookings'][number]
 
@@ -393,8 +394,7 @@ export default function DispatchPanel({
         </button>
       </div>
 
-      {status ? <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{status}</div> : null}
-      {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      <ActionToast message={error ?? status} tone={error ? 'error' : 'success'} onDismiss={() => { setStatus(null); setError(null) }} />
 
       <button
         type="button"

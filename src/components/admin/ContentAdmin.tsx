@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import type { SiteContentRow } from '@/lib/content'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
+import ActionToast from '@/components/ActionToast'
 
 const groupMeta: Record<string, { label: string; description: string }> = {
   home: {
@@ -555,11 +556,7 @@ export default function ContentAdmin({ initialEntries }: { initialEntries: SiteC
                 )}
               </section>
 
-              {status.message ? (
-                <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-                  {status.message}
-                </p>
-              ) : null}
+              <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
             </div>
           </div>
         </form>

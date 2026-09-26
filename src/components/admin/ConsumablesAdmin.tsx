@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useMemo, useRef, useState } from 'react'
+import ActionToast from '@/components/ActionToast'
 import {
   calculateConsumablePriceCents,
   slugifyConsumable,
@@ -176,7 +177,7 @@ export default function ConsumablesAdmin({ initialCatalog }: { initialCatalog: C
       <summary className="cursor-pointer text-lg font-bold text-gray-900">Consumables catalogue</summary>
       <p className="mt-2 text-sm text-gray-600">Manage the client-facing product catalogue. Supplier costs and markup remain private.</p>
 
-      {status ? <div className={`mt-4 rounded-lg border px-4 py-3 text-sm ${status.type === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{status.message}</div> : null}
+      <ActionToast message={status?.message} tone={status?.type} onDismiss={() => setStatus(null)} />
       {!initialCatalog.storageReady ? <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">The image storage bucket is not ready. Apply the consumables migration before uploading images.</div> : null}
 
       <section className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">

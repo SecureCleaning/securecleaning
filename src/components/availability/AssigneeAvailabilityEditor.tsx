@@ -12,6 +12,7 @@ import { replaceCalendarBlockoutEvents } from '@/lib/availabilityCalendarClient'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import AgentCalendarPanel from './AgentCalendarPanel'
 import AvailabilityAgentNav from './AvailabilityAgentNav'
+import ActionToast from '@/components/ActionToast'
 
 const DAY_OPTIONS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
 
@@ -539,11 +540,7 @@ export default function AssigneeAvailabilityEditor({
             </div>
           </section>
 
-          {status.message ? (
-            <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-              {status.message}
-            </p>
-          ) : null}
+          <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
 
           <button
             type="submit"

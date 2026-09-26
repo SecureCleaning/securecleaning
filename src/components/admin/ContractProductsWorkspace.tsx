@@ -6,6 +6,7 @@ import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
+import ActionToast, { type ActionToastTone } from '@/components/ActionToast'
 import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 import { getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
@@ -125,6 +126,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [filter, setFilter] = useState('all')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<ActionToastTone>('success')
   const [broadcastState, setBroadcastState] = useState('VIC')
   const [broadcastProducts, setBroadcastProducts] = useState<string[]>([])
   const [broadcastSubject, setBroadcastSubject] = useState('')
@@ -161,7 +163,9 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     setBroadcastState(state)
   }, [])
 
-  useEffect(() => { void load(initialProductId).catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to load.')) }, [initialProductId, load])
+  const showMessage = useCallback((text: string, tone: ActionToastTone = 'success') => { setMessageTone(tone); setMessage(text) }, [])
+
+  useEffect(() => { void load(initialProductId).catch((error) => showMessage(error instanceof Error ? error.message : 'Unable to load.', 'error')) }, [initialProductId, load, showMessage])
 
   const loadBroadcastCleaners = useCallback(async (state: string) => {
     setBroadcastCleanersLoading(true)
@@ -175,11 +179,11 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setBroadcastCleaners(result.result.cleaners)
     } catch (error) {
       setBroadcastCleaners([])
-      setMessage(error instanceof Error ? error.message : 'Unable to load eligible cleaners.')
+      showMessage(error instanceof Error ? error.message : 'Unable to load eligible cleaners.', 'error')
     } finally {
       setBroadcastCleanersLoading(false)
     }
-  }, [])
+  }, [showMessage])
 
   useEffect(() => {
     if (!data || view !== 'broadcasts') return
@@ -235,9 +239,9 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         expectedUpdatedAt: selected.updatedAt,
         ...productUpdatePayload(draft),
       })
-      setMessage('Product saved.')
+      showMessage('Product saved.')
       await load(selected.id)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save product.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save product.', 'error') }
   }
 
   async function publish() {
@@ -249,18 +253,18 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         ...productUpdatePayload(draft),
       }) as ContractProduct
       await action('product.publish', { productId: selected.id, expectedUpdatedAt: saved.updatedAt })
-      setMessage('Product published to the available-jobs directory.')
+      showMessage('Product published to the available-jobs directory.')
       await load(selected.id)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to publish product.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to publish product.', 'error') }
   }
 
   async function withdraw() {
     if (!selected || !window.confirm('Remove this product from the available-jobs directory?')) return
     try {
       await action('product.withdraw', { productId: selected.id, expectedUpdatedAt: selected.updatedAt })
-      setMessage('Product withdrawn.')
+      showMessage('Product withdrawn.')
       await load(selected.id)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to withdraw product.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to withdraw product.', 'error') }
   }
 
   async function refreshScope() {
@@ -271,8 +275,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         expectedUpdatedAt: selected.updatedAt,
       })
       await load(selected.id)
-      setMessage('Cleaner scope refreshed from the winning quote.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to refresh the cleaner scope.') }
+      showMessage('Cleaner scope refreshed from the winning quote.')
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to refresh the cleaner scope.', 'error') }
   }
 
   async function previewBroadcast() {
@@ -298,7 +302,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         setBroadcastEditorKey(`broadcast-editor-${crypto.randomUUID()}`)
       }
       setBroadcastRequestId('')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to preview broadcast.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to preview broadcast.', 'error') }
   }
 
   async function continueBroadcast(requestId: string) {
@@ -309,14 +313,14 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         if (!response.ok) throw new Error(data.error || 'Sending paused. Resume unsent recipients when ready.')
         return data.result as { inProgress?: boolean; paused?: boolean; sentCount: number; failedCount: number; remainingCount?: number }
       }, result => {
-        setMessage(result.paused ? 'Resend account quota reached. Resume after upgrading your plan or the quota resets.' : `${result.sentCount} sent, ${result.failedCount} unresolved or failed, ${result.remainingCount ?? 0} queued. ${result.inProgress ? 'Keep this page open while sending.' : 'Broadcast complete.'}`)
+        showMessage(result.paused ? 'Resend account quota reached. Resume after upgrading your plan or the quota resets.' : `${result.sentCount} sent, ${result.failedCount} unresolved or failed, ${result.remainingCount ?? 0} queued. ${result.inProgress ? 'Keep this page open while sending.' : 'Broadcast complete.'}`, result.paused || result.failedCount > 0 ? 'error' : 'success')
         if (!result.inProgress) {
           sessionStorage.removeItem('cleaner-broadcast-request')
           setBroadcastRequestId(''); setBroadcastPreview(null)
           void load(selectedId)
         }
       })
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Sending paused. Resume unsent recipients.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Sending paused. Resume unsent recipients.', 'error') }
   }
 
   async function sendBroadcast() {
@@ -331,9 +335,9 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         recipientMode: broadcastRecipientMode, cleanerId: broadcastCleanerId, cleanerEmails: broadcastCleanerEmails,
         senderStaffId: broadcastSenderId, idempotencyKey: requestId, previewFingerprint: broadcastPreview.previewFingerprint,
       })
-      if (result.paused) { setMessage('Resend account quota reached. Resume after the plan upgrade or quota reset.'); return }
+      if (result.paused) { showMessage('Resend account quota reached. Resume after the plan upgrade or quota reset.', 'error'); return }
       await continueBroadcast(requestId)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to send broadcast. Check history before starting another send.') }
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to send broadcast. Check history before starting another send.', 'error') }
   }
 
   function loadTemplate() {
@@ -347,13 +351,13 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     setBroadcastEditorKey(`broadcast-editor-${crypto.randomUUID()}`)
     setTemplateName(template.name)
     invalidateBroadcastPreview()
-    setMessage(`Template "${template.name}" loaded. You can edit it for this send.`)
+    showMessage(`Template "${template.name}" loaded. You can edit it for this send.`, 'info')
   }
 
   function startNewTemplate() {
     setSelectedTemplateId('')
     setTemplateName('')
-    setMessage('Enter a template name, then save the current subject and message as a new template.')
+    showMessage('Enter a template name, then save the current subject and message as a new template.', 'info')
   }
 
   async function saveTemplate() {
@@ -373,8 +377,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       } : current)
       setSelectedTemplateId(template.id)
       setTemplateName(template.name)
-      setMessage(`Template "${template.name}" saved.`)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to save template.') }
+      showMessage(`Template "${template.name}" saved.`)
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save template.', 'error') }
   }
 
   async function archiveTemplate() {
@@ -385,8 +389,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       setData((current) => current ? { ...current, templates: current.templates.filter((candidate) => candidate.id !== template.id) } : current)
       setSelectedTemplateId('')
       setTemplateName('')
-      setMessage(`Template "${template.name}" archived.`)
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to archive template.') }
+      showMessage(`Template "${template.name}" archived.`)
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to archive template.', 'error') }
   }
 
   async function previewBroadcastHistory(campaignId: string) {
@@ -394,7 +398,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       const preview = await action('broadcast.history.preview', { campaignId }) as BroadcastHistoryPreview
       setBroadcastHistoryPreview(preview)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Unable to open the saved email.')
+      showMessage(error instanceof Error ? error.message : 'Unable to open the saved email.', 'error')
     }
   }
 
@@ -407,7 +411,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       <div className="flex gap-2"><button type="button" onClick={() => setView('products')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'products' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Products</button><button type="button" onClick={() => setView('broadcasts')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'broadcasts' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Broadcasts</button></div>
       <div className="flex flex-wrap gap-2">{data.jobsUrl ? <><a href={view === 'broadcasts' ? stateJobsUrl : data.jobsUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Preview available jobs</a><button type="button" onClick={() => void navigator.clipboard.writeText(view === 'broadcasts' ? stateJobsUrl : data.jobsUrl)} className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Copy reusable link</button></> : <span className="text-sm text-amber-800">Reusable jobs link is not configured.</span>}</div>
     </div>
-    {message ? <p role="status" className="mb-4 rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">{message}</p> : null}
+    <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
 
     {view === 'products' ? <div className="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
       <aside className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">

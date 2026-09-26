@@ -13,6 +13,7 @@ import type {
 } from '@/lib/cleaners'
 import { defaultCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
 import CleanerEmailComposer from '@/components/admin/CleanerEmailComposer'
+import ActionToast from '@/components/ActionToast'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
@@ -1142,13 +1143,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
 
       {emailComposerOpen && canEmail ? <CleanerEmailComposer cleaners={cleaners} templates={templates} onClose={() => setEmailComposerOpen(false)} /> : null}
 
-      {status.message ? (
-        <div className={`rounded-xl border px-4 py-3 text-sm font-medium ${
-          status.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
-        }`}>
-          {status.message}
-        </div>
-      ) : null}
+      <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
 
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 p-4">
@@ -1423,7 +1418,6 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
               </div>
             </div>
 
-            {status.type === 'error' ? <p role="alert" className="mx-5 mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{status.message}</p> : null}
             <div className="border-b border-gray-200 px-5 pt-3">
               <div className="flex gap-1 overflow-x-auto">
                 {modalTabs.map((tab) => (

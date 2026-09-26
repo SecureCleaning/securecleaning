@@ -11,6 +11,7 @@ import type {
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
+import ActionToast from '@/components/ActionToast'
 
 function toCsv(values: string[]): string {
   return values.join(', ')
@@ -601,11 +602,7 @@ export default function AvailabilityAdmin({
             </div>
           </section>
 
-          {status.message ? (
-            <p className={`text-sm ${status.type === 'error' ? 'text-red-600' : 'text-green-600'}`}>
-              {status.message}
-            </p>
-          ) : null}
+          <ActionToast message={status.message} tone={status.type === 'idle' ? 'info' : status.type} onDismiss={() => setStatus({ type: 'idle', message: '' })} />
         </form>
       </div>
   )

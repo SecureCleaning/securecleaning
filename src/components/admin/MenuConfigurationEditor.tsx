@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import ActionToast, { type ActionToastTone } from '@/components/ActionToast'
 import ConfigurableNavigation from '@/components/navigation/ConfigurableNavigation'
 import { defaultMenuConfiguration, MENU_CATALOG, menuDestinations, moveMenuLink, parseMenuConfiguration, type MenuAudience, type MenuConfiguration, type MenuGroup, type MenuLayout } from '@/lib/menuConfiguration'
 import { MENU_SETTINGS_CHANGED } from '@/lib/useNavigationMenu'
@@ -17,6 +18,7 @@ export default function MenuConfigurationEditor() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<ActionToastTone>('success')
   const dirty = Boolean(saved && draft && JSON.stringify(saved.config) !== JSON.stringify(draft))
   const load = useCallback(async () => {
     setBusy(true); setError('')
@@ -26,8 +28,8 @@ export default function MenuConfigurationEditor() {
       if (!response.ok) throw new Error(result.error || 'Unable to load menu configuration.')
       const settings = { ...result, config: parseMenuConfiguration(result.config) } as Settings
       setSaved(settings); setDraft(settings.config)
-      setMessage(settings.recovered ? 'The stored layout could not be read. Default menus are shown; save to replace the damaged layout.' : '')
-    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to load menu configuration.') }
+      setMessageTone('info'); setMessage(settings.recovered ? 'The stored layout could not be read. Default menus are shown; save to replace the damaged layout.' : '')
+    } catch (error) { setMessageTone('error'); setError(error instanceof Error ? error.message : 'Unable to load menu configuration.') }
     finally { setBusy(false) }
   }, [])
   useEffect(() => { void load() }, [load])
@@ -52,14 +54,15 @@ export default function MenuConfigurationEditor() {
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to save menus.')
       setSaved(result); setDraft(result.config)
+      setMessageTone('success')
       setMessage('Menus saved. The admin menu and agents\' menu are now updated.')
       window.dispatchEvent(new Event(MENU_SETTINGS_CHANGED))
-    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to save menus.') }
+    } catch (error) { setMessageTone('error'); setError(error instanceof Error ? error.message : 'Unable to save menus.') }
     finally { setBusy(false) }
   }
   function update(layout: MenuLayout) {
     if (!draft) return
-    setDraft({ ...draft, [audience]: layout }); setMessage('Unsaved menu changes.'); setError('')
+    setDraft({ ...draft, [audience]: layout }); setMessage(''); setError('')
   }
   if (!draft) return <section className="rounded-xl border border-gray-200 bg-white p-6"><h1 className="text-2xl font-bold text-gray-900">Menu configuration</h1>{error ? <p role="alert" className="my-4 text-red-700">{error}</p> : <p role="status" className="my-4">Loading menus...</p>}<button type="button" className={button} disabled={busy} onClick={() => void load()}>Retry</button></section>
   const layout = draft[audience]
@@ -73,7 +76,6 @@ export default function MenuConfigurationEditor() {
     if (target < 0 || target >= list.length) return
     ;[list[index], list[target]] = [list[target], list[index]]
     update(next)
-    setMessage('Menu order updated. Save when ready.')
   }
   const ordering = (index: number, length: number, name: string, parent?: string) => <div className="flex shrink-0 gap-1">
     <button type="button" className={button} disabled={busy || index === 0} aria-label={`Move ${name} up`} onClick={() => move(index, -1, parent)}>Up</button>
@@ -85,7 +87,8 @@ export default function MenuConfigurationEditor() {
   return <div className="space-y-5">
     <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-bold text-gray-900">Menu configuration</h1><p className="mt-1 text-sm text-gray-600">Arrange the shared admin menu and the menu used by your agents. Access permissions stay the same.</p></div><button type="button" disabled={!dirty || busy} onClick={() => void save()} className="min-h-10 rounded-full bg-green-700 px-5 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-40">{busy ? 'Saving...' : 'Save menus'}</button></div>
     <div className="flex flex-wrap items-end gap-3"><label className="text-sm font-semibold text-gray-700">Editing<select className={field} value={audience} disabled={busy} onChange={event => { setAudience(event.target.value as MenuAudience); setGroupName('') }}><option value="admin">Admin menu (my menu)</option><option value="agent">Agents&apos; menu</option></select></label><button type="button" className={button} disabled={busy} onClick={() => { if (!dirty || window.confirm('Discard unsaved changes to both menus and reload?')) void load() }}>Reload saved menus</button><button type="button" className={button} disabled={busy} onClick={() => { if (window.confirm('Reset this menu to its default layout? Save to apply it.')) update(defaultMenuConfiguration()[audience]) }}>Reset this menu</button></div>
-    <div aria-live="polite" className="text-sm text-green-800">{message || (dirty ? 'Unsaved changes' : 'Saved menu layout')}</div>{error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    <div className="text-sm text-gray-600">{dirty ? 'Unsaved changes' : 'Saved menu layout'}</div>
+    <ActionToast message={error || message} tone={error ? 'error' : messageTone} onDismiss={() => { setError(''); setMessage('') }} />
     <section data-menu-preview className="relative z-10 rounded-xl border border-green-200 bg-white p-4" onClickCapture={event => { if ((event.target as Element).closest('a')) event.preventDefault() }}><h2 className="mb-3 text-sm font-semibold text-gray-600">Live preview - {audience === 'admin' ? 'owner view' : 'agent view'}</h2><ConfigurableNavigation layout={layout} destinations={menuDestinations(audience, audience === 'admin' ? 'owner' : 'agent', 'preview')} currentPath="" label="Menu preview" /></section>
     <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5"><h2 className="text-lg font-semibold text-gray-900">Menu order</h2><p className="mb-4 text-sm text-gray-600">Move links or dropdowns up and down. Choose a placement to put a link inside a dropdown.</p>
       <div className="space-y-3">{layout.items.map((item, index) => <div key={item.id} className="rounded-xl border border-gray-200 p-3">
