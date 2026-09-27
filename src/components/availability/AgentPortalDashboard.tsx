@@ -49,13 +49,14 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
   city: string
   data: AgentDashboardData
 }) {
+  const displayCity = city ? city[0].toUpperCase() + city.slice(1).toLowerCase() : 'regional'
   return (
     <main>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-bold uppercase tracking-[0.16em] text-green-700">Agent dashboard</p>
           <h1 className="mt-1 text-3xl font-bold text-[#1a2744]">Welcome, {agentName}</h1>
-          <p className="mt-2 text-gray-600">Your next seven days and current {city} sales priorities.</p>
+          <p className="mt-2 text-gray-600">Your next seven days and current {displayCity} sales priorities.</p>
         </div>
         <Link href={`/availability/quoters/${encodeURIComponent(assigneeId)}`} className="rounded-xl border border-green-200 bg-white px-4 py-3 text-sm font-bold text-green-700 shadow-sm hover:bg-green-50">Manage calendar</Link>
       </header>
