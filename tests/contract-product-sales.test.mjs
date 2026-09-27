@@ -243,6 +243,16 @@ test('workbench keeps connected records together and exposes the complete gated 
   for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
+  const connectedRecordsStart = workspace.indexOf('<nav aria-label="Connected records"')
+  const connectedRecords = workspace.slice(connectedRecordsStart, workspace.indexOf('</nav>', connectedRecordsStart))
+  assert.ok(connectedRecords.indexOf('>Client</Link>') < connectedRecords.indexOf('>Quote</Link>'))
+  assert.ok(connectedRecords.indexOf('>Quote</Link>') < connectedRecords.indexOf('>Product</Link>'))
+  assert.ok(connectedRecords.indexOf('>Product</Link>') < connectedRecords.indexOf('>Product sale</span>'))
+  assert.doesNotMatch(workspace, /View commissions/)
+  assert.doesNotMatch(workspace, /Back to agent portal/)
+  assert.match(workspace, /showBack=\{portal !== 'agent'\}/)
+  assert.doesNotMatch(products, /Back to agent portal/)
+  assert.match(products, /showBack=\{portal !== 'agent'\}/)
   assert.match(inspectionPanel, /Schedule &amp; send separate invites/)
   assert.match(workspace, /Create pending cleaner/)
   assert.match(workspace, />New sale<\/button>/)

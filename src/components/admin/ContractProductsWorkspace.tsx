@@ -403,10 +403,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   }
 
   if (!data) return <div className="rounded-xl border border-gray-200 bg-white p-6">{message || 'Loading contract products...'}</div>
-  const backHref = portal === 'agent' ? '/agent' : '/admin'
-
   return <div>
-    <AdminPageHeader title="Contract Products" description="Turn won client opportunities into editable cleaner-facing contract listings." backHref={backHref} backLabel={portal === 'agent' ? 'Back to agent portal' : 'Back to overview'} />
+    <AdminPageHeader title="Contract Products" description="Turn won client opportunities into editable cleaner-facing contract listings." showBack={portal !== 'agent'} />
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-teal-100 bg-teal-50 p-4">
       <div className="flex gap-2"><button type="button" onClick={() => setView('products')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'products' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Products</button><button type="button" onClick={() => setView('broadcasts')} className={`rounded-lg px-4 py-2 text-sm font-semibold ${view === 'broadcasts' ? 'bg-teal-700 text-white' : 'bg-white text-gray-700'}`}>Broadcasts</button></div>
       <div className="flex flex-wrap gap-2">{data.jobsUrl ? <><a href={view === 'broadcasts' ? stateJobsUrl : data.jobsUrl} target="_blank" rel="noreferrer" className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Preview available jobs</a><button type="button" onClick={() => void navigator.clipboard.writeText(view === 'broadcasts' ? stateJobsUrl : data.jobsUrl)} className="rounded-lg border border-teal-200 bg-white px-4 py-2 text-sm font-semibold text-teal-800">Copy reusable link</button></> : <span className="text-sm text-amber-800">Reusable jobs link is not configured.</span>}</div>
