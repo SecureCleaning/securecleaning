@@ -25,7 +25,7 @@ export const MENU_CATALOG: Record<MenuAudience, MenuDestination[]> = {
     { id: 'menus', label: 'Menu configuration', href: '/admin/menus', roles: ['owner'] },
   ],
   agent: [
-    { id: 'portal', label: 'Agent portal', href: '/agent' },
+    { id: 'portal', label: 'Dashboard', href: '/availability/dashboard/{assigneeId}' },
     { id: 'invoices', label: 'Invoices', href: '/availability/invoices/{assigneeId}' },
     { id: 'quotes', label: 'My quotes', href: '/availability/quotes/{assigneeId}' },
     { id: 'clients', label: 'My clients', href: '/availability/clients/{assigneeId}' },
@@ -104,7 +104,7 @@ export function menuDestinations(audience: MenuAudience, role: AdminRole, assign
 
 export function isMenuDestinationActive(currentPath: string, href: string) {
   if (href === '/admin') return currentPath === href || currentPath.startsWith('/admin/quotes/')
-  if (href === '/' || href === '/agent') return currentPath === href
+  if (href === '/') return currentPath === href
   return currentPath === href || currentPath.startsWith(`${href}/`)
 }
 

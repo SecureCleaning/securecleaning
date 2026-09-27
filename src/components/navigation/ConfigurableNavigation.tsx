@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { useEffect, useId, useRef, useState } from 'react'
 import { isMenuDestinationActive, type MenuDestination, type MenuLayout } from '@/lib/menuConfiguration'
 
-export default function ConfigurableNavigation({ layout, destinations, currentPath, label }: {
-  layout: MenuLayout; destinations: MenuDestination[]; currentPath: string; label: string
+export default function ConfigurableNavigation({ layout, destinations, currentPath, label, loading = false }: {
+  layout: MenuLayout; destinations: MenuDestination[]; currentPath: string; label: string; loading?: boolean
 }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -23,6 +23,14 @@ export default function ConfigurableNavigation({ layout, destinations, currentPa
   }, [])
   const pill = 'inline-flex min-h-10 max-w-full items-center gap-2 rounded-full border px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-700'
   const tone = (selected: boolean) => selected ? 'border-green-700 bg-green-700 text-white' : 'border-gray-200 bg-white text-gray-700 hover:border-green-600 hover:bg-green-50'
+  if (loading) return <nav aria-label={label} aria-busy="true" className="min-h-10 min-w-0 flex-1">
+    <span className="sr-only">Loading navigation</span>
+    <div aria-hidden="true" className="flex min-h-10 items-center gap-2 overflow-hidden">
+      <span className="h-10 w-28 shrink-0 animate-pulse rounded-full bg-gray-100" />
+      <span className="h-10 w-24 shrink-0 animate-pulse rounded-full bg-gray-100" />
+      <span className="h-10 w-32 shrink-0 animate-pulse rounded-full bg-gray-100" />
+    </div>
+  </nav>
   return <nav ref={root} aria-label={label} className="relative min-w-0 flex-1" onKeyDown={event => {
     if (event.key === 'Escape') {
       event.preventDefault()

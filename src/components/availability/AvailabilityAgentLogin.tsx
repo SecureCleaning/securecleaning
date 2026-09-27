@@ -47,7 +47,7 @@ export default function AvailabilityAgentLogin({
       if (result.role !== 'agent' || (assigneeId && result.assigneeId !== assigneeId)) {
         throw new Error('This login is not linked to the selected regional agent.')
       }
-      window.location.href = redirectPath || `/availability/quoters/${result.assigneeId}`
+      window.location.href = redirectPath || `/availability/dashboard/${result.assigneeId}`
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to unlock your schedule page.')
     } finally {
