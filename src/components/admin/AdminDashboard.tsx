@@ -6,6 +6,7 @@ import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 import BookingEditor from './BookingEditor'
 import DispatchPanel from './DispatchPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
+import ClientFollowUps from './ClientFollowUps'
 import ReportingPanel, { type ReportingDestination } from './ReportingPanel'
 import AlertsPanel from './AlertsPanel'
 import DeleteQuoteButton from './DeleteQuoteButton'
@@ -634,6 +635,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
           </button>
         </div>
 
+        <ClientFollowUps />
         {activeTab === 'quotes' && (
         <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">

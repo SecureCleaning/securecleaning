@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         ...(await getCrmOpportunityNotes(actor, notesFor, request.nextUrl.searchParams.get('before'))),
       })
     }
-    return NextResponse.json({ success: true, ...(await getClientCrmWorkspace(actor)) })
+    return NextResponse.json({ success: true, ...(await getClientCrmWorkspace(actor, request.nextUrl.searchParams.get('followUps') === '1', request.nextUrl.searchParams.get('opportunity') || '')) })
   } catch (error) {
     if (error instanceof ClientCrmError) {
       return NextResponse.json({ success: false, error: error.message }, { status: error.status })

@@ -94,6 +94,8 @@ export type CrmInternalNote = {
 }
 
 export type CrmEmailTemplate = {
+  followUpDays: number | null
+  followUpNote: string
   id: string
   name: string
   description: string
@@ -265,6 +267,8 @@ async function getAllowedCrmSenders(actor: ClientCrmActor): Promise<CrmSenderOpt
 
 function mapTemplate(row: Record<string, unknown>): CrmEmailTemplate {
   return {
+    followUpDays: typeof row.follow_up_days === 'number' ? row.follow_up_days : null,
+    followUpNote: String(row.follow_up_note ?? ''),
     id: String(row.id),
     name: String(row.name ?? ''),
     description: String(row.description ?? ''),
@@ -300,7 +304,7 @@ function mapCommunication(row: Record<string, unknown>): CrmCommunication {
   }
 }
 
-export async function getClientCrmWorkspace(actor: ClientCrmActor) {
+export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly = false, requestedOpportunityId = '') {
   const db = getAdminSupabase()
   let opportunityQuery = db
     .from('crm_opportunities')
@@ -309,10 +313,30 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
     .limit(200)
   if (actor.role === 'agent') opportunityQuery = opportunityQuery.eq('assigned_staff_id', actor.id)
 
+  async function readOpportunities() {
+    if (!followUpsOnly) {
+      const result = await opportunityQuery
+      if (result.error || !requestedOpportunityId || (result.data ?? []).some((row) => row.id === requestedOpportunityId)) return result
+      let selectedQuery = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at').eq('id', requestedOpportunityId)
+      if (actor.role === 'agent') selectedQuery = selectedQuery.eq('assigned_staff_id', actor.id)
+      const selected = await selectedQuery.maybeSingle()
+      if (selected.error) return { data: null, error: selected.error }
+      return { data: selected.data ? [selected.data, ...(result.data ?? [])] : result.data, error: null }
+    }
+    const rows: Record<string, unknown>[] = []
+    for (let offset = 0; ; offset += 200) {
+      let query = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at').not('next_follow_up_at', 'is', null).not('stage', 'in', '(won,lost,cancelled)').order('next_follow_up_at').order('id').range(offset, offset + 199)
+      if (actor.role === 'agent') query = query.eq('assigned_staff_id', actor.id)
+      const result = await query
+      if (result.error) return result
+      rows.push(...(result.data ?? []))
+      if ((result.data ?? []).length < 200) return { data: rows, error: null }
+    }
+  }
   const [opportunitiesResult, templatesResult, agents, senders] = await Promise.all([
-    opportunityQuery,
+    readOpportunities(),
     db.from('crm_email_templates')
-      .select('id, name, description, category, purpose, visibility, status, subject, body, body_html, body_document, current_version, created_by_staff_id, updated_at')
+      .select('id, name, description, category, purpose, visibility, status, subject, body, body_html, body_document, follow_up_days, follow_up_note, current_version, created_by_staff_id, updated_at')
       .neq('status', 'archived')
       .order('name', { ascending: true }),
     getAllowedCrmAgents(actor),
@@ -775,6 +799,10 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
     throw new ClientCrmError('Opportunity not found.', 404)
   }
 
+  if (input.expectedNextFollowUpAt !== undefined && input.expectedNextFollowUpAt !== current.next_follow_up_at) {
+    throw new ClientCrmError('This reminder has changed. Refresh before updating it.', 409)
+  }
+
   const { data: intakeLink, error: intakeLinkError } = await db.from('crm_opportunity_intakes')
     .select('lead_id')
     .eq('opportunity_id', id)
@@ -804,7 +832,7 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
   if (input.notes !== undefined) update.notes = clean(input.notes, 5000) || null
   if (input.nextFollowUpAt !== undefined) {
     const date = clean(input.nextFollowUpAt, 100)
-    if (date && Number.isNaN(new Date(date).getTime())) throw new ClientCrmError('Enter a valid follow-up date.')
+    if (date && (!/(Z|[+-]\d{2}:\d{2})$/.test(date) || Number.isNaN(new Date(date).getTime()))) throw new ClientCrmError('Enter a valid follow-up date.')
     update.next_follow_up_at = date ? new Date(date).toISOString() : null
   }
   if (input.assignedStaffId !== undefined) {
@@ -865,6 +893,9 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
 
 export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<string, unknown>) {
   const id = clean(input.id, 100)
+  const followUpDays = input.followUpDays == null ? null : Number(input.followUpDays)
+  if (followUpDays !== null && (!Number.isInteger(followUpDays) || followUpDays < 1 || followUpDays > 60)) throw new ClientCrmError('Choose 1 to 60 business days for the follow-up.')
+  const followUpNote = clean(input.followUpNote, 1000)
   const name = clean(input.name, 160)
   const description = clean(input.description, 500)
   const category = clean(input.category, 80) || 'outreach'
@@ -912,8 +943,8 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
   const templateId = String(saved.template_id)
   const templateVersion = Number(saved.template_version)
   const [{ error: templateSnapshotError }, { error: versionSnapshotError }] = await Promise.all([
-    db.from('crm_email_templates').update({ body_html: richBody.html, body_document: richBody.document }).eq('id', templateId),
-    db.from('crm_email_template_versions').update({ body_html: richBody.html, body_document: richBody.document }).eq('template_id', templateId).eq('version', templateVersion),
+    db.from('crm_email_templates').update({ body_html: richBody.html, body_document: richBody.document, follow_up_days: followUpDays, follow_up_note: followUpNote }).eq('id', templateId),
+    db.from('crm_email_template_versions').update({ body_html: richBody.html, body_document: richBody.document, follow_up_days: followUpDays, follow_up_note: followUpNote }).eq('template_id', templateId).eq('version', templateVersion),
   ])
   if (templateSnapshotError) throw templateSnapshotError
   if (versionSnapshotError) throw versionSnapshotError

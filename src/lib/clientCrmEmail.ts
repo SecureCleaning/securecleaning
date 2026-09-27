@@ -308,6 +308,9 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) {
     throw new ClientCrmError('A valid send request is required.')
   }
+  const followUpAt = typeof input.followUpAt === 'string' && input.followUpAt ? input.followUpAt : null
+  if (followUpAt && (!/(Z|[+-]\d{2}:\d{2})$/.test(followUpAt) || !Number.isFinite(Date.parse(followUpAt)) || Date.parse(followUpAt) <= Date.now())) throw new ClientCrmError('Choose a future follow-up time including its timezone.')
+  const followUpNote = clean(input.followUpNote, 1000)
   const prepared = await prepareClientCrmEmail(actor, input)
   const {
     db, opportunity, contact, sender, templateId, templateVersion, purpose, recipient, subject,
@@ -374,6 +377,8 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   if (!communicationId) throw new ClientCrmError('The email could not be claimed for sending.', 409)
 
   const { error: snapshotError } = await db.from('crm_communications').update({
+    follow_up_at: followUpAt,
+    follow_up_note: followUpNote,
     body_document_snapshot: content.document,
     body_html_snapshot: content.html,
     final_html_snapshot: finalHtml,

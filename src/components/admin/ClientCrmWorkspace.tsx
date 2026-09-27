@@ -4,6 +4,8 @@ import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import ClientFollowUps from './ClientFollowUps'
+import { followUpInput, followUpIso, businessDayFollowUp } from '@/lib/crmFollowUpTime'
 import LocalityAutocomplete from '@/components/shared/LocalityAutocomplete'
 import type { CrmServiceRegion } from '@/lib/clientCrmAssignment'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
@@ -83,7 +85,7 @@ function emptyLeadDraft(city: CrmServiceRegion | '' = '') {
 
 function emptyTemplateDraft(actorRole: string) {
   return {
-    id: '', name: '', description: '', category: 'outreach', purpose: 'marketing',
+    id: '', name: '', description: '', category: 'outreach', purpose: 'marketing', followUpDays: null as number | null, followUpNote: '',
     visibility: actorRole === 'agent' ? 'personal' : 'shared',
     status: actorRole === 'agent' ? 'draft' : 'published', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null,
   }
@@ -162,6 +164,7 @@ export default function ClientCrmWorkspace({
   const [leadDraft, setLeadDraft] = useState(() => emptyLeadDraft())
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null })
+  const [emailFollowUp, setEmailFollowUp] = useState({ enabled: false, at: '', note: '' })
   const [composeEditorKey, setComposeEditorKey] = useState(0)
   const [templateEditorKey, setTemplateEditorKey] = useState(0)
   const [emailPreview, setEmailPreview] = useState<ClientEmailPreview | null>(null)
@@ -181,7 +184,7 @@ export default function ClientCrmWorkspace({
   const [search, setSearch] = useState('')
 
   async function loadWorkspace(preferredLeadId?: string) {
-    const response = await fetch('/api/admin/client-crm', { cache: 'no-store' })
+    const response = await fetch(`/api/admin/client-crm?opportunity=${encodeURIComponent(preferredLeadId || selectedLeadId || initialOpportunityId)}`, { cache: 'no-store' })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error || 'Unable to load the Client CRM.')
     const next = result as WorkspaceData
@@ -225,7 +228,7 @@ export default function ClientCrmWorkspace({
     setLeadEdit({
       stage: selectedLead.stage || 'new',
       notes: selectedLead.notes || '',
-      nextFollowUpAt: selectedLead.nextFollowUpAt ? selectedLead.nextFollowUpAt.slice(0, 16) : '',
+      nextFollowUpAt: followUpInput(selectedLead.nextFollowUpAt),
       assignedStaffId: selectedLead.assignedStaffId || '',
       contactBasis: selectedLead.contactBasis || '',
       sourceProvider: selectedLead.sourceProvider || '',
@@ -254,6 +257,7 @@ export default function ClientCrmWorkspace({
       selectedLead.assignedStaffId,
       data?.senders.map((sender) => sender.id) ?? [],
     )
+    setEmailFollowUp({ enabled: false, at: '', note: '' })
     setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null })
     setComposeEditorKey((current) => current + 1)
     setEmailPreview(null)
@@ -291,11 +295,13 @@ export default function ClientCrmWorkspace({
   function chooseTemplate(templateId: string) {
     const template = data?.templates.find((item) => item.id === templateId)
     if (!template || !selectedLead) {
+      setEmailFollowUp({ enabled: false, at: '', note: '' })
       setCompose((current) => ({ ...current, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null }))
       setComposeEditorKey((current) => current + 1)
       setEmailPreview(null)
       return
     }
+    setEmailFollowUp({ enabled: template.followUpDays !== null, at: businessDayFollowUp(template.followUpDays ?? 2), note: template.followUpNote || 'Follow up outreach email' })
     setCompose((current) => ({
       ...current,
       templateId,
@@ -325,6 +331,14 @@ export default function ClientCrmWorkspace({
     }
   }
 
+  useEffect(() => {
+    const refresh = () => { void loadWorkspace() }
+    window.addEventListener('crm-followup-updated', refresh)
+    return () => window.removeEventListener('crm-followup-updated', refresh)
+    // Refresh the selected record after dashboard reminder actions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLeadId])
+
   async function updateLead() {
     if (!selectedLead) return
     setBusy('lead-update')
@@ -336,6 +350,7 @@ export default function ClientCrmWorkspace({
         action: 'opportunity.update',
         id: selectedLead.id,
         ...workflowFields,
+        nextFollowUpAt: followUpIso(leadEdit.nextFollowUpAt),
         ...(data?.actor.role === 'owner' || data?.actor.role === 'manager' ? { assignedStaffId } : {}),
       })
       workflowSaved = true
@@ -526,12 +541,15 @@ export default function ClientCrmWorkspace({
     if (!selectedLead || !globalThis.crypto?.randomUUID) return
     const payload = composePayload()
     if (!payload || !emailPreview?.previewFingerprint) return
+    if (emailFollowUp.enabled && !emailFollowUp.at) { setStatus({ type: 'error', message: 'Choose a follow-up time.' }); return }
     setBusy('email')
     setStatus(null)
     try {
       await post({
         action: 'email.send',
         ...payload,
+        followUpAt: emailFollowUp.enabled ? followUpIso(emailFollowUp.at) : null,
+        followUpNote: emailFollowUp.note,
         previewFingerprint: emailPreview.previewFingerprint,
         idempotencyKey: crypto.randomUUID(),
       })
@@ -547,6 +565,8 @@ export default function ClientCrmWorkspace({
 
   function editTemplate(template: CrmEmailTemplate) {
     setTemplateDraft({
+      followUpDays: template.followUpDays,
+      followUpNote: template.followUpNote,
       id: template.id,
       name: template.name,
       description: template.description,
@@ -654,6 +674,7 @@ export default function ClientCrmWorkspace({
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h2 className="font-bold text-gray-900">Stored templates</h2><div className="mt-3 space-y-2">{data.templates.map((template) => <button key={template.id} type="button" onClick={() => editTemplate(template)} className="block w-full rounded-xl border border-gray-200 p-3 text-left hover:border-teal-300"><span className="font-semibold text-gray-900">{template.name}</span><span className="mt-1 block text-xs text-gray-500">{template.visibility} - {template.status} - version {template.currentVersion}</span></button>)}</div></section>
         <form onSubmit={saveTemplate} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="font-bold text-gray-900">{templateDraft.id ? 'Edit template' : 'New template'}</h2><div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="text-sm font-medium text-gray-700">Name<input required value={templateDraft.name} onChange={(event) => setTemplateDraft({ ...templateDraft, name: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <div className="md:col-span-2 rounded-lg border p-3"><label><input type="checkbox" checked={templateDraft.followUpDays !== null} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpDays: e.target.checked ? 2 : null })} /> Create follow-up after sending</label>{templateDraft.followUpDays !== null ? <div className="mt-2 flex flex-wrap gap-3"><label>Business days <input type="number" min={1} max={60} value={templateDraft.followUpDays} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpDays: Number(e.target.value) })} className="w-20 border p-2" /></label><label>Suggested action <input maxLength={1000} value={templateDraft.followUpNote} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpNote: e.target.value })} className="border p-2" /></label></div> : null}</div>
           <label className="text-sm font-medium text-gray-700">Description<input value={templateDraft.description} onChange={(event) => setTemplateDraft({ ...templateDraft, description: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Purpose<span className="mt-1 block rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 font-normal">Client outreach</span><span className="mt-1 block text-xs font-normal text-gray-500">All CRM-composer emails respect marketing unsubscribe preferences.</span></label>
           <label className="text-sm font-medium text-gray-700">Visibility<select disabled={!canManageShared} value={templateDraft.visibility} onChange={(event) => setTemplateDraft({ ...templateDraft, visibility: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="shared">Shared</option><option value="personal">Personal</option></select></label>
@@ -663,6 +684,7 @@ export default function ClientCrmWorkspace({
         </div><p className="mt-3 text-xs text-gray-500">Choose a database field from the menus to insert it. The selected client&apos;s current saved details are filled during preview; older {'{{field}}'} templates remain supported. The agent signature and unsubscribe section are added automatically.</p><div className="mt-4 flex gap-3"><button type="submit" disabled={busy === 'template'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'template' ? 'Saving...' : 'Save template'}</button><button type="button" onClick={() => { setTemplateDraft(emptyTemplateDraft(data.actor.role)); setTemplateEditorKey((current) => current + 1) }} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">New template</button></div></form>
       </div> : null}
 
+      {view === 'pipeline' ? <ClientFollowUps refreshKey={data} /> : null}
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
         <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search business, contact, email or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" /><div className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto">{filteredLeads.map((lead) => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className={`block w-full rounded-xl border p-3 text-left ${lead.id === selectedLeadId ? 'border-teal-500 bg-teal-50' : 'border-gray-200 bg-white'}`}><span className="block font-semibold text-gray-900">{lead.businessName || lead.contactName || lead.email}</span><span className="block text-sm text-gray-600">{lead.contactName} - {lead.stage} - cycle {lead.cycleNumber}</span><span className="mt-1 block text-xs text-gray-500">{lead.assignedStaffName || 'Unassigned'} - {lead.postcode || 'Site to confirm'} - {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>{lead.suppressed ? <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">Email suppressed</span> : null}</button>)}{filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}</div></section>
         {selectedLead ? <div className="space-y-5">
@@ -720,6 +742,8 @@ export default function ClientCrmWorkspace({
           </section> : null}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Opportunity workflow</h2>
+            <p className="mt-2 text-sm font-semibold text-teal-800">Saved follow-up: {dateLabel(selectedLead.nextFollowUpAt)}. Times use your device timezone.</p>
+            <label className="mt-3 block text-sm">Internal workflow / follow-up note<textarea value={leadEdit.notes} onChange={(event) => setLeadEdit({ ...leadEdit, notes: event.target.value })} className="mt-1 w-full rounded-lg border p-2" /></label>
             <p className="mt-1 text-sm text-gray-600">Manage this sales cycle without changing the customer’s identity or site details.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               <label className="text-sm font-medium text-gray-700">Stage<select value={leadEdit.stage} disabled={Boolean(selectedLead.productId)} onChange={(event) => { if (event.target.value === 'won') { setWonOpen(true); return } setLeadEdit({ ...leadEdit, stage: event.target.value }) }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100">{stageOptions.map((stage) => <option key={stage} value={stage}>{stage}</option>)}</select></label>
@@ -727,7 +751,7 @@ export default function ClientCrmWorkspace({
               {canManageShared ? <label className="text-sm font-medium text-gray-700">Assigned agent<select value={leadEdit.assignedStaffId} onChange={(event) => setLeadEdit({ ...leadEdit, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Unassigned</option>{data.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label> : null}
               <label className="text-sm font-medium text-gray-700">Contact basis<select value={leadEdit.contactBasis} onChange={(event) => setLeadEdit({ ...leadEdit, contactBasis: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select basis</option>{basisOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadEdit.sourceProvider} onChange={(event) => setLeadEdit({ ...leadEdit, sourceProvider: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
-              <label id="crm-source-details" className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation<textarea id="crm-source-explanation" rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+              <label id="crm-source-details" className="text-sm font-medium text-gray-700 md:col-span-2">Source explanation (included in client emails; not an internal note)<textarea id="crm-source-explanation" rows={2} value={leadEdit.sourceExplanation} onChange={(event) => setLeadEdit({ ...leadEdit, sourceExplanation: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
               <button type="button" onClick={() => void updateLead()} disabled={Boolean(busy) || Boolean(selectedLead.productId)} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
@@ -763,6 +787,7 @@ export default function ClientCrmWorkspace({
               </label>
               <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => { setCompose({ ...compose, subject: event.target.value }); setEmailPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => { setCompose((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) })); setEmailPreview(null) }} /></span></label>
+              <div className="md:col-span-2 lg:col-span-3 rounded-lg border p-3"><label><input type="checkbox" checked={emailFollowUp.enabled} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, enabled: e.target.checked, at: emailFollowUp.at || businessDayFollowUp(2) })} /> Remind the assigned agent to follow up after sending</label>{emailFollowUp.enabled ? <div className="mt-2 space-y-2"><label className="block">Follow-up time (device timezone) <input required type="datetime-local" value={emailFollowUp.at} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, at: e.target.value })} className="border p-2" /></label><label className="block">Internal action <input maxLength={1000} value={emailFollowUp.note} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, note: e.target.value })} className="border p-2" /></label><p className="text-xs">Created after successful sending. An earlier outstanding reminder is kept. No automatic client email is sent.</p></div> : null}</div>
               <div className="md:col-span-2 lg:col-span-3"><RichEmailEditor value={createRichEmailContent({ document: compose.bodyDocument, html: compose.bodyHtml, text: compose.body })} resetKey={`crm-compose-${composeEditorKey}`} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message: RichEmailContent) => { setCompose((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
             </div>
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
