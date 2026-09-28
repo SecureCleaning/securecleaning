@@ -38,13 +38,25 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
     db.from('contract_product_sales').select('id,sale_code,agreed_purchase_price_inc_gst_cents,status').neq('status', 'cancelled').order('created_at', { ascending: false }),
   ]) : [{ data: null, error: null }, { data: [], error: null }, { data: [], error: null }]
   for (const result of [settings, agents, sales]) if (result.error) throw result.error
-  return { role: actor.role, balances, claims, payouts, components, settings: settings.data, agents: agents.data, sales: (sales.data ?? []).filter(row => !ids.includes(row.id)) }
+  const assignedSales = actor.role === 'owner' ? assignments.map(row => ({
+    sale_id: String(row.sale_id),
+    win_agent_id: String(row.win_agent_id),
+    sale_agent_id: String(row.sale_agent_id),
+    win_bps: Number(row.win_bps),
+    sale_bps: Number(row.sale_bps),
+    sale_code: String(balances.find(balance => balance.sale_id === row.sale_id)?.sale_code ?? row.sale_id),
+    can_correct: !claims.some(claim => claim.sale_id === row.sale_id) && !payouts.some(payout => payout.sale_id === row.sale_id),
+  })) : []
+  return { role: actor.role, balances, claims, payouts, components, assignments: assignedSales, settings: settings.data, agents: agents.data, sales: (sales.data ?? []).filter(row => !ids.includes(row.id)) }
 }
 
 export async function manageCommission(actor: ClientCrmActor, input: Record<string, unknown>) {
   const action = input.action
-  if (!['settings', 'assign', 'claim', 'payout'].includes(String(action))) throw new ContractProductError('Invalid commission action.')
+  if (!['settings', 'assign', 'correct', 'claim', 'payout'].includes(String(action))) throw new ContractProductError('Invalid commission action.')
   if (action === 'claim' ? actor.role !== 'agent' : actor.role !== 'owner') throw new ContractProductError('You cannot perform this commission action.', 403)
   const { error } = await getAdminSupabase().rpc('manage_contract_commission', { p_actor_id: actor.id, p_action: action, p_input: input })
-  if (error) throw new ContractProductError(error.code === '42501' ? 'Commission access denied.' : 'Unable to save. Check the amounts, references and available commission; refresh before retrying.', error.code === '42501' ? 403 : 409)
+  if (error) {
+    const correctionBlocked = String(error.message ?? '').includes('cannot be corrected after an agent invoice or payout exists')
+    throw new ContractProductError(error.code === '42501' ? 'Commission access denied.' : correctionBlocked ? 'This assignment cannot be corrected because an agent invoice or payout already exists.' : 'Unable to save. Check the agents, amounts, references and available commission; refresh before retrying.', error.code === '42501' ? 403 : 409)
+  }
 }

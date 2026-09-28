@@ -50,6 +50,14 @@ The approved-cleaner migration updates the protected sale and handover functions
 The tax-invoice workflow migration adds the service-role-only global invoice template, immutable supplier, recipient, wording, deposit and sender snapshots, introduces the full sale tax-invoice type, and updates payment, inspection and handover gates while preserving legacy deposit and balance invoices.
 The document-bundle migration adds explicit final-price confirmation, locks that price once an invoice or agreement snapshot exists, lets the tax invoice and agreement be prepared in either order, and removes the obsolete signed-agreement prerequisite from invoice preparation. The application sends the matching tax-invoice and agreement PDFs together; signature and cleared-deposit checks remain later inspection and handover gates.
 
+Apply `contract_sale_automatic_commission_assignment_migration.sql` after
+`contract_sale_commissions_plans_migration.sql` and
+`contract_sale_start_eligibility_repair_migration.sql`. It automatically locks the
+current rates when the final-quote sender and sale creator both resolve to active agent
+staff accounts. Ambiguous or owner-created sales remain in the manual owner queue. The
+owner may correct the two agent assignments until an agent invoice or payout exists;
+rates, claims, and payouts remain immutable, and every correction is audited.
+
 Apply `admin_quote_deletion_migration.sql` after the CRM, final-quote, contract-product,
 and contract-sale migrations. It installs the service-role-only transactional deletion
 RPC used by the owner-only dashboard control. Accepted or sent final quotes and quotes
