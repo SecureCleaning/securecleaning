@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { CrmOpportunity } from '@/lib/clientCrmData'
+import { followUpSummary } from '@/lib/crmFollowUpSummary'
+import type { CrmEmailTemplate, CrmOpportunity } from '@/lib/clientCrmData'
 import { followUpGroup, followUpInput, followUpIso } from '@/lib/crmFollowUpTime'
 
-type Workspace = { opportunities: CrmOpportunity[]; actor: { role: string; availabilityAssigneeId?: string | null } }
-export default function ClientFollowUps({ refreshKey }: { refreshKey?: unknown }) {
+type Workspace = { opportunities: CrmOpportunity[]; templates: CrmEmailTemplate[]; actor: { role: string; availabilityAssigneeId?: string | null } }
+export default function ClientFollowUps({ refreshKey, compact = false }: { refreshKey?: unknown; compact?: boolean }) {
   const [data, setData] = useState<Workspace | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
@@ -40,18 +41,31 @@ export default function ClientFollowUps({ refreshKey }: { refreshKey?: unknown }
   }
   const items = (data?.opportunities ?? []).filter((item) => item.nextFollowUpAt && !['won', 'lost', 'cancelled'].includes(item.stage)).sort((a, b) => Date.parse(a.nextFollowUpAt!) - Date.parse(b.nextFollowUpAt!))
   const base = data?.actor.role === 'agent' ? `/availability/clients/${encodeURIComponent(data.actor.availabilityAssigneeId || '')}` : '/admin/clients'
-  return <section className="my-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm" aria-label="Client follow-ups">
-    <h2 className="text-xl font-bold text-[#1a2744]">Client follow-ups</h2>
-    <p className="mt-1 text-sm text-gray-600">Assigned opportunity reminders. Times use your device timezone; this list refreshes every minute.</p>
-    {error ? <p role="alert" className="mt-2 text-red-700">{error}</p> : null}
-    {!data && !error ? <p>Loading follow-ups...</p> : null}
-    {data && !items.length ? <p className="mt-3 text-gray-500">No outstanding follow-ups.</p> : null}
-    <div className="mt-3 grid gap-4 lg:grid-cols-3">{(['Overdue', 'Today', 'Upcoming'] as const).map((group) => <div key={group}><h3 className="font-semibold">{group} ({items.filter((item) => followUpGroup(item.nextFollowUpAt!, now) === group).length})</h3><div className="max-h-96 overflow-auto">{items.filter((item) => followUpGroup(item.nextFollowUpAt!, now) === group).map((item) => <article key={item.id} className="mt-2 rounded-lg border p-3 text-sm">
-      <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="font-bold text-teal-800 underline">{item.businessName || item.contactName || 'Client opportunity'}</a>
-      <p>{item.assignedStaffName || 'Unassigned'} · {new Date(item.nextFollowUpAt!).toLocaleString('en-AU')}</p>
-      <p className="whitespace-pre-wrap">{item.notes}</p>
-      <div className="mt-2 flex gap-3"><button disabled={!!busy} onClick={() => void update(item, null)} className="font-semibold text-green-700">Complete</button><button disabled={!!busy} onClick={() => { setEditing(item.id); setWhen(followUpInput(item.nextFollowUpAt)) }} className="font-semibold text-teal-700">Reschedule</button></div>
-      {editing === item.id ? <form className="mt-2" onSubmit={(e) => { e.preventDefault(); void update(item, followUpIso(when)) }}><input required aria-label="Reschedule follow-up" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="w-full border p-2" /><button disabled={!!busy} className="mt-2 rounded bg-teal-700 p-2 text-white">Save reminder</button><button type="button" onClick={() => setEditing('')} className="p-2">Cancel</button></form> : null}
-    </article>)}</div></div>)}</div>
+  return <section className={`${compact ? '' : 'my-5'} min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm`} aria-label="Client follow-ups">
+    <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
+      <h2 className="text-xl font-bold text-[#1a2744]">Client follow-ups</h2>
+      <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800">{items.length}</span>
+    </div>
+    {error ? <p role="alert" className="px-5 py-3 text-red-700">{error}</p> : null}
+    {!data && !error ? <p className="px-5 py-4 text-sm text-gray-500">Loading follow-ups...</p> : null}
+    {data && !items.length ? <p className="px-5 py-6 text-sm text-gray-500">No outstanding follow-ups.</p> : null}
+    <div className="max-h-[32rem] divide-y divide-gray-100 overflow-y-auto">{items.map((item) => {
+      const group = followUpGroup(item.nextFollowUpAt!, now)
+      const tone = group === 'Overdue' ? 'bg-red-50 text-red-700' : group === 'Today' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-700'
+      return <article key={item.id} className="px-5 py-4 text-sm">
+        <div className="flex items-start justify-between gap-2">
+          <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="min-w-0 font-bold text-gray-900 hover:text-teal-700 hover:underline">{item.businessName || item.contactName || 'Client opportunity'}</a>
+          <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{group}</span>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">{new Date(item.nextFollowUpAt!).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-sm text-teal-800">{followUpSummary(item, data?.templates ?? [])}</summary>
+          <p className="mt-2 text-xs text-gray-500">Assigned to {item.assignedStaffName || 'Unassigned'}</p>
+          <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="mt-2 inline-block text-teal-700 underline">Open client activity</a>
+          <div className="mt-3 flex gap-4"><button disabled={!!busy} onClick={() => void update(item, null)} className="font-semibold text-green-700 disabled:opacity-50">Complete</button><button disabled={!!busy} onClick={() => { setEditing(item.id); setWhen(followUpInput(item.nextFollowUpAt)) }} className="font-semibold text-teal-700 disabled:opacity-50">Reschedule</button></div>
+          {editing === item.id ? <form className="mt-2" onSubmit={(e) => { e.preventDefault(); void update(item, followUpIso(when)) }}><input required aria-label="Reschedule follow-up" type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} className="w-full rounded border p-2" /><button disabled={!!busy} className="mt-2 rounded bg-teal-700 p-2 text-white">Save reminder</button><button type="button" onClick={() => setEditing('')} className="p-2">Cancel</button></form> : null}
+        </details>
+      </article>
+    })}</div>
   </section>
 }

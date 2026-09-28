@@ -9,8 +9,9 @@ import type { QuoteInputs } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AvailabilityQuotesPage({ params }: { params: Promise<{ assigneeId: string }> }) {
+export default async function AvailabilityQuotesPage({ params, searchParams }: { params: Promise<{ assigneeId: string }>; searchParams?: Promise<{ followUp?: string }> }) {
   const { assigneeId } = await params
+  const filters = await searchParams
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
 
@@ -24,7 +25,7 @@ export default async function AvailabilityQuotesPage({ params }: { params: Promi
 
   const { data, error } = await getAdminSupabase()
     .from('quotes')
-    .select('id, quote_ref, status, created_at, inputs')
+    .select('id, quote_ref, status, follow_up_status, created_at, inputs')
     .order('created_at', { ascending: false })
     .limit(500)
 
@@ -38,6 +39,7 @@ export default async function AvailabilityQuotesPage({ params }: { params: Promi
     return [{
       quoteRef: row.quote_ref,
       status: row.status,
+      followUpStatus: row.follow_up_status,
       createdAt: row.created_at,
       businessName: inputs.businessName || '',
       contactName: inputs.contactName || '',
@@ -52,7 +54,7 @@ export default async function AvailabilityQuotesPage({ params }: { params: Promi
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <AvailabilityAgentNav assigneeId={assignee.id} showLogout containerClassName="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8" />
-      <AgentQuoteDashboard assigneeId={assignee.id} assigneeName={assignee.name} city={assignee.city} quotes={quotes} />
+      <AgentQuoteDashboard assigneeId={assignee.id} assigneeName={assignee.name} city={assignee.city} quotes={quotes} initialFollowUp={filters?.followUp === '1'} />
     </div>
   )
 }

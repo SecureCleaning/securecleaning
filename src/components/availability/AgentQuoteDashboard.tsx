@@ -1,5 +1,6 @@
 'use client'
 
+import { quoteRequiresFollowUp } from '@/lib/agentDashboardPolicy'
 import { useMemo, useState } from 'react'
 import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 import { compareQuoteStatuses, getQuoteStatusOptions, matchesQuoteSearch, type QuoteStatusSortDirection } from '@/lib/quoteList'
@@ -7,6 +8,7 @@ import { compareQuoteStatuses, getQuoteStatusOptions, matchesQuoteSearch, type Q
 export type AgentQuoteRow = {
   quoteRef: string
   status: string
+  followUpStatus?: string | null
   createdAt?: string | null
   businessName: string
   contactName: string
@@ -28,18 +30,21 @@ export default function AgentQuoteDashboard({
   assigneeName,
   city,
   quotes,
+  initialFollowUp = false,
 }: {
   assigneeId: string
   assigneeName: string
   city: string
   quotes: AgentQuoteRow[]
+  initialFollowUp?: boolean
 }) {
   useQuoteListRefresh()
   const [search, setSearch] = useState('')
-  const [status, setStatus] = useState('all')
+  const [status, setStatus] = useState(initialFollowUp ? 'follow-up' : 'all')
   const [statusSort, setStatusSort] = useState<QuoteStatusSortDirection>('priority')
   const filteredQuotes = useMemo(() => {
     return quotes.filter((quote) => {
+      if (status === 'follow-up') return quoteRequiresFollowUp(quote) && matchesQuoteSearch(quote, search)
       if (status !== 'all' && quote.status !== status) return false
       return matchesQuoteSearch(quote, search)
     }).sort((left, right) => compareQuoteStatuses(left.status, right.status, statusSort))
@@ -70,6 +75,7 @@ export default function AgentQuoteDashboard({
               <span className="mb-1 block text-sm font-medium text-gray-700">Status</span>
               <select value={status} onChange={(event) => setStatus(event.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="all">All statuses</option>
+                <option value="follow-up">Sent - awaiting follow-up</option>
                 {statuses.map((item) => <option key={item} value={item}>{item.replaceAll('_', ' ')}</option>)}
               </select>
             </label>

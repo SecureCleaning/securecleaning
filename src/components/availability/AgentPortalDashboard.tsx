@@ -2,13 +2,6 @@ import Link from 'next/link'
 import ClientFollowUps from '@/components/admin/ClientFollowUps'
 import type { AgentDashboardData } from '@/lib/agentDashboard'
 
-function date(value: string | null, timeZone: string) {
-  if (!value) return 'No expiry date'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-  return parsed.toLocaleDateString('en-AU', { timeZone, day: 'numeric', month: 'short', year: 'numeric' })
-}
-
 function time(value: string, timeZone: string) {
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? 'Time unavailable' : parsed.toLocaleTimeString('en-AU', {
@@ -62,13 +55,13 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
         <Link href={`/availability/quoters/${encodeURIComponent(assigneeId)}`} className="rounded-xl border border-green-200 bg-white px-4 py-3 text-sm font-bold text-green-700 shadow-sm hover:bg-green-50">Manage calendar</Link>
       </header>
 
-      <section aria-label="Agent priorities" className="grid gap-4 sm:grid-cols-3">
+      <section aria-label="Agent priorities" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard eyebrow="Quote priority" count={data.pendingQuoteCount} label="Pending quotes" href={`/availability/quotes/${encodeURIComponent(assigneeId)}`} tone="green" />
         <StatCard eyebrow="Marketplace" count={data.productsForSaleCount} label="Products for sale" href={`/availability/products/${encodeURIComponent(assigneeId)}`} />
         <StatCard eyebrow="Product sales" count={data.inductionsRequiredCount} label="Inductions required" href={`/availability/sales/${encodeURIComponent(assigneeId)}`} tone="gold" />
+        <StatCard eyebrow="Quote follow-up" count={data.sentFollowUpCount} label="Sent quotes awaiting an outcome" href={`/availability/quotes/${encodeURIComponent(assigneeId)}?followUp=1`} />
       </section>
 
-      <ClientFollowUps />
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,0.8fr)] xl:items-start">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
@@ -103,36 +96,7 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
           </div>
         </section>
 
-        <aside className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="border-b border-gray-100 px-5 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xl font-bold text-[#1a2744]">Quote follow-up</h2>
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-900">{data.sentFollowUpCount}</span>
-            </div>
-            <p className="mt-1 text-sm text-gray-600">Sent quotes still awaiting an outcome.</p>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {data.sentFollowUps.length === 0 ? <p className="px-5 py-10 text-center text-sm text-gray-500">No sent quotes require follow-up.</p> : null}
-            {data.sentFollowUps.map((quote) => (
-              <Link key={quote.quoteRef} href={`/availability/quotes/${encodeURIComponent(assigneeId)}/${encodeURIComponent(quote.quoteRef)}`} className="block px-5 py-4 hover:bg-gray-50">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate font-bold text-gray-900">{quote.businessName || quote.contactName || 'Private customer'}</div>
-                    <div className="mt-0.5 text-xs text-gray-500">{quote.suburb || 'Suburb unavailable'} {quote.postcode}</div>
-                  </div>
-                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-800">Sent</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
-                  <span>{quote.quoteRef}</span>
-                  <span>Valid {date(quote.validUntil, data.timeZone)}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-          {data.sentFollowUpCount > data.sentFollowUps.length ? (
-            <Link href={`/availability/quotes/${encodeURIComponent(assigneeId)}`} className="block border-t border-gray-100 px-5 py-3 text-center text-sm font-bold text-green-700 hover:bg-green-50">View all {data.sentFollowUpCount} quotes</Link>
-          ) : null}
-        </aside>
+        <ClientFollowUps compact />
       </div>
     </main>
   )
