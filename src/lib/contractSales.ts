@@ -13,7 +13,8 @@ import { createCleanerForState, type CleanerPayload } from '@/lib/cleaners'
 import { getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { upsertContractSaleInspectionEvent } from '@/lib/googleCalendar'
-import { applyEmailMergeFields, findUnsupportedEmailMergeFields, INSPECTION_EMAIL_MERGE_FIELD_KEYS } from '@/lib/emailMergeFields'
+import { applyEmailMergeFields, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields, INSPECTION_EMAIL_MERGE_FIELD_KEYS } from '@/lib/emailMergeFields'
+import { createCleanerPortalLink } from '@/lib/cleanerPortal'
 import { buildContractSaleChecklistPdf, type ContractSaleChecklistData } from '@/lib/contractSaleChecklistPdf'
 import {
   buildContractSaleTaxInvoicePdf,
@@ -188,7 +189,15 @@ export type ContractSaleInvoiceTemplate = {
   updatedAt: string | null
 }
 
-const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
+export type ContractSaleCleanerProfileTemplate = {
+  subject: string
+  bodyText: string
+  bodyHtml: string
+  bodyDocument?: Record<string, unknown> | null
+  updatedAt: string | null
+}
+
+const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, created_by_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
 const INVOICE_SELECT = 'id, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
 const INVOICE_DOCUMENT_SELECT = 'id, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
@@ -197,6 +206,7 @@ const SECURE_CLEANING_ABN = '81 674 121 825'
 const SECURE_CLEANING_EMAIL = 'info@securecleaning.com.au'
 const INVOICE_TEMPLATE_ID = 'default'
 const INSPECTION_TEMPLATE_ID = 'default'
+const CLEANER_PROFILE_TEMPLATE_ID = 'default'
 export const DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE: ContractSaleInvoiceTemplate = {
   supplierName: SECURE_CLEANING_NAME,
   supplierAbn: SECURE_CLEANING_ABN,
@@ -221,6 +231,14 @@ export const DEFAULT_CONTRACT_SALE_INSPECTION_TEMPLATE: ContractSaleInspectionTe
   cleanerSubject: 'Site inspection booked - <<site_name>> - <<inspection_date>>',
   cleanerBodyText: 'Hi <<cleaner_first_name>>,\n\nThe client has confirmed the site inspection for <<site_name>>.\n\nDate: <<inspection_date>>\nTime: <<inspection_time>>\nDuration: <<inspection_duration>>\nLocation: <<inspection_location>>\n\nPlease attend with <<sender_name>>. A calendar invitation is attached.\n\nKind regards,\n<<sender_name>>\n<<sender_title>>\nSecure Cleaning\n<<sender_phone>>\n<<sender_email>>',
   cleanerBodyHtml: '',
+  updatedAt: null,
+}
+
+export const DEFAULT_CONTRACT_SALE_CLEANER_PROFILE_TEMPLATE: ContractSaleCleanerProfileTemplate = {
+  subject: 'Please confirm your Secure Cleaning details',
+  bodyText: 'Hi <<cleaner_first_name>>,\n\nThank you for purchasing a cleaning contract through Secure Cleaning. As this is the first invoice we have sent you, please review your cleaner record and add or correct any missing information.\n\nReview and update your details: <<profile_update_link>>\n\nThis private link expires in 48 hours.\n\nKind regards,\nSecure Cleaning',
+  bodyHtml: '<p>Hi &lt;&lt;cleaner_first_name&gt;&gt;,</p><p>Thank you for purchasing a cleaning contract through Secure Cleaning. As this is the first invoice we have sent you, please review your cleaner record and add or correct any missing information.</p><p><a href="&lt;&lt;profile_update_link&gt;&gt;" style="display:inline-block;background-color:#0f766e;color:#ffffff;padding:12px 20px;border-radius:6px;text-decoration:none;font-weight:bold">Review and update your details</a></p><p>This private link expires in 48 hours.</p><p>Kind regards,<br>Secure Cleaning</p>',
+  bodyDocument: null,
   updatedAt: null,
 }
 
@@ -277,6 +295,47 @@ async function loadInvoiceTemplate() {
   const { data, error } = await getAdminSupabase().from('contract_sale_invoice_templates').select('*').eq('id', INVOICE_TEMPLATE_ID).maybeSingle()
   if (error) throw error
   return mapInvoiceTemplate(data as Row | null)
+}
+
+function mapCleanerProfileTemplate(row: Row | null | undefined): ContractSaleCleanerProfileTemplate {
+  if (!row) return { ...DEFAULT_CONTRACT_SALE_CLEANER_PROFILE_TEMPLATE }
+  return {
+    subject: String(row.subject_template),
+    bodyText: String(row.body_text),
+    bodyHtml: String(row.body_html ?? ''),
+    bodyDocument: row.body_document as Record<string, unknown> | null,
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  }
+}
+
+async function loadCleanerProfileTemplate() {
+  const { data, error } = await getAdminSupabase().from('contract_sale_cleaner_profile_templates').select('*').eq('id', CLEANER_PROFILE_TEMPLATE_ID).maybeSingle()
+  if (error) throw error
+  return mapCleanerProfileTemplate(data as Row | null)
+}
+
+function parseCleanerProfileTemplate(input: Record<string, unknown>) {
+  const subject = clean(input.subject, 200)
+  if (subject.length < 3) throw new ContractProductError('Enter a profile-update email subject.')
+  const rich = parseRichEmailContent(input, { text: 'bodyText', html: 'bodyHtml', document: 'bodyDocument', maxText: 5000 })
+  if (rich.text.trim().length < 10) throw new ContractProductError('Enter at least 10 characters for the profile-update email.')
+  const unsupported = findUnsupportedEmailMergeFields(CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELD_KEYS, subject, rich.text, rich.html)
+  if (unsupported.length) throw new ContractProductError(`Remove unsupported profile-update email fields: ${unsupported.join(', ')}.`)
+  if (!rich.text.includes('<<profile_update_link>>') && !rich.text.includes('{{profile_update_link}}')
+    && !rich.html.includes('profile_update_link')) {
+    throw new ContractProductError('Include <<profile_update_link>> in the profile-update email.')
+  }
+  return { subject, bodyText: rich.text, bodyHtml: rich.html, bodyDocument: rich.document }
+}
+
+function renderCleanerProfileEmail(template: ContractSaleCleanerProfileTemplate, values: Record<string, string>) {
+  const subject = applyEmailMergeFields(template.subject, values)
+  const bodyText = applyEmailMergeFields(template.bodyText, values)
+  const safeValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, escapeHtml(value)]))
+  const sourceHtml = template.bodyHtml.trim() ? sanitizeRichEmailHtml(template.bodyHtml) : plainTextToEmailHtml(template.bodyText)
+  const bodyHtml = sanitizeRichEmailHtml(applyEmailMergeFields(sourceHtml, safeValues))
+  const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><div style="border-bottom:4px solid #0c766e;padding:18px 0"><strong style="font-size:24px;color:#0c766e">Secure Cleaning</strong></div><div style="padding:22px 0">${bodyHtml}</div></div>`
+  return { subject, bodyText, bodyHtml, html }
 }
 
 function mapInspectionTemplate(row: Row | null | undefined): ContractSaleInspectionTemplate {
@@ -381,7 +440,7 @@ async function getAuthorizedSale(actor: ContractProductActor, saleId: string) {
 
 async function loadSaleContext(sale: Row) {
   const db = getAdminSupabase()
-  const [product, cleaner, opportunity, quote, staff] = await Promise.all([
+  const [product, cleaner, opportunity, quote, staff, creatorStaff] = await Promise.all([
     db.from('contract_products').select('id, product_code, state, suburb, start_date, frequency, time_preference, cleaner_scope_snapshot').eq('id', sale.product_id).single(),
     db.from('cleaners').select('id, business_name, contact_name, email, phone, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
     db.from('crm_opportunities').select('primary_contact_id, site_id').eq('id', sale.opportunity_id).single(),
@@ -391,8 +450,11 @@ async function loadSaleContext(sale: Row) {
     sale.assigned_staff_id
       ? db.from('admin_staff_accounts').select('id, display_name, email, job_title, phone, availability_assignee_id').eq('id', sale.assigned_staff_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    sale.created_by_staff_id
+      ? db.from('admin_staff_accounts').select('id, display_name, email, job_title, role, active').eq('id', sale.created_by_staff_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ])
-  for (const result of [product, cleaner, opportunity, quote, staff]) if (result.error) throw result.error
+  for (const result of [product, cleaner, opportunity, quote, staff, creatorStaff]) if (result.error) throw result.error
   if (!product.data || !cleaner.data || !opportunity.data || !quote.data) {
     throw new ContractProductError('The linked product, cleaner, client opportunity, or quote is no longer available.', 409)
   }
@@ -404,12 +466,14 @@ async function loadSaleContext(sale: Row) {
   ])
   if (client.error) throw client.error
   if (site.error) throw site.error
-  return { product: product.data, cleaner: cleaner.data, opportunity: opportunity.data, quote: quote.data, staff: staff.data, client: client.data, site: site.data }
+  return { product: product.data, cleaner: cleaner.data, opportunity: opportunity.data, quote: quote.data, staff: staff.data, creatorStaff: creatorStaff.data, client: client.data, site: site.data }
 }
 
 export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const db = getAdminSupabase()
-  const [products, invoiceTemplate, inspectionTemplate] = await Promise.all([getContractProducts(actor), loadInvoiceTemplate(), loadInspectionTemplate()])
+  const [products, invoiceTemplate, inspectionTemplate, cleanerProfileTemplate] = await Promise.all([
+    getContractProducts(actor), loadInvoiceTemplate(), loadInspectionTemplate(), loadCleanerProfileTemplate(),
+  ])
   const productIds = products.map((product) => product.id)
   let saleRows: Row[] = []
   if (productIds.length) {
@@ -539,6 +603,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     sales,
     invoiceTemplate,
     inspectionTemplate,
+    cleanerProfileTemplate,
     cleaners: (cleanerOptions ?? []).map((row) => ({ id: String(row.id), businessName: String(row.business_name), contactName: String(row.contact_name), email: String(row.email), state: String(row.state ?? ''), status: String(row.status), complianceStatus: String(row.compliance_status ?? '') })) as ContractSaleCleanerOption[],
     actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
   }
@@ -587,6 +652,25 @@ export async function updateContractSaleInvoiceTemplate(actor: ContractProductAc
   if (error) throw error
   await writeAuditLogStrict('contract_sale_invoice_template', INVOICE_TEMPLATE_ID, 'contract_sale.invoice_template.updated', actorAudit(actor))
   return { invoiceTemplate: mapInvoiceTemplate(data as Row) }
+}
+
+export async function updateContractSaleCleanerProfileTemplate(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (actor.role !== 'owner' && actor.role !== 'manager') {
+    throw new ContractProductError('Only an owner or manager can edit the first-purchase profile email template.', 403)
+  }
+  const template = parseCleanerProfileTemplate(input)
+  const { data, error } = await getAdminSupabase().from('contract_sale_cleaner_profile_templates').upsert({
+    id: CLEANER_PROFILE_TEMPLATE_ID,
+    subject_template: template.subject,
+    body_text: template.bodyText,
+    body_html: template.bodyHtml,
+    body_document: template.bodyDocument,
+    updated_by_staff_id: actor.id,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' }).select('*').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale_cleaner_profile_template', CLEANER_PROFILE_TEMPLATE_ID, 'contract_sale.cleaner_profile_template.updated', actorAudit(actor))
+  return { cleanerProfileTemplate: mapCleanerProfileTemplate(data as Row) }
 }
 
 export async function applyContractSaleInvoiceBankDetails(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -753,6 +837,87 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
   }) as { id?: string } | null
   return result?.id ?? ''
+}
+
+type CleanerProfileEmailOutcome = 'sent' | 'not_first' | 'failed' | 'unknown'
+
+async function sendFirstInvoiceCleanerProfileEmail(
+  actor: ContractProductActor,
+  sale: Row,
+  invoice: Row,
+  context: Awaited<ReturnType<typeof loadSaleContext>>,
+): Promise<CleanerProfileEmailOutcome> {
+  const recipientEmail = normalizeInvoiceEmail(context.cleaner.email)
+  if (!recipientEmail || recipientEmail !== normalizeInvoiceEmail(invoice.recipient_email_snapshot)) return 'failed'
+  const template = await loadCleanerProfileTemplate()
+  const creator = context.creatorStaff && context.creatorStaff.active === true && context.creatorStaff.role === 'agent'
+    ? context.creatorStaff
+    : null
+  const creatorEmail = creator ? normalizeInvoiceEmail(creator.email) : ''
+  const link = createCleanerPortalLink({ mode: 'update', email: recipientEmail, cleanerId: String(context.cleaner.id) })
+  const values = {
+    cleaner_first_name: firstName(context.cleaner.contact_name),
+    cleaner_name: String(context.cleaner.contact_name ?? ''),
+    cleaner_business: String(context.cleaner.business_name ?? ''),
+    invoice_number: String(invoice.invoice_number ?? ''),
+    sale_code: String(sale.sale_code ?? ''),
+    product_code: String(context.product.product_code ?? ''),
+    profile_update_link: link,
+    agent_name: String(creator?.display_name ?? actor.displayName),
+    agent_title: String(creator?.job_title ?? actor.jobTitle ?? ''),
+    agent_email: String(creatorEmail || actor.email),
+  }
+  const rendered = renderCleanerProfileEmail(template, values)
+  const db = getAdminSupabase()
+  const { data: requestId, error: reserveError } = await db.rpc('reserve_contract_sale_cleaner_profile_request', {
+    p_cleaner_id: String(context.cleaner.id),
+    p_sale_id: String(sale.id),
+    p_invoice_id: String(invoice.id),
+    p_actor_id: actor.id,
+    p_subject_snapshot: rendered.subject,
+    p_body_text_snapshot: rendered.bodyText,
+    p_body_html_snapshot: rendered.bodyHtml,
+    p_body_document_snapshot: template.bodyDocument ?? null,
+    p_final_html_snapshot: rendered.html,
+  })
+  if (reserveError) throw reserveError
+  if (!requestId) return 'not_first'
+
+  try {
+    const result = await sendEmailOrThrow({
+      from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
+      to: recipientEmail,
+      ...(creatorEmail ? { cc: [creatorEmail] } : {}),
+      replyTo: actor.email,
+      subject: rendered.subject,
+      html: rendered.html,
+    }) as { id?: string } | null
+    const providerMessageId = result?.id ?? ''
+    const { error: updateError } = await db.from('contract_sale_cleaner_profile_requests').update({
+      delivery_status: providerMessageId ? 'sent' : 'unknown',
+      provider_message_id: providerMessageId || null,
+      delivery_error: providerMessageId ? null : 'Provider outcome unknown.',
+      sent_at: providerMessageId ? new Date().toISOString() : null,
+    }).eq('id', String(requestId)).eq('delivery_status', 'sending')
+    if (updateError) throw updateError
+    await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.cleaner_profile_email.completed', {
+      ...actorAudit(actor), invoiceId: invoice.id, requestId, outcome: providerMessageId ? 'sent' : 'unknown',
+      copiedSaleCreator: Boolean(creatorEmail),
+    })
+    return providerMessageId ? 'sent' : 'unknown'
+  } catch (sendError) {
+    const rejected = sendError instanceof EmailProviderRejectedError
+    const outcome = rejected ? 'failed' : 'unknown'
+    const { error: updateError } = await db.from('contract_sale_cleaner_profile_requests').update({
+      delivery_status: outcome,
+      delivery_error: clean(sendError instanceof Error ? sendError.message : 'Provider outcome unknown.', 500),
+    }).eq('id', String(requestId)).eq('delivery_status', 'sending')
+    if (updateError) console.error('[contract-sale] Failed to record cleaner profile email outcome:', updateError.message)
+    await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.cleaner_profile_email.completed', {
+      ...actorAudit(actor), invoiceId: invoice.id, requestId, outcome, copiedSaleCreator: Boolean(creatorEmail),
+    }).catch((auditError) => console.error('[contract-sale] Failed to audit cleaner profile email outcome:', auditError))
+    return outcome
+  }
 }
 
 export async function issueContractSaleInvoice(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -1310,7 +1475,17 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
   if (invoiceUpdate.error) throw invoiceUpdate.error
   if (saleUpdate.error) throw saleUpdate.error
   await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.documents.sent', { ...actorAudit(actor), agreementId, invoiceId: invoice.id, providerMessageId })
-  return { agreementId, invoiceId: String(invoice.id) }
+  let cleanerProfileEmail: CleanerProfileEmailOutcome = 'not_first'
+  try {
+    cleanerProfileEmail = await sendFirstInvoiceCleanerProfileEmail(actor, sale, invoice as Row, context)
+  } catch (profileError) {
+    cleanerProfileEmail = 'failed'
+    console.error('[contract-sale] First-invoice cleaner profile email failed:', profileError instanceof Error ? profileError.message : 'unknown')
+    await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.cleaner_profile_email.failed', {
+      ...actorAudit(actor), invoiceId: invoice.id, reason: 'automation_error',
+    }).catch((auditError) => console.error('[contract-sale] Failed to audit cleaner profile automation error:', auditError))
+  }
+  return { agreementId, invoiceId: String(invoice.id), cleanerProfileEmail }
 }
 
 export async function createContractSalePaymentPlan(actor: ContractProductActor, input: Record<string, unknown>) {

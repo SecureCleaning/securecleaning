@@ -92,8 +92,7 @@ export async function sendCleanerPortalLink(email: string, mode: 'update' | 'onb
   if (mode === 'update' && !existing) return false
   if (mode === 'update' && requiredState && existing?.profile.state !== requiredState) return false
   if (mode === 'onboarding' && existing) throw new Error('A cleaner record already exists for this email address. Send an update link instead.')
-  const token = createCleanerPortalToken({ mode, email: normalizedEmail, cleanerId: existing?.id, state: mode === 'onboarding' ? requiredState : undefined })
-  const link = `${getSiteUrl()}/cleaners/portal/claim?token=${encodeURIComponent(token)}`
+  const link = createCleanerPortalLink({ mode, email: normalizedEmail, cleanerId: existing?.id, state: mode === 'onboarding' ? requiredState : undefined })
   await sendEmailOrThrow({
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: normalizedEmail,
     replyTo: process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au',
@@ -101,4 +100,9 @@ export async function sendCleanerPortalLink(email: string, mode: 'update' | 'onb
     html: `<p>Use the secure link below to ${mode === 'onboarding' ? 'complete your cleaner registration' : 'review and update your cleaner details'}.</p><p><a href="${link}">Open cleaner portal</a></p><p>This link expires in 48 hours. If you did not request it, you can ignore this email.</p>`,
   })
   return true
+}
+
+export function createCleanerPortalLink(input: { mode: 'update' | 'onboarding'; email: string; cleanerId?: string; state?: string }) {
+  const token = createCleanerPortalToken(input)
+  return `${getSiteUrl()}/cleaners/portal/claim?token=${encodeURIComponent(token)}`
 }

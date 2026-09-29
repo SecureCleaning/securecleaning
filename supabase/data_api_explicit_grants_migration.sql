@@ -44,6 +44,8 @@ DECLARE
     'contract_sale_inspection_messages',
     'contract_sale_inspection_templates',
     'contract_sale_inspections',
+    'contract_sale_cleaner_profile_requests',
+    'contract_sale_cleaner_profile_templates',
     'contract_sale_invoice_bank_revisions',
     'contract_sale_invoice_templates',
     'contract_sale_invoices',

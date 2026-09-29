@@ -58,6 +58,15 @@ staff accounts. Ambiguous or owner-created sales remain in the manual owner queu
 owner may correct the two agent assignments until an agent invoice or payout exists;
 rates, claims, and payouts remain immutable, and every correction is audited.
 
+Apply `contract_sale_first_invoice_cleaner_profile_migration.sql` after the contract
+sale, cleaner, staff-account, rich-email and audit migrations. It adds the editable
+first-purchase profile email template and a service-role-only, one-row-per-cleaner
+delivery ledger. The reservation RPC accepts only a sent full-sale invoice, rechecks
+the actor and sale assignment, verifies the cleaner email, and refuses later invoices.
+Existing invoice history is not backfilled. The application sends the private 48-hour
+cleaner portal link separately after the first document bundle succeeds and copies the
+active agent who created the product sale.
+
 Apply `admin_quote_deletion_migration.sql` after the CRM, final-quote, contract-product,
 and contract-sale migrations. It installs the service-role-only transactional deletion
 RPC used by the owner-only dashboard control. Accepted or sent final quotes and quotes
