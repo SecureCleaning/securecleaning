@@ -100,6 +100,7 @@ export default async function AvailabilityAgentQuotePage({
           updatedQuoteApiPath={updatedQuoteApiPath}
           canEmailUpdatedQuote
           canReconcileDelivery={false}
+          canReviseAcceptedFinal
         />
       </div>
     </div>

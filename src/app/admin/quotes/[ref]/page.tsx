@@ -42,6 +42,7 @@ export default async function AdminQuoteWorkflowPage({ params }: { params: { ref
             pricingConfig={pricingConfig}
             roomTypeConfig={roomTypeConfig}
             canReconcileDelivery={identity?.role === 'manager' || identity?.role === 'owner'}
+            canReviseAcceptedFinal={identity?.role === 'owner'}
           />
       </div>
     )

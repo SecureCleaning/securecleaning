@@ -241,27 +241,27 @@ export async function reviseQuoteWorkflowByRef(
   pricingConfig: QuotePricingConfig,
   roomTypeConfig: QuoteRoomTypeConfig
 ) {
-  const readiness = getFinalQuoteReadiness(firmQuoteDraft)
-  if (!readiness.ready) throw new Error(readiness.errors[0])
   const current = await getQuoteWorkflowByRef(quoteRef, roomTypeConfig)
   if (!current?.finalDocument) throw new QuoteWorkflowConflictError('There is no published final quote to revise.')
-  if (current.firmQuoteDraft.status === 'accepted') {
-    throw new QuoteWorkflowConflictError('Accepted quotes are locked because downstream contract records may already rely on them.')
-  }
+  const preserveAcceptance = current.status === 'accepted' || current.firmQuoteDraft.status === 'accepted'
+  const revisionStatus = preserveAcceptance ? 'accepted' : 'reviewed'
+  const reviewedDraft: FirmQuoteDraft = { ...firmQuoteDraft, status: 'reviewed' }
+  const readiness = getFinalQuoteReadiness(reviewedDraft)
+  if (!readiness.ready) throw new Error(readiness.errors[0])
   if (current.finalDocumentVersion !== expectedDocumentVersion) {
     throw new QuoteWorkflowConflictError('The final quote changed before this revision was saved. Reload and review the latest version.')
   }
 
   const reviewedAt = new Date().toISOString()
   const documentVersion = expectedDocumentVersion + 1
-  const reviewedDraft: FirmQuoteDraft = { ...firmQuoteDraft, status: 'reviewed' }
-  const pricingPreview = buildFirmQuotePreview(reviewedDraft, pricingConfig, roomTypeConfig)
-  const displayPrice = getFirmQuoteDisplayPrice(reviewedDraft, pricingPreview)
+  const revisionDraft: FirmQuoteDraft = { ...firmQuoteDraft, status: revisionStatus }
+  const pricingPreview = buildFirmQuotePreview(revisionDraft, pricingConfig, roomTypeConfig)
+  const displayPrice = getFirmQuoteDisplayPrice(revisionDraft, pricingPreview)
   const finalDocument: FinalQuoteDocument = {
     variant: 'final', version: documentVersion, reviewedAt, reviewedBy: actor,
-    inputs: reviewedDraft.revisedInputs,
+    inputs: revisionDraft.revisedInputs,
     result: applyFirmQuoteDisplayPrice(current.result, displayPrice),
-    firmQuoteDraft: reviewedDraft, pricingPreview, displayPrice, roomTypeConfig,
+    firmQuoteDraft: revisionDraft, pricingPreview, displayPrice, roomTypeConfig,
   }
 
   const db = getAdminSupabase()
@@ -269,7 +269,7 @@ export async function reviseQuoteWorkflowByRef(
     p_quote_ref: quoteRef,
     p_expected_document_version: expectedDocumentVersion,
     p_inspection_report: inspectionReport,
-    p_firm_quote_draft: reviewedDraft,
+    p_firm_quote_draft: revisionDraft,
     p_final_document: finalDocument,
     p_actor: actor,
     p_reviewed_at: reviewedAt,

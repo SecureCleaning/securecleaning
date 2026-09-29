@@ -19,7 +19,8 @@ export async function POST(
 
   try {
     const body = await request.json()
-    if (!isEditableFirmQuoteStatus(body?.firmQuoteDraft?.status)) {
+    const requestedStatus = body?.firmQuoteDraft?.status
+    if (!isEditableFirmQuoteStatus(requestedStatus) && requestedStatus !== 'accepted') {
       return NextResponse.json({ success: false, error: 'Save supports only draft or reviewed workflow states.' }, { status: 400 })
     }
     const config = await getAvailabilityConfig()
@@ -28,6 +29,11 @@ export async function POST(
     const quote = await getQuoteWorkflowByRef(params.ref, roomTypeConfig)
 
     if (!assignee || !quote) return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
+
+    const acceptedRevision = Boolean(quote.finalDocument) && (quote.status === 'accepted' || quote.firmQuoteDraft.status === 'accepted')
+    if (requestedStatus === 'accepted' && !acceptedRevision) {
+      return NextResponse.json({ success: false, error: 'Accepted status can only be preserved while correcting an accepted final quote.' }, { status: 400 })
+    }
 
     const allowed = await canAvailabilityAgentAccessQuote(config, params.assigneeId, quote)
     if (!allowed) return NextResponse.json({ success: false, error: 'This quote is outside your assigned service region.' }, { status: 403 })
@@ -38,8 +44,8 @@ export async function POST(
 
     const inspectionReport = parseInspectionReport(body?.inspectionReport, quote.inputs)
     const firmQuoteDraft = parseFirmQuoteDraft(body?.firmQuoteDraft, quote.inputs, roomTypeConfig)
-    const readiness = getFinalQuoteReadiness(firmQuoteDraft)
-    if (firmQuoteDraft.status === 'reviewed' && !readiness.ready) {
+    const readiness = getFinalQuoteReadiness({ ...firmQuoteDraft, status: 'reviewed' })
+    if ((firmQuoteDraft.status === 'reviewed' || firmQuoteDraft.status === 'accepted') && !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
     }
     const sessionIdentity = getAdminSessionIdentityFromRequest(request)
@@ -49,9 +55,6 @@ export async function POST(
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
 
     if (quote.finalDocument) {
-      if (quote.firmQuoteDraft.status === 'accepted') {
-        return NextResponse.json({ success: false, error: 'Accepted quotes are locked because downstream contract records may already rely on them.' }, { status: 409 })
-      }
       if (body?.revision !== true || !Number.isInteger(body?.expectedDocumentVersion) || body.expectedDocumentVersion < 1) {
         return NextResponse.json({ success: false, error: 'A versioned final-quote revision is required.' }, { status: 409 })
       }
@@ -59,7 +62,7 @@ export async function POST(
         params.ref, body.expectedDocumentVersion, inspectionReport, firmQuoteDraft, actor,
         await getQuotePricingConfig(), roomTypeConfig
       )
-      return NextResponse.json({ success: true, status: 'reviewed', revised: true, documentVersion: finalDocument.version })
+      return NextResponse.json({ success: true, status: finalDocument.firmQuoteDraft.status, revised: true, documentVersion: finalDocument.version })
     }
 
     if (quote.firmQuoteDraft.status === 'sent' || quote.firmQuoteDraft.status === 'accepted') {

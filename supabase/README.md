@@ -82,6 +82,12 @@ Apply `final_quote_document_guard_repair_migration.sql` after the final-quote re
 migrations. It restores the versioned-document trigger after production drift introduced
 a misspelled `EXCLUDED.superseded_by` reference that blocked revised final quote saves.
 
+Apply `accepted_final_quote_revision_migration.sql` after the final-quote revision and
+document-guard repair migrations. It permits the owner and an assigned agent to save a
+new version of an accepted final quote while preserving acceptance, immutable document
+history, and audit attribution. Existing contract products, invoices, and agreements are
+left unchanged.
+
 ### SMS quote follow-up (initially disabled)
 
 Apply `sms_workflow_migration.sql` after the final-quote workflow and audit migrations.

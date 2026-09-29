@@ -52,6 +52,7 @@ type Props = {
   updatedQuoteApiPath?: string
   canEmailUpdatedQuote?: boolean
   canReconcileDelivery?: boolean
+  canReviseAcceptedFinal?: boolean
 }
 
 const frequencyOptions = [
@@ -130,6 +131,7 @@ export default function QuoteWorkflowEditor({
   updatedQuoteApiPath = `/api/admin/quotes/${quote.quoteRef}/send`,
   canEmailUpdatedQuote = true,
   canReconcileDelivery = false,
+  canReviseAcceptedFinal = false,
 }: Props) {
   const [inspectionReport, setInspectionReport] = useState<InspectionReport>(quote.inspectionReport)
   const [firmQuoteDraft, setFirmQuoteDraft] = useState<FirmQuoteDraft>(quote.firmQuoteDraft)
@@ -181,7 +183,9 @@ export default function QuoteWorkflowEditor({
     }))
     return [...fields.values()]
   }, [roomTypeConfig])
-  const canReviseFinal = Boolean(quote.finalDocument) && firmQuoteDraft.status !== 'accepted'
+  const isAcceptedFinal = Boolean(quote.finalDocument) && (quote.status === 'accepted' || firmQuoteDraft.status === 'accepted')
+  const canReviseFinal = Boolean(quote.finalDocument) && (!isAcceptedFinal || canReviseAcceptedFinal)
+  const acceptedEditingLocked = firmQuoteDraft.status === 'accepted' && !canReviseFinal
 
   function openPreview(options?: { smooth?: boolean }) {
     const behavior = options?.smooth === false ? 'auto' : 'smooth'
@@ -343,7 +347,7 @@ export default function QuoteWorkflowEditor({
       }
       const submittedDraft: FirmQuoteDraft = {
         ...firmQuoteDraft,
-        status: isRevision ? 'reviewed' : firmQuoteDraft.status,
+        status: isRevision ? (isAcceptedFinal ? 'accepted' : 'reviewed') : firmQuoteDraft.status,
         revisedInputs: derivedInputs,
       }
       const response = await fetch(workflowApiPath, {
@@ -362,7 +366,8 @@ export default function QuoteWorkflowEditor({
         throw new Error(result.error || 'Failed to save workflow.')
       }
 
-      setFirmQuoteDraft(submittedDraft)
+      const savedDraft = result.status === 'accepted' ? { ...submittedDraft, status: 'accepted' as const } : submittedDraft
+      setFirmQuoteDraft(savedDraft)
       if (result.revised && Number.isInteger(result.documentVersion)) setDocumentVersion(result.documentVersion)
       if (result.status === 'reviewed') setFinalPublished(true)
       if (result.status === 'reviewed') {
@@ -371,7 +376,9 @@ export default function QuoteWorkflowEditor({
       setSaveState({
         saving: false,
         message: result.revised
-          ? `Revised final quote version ${result.documentVersion} saved. The client scope now uses this version; resend the final quote when ready.`
+          ? result.status === 'accepted'
+            ? `Accepted quote correction version ${result.documentVersion} saved. The quote remains accepted and the client quote and scope now use this version.`
+            : `Revised final quote version ${result.documentVersion} saved. The client scope now uses this version; resend the final quote when ready.`
           : result.status === 'reviewed'
           ? 'Final quote reviewed and published. It is now locked and ready to send.'
           : 'Inspection summary and firm quote draft saved.',
@@ -571,7 +578,7 @@ export default function QuoteWorkflowEditor({
               disabled={saveState.saving}
               className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saveState.saving ? 'Saving revised final…' : 'Save revised final'}
+              {saveState.saving ? 'Saving revised final…' : isAcceptedFinal ? 'Save accepted correction' : 'Save revised final'}
             </button>
           ) : null}
           <button
@@ -638,7 +645,7 @@ export default function QuoteWorkflowEditor({
       {quoteEmailAction.error ? <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{quoteEmailAction.error}</div> : null}
       {canReviseFinal ? (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          This preview reflects the current editor values. Use <strong>Save revised final</strong> to update the client scope; the previous sent version stays in history and no email is sent automatically.
+          This preview reflects the current editor values. Use <strong>{isAcceptedFinal ? 'Save accepted correction' : 'Save revised final'}</strong> to update the client quote and scope; the previous version stays in history and no email is sent automatically.
         </div>
       ) : null}
       {canEmailUpdatedQuote && quoteEmailComposerOpen ? (
@@ -914,7 +921,11 @@ export default function QuoteWorkflowEditor({
             <div className="mt-4">
             {canReviseFinal ? (
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                This quote already has a final document. You can update the firm quote below, then use <strong>Save revised final + open preview</strong>. The prior version is retained in history, the client scope changes only when you save, and no email is sent automatically.
+                {isAcceptedFinal ? (
+                  <>This quote has been accepted. You can correct the firm quote below, then use <strong>Save accepted correction + open preview</strong>. The accepted status and prior document stay in history, while the live client quote and scope update immediately. Existing contract products, invoices, and agreements are not changed, and no email is sent automatically.</>
+                ) : (
+                  <>This quote already has a final document. You can update the firm quote below, then use <strong>Save revised final + open preview</strong>. The prior version is retained in history, the client scope changes only when you save, and no email is sent automatically.</>
+                )}
               </div>
             ) : null}
             <label className="block text-sm">
@@ -1001,7 +1012,7 @@ export default function QuoteWorkflowEditor({
                   <button
                     type="button"
                     onClick={refreshPricingDefaults}
-                    disabled={finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
+                    disabled={finalPublished || firmQuoteDraft.status === 'sent' || acceptedEditingLocked}
                     className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Recalculate with current defaults
@@ -1041,7 +1052,7 @@ export default function QuoteWorkflowEditor({
                     <div className="flex flex-wrap items-center gap-2 border-b border-gray-100 px-3 py-2">
                       <button
                         type="button"
-                        disabled={saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        disabled={saveState.saving || acceptedEditingLocked}
                         aria-label={`Drag to reorder ${room.label || room.type}; use Move up or Move down with a keyboard`}
                         onPointerDown={(event) => {
                           if (event.button !== 0) return
@@ -1085,21 +1096,21 @@ export default function QuoteWorkflowEditor({
                       <button
                         type="button"
                         aria-label={`Move ${room.label || room.type} up`}
-                        disabled={roomIndex === 0 || saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        disabled={roomIndex === 0 || saveState.saving || acceptedEditingLocked}
                         onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex - 1].id)}
                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
                       >Move up</button>
                       <button
                         type="button"
                         aria-label={`Move ${room.label || room.type} down`}
-                        disabled={roomIndex === firmQuoteDraft.roomItems.length - 1 || saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        disabled={roomIndex === firmQuoteDraft.roomItems.length - 1 || saveState.saving || acceptedEditingLocked}
                         onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex + 1].id)}
                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
                       >Move down</button>
                       <button
                         type="button"
                         aria-label={`Duplicate ${room.label || room.type}`}
-                        disabled={saveState.saving || firmQuoteDraft.status === 'accepted'}
+                        disabled={saveState.saving || acceptedEditingLocked}
                         onClick={() => duplicateRoom(room.id)}
                         className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-40"
                       >Duplicate</button>
@@ -1587,7 +1598,7 @@ export default function QuoteWorkflowEditor({
               <input
                 type="checkbox"
                 checked={firmQuoteDraft.includeConsumablesCatalogue}
-                disabled={finalPublished || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
+                disabled={finalPublished || firmQuoteDraft.status === 'sent' || acceptedEditingLocked}
                 onChange={(event) => setFirmQuoteDraft((current) => ({ ...current, includeConsumablesCatalogue: event.target.checked }))}
                 className="mt-1 h-4 w-4"
               />
@@ -1631,13 +1642,13 @@ export default function QuoteWorkflowEditor({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saveState.saving || firmQuoteDraft.status === 'accepted' || (finalPublished && !canReviseFinal)}
+            disabled={saveState.saving || acceptedEditingLocked || (finalPublished && !canReviseFinal)}
             className="rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
             {saveState.saving
               ? 'Saving workflow…'
               : canReviseFinal
-                ? 'Save revised final + open preview'
+                ? isAcceptedFinal ? 'Save accepted correction + open preview' : 'Save revised final + open preview'
                 : finalPublished
                   ? 'Final document locked'
                   : firmQuoteDraft.status === 'reviewed'
