@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
 import { CLEANER_JOBS_SESSION_COOKIE, verifyCleanerJobsSessionToken } from '@/lib/cleanerJobsAccess'
-import { isActiveJobsAccessLink, registerContractProductInterest } from '@/lib/contractProducts'
+import { isActiveJobsAccessLink } from '@/lib/contractProducts'
+import { registerContractProductInterest } from '@/lib/contractProductInterest'
+
+const ACCEPTED_MESSAGE = 'Your submission has been received. Approved cleaners will receive a confirmation email; other enquiries are sent to the responsible agent.'
 
 export async function POST(request: NextRequest) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
@@ -19,9 +22,9 @@ export async function POST(request: NextRequest) {
       email: typeof body?.email === 'string' ? body.email : '',
       note: typeof body?.note === 'string' ? body.note : '',
     })
-    return NextResponse.json({ success: true, message: 'If your approved cleaner details match, the interest has been recorded.' }, { status: 202 })
+    return NextResponse.json({ success: true, message: ACCEPTED_MESSAGE }, { status: 202 })
   } catch (error) {
     console.error('[api/jobs/interest] Failed:', error)
-    return NextResponse.json({ success: true, message: 'If your approved cleaner details match, the interest has been recorded.' }, { status: 202 })
+    return NextResponse.json({ success: false, error: 'Your interest could not be recorded. Please try again.' }, { status: 503 })
   }
 }

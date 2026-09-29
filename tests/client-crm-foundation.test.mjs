@@ -449,6 +449,7 @@ test('client CRM presents structured business, contact, and site editing', () =>
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')
   const route = source('src/app/api/admin/client-crm/route.ts')
+  const migration = source('supabase/client_crm_agent_partial_profile_migration.sql')
 
   for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -457,7 +458,13 @@ test('client CRM presents structured business, contact, and site editing', () =>
   assert.match(workspace, /action: 'client-record\.update'/)
   assert.match(route, /action === 'client-record\.update'/)
   assert.match(data, /db\.rpc\('update_client_crm_profile'/)
-  assert.match(data, /actor\.role === 'agent'[\s\S]*Only an owner or manager can change shared client and site details/)
+  assert.match(workspace, /const canEditClientProfile = canManageShared \|\| data\.actor\.role === 'agent'/)
+  assert.match(workspace, /fieldset disabled=\{!canEditClientProfile\}/)
+  assert.match(data, /email && !isValidCrmEmail\(email\)/)
+  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager', 'agent'\)/)
+  assert.match(migration, /p_actor_role = 'agent' AND opportunity_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
+  assert.match(migration, /ALTER TABLE clients ALTER COLUMN email DROP NOT NULL/)
+  assert.match(migration, /email = NULLIF\(LOWER\(BTRIM\(COALESCE\(p_email, ''\)\)\), ''\)/)
 })
 
 test('new CRM opportunities require a first name while allowing a missing surname', () => {
@@ -479,7 +486,7 @@ test('a provisional client exposes address fields and reloads the canonical site
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const migration = source('supabase/client_crm_missing_site_profile_migration.sql')
 
-  assert.match(workspace, /selectedLead\.siteId \? 'Site' : 'Add site address'/)
+  assert.match(workspace, /selectedLead\.siteId \? 'Site' : 'Add site details'/)
   assert.doesNotMatch(workspace, /Site details will become editable after inspection booking/)
   assert.match(workspace, /loadWorkspace\(String\(result\.result\?\.id \|\| selectedLead\.id\)\)/)
   assert.match(migration, /crm_site_identity_key\(BTRIM\(p_address\), BTRIM\(p_suburb\), BTRIM\(p_postcode\), contact_row\.city\)/)
@@ -517,8 +524,11 @@ test('CRM can create a staff-selected inspection appointment outside public avai
   assert.match(appointments, /idempotencyKey\.replaceAll\('-', ''\)/)
   assert.match(appointments, /inspectionBookingSource: 'crm_manual'/)
   assert.match(appointments, /inspectionAvailabilityOverridden: true/)
-  assert.match(appointments, /sendBookingConfirmationEmail\(bookingRef, bookingInputs\)/)
+  assert.match(appointments, /if \(canEmailClient\)[\s\S]*sendBookingConfirmationEmail\(bookingRef, bookingInputs\)/)
   assert.match(appointments, /createBookingFollowUpEvent\(bookingRef, bookingInputs\)/)
+  assert.match(appointments, /site_id: context\.site\?\.id \? String\(context\.site\.id\) : null/)
+  assert.doesNotMatch(appointments, /Complete the contact email, phone, street address, suburb, and postcode before booking/)
+  assert.doesNotMatch(workspace, /A saved contact, phone number, email, and complete site address are required before booking/)
   assert.match(email, /inspectionBookingSource === 'crm_manual'/)
   assert.match(invite, /inspectionBookingSource === 'crm_manual'/)
 })
@@ -628,9 +638,9 @@ test('client CRM notes are append-only, internal, attributed, and duplicate-safe
 })
 
 test('CRM profile writes are transactional, concurrent-safe, scoped, and audited', () => {
-  const migration = source('supabase/client_crm_profile_notes_migration.sql')
+  const migration = source('supabase/client_crm_agent_partial_profile_migration.sql')
   assert.match(migration, /CREATE OR REPLACE FUNCTION update_client_crm_profile/)
-  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager'\)/)
+  assert.match(migration, /p_actor_role NOT IN \('owner', 'manager', 'agent'\)/)
   assert.match(migration, /SECURITY DEFINER/)
   assert.match(migration, /FOR UPDATE/)
   assert.match(migration, /opportunity_row\.updated_at IS DISTINCT FROM p_expected_opportunity_updated_at/)
@@ -639,6 +649,5 @@ test('CRM profile writes are transactional, concurrent-safe, scoped, and audited
   assert.match(migration, /site_row\.updated_at IS DISTINCT FROM p_expected_site_updated_at/)
   assert.match(migration, /p_actor_role = 'agent' AND opportunity_row\.assigned_staff_id IS DISTINCT FROM p_actor_id/)
   assert.match(migration, /'crm\.profile\.updated'/)
-  assert.match(migration, /'crm\.note\.added'/)
   assert.match(migration, /REVOKE ALL ON FUNCTION update_client_crm_profile[\s\S]*FROM PUBLIC, anon, authenticated/)
 })

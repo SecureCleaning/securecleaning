@@ -529,9 +529,6 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor) {
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
-  if (actor.role === 'agent') {
-    throw new ClientCrmError('Only an owner or manager can change shared client and site details.', 403)
-  }
   const opportunityId = clean(input.opportunityId, 100)
   const businessName = clean(input.businessName, 200)
   const firstName = clean(input.firstName, 100)
@@ -543,8 +540,8 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
   const address = clean(input.address, 300)
   const suburb = clean(input.suburb, 120)
   const postcode = normalizeCrmPostcode(input.postcode)
-  if (!opportunityId || (!firstName && !lastName) || !isValidCrmEmail(email)) {
-    throw new ClientCrmError('Provide the contact name and a valid email.')
+  if (!opportunityId || (email && !isValidCrmEmail(email))) {
+    throw new ClientCrmError('Enter a valid email address or leave it blank.')
   }
 
   const db = getAdminSupabase()
@@ -556,14 +553,12 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
   if (!current || !canActorAccessAssignedOpportunity(actor.role, actor.id, current.assigned_staff_id)) {
     throw new ClientCrmError('Opportunity not found.', 404)
   }
-  const hasSiteInput = Boolean(siteName || address || suburb || postcode)
-  if ((current.site_id || hasSiteInput) && (!address || !/^\d{4}$/.test(postcode))) {
-    throw new ClientCrmError('Enter the site street address and four-digit postcode.')
-  }
-  const { data: emailMatches, error: emailMatchError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
-  if (emailMatchError) throw emailMatchError
-  if (((emailMatches ?? []) as Array<Record<string, unknown>>).some((row) => String(row.id) !== String(current.primary_contact_id))) {
-    throw new ClientCrmError('That email belongs to another CRM contact. Reconcile the records before saving.', 409)
+  if (email) {
+    const { data: emailMatches, error: emailMatchError } = await db.rpc('find_client_crm_contacts_by_email', { p_email: email })
+    if (emailMatchError) throw emailMatchError
+    if (((emailMatches ?? []) as Array<Record<string, unknown>>).some((row) => String(row.id) !== String(current.primary_contact_id))) {
+      throw new ClientCrmError('That email belongs to another CRM contact. Reconcile the records before saving.', 409)
+    }
   }
 
   const { data, error } = await db.rpc('update_client_crm_profile', {

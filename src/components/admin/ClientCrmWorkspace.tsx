@@ -580,6 +580,7 @@ export default function ClientCrmWorkspace({
   }
 
   const canManageShared = data.actor.role === 'owner' || data.actor.role === 'manager'
+  const canEditClientProfile = canManageShared || data.actor.role === 'agent'
   const selectedSender = data.senders.find((sender) => sender.id === compose.senderStaffId) ?? null
   const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
@@ -589,14 +590,7 @@ export default function ClientCrmWorkspace({
   const selectedAppointmentAgent = appointmentAgents.find((agent) => agent.id === appointmentDraft.assignedStaffId) ?? null
   const appointmentRecordReady = Boolean(
     selectedLead?.contactId
-    && selectedLead.siteId
-    && selectedLead.city
-    && selectedLead.contactName
-    && selectedLead.email
-    && selectedLead.phone
-    && selectedLead.address
-    && selectedLead.suburb
-    && /^\d{4}$/.test(selectedLead.postcode),
+    && selectedLead.city,
   )
   const profileHasUnsavedChanges = Boolean(selectedLead && (
     profileEdit.businessName !== selectedLead.businessName
@@ -663,13 +657,13 @@ export default function ClientCrmWorkspace({
         {selectedLead ? <div className="space-y-5">
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">Client and site details</h2><p className="mt-1 text-sm text-gray-600">Structured details used across this customer’s CRM records.</p></div><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span></div>
-            <fieldset disabled={!canManageShared} className="mt-5 grid gap-5 disabled:opacity-75 xl:grid-cols-3">
+            <fieldset disabled={!canEditClientProfile} className="mt-5 grid gap-5 disabled:opacity-75 xl:grid-cols-3">
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Business</legend><label className="mt-1 block text-sm font-medium text-gray-700">Business name (optional)<input value={profileEdit.businessName} onChange={(event) => setProfileEdit({ ...profileEdit, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><p className="mt-2 text-xs text-gray-500">This name is shared across the organisation’s CRM records.</p></fieldset>
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Primary contact</legend><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700">First name<input value={profileEdit.firstName} onChange={(event) => setProfileEdit({ ...profileEdit, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Last name (optional)<input value={profileEdit.lastName} onChange={(event) => setProfileEdit({ ...profileEdit, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Position / title<input value={profileEdit.positionTitle} onChange={(event) => setProfileEdit({ ...profileEdit, positionTitle: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Email<input type="email" value={profileEdit.email} onChange={(event) => setProfileEdit({ ...profileEdit, email: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Phone<input type="tel" value={profileEdit.phone} onChange={(event) => setProfileEdit({ ...profileEdit, phone: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div></fieldset>
-              <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">{selectedLead.siteId ? 'Site' : 'Add site address'}</legend>{!selectedLead.siteId ? <p className="mb-3 text-sm text-gray-600">Enter and save the address to create the site record for this client.</p> : null}<div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700 sm:col-span-2">Site name<input value={profileEdit.siteName} onChange={(event) => setProfileEdit({ ...profileEdit, siteName: event.target.value })} placeholder={selectedLead.businessName} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Street address<input value={profileEdit.address} onChange={(event) => setProfileEdit({ ...profileEdit, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><div className="sm:col-span-2"><LocalityAutocomplete key={selectedLead.id} city={selectedLead.city ?? undefined} suburb={profileEdit.suburb} postcode={profileEdit.postcode} onChange={(updates) => setProfileEdit({ ...profileEdit, suburb: updates.suburb, postcode: updates.postcode })} /></div><label className="text-sm font-medium text-gray-700 sm:col-span-2">State / service region<span className="mt-1 block rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-normal">{selectedLead.state}</span></label></div></fieldset>
+              <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">{selectedLead.siteId ? 'Site' : 'Add site details'}</legend>{!selectedLead.siteId ? <p className="mb-3 text-sm text-gray-600">Enter and save any site details currently available. The rest can be added later.</p> : null}<div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700 sm:col-span-2">Site name<input value={profileEdit.siteName} onChange={(event) => setProfileEdit({ ...profileEdit, siteName: event.target.value })} placeholder={selectedLead.businessName} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Street address<input value={profileEdit.address} onChange={(event) => setProfileEdit({ ...profileEdit, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><div className="sm:col-span-2"><LocalityAutocomplete key={selectedLead.id} city={selectedLead.city ?? undefined} suburb={profileEdit.suburb} postcode={profileEdit.postcode} onChange={(updates) => setProfileEdit({ ...profileEdit, suburb: updates.suburb, postcode: updates.postcode })} /></div><label className="text-sm font-medium text-gray-700 sm:col-span-2">State / service region<span className="mt-1 block rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-normal">{selectedLead.state}</span></label></div></fieldset>
             </fieldset>
             <div className="mt-4 flex flex-wrap gap-3">
-              {canManageShared ? <button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update'} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button> : null}
+              {canEditClientProfile ? <button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update'} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button> : null}
               <button
                 type="button"
                 onClick={() => setAppointmentOpen((current) => !current)}
@@ -679,8 +673,8 @@ export default function ClientCrmWorkspace({
                 {appointmentOpen ? 'Close appointment form' : 'Book inspection appointment'}
               </button>
             </div>
-            {!canManageShared ? <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Business, contact, and site details are shared across sales cycles. Ask an owner or manager to change them.</p> : null}
-            {!appointmentRecordReady ? <p className="mt-3 text-sm font-medium text-amber-700">A saved contact, phone number, email, and complete site address are required before booking an appointment.</p> : null}
+            <p className="mt-4 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Save whatever client and site details are currently available. Missing contact or address details can be completed later.</p>
+            {!appointmentRecordReady ? <p className="mt-3 text-sm font-medium text-amber-700">This record needs a linked CRM contact and service region before booking an appointment.</p> : null}
             {profileHasUnsavedChanges ? <p className="mt-3 text-sm font-medium text-amber-700">Save the client and site changes before booking so the appointment uses the current details.</p> : null}
           </section>
           <section className={`rounded-xl border px-4 py-3 shadow-sm ${selectedLead.scheduledInspections.length > 0 ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white'}`}>
@@ -711,7 +705,7 @@ export default function ClientCrmWorkspace({
               <label className="text-sm font-medium text-gray-700">Cleaning time<select value={appointmentDraft.timePreference} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, timePreference: event.target.value as TimePreference })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{timeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             </div>
             {!selectedAppointmentAgent ? <p className="mt-4 text-sm font-medium text-amber-700">Choose an active inspection agent with a linked calendar before booking.</p> : null}
-            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createAppointment()} disabled={busy === 'appointment' || profileHasUnsavedChanges || !appointmentDraft.preferredDate || !appointmentDraft.startTime || !selectedAppointmentAgent || !Number.isInteger(Number(appointmentDraft.durationMinutes)) || Number(appointmentDraft.durationMinutes) < 15 || Number(appointmentDraft.durationMinutes) > 480} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'appointment' ? 'Creating appointment...' : 'Create appointment'}</button><p className="text-xs text-gray-500">The client and assigned agent receive the confirmed date and time with the normal calendar invitation.</p></div>
+            <div className="mt-4 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void createAppointment()} disabled={busy === 'appointment' || profileHasUnsavedChanges || !appointmentDraft.preferredDate || !appointmentDraft.startTime || !selectedAppointmentAgent || !Number.isInteger(Number(appointmentDraft.durationMinutes)) || Number(appointmentDraft.durationMinutes) < 15 || Number(appointmentDraft.durationMinutes) > 480} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{busy === 'appointment' ? 'Creating appointment...' : 'Create appointment'}</button><p className="text-xs text-gray-500">The assigned agent receives the calendar event. The client also receives confirmation when a valid email is saved.</p></div>
           </section> : null}
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Opportunity workflow</h2>

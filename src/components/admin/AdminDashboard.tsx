@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
 import BookingEditor from './BookingEditor'
 import DispatchPanel from './DispatchPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
@@ -195,8 +196,16 @@ const quoteStatuses = ['pending', 'sent', 'accepted', 'expired', 'declined']
 const bookingStatuses = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled']
 
 export default function AdminDashboard({ initialData, canDeleteQuotes = false }: Props) {
+  useQuoteListRefresh()
+  useEffect(() => setQuotes(initialData.quotes), [initialData.quotes])
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
+  const [quoteSearch, setQuoteSearch] = useState('')
+  const [quotePage, setQuotePage] = useState(0)
+  const matchingQuotes = quotes.filter((quote) => [quote.quote_ref, quote.inputs?.businessName, quote.inputs?.city].join(' ').toLowerCase().includes(quoteSearch.trim().toLowerCase()))
+  const lastQuotePage = Math.max(0, Math.ceil(matchingQuotes.length / 25) - 1)
+  const currentQuotePage = Math.min(quotePage, lastQuotePage)
+  const visibleQuotes = matchingQuotes.slice(currentQuotePage * 25, (currentQuotePage + 1) * 25)
   const [bookings, setBookings] = useState(initialData.bookings)
   const [selectedBookingRef, setSelectedBookingRef] = useState(initialData.bookings[0]?.booking_ref ?? '')
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null)
@@ -523,7 +532,10 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
         <div className="space-y-4">
           <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100">
-              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Recent Quotes</h2>
+              <h2 className="text-lg font-bold" style={{ color: '#1a2744' }}>Quotes</h2>
+              <label className="mt-3 block text-sm">Search all quotes
+                <input value={quoteSearch} onChange={(event) => { setQuoteSearch(event.target.value); setQuotePage(0) }} placeholder="Reference, business or city" className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2" />
+              </label>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
@@ -538,7 +550,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                   </tr>
                 </thead>
                 <tbody>
-                  {quotes.map((quote) => (
+                  {visibleQuotes.map((quote) => (
                     <tr key={quote.id} className="border-t border-gray-100 align-top">
                       <td className="px-3 py-2 font-mono">
                         <div>{quote.quote_ref}</div>
@@ -598,6 +610,13 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <span>{matchingQuotes.length} matching quotes · Page {currentQuotePage + 1} of {lastQuotePage + 1}</span>
+            <div className="flex gap-2">
+              <button type="button" disabled={currentQuotePage === 0} onClick={() => setQuotePage(currentQuotePage - 1)} className="rounded-lg border px-3 py-2 disabled:opacity-50">Previous</button>
+              <button type="button" disabled={currentQuotePage >= lastQuotePage} onClick={() => setQuotePage(currentQuotePage + 1)} className="rounded-lg border px-3 py-2 disabled:opacity-50">Next</button>
             </div>
           </div>
           <CrmFollowUpPanel

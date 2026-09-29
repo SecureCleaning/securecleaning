@@ -23,7 +23,7 @@ const TIME_PREFERENCES: TimePreference[] = ['business_hours', 'after_hours', 'we
 type AppointmentContext = {
   opportunity: Record<string, unknown>
   contact: Record<string, unknown>
-  site: Record<string, unknown>
+  site: Record<string, unknown> | null
   organisation: Record<string, unknown>
 }
 
@@ -57,21 +57,23 @@ async function loadAppointmentContext(actor: ClientCrmActor, opportunityId: stri
   if (['won', 'lost', 'cancelled'].includes(String(opportunity.stage ?? ''))) {
     throw new ClientCrmError('Reopen this opportunity before creating an inspection appointment.', 409)
   }
-  if (!opportunity.primary_contact_id || !opportunity.site_id || !opportunity.organisation_id) {
-    throw new ClientCrmError('Save a primary contact and confirmed site before creating an appointment.', 409)
+  if (!opportunity.primary_contact_id || !opportunity.organisation_id) {
+    throw new ClientCrmError('This opportunity needs a linked CRM contact before creating an appointment.', 409)
   }
 
-  const [contactResult, siteResult, organisationResult] = await Promise.all([
-    db.from('clients').select('id, business_name, contact_name, email, phone').eq('id', opportunity.primary_contact_id).maybeSingle(),
-    db.from('sites').select('id, site_name, address, suburb, postcode, city').eq('id', opportunity.site_id).maybeSingle(),
+  const [contactResult, organisationResult] = await Promise.all([
+    db.from('clients').select('id, business_name, contact_name, email, phone, city').eq('id', opportunity.primary_contact_id).maybeSingle(),
     db.from('crm_organisations').select('id, business_name').eq('id', opportunity.organisation_id).maybeSingle(),
   ])
   if (contactResult.error) throw contactResult.error
-  if (siteResult.error) throw siteResult.error
   if (organisationResult.error) throw organisationResult.error
-  if (!contactResult.data || !siteResult.data || !organisationResult.data) {
-    throw new ClientCrmError('The CRM contact or site record is incomplete.', 409)
+  if (!contactResult.data || !organisationResult.data) {
+    throw new ClientCrmError('The linked CRM contact record could not be loaded.', 409)
   }
+  const siteResult = opportunity.site_id
+    ? await db.from('sites').select('id, site_name, address, suburb, postcode, city').eq('id', opportunity.site_id).maybeSingle()
+    : { data: null, error: null }
+  if (siteResult.error) throw siteResult.error
 
   if (actor.role === 'agent' && String(opportunity.assigned_staff_id ?? '') !== actor.id) {
     throw new ClientCrmError('This appointment must be booked into your assigned inspection calendar.', 403)
@@ -80,21 +82,21 @@ async function loadAppointmentContext(actor: ClientCrmActor, opportunityId: stri
   return {
     opportunity: opportunity as Record<string, unknown>,
     contact: contactResult.data as Record<string, unknown>,
-    site: siteResult.data as Record<string, unknown>,
+    site: siteResult.data as Record<string, unknown> | null,
     organisation: organisationResult.data as Record<string, unknown>,
   }
 }
 
 function appointmentLocation(context: AppointmentContext) {
   return {
-    address: String(context.site.address ?? '').trim(),
-    suburb: String(context.site.suburb ?? '').trim(),
-    postcode: String(context.site.postcode ?? '').trim(),
+    address: String(context.site?.address ?? '').trim(),
+    suburb: String(context.site?.suburb ?? '').trim(),
+    postcode: String(context.site?.postcode ?? '').trim(),
   }
 }
 
 function appointmentCity(context: AppointmentContext) {
-  const city = context.site.city
+  const city = context.site?.city ?? context.contact.city
   if (city !== 'melbourne' && city !== 'sydney') {
     throw new ClientCrmError('The site must have a Melbourne or Sydney service region before booking.', 409)
   }
@@ -190,13 +192,11 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
   const address = location.address
   const suburb = location.suburb
   const postcode = location.postcode
-  if (!contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !phone || !address || !suburb || !/^\d{4}$/.test(postcode)) {
-    throw new ClientCrmError('Complete the contact email, phone, street address, suburb, and postcode before booking.', 409)
-  }
+  const canEmailClient = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
   const bookingInputs: BookingInputs = {
-    businessName: String(context.organisation.business_name ?? context.contact.business_name ?? context.site.site_name ?? '').trim(),
-    contactName,
+    businessName: String(context.organisation.business_name ?? context.contact.business_name ?? context.site?.site_name ?? '').trim(),
+    contactName: contactName || 'Customer',
     email,
     phone,
     address,
@@ -232,7 +232,7 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
     booking_ref: bookingRef,
     quote_id: null,
     client_id: String(context.contact.id),
-    site_id: String(context.site.id),
+    site_id: context.site?.id ? String(context.site.id) : null,
     opportunity_id: opportunityId,
     assigned_operator_id: availabilityAssignee.ownerOperatorId || null,
     inputs: bookingInputs,
@@ -279,10 +279,12 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
     assignedStaffId: selectedAgent.id,
   })
 
-  try {
-    await sendBookingConfirmationEmail(bookingRef, bookingInputs)
-  } catch (error) {
-    console.error('[clientCrmAppointments] Confirmation email failed:', error)
+  if (canEmailClient) {
+    try {
+      await sendBookingConfirmationEmail(bookingRef, bookingInputs)
+    } catch (error) {
+      console.error('[clientCrmAppointments] Confirmation email failed:', error)
+    }
   }
   createBookingFollowUpEvent(bookingRef, bookingInputs).catch((error) => {
     console.error('[clientCrmAppointments] Calendar event failed:', error)

@@ -35,7 +35,7 @@ test('transactional quote deletion preserves business records and blocks product
   assert.match(migration, /Quotes with a sent final document cannot be deleted/)
   assert.match(migration, /FROM public\.quote_final_document_versions/)
   assert.doesNotMatch(migration, /public\.final_quote_document_versions/)
-  assert.match(deletion, /db\.from\('quote_final_document_versions'\)/)
+  assert.match(deletion, /admin_preview_quote_deletion/)
   assert.doesNotMatch(deletion, /db\.from\('final_quote_document_versions'\)/)
   assert.match(migration, /DELETE FROM public\.crm_opportunity_quotes/)
   assert.doesNotMatch(migration, /UPDATE public\.bookings/)
