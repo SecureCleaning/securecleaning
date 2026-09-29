@@ -17,6 +17,11 @@ For the final quote workflow, apply:
 
 The final migration is authoritative for the service-role-only claim, finalization, and privileged reconciliation RPCs because those functions depend on the audit table created by the first migration. The baseline schema includes the tables, constraints, indexes, RLS, and immutable-document trigger needed before those RPCs are installed.
 
+For CRM profile editing, apply `client_crm_agent_partial_profile_migration.sql`
+after `client_crm_optional_business_name_migration.sql` and before the matching
+application release. It permits active agents to edit only opportunities assigned
+to them, makes client email nullable, and keeps optimistic locking and audit logging.
+
 For contract product sales, start from `schema.sql`, then apply `audit_log_migration.sql`,
 `sites_migration.sql`, `staff_accounts_migration.sql`, the cleaner migrations,
 `client_crm_foundation_migration.sql`, and the existing quote workflow migrations before this ordered product sequence:

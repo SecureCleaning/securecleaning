@@ -55,7 +55,7 @@ test('creation accepts absent business names, defaults NSW, preserves named busi
     }
     await assert.rejects(createManualCrmOpportunity({ ...actor, availabilityAssigneeId: null }, draft))
     assert.equal(writes.length, count)
-    await assert.rejects(updateCrmProfile(actor, {}), /Provide the contact name and a valid email/)
+    await assert.rejects(updateCrmProfile(actor, { email: 'invalid' }), /valid email address or leave it blank/)
   } finally { global.fetch = original }
 })
 test('optional-name migration retains the exact profile authorization, concurrency and audit checks', () => {
@@ -92,6 +92,10 @@ test('profile editing sends blank or named businesses and preserves stale-write 
     await updateCrmProfile(actor, input)
     assert.equal(writes.at(-1).p_actor_id, actor.id)
     assert.equal(writes.at(-1).p_actor_role, 'agent')
+    await updateCrmProfile(actor, { ...input, firstName: '', email: '', address: '', postcode: '' })
+    assert.equal(writes.at(-1).p_email, '')
+    assert.equal(writes.at(-1).p_first_name, '')
+    await assert.rejects(updateCrmProfile({ ...actor, id: 'other-agent' }, input), /Opportunity not found/)
     failure = '40001'
     await assert.rejects(updateCrmProfile(owner, input), error => error.status === 409)
     failure = '42501'
