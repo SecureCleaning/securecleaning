@@ -75,7 +75,21 @@ export const INSPECTION_EMAIL_MERGE_FIELDS = [
   field('sender_phone', 'Sender phone', 'Sending staff phone', 'Team Access'),
 ] as const satisfies readonly EmailMergeField[]
 
+export const CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS = [
+  field('cleaner_first_name', 'Cleaner first name', "Cleaner contact's first name", 'Cleaner database'),
+  field('cleaner_name', 'Cleaner full name', 'Cleaner contact name', 'Cleaner database'),
+  field('cleaner_business', 'Cleaner business', 'Cleaner business name', 'Cleaner database'),
+  field('invoice_number', 'Invoice number', 'First Secure Cleaning invoice number', 'Product sale'),
+  field('sale_code', 'Product sale reference', 'Product sale code', 'Product sale'),
+  field('product_code', 'Product code', 'Cleaning contract product code', 'Product sale'),
+  field('profile_update_link', 'Secure update link', 'Private cleaner profile link, valid for 48 hours', 'Cleaner portal'),
+  field('agent_name', 'Agent name', 'Agent who created the product sale', 'Team Access'),
+  field('agent_title', 'Agent title', 'Sale-creating agent position title', 'Team Access'),
+  field('agent_email', 'Agent email', 'Sale-creating agent work email', 'Team Access'),
+] as const satisfies readonly EmailMergeField[]
+
 export const INSPECTION_EMAIL_MERGE_FIELD_KEYS = new Set(INSPECTION_EMAIL_MERGE_FIELDS.map((item) => item.key))
+export const CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELD_KEYS = new Set(CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS.map((item) => item.key))
 
 const LEGACY_CLIENT_KEYS = ['contact_name', 'business_name', 'site_address', 'source_provider']
 const LEGACY_CLEANER_KEYS = ['contact_name', 'business_name', 'cleaner_email']

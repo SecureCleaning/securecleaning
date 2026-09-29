@@ -3,15 +3,16 @@
 import PaymentPlanEditor from '@/components/admin/PaymentPlanEditor'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import ContractSaleInspectionPanel from '@/components/admin/ContractSaleInspectionPanel'
-import ActionToast from '@/components/ActionToast'
+import ActionToast, { type ActionToastTone } from '@/components/ActionToast'
 import { createRichEmailContent } from '@/lib/richEmailContent'
+import { CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
 
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveInvoiceSelection } from '@/lib/invoiceDirectoryPolicy'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import type { ContractProduct } from '@/lib/contractProducts'
-import type { ContractSale, ContractSaleCleanerOption, ContractSaleInspectionTemplate, ContractSaleInvoiceTemplate } from '@/lib/contractSales'
+import type { ContractSale, ContractSaleCleanerOption, ContractSaleCleanerProfileTemplate, ContractSaleInspectionTemplate, ContractSaleInvoiceTemplate } from '@/lib/contractSales'
 
 type Data = {
   products: ContractProduct[]
@@ -19,11 +20,12 @@ type Data = {
   cleaners: ContractSaleCleanerOption[]
   invoiceTemplate: ContractSaleInvoiceTemplate
   inspectionTemplate: ContractSaleInspectionTemplate
+  cleanerProfileTemplate: ContractSaleCleanerProfileTemplate
   actor: { id: string; role: string; state: string | null; displayName: string }
 }
 
 type SaleTab = 'overview' | 'agreement' | 'invoices' | 'inspection' | 'activity'
-type FeedbackTone = 'success' | 'error'
+type FeedbackTone = ActionToastTone
 
 function money(cents: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(cents / 100)
@@ -89,6 +91,8 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [cancelReason, setCancelReason] = useState('')
   const [showInvoiceTemplate, setShowInvoiceTemplate] = useState(false)
   const [invoiceTemplateDraft, setInvoiceTemplateDraft] = useState<ContractSaleInvoiceTemplate | null>(null)
+  const [showCleanerProfileTemplate, setShowCleanerProfileTemplate] = useState(false)
+  const [cleanerProfileTemplateDraft, setCleanerProfileTemplateDraft] = useState<ContractSaleCleanerProfileTemplate | null>(null)
 
   const showMessage = useCallback((text: string, tone: FeedbackTone = 'success') => {
     setMessageTone(tone)
@@ -104,6 +108,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
       ? resolveInvoiceSelection(next.sales, next.actor, initialSaleId, initialInvoiceId) : null
     setData(next)
     setInvoiceTemplateDraft(next.invoiceTemplate)
+    setCleanerProfileTemplateDraft(next.cleanerProfileTemplate)
     const matchingSale = next.sales.find((sale) => sale.id === (preferredSaleId || selectedSaleRef.current))
       ?? requestedSale
       ?? next.sales.find((sale) => sale.productId === initialProductId)
@@ -185,12 +190,16 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   async function run(actionName: string, payload: Record<string, unknown>, success: string) {
     if (!sale) return
     try {
-      await action(actionName, { saleId: sale.id, ...payload })
+      const result = await action(actionName, { saleId: sale.id, ...payload })
       if (actionName === 'payment.record') {
         setPayment({ invoiceId: '', amount: '', receivedOn: today(), method: 'bank_transfer', reference: '', evidenceNote: '' })
         setPaymentRequestId(crypto.randomUUID())
       }
-      showMessage(success)
+      if (actionName === 'agreement.send' && result?.cleanerProfileEmail === 'sent') {
+        showMessage(`${success} As this was the cleaner's first invoice, a secure details-update email was also sent and copied to the sale-creating agent.`)
+      } else if (actionName === 'agreement.send' && ['failed', 'unknown'].includes(result?.cleanerProfileEmail)) {
+        showMessage(`${success} The separate cleaner details-update email could not be confirmed. Check the cleaner record and email provider history before sending a manual secure link.`, 'info')
+      } else showMessage(success)
     }
     catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to complete this action.', 'error') }
   }
@@ -201,6 +210,14 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
       await action('invoice-template.update', invoiceTemplateDraft)
       showMessage('Invoice template saved for future invoices. For an existing invoice, use Apply saved payment details beside its preview.')
     } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the invoice template.', 'error') }
+  }
+
+  async function saveCleanerProfileTemplate() {
+    if (!cleanerProfileTemplateDraft) return
+    try {
+      await action('cleaner-profile-template.update', cleanerProfileTemplateDraft)
+      showMessage('First-purchase cleaner details email template saved.')
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the cleaner details email template.', 'error') }
   }
 
   async function uploadAgreement(file: File | null) {
@@ -255,6 +272,20 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
         </div>
         <p className="mt-3 text-xs text-gray-600">Available tokens: {'{invoice_number}'}, {'{product_code}'}, {'{sale_code}'}, {'{cleaner_name}'}, {'{cleaner_business}'}, {'{suburb}'}, {'{state}'}, {'{total_inc_gst}'}, {'{deposit_inc_gst}'}, {'{balance_inc_gst}'}, {'{agent_name}'}, {'{agent_title}'}.</p>
         <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void saveInvoiceTemplate()} disabled={Boolean(busy)} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Save invoice template</button><button type="button" onClick={() => setInvoiceTemplateDraft(data.invoiceTemplate)} className="rounded-lg border border-gray-300 px-4 py-2 font-semibold">Discard edits</button></div>
+      </div> : null}
+    </section> : null}
+
+    {(data.actor.role === 'owner' || data.actor.role === 'manager') && cleanerProfileTemplateDraft ? <section className="mb-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <button type="button" onClick={() => setShowCleanerProfileTemplate((current) => !current)} aria-expanded={showCleanerProfileTemplate} className="flex w-full items-center justify-between gap-4 p-5 text-left">
+        <span><strong className="block text-lg">First-purchase cleaner details email</strong><span className="text-sm font-normal text-gray-600">Review the separate email sent once when a cleaner receives their first Secure Cleaning invoice.</span></span>
+        <span className="text-sm font-semibold text-teal-700">{showCleanerProfileTemplate ? 'Close' : 'Edit template'}</span>
+      </button>
+      {showCleanerProfileTemplate ? <div className="border-t border-gray-200 p-5">
+        <p className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">The email is sent only after the first tax invoice is successfully delivered. It contains a private 48-hour profile-update link and copies the active agent who created the product sale. Later invoices and invoice-only resends do not send it again.</p>
+        <label className="block text-sm font-medium">Email subject<input value={cleanerProfileTemplateDraft.subject} onChange={(event) => setCleanerProfileTemplateDraft({ ...cleanerProfileTemplateDraft, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+        <div className="mt-4"><RichEmailEditor label="Email message" value={createRichEmailContent({ text: cleanerProfileTemplateDraft.bodyText, html: cleanerProfileTemplateDraft.bodyHtml, document: cleanerProfileTemplateDraft.bodyDocument })} resetKey={`cleaner-profile-${cleanerProfileTemplateDraft.updatedAt || 'default'}`} disabled={Boolean(busy)} mergeFields={CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS} onChange={content => setCleanerProfileTemplateDraft({ ...cleanerProfileTemplateDraft, bodyText: content.text, bodyHtml: content.html, bodyDocument: content.document })} /></div>
+        <p className="mt-3 text-xs text-gray-600">The template must include &lt;&lt;profile_update_link&gt;&gt;. The default template displays it as a button.</p>
+        <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void saveCleanerProfileTemplate()} disabled={Boolean(busy)} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Save cleaner details email template</button><button type="button" onClick={() => setCleanerProfileTemplateDraft(data.cleanerProfileTemplate)} className="rounded-lg border border-gray-300 px-4 py-2 font-semibold">Discard edits</button></div>
       </div> : null}
     </section> : null}
 
