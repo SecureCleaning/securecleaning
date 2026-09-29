@@ -6,6 +6,13 @@ import ts from 'typescript'
 import * as crypto from 'node:crypto'
 import * as policy from '../src/lib/smsPolicy.ts'
 import * as provider from '../src/lib/mobileMessage.ts'
+test('SMS quote terminal checks compare the quote status enum as text',()=>{
+ const repair=readFileSync(new URL('../supabase/sms_quote_status_enum_repair.sql',import.meta.url),'utf8')
+ assert.match(repair,/NEW\.status::text IN/)
+ assert.match(repair,/q\.status::text IN/)
+ assert.doesNotMatch(repair,/NEW\.status IN \('accepted', 'withdrawn'/)
+ assert.doesNotMatch(repair,/q\.status IN \('accepted', 'withdrawn'/)
+})
 function moduleWithMocks(path,mocks,globals={}) {
  const code=ts.transpileModule(readFileSync(new URL(`../${path}`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
  const exports={}

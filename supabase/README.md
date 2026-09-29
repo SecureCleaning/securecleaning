@@ -97,5 +97,7 @@ while explicitly casting the revised quote status to the `quote_status` enum.
 Apply `sms_workflow_migration.sql` after the final-quote workflow and audit migrations.
 It creates private service-role-only SMS settings, consent, queue, events, replies and alert tables.
 Use `sms_scheduler_migration.sql` only after deployment and Vault setup; it activates the minute worker.
+Apply `sms_quote_status_enum_repair.sql` after `sms_workflow_migration.sql`. It keeps
+workflow-only terminal statuses out of PostgreSQL enum coercion in quote update and SMS dispatch checks.
 See `docs/sms-workflow-release.md` for environment prerequisites, controlled tests, cancellation,
 operating costs and rollback. Do not enable sending or create provider credentials in SQL history.
