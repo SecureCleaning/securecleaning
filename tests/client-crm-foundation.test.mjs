@@ -468,7 +468,7 @@ test('client CRM presents structured business, contact, and site editing', () =>
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const data = source('src/lib/clientCrmData.ts')
   const route = source('src/app/api/admin/client-crm/route.ts')
-  const migration = source('supabase/client_crm_agent_edit_migration.sql')
+  const migration = source('supabase/client_crm_agent_partial_profile_migration.sql')
 
   for (const label of ['Business name', 'First name', 'Last name', 'Position / title', 'Email', 'Phone', 'Site name', 'Street address']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
@@ -507,7 +507,7 @@ test('a provisional client exposes address fields and reloads the canonical site
   const workspace = source('src/components/admin/ClientCrmWorkspace.tsx')
   const migration = source('supabase/client_crm_missing_site_profile_migration.sql')
 
-  assert.match(workspace, /selectedLead\.siteId \? 'Site' : 'Add site address'/)
+  assert.match(workspace, /selectedLead\.siteId \? 'Site' : 'Add site details'/)
   assert.doesNotMatch(workspace, /Site details will become editable after inspection booking/)
   assert.match(workspace, /loadWorkspace\(String\(result\.result\?\.id \|\| selectedLead\.id\)\)/)
   assert.match(migration, /crm_site_identity_key\(BTRIM\(p_address\), BTRIM\(p_suburb\), BTRIM\(p_postcode\), contact_row\.city\)/)
