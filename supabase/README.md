@@ -88,6 +88,10 @@ new version of an accepted final quote while preserving acceptance, immutable do
 history, and audit attribution. Existing contract products, invoices, and agreements are
 left unchanged.
 
+Apply `accepted_final_quote_revision_status_cast_repair.sql` immediately after
+`accepted_final_quote_revision_migration.sql`. It preserves the same function contract
+while explicitly casting the revised quote status to the `quote_status` enum.
+
 ### SMS quote follow-up (initially disabled)
 
 Apply `sms_workflow_migration.sql` after the final-quote workflow and audit migrations.

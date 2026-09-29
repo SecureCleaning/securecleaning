@@ -29,6 +29,7 @@ test('sent and accepted quote edits use explicit versioned revisions', () => {
   const data = readFileSync(`${root}/src/lib/quoteWorkflowData.ts`, 'utf8')
   const migration = readFileSync(`${root}/supabase/final_quote_revision_migration.sql`, 'utf8')
   const acceptedMigration = readFileSync(`${root}/supabase/accepted_final_quote_revision_migration.sql`, 'utf8')
+  const acceptedStatusRepair = readFileSync(`${root}/supabase/accepted_final_quote_revision_status_cast_repair.sql`, 'utf8')
   const adminPage = readFileSync(`${root}/src/app/admin/quotes/[ref]/page.tsx`, 'utf8')
   const agentPage = readFileSync(`${root}/src/app/availability/quotes/[assigneeId]/[ref]/page.tsx`, 'utf8')
   const adminSave = readFileSync(`${root}/src/app/api/admin/quotes/[ref]/workflow/route.ts`, 'utf8')
@@ -64,6 +65,10 @@ test('sent and accepted quote edits use explicit versioned revisions', () => {
   assert.match(acceptedMigration, /'preservedAcceptance', preserves_acceptance/)
   assert.match(acceptedMigration, /INSERT INTO public\.quote_final_document_versions/)
   assert.match(acceptedMigration, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
+  assert.match(acceptedStatusRepair, /'accepted'::public\.quote_status/)
+  assert.match(acceptedStatusRepair, /'pending'::public\.quote_status/)
+  assert.match(acceptedStatusRepair, /'preservedAcceptance', preserves_acceptance/)
+  assert.match(acceptedStatusRepair, /GRANT EXECUTE ON FUNCTION public\.revise_final_quote_document/)
 })
 
 test('final quote revision repair validates the canonical actor and document fields', () => {
