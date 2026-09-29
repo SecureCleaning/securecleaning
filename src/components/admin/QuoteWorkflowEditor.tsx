@@ -1,5 +1,6 @@
 'use client'
 
+import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 
@@ -782,6 +783,7 @@ export default function QuoteWorkflowEditor({
 
   return (
     <div className="space-y-5">
+      <QuoteSmsPanel quoteRef={quote.quoteRef} />
       <div className="grid gap-6">
         <div className="contents">
           <details open className="order-1 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">

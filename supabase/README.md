@@ -72,3 +72,11 @@ protected from deletion. CRM opportunities remain after removable quote links ar
 Apply `final_quote_document_guard_repair_migration.sql` after the final-quote revision
 migrations. It restores the versioned-document trigger after production drift introduced
 a misspelled `EXCLUDED.superseded_by` reference that blocked revised final quote saves.
+
+### SMS quote follow-up (initially disabled)
+
+Apply `sms_workflow_migration.sql` after the final-quote workflow and audit migrations.
+It creates private service-role-only SMS settings, consent, queue, events, replies and alert tables.
+Use `sms_scheduler_migration.sql` only after deployment and Vault setup; it activates the minute worker.
+See `docs/sms-workflow-release.md` for environment prerequisites, controlled tests, cancellation,
+operating costs and rollback. Do not enable sending or create provider credentials in SQL history.

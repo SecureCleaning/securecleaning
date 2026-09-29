@@ -72,6 +72,12 @@ DECLARE
     'quote_final_document_versions',
     'quote_send_attempts',
     'quotes',
+    'sms_settings',
+    'sms_preferences',
+    'sms_jobs',
+    'sms_events',
+    'sms_replies',
+    'sms_alerts',
     'site_content',
     'sites'
   ];

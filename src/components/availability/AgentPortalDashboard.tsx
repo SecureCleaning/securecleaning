@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import SmsInbox from '@/components/sms/SmsInbox'
 import ClientFollowUps from '@/components/admin/ClientFollowUps'
 import type { AgentDashboardData } from '@/lib/agentDashboard'
 
@@ -62,6 +63,7 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
         <StatCard eyebrow="Quote follow-up" count={data.sentFollowUpCount} label="Sent quotes awaiting an outcome" href={`/availability/quotes/${encodeURIComponent(assigneeId)}?followUp=1`} />
       </section>
 
+      <SmsInbox />
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,0.8fr)] xl:items-start">
         <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
