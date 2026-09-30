@@ -371,6 +371,8 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   const annualVisits = Math.round(Number(input.annualVisits))
   const startDate = clean(input.startDate, 20)
   const estimatedHours = normalizeContractProductHours(input.estimatedHoursPerVisit)
+  const timePreference = input.timePreference === undefined ? String(current.time_preference) : clean(input.timePreference, 30)
+  if (!['business_hours', 'after_hours', 'weekend'].includes(timePreference)) throw new ContractProductError('Select a valid cleaning timing.')
   const keyedJob = clean(input.keyedJob, 20)
   const pricingMethod = input.pricingMethod === 'manual' ? 'manual' : 'default_50_percent'
   const manualPurchaseCents = parseMoneyToCents(input.purchasePriceExGst)
@@ -396,6 +398,8 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
     start_date: startDate || null,
     annual_visits: annualVisits,
     estimated_hours_per_visit: estimatedHours || null,
+    time_preference: timePreference,
+    cleaner_scope_snapshot: { ...(current.cleaner_scope_snapshot as CleanerScopeSnapshotV1), timePreference },
     keyed_job: keyedJob,
     formal_contract: input.formalContract === true,
     free_initial_clean: input.freeInitialClean === true,
