@@ -21,6 +21,7 @@ export const MENU_CATALOG: Record<MenuAudience, MenuDestination[]> = {
     { id: 'pricing', label: 'Pricing & Rooms', href: '/admin/room-types' },
     { id: 'content', label: 'Content', href: '/admin/content' },
     { id: 'chat', label: 'Chat', href: '/admin/chat' },
+    { id: 'sms', label: 'SMS', href: '/admin/sms', roles: ['owner'] },
     { id: 'staff', label: 'Team Access', href: '/admin/staff', roles: ['owner'] },
     { id: 'menus', label: 'Menu configuration', href: '/admin/menus', roles: ['owner'] },
   ],
@@ -45,7 +46,7 @@ export function defaultMenuConfiguration(): MenuConfiguration {
     admin: { items: [link('overview'), link('invoices'), link('clients'), link('calendar'),
       { kind: 'group', id: 'sales-group', label: 'Sales', children: ['products', 'sales', 'commissions'] },
       { kind: 'group', id: 'operations-group', label: 'Operations', children: ['availability', 'cleaners'] },
-      { kind: 'group', id: 'settings-group', label: 'Settings', children: ['pricing', 'content', 'chat', 'staff', 'menus'] },
+      { kind: 'group', id: 'settings-group', label: 'Settings', children: ['pricing', 'content', 'chat', 'sms', 'staff', 'menus'] },
     ], hidden: [] },
     agent: { items: [link('portal'), link('invoices'), link('quotes'), link('clients'),
       { kind: 'group', id: 'sales-group', label: 'Sales', children: ['products', 'sales', 'commissions'] },
@@ -87,6 +88,21 @@ export function parseMenuConfiguration(value: unknown): MenuConfiguration {
       return { kind: 'group', id: item.id, label, children: item.children.map(destination) }
     })
     const hidden = candidate.hidden.map(destination)
+    // Upgrade pre-SMS saved menus without resetting their ordering or hidden links.
+    if (audience === 'admin' && !used.has('sms') && used.size === catalog.length - 1) {
+      const settings = items.find((item): item is MenuGroup => item.kind === 'group' && item.label.toLowerCase() === 'settings')
+        ?? items.find((item): item is MenuGroup => item.kind === 'group' && item.id === 'settings-group')
+      if (settings) settings.children.push('sms')
+      else if (groups.size < 8) {
+        let id = 'sms-settings'
+        while (groups.has(id)) id += '-new'
+        items.push({ kind: 'group', id, label: 'Settings', children: ['sms'] })
+      } else {
+        // A fully customised menu may already use all eight dropdowns.
+        items.push(link('sms'))
+      }
+      used.add('sms')
+    }
     if (used.size !== catalog.length) throw new Error('Some menu links are missing. Reload the editor and try again.')
     if (audience === 'admin' && hidden.includes('menus')) throw new Error('Keep Menu configuration visible so you can edit the menu again.')
     if (!items.some(item => item.kind === 'link' || item.children.length)) throw new Error('Keep at least one menu link visible.')

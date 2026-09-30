@@ -46,6 +46,35 @@ test('menu validator rejects missing, repeated, external, cross-audience and nes
   }
 })
 
+test('SMS is owner-only under Settings and upgrades saved menus without losing customisations', () => {
+  const config = menus.defaultMenuConfiguration()
+  const settings = config.admin.items.find(item => item.id === 'settings-group')
+  assert.ok(settings.children.includes('sms'))
+  settings.children = settings.children.filter(id => id !== 'sms')
+  config.admin = menus.moveMenuLink(config.admin, 'chat', 'hidden')
+  config.admin.items.reverse()
+  const original = json(config)
+  const upgraded = menus.parseMenuConfiguration(config)
+  assert.deepEqual(config, original)
+  assert.deepEqual(upgraded.admin.hidden, ['chat'])
+  assert.deepEqual(upgraded.admin.items.map(item => item.id), original.admin.items.map(item => item.id))
+  assert.ok(upgraded.admin.items.find(item => item.id === 'settings-group').children.includes('sms'))
+  assert.deepEqual(menus.parseMenuConfiguration(upgraded), upgraded)
+  for (const role of ['owner', 'manager', 'staff', 'viewer', 'agent']) {
+    assert.equal(menus.menuDestinations('admin', role).some(item => item.href === '/admin/sms'), role === 'owner')
+  }
+  upgraded.admin = menus.moveMenuLink(upgraded.admin, 'sms', 'hidden')
+  assert.ok(menus.parseMenuConfiguration(upgraded).admin.hidden.includes('sms'))
+})
+
+test('legacy menus without a Settings dropdown gain one while preserving existing links', () => {
+  const config = menus.defaultMenuConfiguration()
+  config.admin.items = config.admin.items.flatMap(item => item.kind === 'link' ? [item] : item.children.filter(id => id !== 'sms').map(id => ({kind:'link',id})))
+  const upgraded = menus.parseMenuConfiguration(config)
+  assert.deepEqual(upgraded.admin.items.at(-1), {kind:'group',id:'sms-settings',label:'Settings',children:['sms']})
+  assert.deepEqual(upgraded.admin.items.slice(0,-1), config.admin.items)
+})
+
 test('moving links preserves unique membership and configuration cannot hide itself', () => {
   const config = menus.defaultMenuConfiguration()
   config.admin = menus.moveMenuLink(config.admin, 'invoices', 'sales-group')
