@@ -50,7 +50,7 @@ export async function GET(
   }
 
   const events = (await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: false }))
-    .filter((event) => event.kind === 'booking' || event.kind === 'blockout')
+    .filter((event) => event.kind === 'booking' || event.kind === 'sale_inspection' || event.kind === 'blockout')
 
   const body = [
     'BEGIN:VCALENDAR',

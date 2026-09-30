@@ -72,6 +72,11 @@ Existing invoice history is not backfilled. The application sends the private 48
 cleaner portal link separately after the first document bundle succeeds and copies the
 active agent who created the product sale.
 
+Apply `contract_sale_inspection_calendar_feed_migration.sql` after
+`contract_sale_inspection_communications_checklist_migration.sql`. It adds the
+`subscription_feed` delivery state used when a product-sale inspection is published
+to the linked agent's private calendar feed without a direct Google Calendar write.
+
 Apply `admin_quote_deletion_migration.sql` after the CRM, final-quote, contract-product,
 and contract-sale migrations. It installs the service-role-only transactional deletion
 RPC used by the owner-only dashboard control. Accepted or sent final quotes and quotes

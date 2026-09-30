@@ -1290,20 +1290,36 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
   const description = `Product sale ${sale.sale_code}\nClient: ${context.client?.contact_name || 'Client'}\nCleaner: ${context.cleaner.business_name}\nNotes: ${clean(input.notes, 1000) || 'None'}`
   const ics = inspectionIcs({ uid: String(inspection.id), startsAt, durationMinutes, location, description })
   const availability = await getAvailabilityConfig()
-  const calendarId = (actor.availabilityAssigneeId ? getAvailabilityAssignee(availability, actor.availabilityAssigneeId)?.calendarId : '')
+  const senderAssignee = actor.availabilityAssigneeId
+    ? getAvailabilityAssignee(availability, actor.availabilityAssigneeId)
+    : undefined
+  const calendarId = senderAssignee?.calendarId
     || process.env.GOOGLE_CALENDAR_ID || ''
   const calendar = calendarId ? await upsertContractSaleInspectionEvent({
     inspectionId: String(inspection.id), calendarId, startsAt, durationMinutes, timeZone,
     summary: `Secure Cleaning site inspection - ${context.site?.site_name || context.client?.business_name || sale.sale_code}`,
     description, location,
-  }) : { status: 'failed' as const, reason: 'No calendar is configured for the sending staff member' }
-  const calendarStatus = calendar.status === 'failed' ? 'email_fallback' : calendar.status
+  }) : { status: 'failed' as const, reason: 'No writable Google Calendar ID is configured for the sending staff member' }
+  const publishesToPrivateFeed = Boolean(senderAssignee?.active && senderAssignee.accessCodeHash)
+  const calendarStatus = calendar.status === 'failed'
+    ? (publishesToPrivateFeed ? 'subscription_feed' : 'email_fallback')
+    : calendar.status
+  const calendarError = calendar.status === 'failed' && publishesToPrivateFeed && calendarId
+    ? `Direct Google Calendar write failed: ${calendar.reason ?? 'Unknown error'}`
+    : calendar.status === 'failed' && !publishesToPrivateFeed
+      ? calendar.reason ?? null
+      : null
   const { error: calendarUpdateError } = await db.from('contract_sale_inspections').update({
     calendar_id_snapshot: calendarId || null, calendar_event_id: calendar.eventId ?? null,
-    calendar_status: calendarStatus, calendar_error: calendar.reason ?? null,
+    calendar_status: calendarStatus, calendar_error: calendarError,
   }).eq('id', inspection.id)
   if (calendarUpdateError) throw calendarUpdateError
-  const staffHtml = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><p>Your Secure Cleaning site inspection has been scheduled.</p><p><strong>${escapeHtml(date)} at ${escapeHtml(time)}</strong><br>${escapeHtml(location)}</p><p>${escapeHtml(description).replaceAll('\n', '<br>')}</p><p>${calendar.status === 'failed' ? 'The direct calendar write was unavailable. Use the attached calendar invitation.' : 'The appointment was written to your configured calendar. The attached invitation is a backup copy.'}</p></div>`
+  const staffCalendarMessage = calendar.status !== 'failed'
+    ? 'The appointment was written to your configured Google calendar. The attached invitation is a backup copy.'
+    : publishesToPrivateFeed
+      ? 'The appointment was published to your Secure Cleaning private calendar feed. The attached invitation is a backup copy.'
+      : 'The direct calendar write was unavailable. Use the attached calendar invitation.'
+  const staffHtml = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><p>Your Secure Cleaning site inspection has been scheduled.</p><p><strong>${escapeHtml(date)} at ${escapeHtml(time)}</strong><br>${escapeHtml(location)}</p><p>${escapeHtml(description).replaceAll('\n', '<br>')}</p><p>${staffCalendarMessage}</p></div>`
   const recipients: Array<{ recipient: InviteOutcome['recipient']; email: string; name: string; subject: string; html: string; bodyText: string; bodyHtml: string; bodyDocument: Record<string, unknown> | null; requestId?: string }> = [
     { recipient: 'client', email: clientEmail, name: context.client?.contact_name || 'Client', subject: confirmationPreview.client.subject, html: confirmationPreview.client.html, bodyText: confirmationPreview.client.bodyText, bodyHtml: confirmationPreview.client.bodyHtml, bodyDocument: clientDraft.bodyDocument, requestId: clientRequestId },
     { recipient: 'cleaner', email: cleanerEmail, name: context.cleaner.contact_name, subject: confirmationPreview.cleaner.subject, html: confirmationPreview.cleaner.html, bodyText: confirmationPreview.cleaner.bodyText, bodyHtml: confirmationPreview.cleaner.bodyHtml, bodyDocument: cleanerDraft.bodyDocument, requestId: cleanerRequestId },

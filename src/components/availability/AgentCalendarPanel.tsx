@@ -35,6 +35,7 @@ function formatTimeRange(startsAt: string, endsAt: string) {
 function eventTone(kind: AgentCalendarEvent['kind']) {
   switch (kind) {
     case 'booking':
+    case 'sale_inspection':
       return 'border-blue-200 bg-blue-50 text-blue-950'
     case 'blockout':
       return 'border-red-200 bg-red-50 text-red-950'
@@ -46,6 +47,7 @@ function eventTone(kind: AgentCalendarEvent['kind']) {
 function eventLabel(kind: AgentCalendarEvent['kind']) {
   switch (kind) {
     case 'booking':
+    case 'sale_inspection':
       return 'Appointment'
     case 'blockout':
       return 'Blocked'
@@ -128,7 +130,9 @@ export default function AgentCalendarPanel({
     return map
   }, [calendarEvents])
 
-  const upcomingCount = calendarEvents.filter((event) => event.kind === 'booking' && new Date(event.startsAt) >= new Date()).length
+  const upcomingCount = calendarEvents.filter((event) => (
+    (event.kind === 'booking' || event.kind === 'sale_inspection') && new Date(event.startsAt) >= new Date()
+  )).length
 
   function beginEdit(event: AgentCalendarEvent) {
     setSelectedEvent(null)
@@ -255,7 +259,7 @@ export default function AgentCalendarPanel({
                           >
                             <div className="font-semibold uppercase tracking-wide">{eventLabel(event.kind)}</div>
                             <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatTimeRange(event.startsAt, event.endsAt) : `${formatTimeRange(event.startsAt, event.endsAt)} · ${event.title}`}</div>
-                            {event.kind === 'booking' ? <div className="mt-0.5 truncate opacity-80">{event.title}</div> : null}
+                            {event.kind === 'booking' || event.kind === 'sale_inspection' ? <div className="mt-0.5 truncate opacity-80">{event.title}</div> : null}
                           </button>
                         ))
                       )}
@@ -273,7 +277,7 @@ export default function AgentCalendarPanel({
           <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className={`text-xs font-semibold uppercase tracking-wide ${selectedEvent.kind === 'booking' ? 'text-blue-700' : selectedEvent.kind === 'blockout' ? 'text-red-700' : 'text-emerald-700'}`}>{eventLabel(selectedEvent.kind)}</div>
+                <div className={`text-xs font-semibold uppercase tracking-wide ${selectedEvent.kind === 'booking' || selectedEvent.kind === 'sale_inspection' ? 'text-blue-700' : selectedEvent.kind === 'blockout' ? 'text-red-700' : 'text-emerald-700'}`}>{eventLabel(selectedEvent.kind)}</div>
                 <h3 id="agent-calendar-event-title" className="mt-1 text-xl font-bold" style={{ color: '#1a2744' }}>{selectedEvent.title}</h3>
                 <p className="mt-1 text-sm font-semibold text-gray-700">{formatTimeRange(selectedEvent.startsAt, selectedEvent.endsAt)}</p>
               </div>

@@ -27,6 +27,8 @@ test('inspection communications require previews and retain distinct client and 
 test('inspection scheduling writes to the sender calendar with an ICS fallback and bypasses public availability', () => {
   const domain = source('src/lib/contractSales.ts')
   const calendar = source('src/lib/googleCalendar.ts')
+  const availabilityCalendar = source('src/lib/availabilityCalendar.ts')
+  const feed = source('src/app/api/availability-agent/[assigneeId]/feed/route.ts')
 
   assert.match(domain, /actor\.availabilityAssigneeId/)
   assert.match(domain, /calendar_status: calendarStatus/)
@@ -35,6 +37,10 @@ test('inspection scheduling writes to the sender calendar with an ICS fallback a
   assert.doesNotMatch(domain, /getAvailableSlots/)
   assert.match(calendar, /upsertContractSaleInspectionEvent/)
   assert.match(calendar, /sendUpdates: 'none'/)
+  assert.match(domain, /subscription_feed/)
+  assert.match(availabilityCalendar, /scheduled_by_staff_id/)
+  assert.match(availabilityCalendar, /buildContractSaleInspectionEvents/)
+  assert.match(feed, /event\.kind === 'sale_inspection'/)
 })
 
 test('inspection migration keeps message and completed-checklist history private and immutable', () => {

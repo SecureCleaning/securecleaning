@@ -14,7 +14,7 @@ import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
 
 export type AgentCalendarEvent = {
   id: string
-  kind: 'booking' | 'availability' | 'blockout'
+  kind: 'booking' | 'sale_inspection' | 'availability' | 'blockout'
   bookingRef?: string
   title: string
   startsAt: string
@@ -31,6 +31,18 @@ type BookingCalendarRow = {
   assigned_operator_id?: string | null
   created_at?: string | null
   inputs?: BookingInputs
+}
+
+type ContractSaleInspectionCalendarRow = {
+  id: string
+  sale_id: string
+  status: string
+  starts_at: string
+  duration_minutes: number
+  location_snapshot?: string | null
+  client_name_snapshot?: string | null
+  cleaner_name_snapshot?: string | null
+  notes?: string | null
 }
 
 const DAY_INDEX: Record<Weekday, number> = {
@@ -186,6 +198,42 @@ function buildBookingEvents(
     .filter(Boolean) as AgentCalendarEvent[]
 }
 
+export function buildContractSaleInspectionEvents(
+  inspections: ContractSaleInspectionCalendarRow[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): AgentCalendarEvent[] {
+  return inspections.flatMap((inspection) => {
+    const startsAt = new Date(inspection.starts_at)
+    const durationMinutes = Number(inspection.duration_minutes)
+    if (Number.isNaN(startsAt.getTime()) || !Number.isFinite(durationMinutes) || durationMinutes <= 0) return []
+    const endsAt = new Date(startsAt.getTime() + durationMinutes * 60_000)
+    if (endsAt < rangeStart || startsAt > rangeEnd) return []
+    const clientName = String(inspection.client_name_snapshot ?? '').trim()
+    const cleanerName = String(inspection.cleaner_name_snapshot ?? '').trim()
+    const location = String(inspection.location_snapshot ?? '').trim()
+    const notes = String(inspection.notes ?? '').trim()
+    const details = [
+      clientName ? { label: 'Client', value: clientName } : null,
+      cleanerName ? { label: 'Cleaner', value: cleanerName } : null,
+      location ? { label: 'Location', value: location } : null,
+      notes ? { label: 'Notes', value: notes } : null,
+    ].filter(Boolean) as Array<{ label: string; value: string }>
+
+    return [{
+      id: `sale-inspection-${inspection.id}`,
+      kind: 'sale_inspection' as const,
+      title: clientName || 'Product sale inspection',
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      subtitle: inspection.status.replace(/_/g, ' '),
+      description: details.map((item) => `${item.label}: ${item.value}`).join('\n'),
+      location,
+      details,
+    }]
+  })
+}
+
 export async function getAgentBookingsForCalendar(config: AvailabilityConfig, assignee: AvailabilityAssignee) {
   const db = getAdminSupabase()
   const { data, error } = await db
@@ -206,6 +254,37 @@ export async function getAgentBookingsForCalendar(config: AvailabilityConfig, as
   )) as BookingCalendarRow[]
 }
 
+async function getAgentContractSaleInspectionsForCalendar(assignee: AvailabilityAssignee) {
+  const db = getAdminSupabase()
+  const { data: staffRows, error: staffError } = await db
+    .from('admin_staff_accounts')
+    .select('id')
+    .eq('availability_assignee_id', assignee.id)
+    .eq('active', true)
+    .limit(10)
+
+  if (staffError) {
+    console.error('[availabilityCalendar] inspection staff linkage load failed:', staffError)
+    return []
+  }
+  const staffIds = (staffRows ?? []).map((staff) => String(staff.id)).filter(Boolean)
+  if (!staffIds.length) return []
+
+  const { data, error } = await db
+    .from('contract_sale_inspections')
+    .select('id, sale_id, status, starts_at, duration_minutes, location_snapshot, client_name_snapshot, cleaner_name_snapshot, notes')
+    .in('scheduled_by_staff_id', staffIds)
+    .in('status', ['scheduled', 'completed'])
+    .order('starts_at', { ascending: true })
+    .limit(200)
+
+  if (error) {
+    console.error('[availabilityCalendar] product sale inspections load failed:', error)
+    return []
+  }
+  return (data ?? []) as ContractSaleInspectionCalendarRow[]
+}
+
 export async function getAgentCalendarEvents(
   config: AvailabilityConfig,
   assignee: AvailabilityAssignee,
@@ -218,10 +297,14 @@ export async function getAgentCalendarEvents(
   const weeklySlots = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id && slot.active)
   const oneOffBlocks = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id && block.active)
   const zones = config.zones.filter((zone) => zone.city === assignee.city)
-  const bookings = await getAgentBookingsForCalendar(config, assignee)
+  const [bookings, saleInspections] = await Promise.all([
+    getAgentBookingsForCalendar(config, assignee),
+    getAgentContractSaleInspectionsForCalendar(assignee),
+  ])
 
   const events = [
     ...buildBookingEvents(bookings, range.start, range.end),
+    ...buildContractSaleInspectionEvents(saleInspections, range.start, range.end),
     ...buildBlockEvents(oneOffBlocks, range.start, range.end),
     ...(includeAvailability ? buildAvailabilityEvents(weeklySlots, zones, assignee.city, range.calendarStart, range.calendarEnd) : []),
   ]
