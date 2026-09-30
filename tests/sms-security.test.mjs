@@ -81,6 +81,32 @@ function workerFixture({job,providerHistory=[],providerError=null,enabled=true}=
  return {mod,updates,requests,rpc}
 }
 const baseJob={id:'12345678-1234-4234-8234-123456789012',lease_token:'lease',quote_ref:'SC-1',document_version:1,mobile:'61412345678',message:policy.DEFAULT_SMS_TEMPLATE,template:policy.DEFAULT_SMS_TEMPLATE,fields:{},time_zone:'Australia/Sydney',first_attempt_at:null,attempt_count:0,provider_scope:null,request_payload:null,purpose:'quote_followup',status:'leased'}
+test('history reconciliation supports live and documented recipient fields without resending',async()=>{
+ const job={...baseJob,provider_id:'provider-1',first_attempt_at:new Date().toISOString()}
+ for(const identity of [{to:job.mobile},{recipient_number:job.mobile},{to:'0412 345 678'},{recipient_number:'+61412345678',to:job.mobile}]) {
+  const f=workerFixture({job,providerHistory:[{...identity,message_id:'provider-1',custom_ref:`sms:${job.id}`,status:'delivered',cost:'1.00'}]})
+  assert.equal(await f.mod.reconcileSmsJob(job),true)
+  assert.ok(f.rpc.some(([name,args])=>name==='sms_record_acceptance'&&args.p_provider==='provider-1'))
+  assert.ok(f.updates.some(([,value])=>value.status==='delivered'))
+  assert.equal(f.requests.filter(r=>r.method==='POST').length,0)
+ }
+})
+test('history reconciliation rejects missing, conflicting or mismatched message identity',async()=>{
+ const job={...baseJob,provider_id:'provider-1',first_attempt_at:new Date().toISOString()}
+ for(const identity of [{},{to:'61499999999'},{recipient_number:job.mobile,to:'61499999999'},{recipient_number:null,to:job.mobile},{to:'invalid'},{to:job.mobile,message_id:''},{to:job.mobile,message_id:123},{to:job.mobile,message_id:'different-provider-id'}]) {
+  const f=workerFixture({job,providerHistory:[{message_id:'provider-1',...identity,custom_ref:`sms:${job.id}`,status:'delivered',cost:1}]})
+  await assert.rejects(f.mod.reconcileSmsJob(job),/provider_history_mismatch/)
+  assert.equal(f.rpc.length,0);assert.equal(f.updates.length,0);assert.equal(f.requests.filter(r=>r.method==='POST').length,0)
+ }
+})
+test('history reconciliation refuses ambiguous records and ignores other references',async()=>{
+ const match={to:baseJob.mobile,message_id:'provider-1',custom_ref:`sms:${baseJob.id}`,status:'sent',cost:1}
+ const duplicate=workerFixture({providerHistory:[match,match]})
+ await assert.rejects(duplicate.mod.reconcileSmsJob(baseJob),/duplicate_provider_records/)
+ const unrelated=workerFixture({providerHistory:[{...match,custom_ref:'other-reference'}]})
+ assert.equal(await unrelated.mod.reconcileSmsJob(baseJob),false)
+ assert.equal(duplicate.rpc.length+unrelated.rpc.length,0)
+})
 test('worker records provider acceptance with the immutable job idempotency key',async()=>{
  const f=workerFixture({job:baseJob});await f.mod.runSmsWorker()
  const send=f.requests.find(r=>r.method==='POST');assert.equal(send.key,baseJob.id);assert.equal(send.body.ignore_unsubscribes,false);assert.equal(send.body.messages[0].custom_ref,`sms:${baseJob.id}`)

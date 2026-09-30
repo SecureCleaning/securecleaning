@@ -2,7 +2,7 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { getAdminSupabase } from './supabase'
 import { checkSmsConnection, mobileMessageRequest, providerScope, smsCredentialsConfigured, smsLiveEnabled, SmsProviderError } from './mobileMessage'
-import { renderSms, smsSegments, type SmsJob } from './smsPolicy'
+import { normalizeSmsMobile, renderSms, smsSegments, type SmsJob } from './smsPolicy'
 import { smsSettings } from './smsData'
 import { deliverSmsAlerts, smsAlert } from './smsAlerts'
 import { processSmsEvent } from './smsEvents'
@@ -31,7 +31,10 @@ export async function reconcileSmsJob(job:SmsJob):Promise<boolean> {
   if(matches.length>1) throw new SmsProviderError('duplicate_provider_records')
   if(!matches.length) return false
   const match=matches[0]
-  if(String(match.recipient_number).replace(/^\+/,'')!==job.mobile||typeof match.message_id!=='string') throw new SmsProviderError('provider_history_mismatch')
+  // History returns `to` in production; the published schema uses `recipient_number`.
+  // Validate every supplied alias so conflicting identities cannot be accepted.
+  const recipients=[match.recipient_number,match.to].filter(value=>value!==undefined)
+  if(!recipients.length||recipients.some(value=>normalizeSmsMobile(value)!==job.mobile)||typeof match.message_id!=='string'||!match.message_id.trim()||(job.provider_id&&match.message_id!==job.provider_id)) throw new SmsProviderError('provider_history_mismatch')
   await accepted(job,match.message_id,Number(match.cost)||0)
   if(['failed','delivered'].includes(String(match.status))) {
     const result=await getAdminSupabase().from('sms_jobs').update({status:match.status,reason:match.status==='failed'?'delivery_failed':null,reconcile_at:new Date().toISOString()}).eq('id',job.id).neq('status','failed')
