@@ -52,6 +52,14 @@ function templateDrafts(template: ContractSaleInspectionTemplate) {
   }
 }
 
+function calendarDeliveryLabel(status: string) {
+  if (status === 'created') return 'Google calendar event created'
+  if (status === 'updated') return 'Google calendar event updated'
+  if (status === 'subscription_feed') return 'Published to agent private calendar feed'
+  if (status === 'email_fallback') return 'Email invitation fallback only'
+  return status.replaceAll('_', ' ')
+}
+
 export default function ContractSaleInspectionPanel({ sale, product, template, actorRole, onRefresh }: {
   sale: ContractSale
   product: ContractProduct | null
@@ -207,7 +215,7 @@ export default function ContractSaleInspectionPanel({ sale, product, template, a
       </div>
       <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewConfirmations()} disabled={Boolean(busy) || !appointment.date || !appointment.time || !appointment.location} className="rounded-lg bg-gray-900 px-4 py-2 font-semibold text-white disabled:opacity-50">Preview both confirmations</button><button type="button" onClick={() => void schedule()} disabled={Boolean(busy) || !canSchedule || !confirmationPreview} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Schedule &amp; send separate invites</button></div>
       {confirmationPreview ? <div className="mt-5 grid gap-5 xl:grid-cols-2">{(['client','cleaner'] as const).map((kind) => <div key={kind} className="overflow-hidden rounded-xl border border-teal-200"><div className="bg-teal-50 p-3 text-sm"><strong className="capitalize">{kind}</strong><br />To: {confirmationPreview[kind].to}<br />Subject: {confirmationPreview[kind].subject}</div><iframe title={`${kind} inspection email preview`} sandbox="" srcDoc={confirmationPreview[kind].html} className="h-96 w-full bg-white" /></div>)}</div> : null}
-      {sale.inspection ? <div className="mt-5 rounded-xl bg-gray-50 p-4 text-sm"><strong>Scheduled:</strong> {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short', timeZone: sale.inspection.timeZone }).format(new Date(sale.inspection.startsAt))}<br /><strong>Email invitations:</strong> {sale.inspection.inviteStatus}<br /><strong>Sender calendar:</strong> {sale.inspection.calendarStatus}{sale.inspection.calendarError ? ` - ${sale.inspection.calendarError}` : ''}</div> : null}
+      {sale.inspection ? <div className="mt-5 rounded-xl bg-gray-50 p-4 text-sm"><strong>Scheduled:</strong> {new Intl.DateTimeFormat('en-AU', { dateStyle: 'medium', timeStyle: 'short', timeZone: sale.inspection.timeZone }).format(new Date(sale.inspection.startsAt))}<br /><strong>Email invitations:</strong> {sale.inspection.inviteStatus}<br /><strong>Sender calendar:</strong> {calendarDeliveryLabel(sale.inspection.calendarStatus)}{sale.inspection.calendarError ? ` - ${sale.inspection.calendarError}` : ''}</div> : null}
     </section>
 
     <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">

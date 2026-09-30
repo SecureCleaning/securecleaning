@@ -57,11 +57,11 @@ function formatTimeRange(event: AgentCalendarEvent) {
 }
 
 function eventKindLabel(kind: AgentCalendarEvent['kind']) {
-  return kind === 'booking' ? 'Appointment' : kind === 'blockout' ? 'Blocked' : 'Available'
+  return kind === 'booking' || kind === 'sale_inspection' ? 'Appointment' : kind === 'blockout' ? 'Blocked' : 'Available'
 }
 
 function eventTypeStyle(kind: AgentCalendarEvent['kind']) {
-  if (kind === 'booking') return 'border-blue-300 bg-blue-50 text-blue-950'
+  if (kind === 'booking' || kind === 'sale_inspection') return 'border-blue-300 bg-blue-50 text-blue-950'
   if (kind === 'blockout') return 'border-red-300 bg-red-50 text-red-950'
   return 'border-emerald-300 bg-emerald-50 text-emerald-950'
 }

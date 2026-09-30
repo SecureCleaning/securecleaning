@@ -18,19 +18,20 @@ test('agent portal has a dedicated entry point and portal navigation', () => {
   assert.equal(existsSync(`${root}/src/app/availability/login/page.tsx`), false)
 })
 
-test('calendar badge counts visits while the private feed includes visits and private block-outs', () => {
+test('calendar badge and private feed include product-sale inspections with visits and private block-outs', () => {
   const panel = read('src/components/availability/AgentCalendarPanel.tsx')
   const feed = read('src/app/api/availability-agent/[assigneeId]/feed/route.ts')
   const editor = read('src/components/availability/AssigneeAvailabilityEditor.tsx')
-  assert.match(panel, /event\.kind === 'booking'/)
+  assert.match(panel, /event\.kind === 'booking' \|\| event\.kind === 'sale_inspection'/)
   assert.match(panel, /upcoming client visit/)
   assert.match(feed, /includeAvailability: false/)
-  assert.match(feed, /event\.kind === 'booking' \|\| event\.kind === 'blockout'/)
+  assert.match(feed, /event\.kind === 'booking' \|\| event\.kind === 'sale_inspection' \|\| event\.kind === 'blockout'/)
   assert.match(feed, /isBlockout \? 'Unavailable' : event\.title/)
   assert.match(feed, /isBlockout \? '' : event\.description/)
   assert.match(feed, /'TRANSP:OPAQUE'/)
   assert.doesNotMatch(feed, /event\.kind === 'availability'/)
-  assert.match(editor, /including appointments outside your availability windows/)
+  assert.match(editor, /including product-sale inspections and appointments outside your availability windows/)
+  assert.match(editor, /product-sale inspections/)
   assert.match(editor, /Block-outs appear only as private/)
 })
 

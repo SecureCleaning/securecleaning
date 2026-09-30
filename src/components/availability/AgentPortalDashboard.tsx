@@ -2,6 +2,7 @@ import Link from 'next/link'
 import SmsInbox from '@/components/sms/SmsInbox'
 import ClientFollowUps from '@/components/admin/ClientFollowUps'
 import type { AgentDashboardData } from '@/lib/agentDashboard'
+import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
 
 function time(value: string, timeZone: string) {
   const parsed = new Date(value)
@@ -12,8 +13,8 @@ function time(value: string, timeZone: string) {
   })
 }
 
-function eventTone(kind: 'booking' | 'availability' | 'blockout') {
-  if (kind === 'booking') return 'border-blue-200 bg-blue-50 text-blue-950'
+function eventTone(kind: AgentCalendarEvent['kind']) {
+  if (kind === 'booking' || kind === 'sale_inspection') return 'border-blue-200 bg-blue-50 text-blue-950'
   if (kind === 'blockout') return 'border-red-200 bg-red-50 text-red-950'
   return 'border-emerald-200 bg-emerald-50 text-emerald-950'
 }
