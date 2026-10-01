@@ -2,22 +2,7 @@ import Link from 'next/link'
 import SmsInbox from '@/components/sms/SmsInbox'
 import ClientFollowUps from '@/components/admin/ClientFollowUps'
 import type { AgentDashboardData } from '@/lib/agentDashboard'
-import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
-
-function time(value: string, timeZone: string) {
-  const parsed = new Date(value)
-  return Number.isNaN(parsed.getTime()) ? 'Time unavailable' : parsed.toLocaleTimeString('en-AU', {
-    timeZone,
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function eventTone(kind: AgentCalendarEvent['kind']) {
-  if (kind === 'booking' || kind === 'sale_inspection') return 'border-blue-200 bg-blue-50 text-blue-950'
-  if (kind === 'blockout') return 'border-red-200 bg-red-50 text-red-950'
-  return 'border-emerald-200 bg-emerald-50 text-emerald-950'
-}
+import AgentCalendarPanel from './AgentCalendarPanel'
 
 function StatCard({ eyebrow, count, label, href, tone = 'plain' }: {
   eyebrow: string
@@ -66,38 +51,9 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
 
       <SmsInbox />
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,0.8fr)] xl:items-start">
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-            <div>
-              <h2 className="text-xl font-bold text-[#1a2744]">Seven-day calendar</h2>
-              <p className="mt-1 text-sm text-gray-600">Appointments, availability and block-outs from today.</p>
-            </div>
-            <Link href={`/availability/quoters/${encodeURIComponent(assigneeId)}`} className="text-sm font-bold text-green-700 hover:underline">Open full calendar</Link>
-          </div>
-          <div className="overflow-x-auto p-4">
-            <div className="grid min-w-[820px] grid-cols-7 gap-2">
-              {data.week.map((day) => (
-                <article key={day.key} className={`min-h-56 rounded-xl border p-2.5 ${day.isToday ? 'border-green-400 bg-green-50/60' : 'border-gray-200 bg-gray-50/70'}`}>
-                  <div className="border-b border-gray-200 pb-2">
-                    <div className="text-xs font-bold uppercase tracking-wide text-gray-500">{day.label}</div>
-                    <div className="text-sm font-bold text-[#1a2744]">{day.dateLabel}</div>
-                  </div>
-                  <div className="mt-2 space-y-2">
-                    {day.events.length === 0 ? <p className="py-3 text-xs text-gray-400">No events</p> : null}
-                    {day.events.slice(0, 5).map((event) => (
-                      <div key={event.id} className={`rounded-lg border px-2 py-2 text-xs ${eventTone(event.kind)}`}>
-                        <div className="font-bold">{time(event.startsAt, data.timeZone)}</div>
-                        <div className="mt-0.5 line-clamp-2 font-semibold">{event.title}</div>
-                        {event.subtitle ? <div className="mt-0.5 line-clamp-1 opacity-75">{event.subtitle}</div> : null}
-                      </div>
-                    ))}
-                    {day.events.length > 5 ? <p className="text-xs font-semibold text-gray-500">+{day.events.length - 5} more</p> : null}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
+        <div className="min-w-0">
+          <AgentCalendarPanel events={data.week.flatMap((day) => day.events)} dashboardDays={data.week} timeZone={data.timeZone} assigneeId={assigneeId} bookingApiPath={`/api/availability-agent/${encodeURIComponent(assigneeId)}/bookings`} />
+        </div>
 
         <ClientFollowUps compact />
       </div>

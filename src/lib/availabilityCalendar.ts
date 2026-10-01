@@ -15,6 +15,8 @@ import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
 export type AgentCalendarEvent = {
   id: string
   kind: 'booking' | 'sale_inspection' | 'availability' | 'blockout'
+  opportunityId?: string
+  saleId?: string
   bookingRef?: string
   title: string
   startsAt: string
@@ -26,6 +28,7 @@ export type AgentCalendarEvent = {
 }
 
 type BookingCalendarRow = {
+  opportunity_id?: string | null
   booking_ref: string
   status: string
   assigned_operator_id?: string | null
@@ -35,6 +38,7 @@ type BookingCalendarRow = {
 
 type ContractSaleInspectionCalendarRow = {
   id: string
+  opportunity_id?: string | null
   sale_id: string
   status: string
   starts_at: string
@@ -159,7 +163,7 @@ function buildBlockEvents(
     }))
 }
 
-function buildBookingEvents(
+export function buildBookingEvents(
   bookings: BookingCalendarRow[],
   rangeStart: Date,
   rangeEnd: Date
@@ -186,6 +190,7 @@ function buildBookingEvents(
         id: `booking-${booking.booking_ref}`,
         kind: 'booking' as const,
         bookingRef: booking.booking_ref,
+        opportunityId: booking.opportunity_id || undefined,
         title: inputs.suburb || inputs.businessName || 'Inspection appointment',
         startsAt: toIso(start),
         endsAt: toIso(end),
@@ -223,6 +228,8 @@ export function buildContractSaleInspectionEvents(
     return [{
       id: `sale-inspection-${inspection.id}`,
       kind: 'sale_inspection' as const,
+      saleId: inspection.sale_id,
+      opportunityId: inspection.opportunity_id || undefined,
       title: clientName || 'Product sale inspection',
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
@@ -238,7 +245,7 @@ export async function getAgentBookingsForCalendar(config: AvailabilityConfig, as
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('bookings')
-    .select('booking_ref, status, created_at, inputs, assigned_operator_id')
+    .select('booking_ref, opportunity_id, status, created_at, inputs, assigned_operator_id')
     .in('status', ['pending', 'confirmed', 'in_progress'])
     .order('created_at', { ascending: false })
     .limit(200)
@@ -282,7 +289,17 @@ async function getAgentContractSaleInspectionsForCalendar(assignee: Availability
     console.error('[availabilityCalendar] product sale inspections load failed:', error)
     return []
   }
-  return (data ?? []) as ContractSaleInspectionCalendarRow[]
+  const inspections = (data ?? []) as ContractSaleInspectionCalendarRow[]
+  const saleIds = [...new Set(inspections.map((inspection) => inspection.sale_id))]
+  if (!saleIds.length) return inspections
+  const { data: sales, error: salesError } = await db.from('contract_product_sales')
+    .select('id, opportunity_id').in('id', saleIds)
+  if (salesError) {
+    console.error('[availabilityCalendar] inspection client links load failed:', salesError)
+    return inspections
+  }
+  const opportunities = new Map((sales ?? []).map((sale) => [sale.id, sale.opportunity_id]))
+  return inspections.map((inspection) => ({ ...inspection, opportunity_id: opportunities.get(inspection.sale_id) }))
 }
 
 export async function getAgentCalendarEvents(

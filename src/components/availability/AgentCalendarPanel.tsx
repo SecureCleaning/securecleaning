@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
 
@@ -26,10 +27,10 @@ function formatDayHeader(value: Date) {
   })
 }
 
-function formatTimeRange(startsAt: string, endsAt: string) {
+function formatTimeRange(startsAt: string, endsAt: string, timeZone: string) {
   const start = new Date(startsAt)
   const end = new Date(endsAt)
-  return `${start.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })}`
+  return `${start.toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}`
 }
 
 function eventTone(kind: AgentCalendarEvent['kind']) {
@@ -83,9 +84,13 @@ function toTimeInput(value: string, timeZone: string) {
 export default function AgentCalendarPanel({
   events,
   bookingApiPath,
+  assigneeId,
+  dashboardDays,
   timeZone = 'Australia/Melbourne',
 }: {
   events: AgentCalendarEvent[]
+  assigneeId?: string
+  dashboardDays?: Array<{ key: string; label: string; dateLabel: string; isToday: boolean }>
   bookingApiPath?: string
   timeZone?: string
 }) {
@@ -191,6 +196,7 @@ export default function AgentCalendarPanel({
 
   return (
     <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      {!dashboardDays ? <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-bold" style={{ color: '#1a2744' }}>
@@ -254,11 +260,11 @@ export default function AgentCalendarPanel({
                             type="button"
                             key={event.id}
                             onClick={() => setSelectedEvent(event)}
-                            title={`${event.title} · ${formatTimeRange(event.startsAt, event.endsAt)}`}
+                            title={`${event.title} · ${formatTimeRange(event.startsAt, event.endsAt, timeZone)}`}
                             className={`block w-full rounded-lg border px-2 py-2 text-left text-[11px] transition hover:brightness-95 ${eventTone(event.kind)} ${event.kind === 'availability' ? 'border-dashed opacity-80' : ''}`}
                           >
                             <div className="font-semibold uppercase tracking-wide">{eventLabel(event.kind)}</div>
-                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatTimeRange(event.startsAt, event.endsAt) : `${formatTimeRange(event.startsAt, event.endsAt)} · ${event.title}`}</div>
+                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatTimeRange(event.startsAt, event.endsAt, timeZone) : `${formatTimeRange(event.startsAt, event.endsAt, timeZone)} · ${event.title}`}</div>
                             {event.kind === 'booking' || event.kind === 'sale_inspection' ? <div className="mt-0.5 truncate opacity-80">{event.title}</div> : null}
                           </button>
                         ))
@@ -272,14 +278,35 @@ export default function AgentCalendarPanel({
         ))}
       </div>
 
+      </> : <>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 className="text-xl font-bold text-[#1a2744]">Seven-day calendar</h2><p className="text-sm text-gray-600">Appointments, availability and block-outs from today.</p></div>
+          <Link href={`/availability/quoters/${encodeURIComponent(assigneeId || '')}`} className="text-sm font-bold text-green-700">Open full calendar</Link>
+        </div>
+        <div className="mt-4 overflow-x-auto"><div className="grid min-w-[820px] grid-cols-7 gap-2">
+          {dashboardDays.map((day) => {
+            const dayEvents = calendarEvents.filter((event) => toDateInput(event.startsAt, timeZone) === day.key).sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+            return <article key={day.key} className={`min-h-56 rounded-xl border p-2.5 ${day.isToday ? 'border-green-400 bg-green-50/60' : 'border-gray-200 bg-gray-50/70'}`}>
+              <div className="border-b pb-2"><div className="text-xs font-bold text-gray-500">{day.label}</div><div className="text-sm font-bold">{day.dateLabel}</div></div>
+              <div className="mt-2 space-y-2">{!dayEvents.length ? <p className="text-xs text-gray-400">No events</p> : null}
+                {dayEvents.map((event) => <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} className={`block w-full rounded-lg border p-2 text-left text-xs ${eventTone(event.kind)}`}>
+                  <div className="font-bold">{new Date(event.startsAt).toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}</div>
+                  <div className="mt-1 font-semibold">{event.title}</div>{event.subtitle ? <div>{event.subtitle}</div> : null}
+                </button>)}
+              </div>
+            </article>
+          })}
+        </div></div>
+      </>}
+
       {selectedEvent ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="agent-calendar-event-title">
-          <div className="w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
+          <div className="max-h-[90vh] overflow-y-auto w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className={`text-xs font-semibold uppercase tracking-wide ${selectedEvent.kind === 'booking' || selectedEvent.kind === 'sale_inspection' ? 'text-blue-700' : selectedEvent.kind === 'blockout' ? 'text-red-700' : 'text-emerald-700'}`}>{eventLabel(selectedEvent.kind)}</div>
                 <h3 id="agent-calendar-event-title" className="mt-1 text-xl font-bold" style={{ color: '#1a2744' }}>{selectedEvent.title}</h3>
-                <p className="mt-1 text-sm font-semibold text-gray-700">{formatTimeRange(selectedEvent.startsAt, selectedEvent.endsAt)}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-700">{new Date(selectedEvent.startsAt).toLocaleDateString('en-AU', { timeZone, weekday: 'short', day: 'numeric', month: 'short' })} · {formatTimeRange(selectedEvent.startsAt, selectedEvent.endsAt, timeZone)}</p>
               </div>
               <button type="button" onClick={() => setSelectedEvent(null)} className="text-sm font-semibold text-gray-500 hover:text-gray-900">Close</button>
             </div>
@@ -290,6 +317,11 @@ export default function AgentCalendarPanel({
             ) : (
               <div className="mt-5 space-y-3 text-sm text-gray-700">{selectedEvent.subtitle ? <p>{selectedEvent.subtitle}</p> : null}{selectedEvent.description ? <p className="whitespace-pre-line">{selectedEvent.description}</p> : null}{selectedEvent.location ? <p>{selectedEvent.location}</p> : null}</div>
             )}
+            {assigneeId && (selectedEvent.opportunityId || selectedEvent.saleId) ? <div className="mt-5 flex flex-wrap gap-2 border-t pt-4">
+              {selectedEvent.opportunityId ? <Link className="rounded-lg border px-3 py-2 text-sm font-semibold text-teal-800" href={`/availability/clients/${encodeURIComponent(assigneeId)}?opportunity=${encodeURIComponent(selectedEvent.opportunityId)}`}>Jump to client record</Link> : null}
+              {selectedEvent.saleId ? <Link className="rounded-lg border px-3 py-2 text-sm font-semibold text-blue-900" href={`/availability/sales/${encodeURIComponent(assigneeId)}?sale=${encodeURIComponent(selectedEvent.saleId)}&tab=inspection`}>{selectedEvent.subtitle === 'scheduled' ? 'Reschedule inspection' : 'Open product sale'}</Link> : null}
+              {selectedEvent.saleId ? <p className="w-full text-sm text-gray-600">Inspection changes are made in Product sales, where you can preview and send updated invitations.</p> : null}
+            </div> : null}
             {selectedEvent.kind === 'booking' && selectedEvent.bookingRef && bookingApiPath ? (
               <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-gray-100 pt-4">
                 <button type="button" onClick={() => beginEdit(selectedEvent)} className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-900 hover:bg-blue-50">Edit time</button>

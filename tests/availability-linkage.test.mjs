@@ -190,7 +190,7 @@ test('calendar and booking mutations share the linkage predicate and operator id
   const bookingRouteSource = source('src/app/api/availability-agent/[assigneeId]/bookings/[bookingRef]/route.ts')
 
   assert.match(calendarSource, /bookingBelongsToAvailabilityAssignee\(booking, assignee, serviceZones\)/)
-  assert.match(calendarSource, /select\('booking_ref, status, created_at, inputs, assigned_operator_id'\)/)
+  assert.match(calendarSource, /select\('booking_ref, opportunity_id, status, created_at, inputs, assigned_operator_id'\)/)
   assert.match(calendarSource, /options\?\.daysBehind \?\? 42/)
 
   assert.match(bookingRouteSource, /select\('booking_ref, status, inspection_status, inspection_scheduled_for, assigned_operator_id, inputs'\)/)

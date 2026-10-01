@@ -272,6 +272,7 @@ export default function AssigneeAvailabilityEditor({
           </section>
 
           <AgentCalendarPanel
+            assigneeId={assignee.id}
             events={calendarEvents}
             bookingApiPath={`${apiPath}/bookings`}
             timeZone={assignee.city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'}

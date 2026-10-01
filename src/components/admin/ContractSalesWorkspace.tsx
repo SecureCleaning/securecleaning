@@ -67,7 +67,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   initialProductId?: string
   initialSaleId?: string
   initialInvoiceId?: string
-  initialTab?: 'overview' | 'invoices'
+  initialTab?: 'overview' | 'invoices' | 'inspection'
 }) {
   const invoiceSelectionApplied = useRef(false)
   const [data, setData] = useState<Data | null>(null)
