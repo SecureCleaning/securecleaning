@@ -21,20 +21,25 @@ function dateKey(value: Date, timeZone: string) {
   return `${values.year}-${values.month}-${values.day}`
 }
 
-export function buildDashboardWeek(events: AgentCalendarEvent[], now: Date, timeZone: string) {
+export function buildDashboardWeek(events: AgentCalendarEvent[], now: Date, timeZone: string, weekOffset = 0) {
   const today = dateKey(now, timeZone)
   const start = new Date(`${today}T00:00:00Z`)
 
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(start)
-    date.setUTCDate(start.getUTCDate() + index)
+    date.setUTCDate(start.getUTCDate() + weekOffset * 7 + index)
     const key = date.toISOString().slice(0, 10)
     return {
       key,
       label: new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', weekday: 'short' }).format(date),
       dateLabel: new Intl.DateTimeFormat('en-AU', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(date),
-      isToday: index === 0,
+      isToday: key === today,
       events: events.filter((event) => dateKey(new Date(event.startsAt), timeZone) === key),
     }
   })
+}
+
+export function parseDashboardWeekOffset(value: unknown) {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) return 0
+  return Math.min(52, Number(value))
 }

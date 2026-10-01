@@ -34,6 +34,7 @@ export type AgentDashboardData = {
     events: AgentCalendarEvent[]
   }>
   timeZone: string
+  weekOffset: number
 }
 
 type QuoteRow = {
@@ -50,10 +51,15 @@ export async function getAgentDashboardData(
   actor: ContractProductActor,
   config: AvailabilityConfig,
   assignee: AvailabilityAssignee,
+  weekOffset = 0,
 ): Promise<AgentDashboardData> {
+  const timeZone = getCityTimeZone(assignee.city)
+  const now = new Date()
+  const week = buildDashboardWeek([], now, timeZone, weekOffset)
+  const anchorDate = new Date(`${week[0].key}T12:00:00Z`)
   const db = getAdminSupabase()
   const [calendarEvents, products, quotesResult] = await Promise.all([
-    getAgentCalendarEvents(config, assignee, { daysBehind: 0, daysAhead: 6, includeAvailability: true }),
+    getAgentCalendarEvents(config, assignee, { daysBehind: 0, daysAhead: 6, includeAvailability: true, anchorDate }),
     getContractProducts(actor),
     db.from('quotes')
       .select('id, quote_ref, status, follow_up_status, created_at, valid_until, inputs')
@@ -86,7 +92,6 @@ export async function getAgentDashboardData(
     inductionRows = (data ?? []) as Array<{ status: string }>
   }
 
-  const timeZone = getCityTimeZone(assignee.city)
   return {
     pendingQuoteCount: assignedQuotes.filter((quote) => quote.status === 'pending').length,
     sentFollowUpCount: sentFollowUps.length,
@@ -101,7 +106,8 @@ export async function getAgentDashboardData(
     })),
     productsForSaleCount: products.filter((product) => product.status === 'available').length,
     inductionsRequiredCount: inductionRows.filter((sale) => saleRequiresInduction(sale.status)).length,
-    week: buildDashboardWeek(calendarEvents, new Date(), timeZone),
+    week: buildDashboardWeek(calendarEvents, now, timeZone, weekOffset),
     timeZone,
+    weekOffset,
   }
 }

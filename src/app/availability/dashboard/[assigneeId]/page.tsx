@@ -1,3 +1,4 @@
+import { parseDashboardWeekOffset } from '@/lib/agentDashboardPolicy'
 import AvailabilityAgentLogin from '@/components/availability/AvailabilityAgentLogin'
 import AvailabilityAgentNav from '@/components/availability/AvailabilityAgentNav'
 import AgentPortalDashboard from '@/components/availability/AgentPortalDashboard'
@@ -10,8 +11,9 @@ import { getStaffAccountProfileById } from '@/lib/staffAccounts'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AgentDashboardPage({ params }: { params: Promise<{ assigneeId: string }> }) {
+export default async function AgentDashboardPage({ params, searchParams }: { params: Promise<{ assigneeId: string }>; searchParams?: Promise<{ week?: string | string[] }> }) {
   const { assigneeId } = await params
+  const weekOffset = parseDashboardWeekOffset((await searchParams)?.week)
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
   if (!assignee?.active) return <div className="p-10 text-center">Agent not found.</div>
@@ -31,7 +33,7 @@ export default async function AgentDashboardPage({ params }: { params: Promise<{
   const productState = getContractProductStateForCity(assignee.city)
   if (!productState) return <div className="p-10 text-center">This agent region is not configured for product sales.</div>
   const actor: ContractProductActor = { ...account, role: 'agent', productState }
-  const data = await getAgentDashboardData(actor, config, assignee)
+  const data = await getAgentDashboardData(actor, config, assignee, weekOffset)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

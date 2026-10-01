@@ -86,10 +86,12 @@ export default function AgentCalendarPanel({
   bookingApiPath,
   assigneeId,
   dashboardDays,
+  dashboardWeekOffset = 0,
   timeZone = 'Australia/Melbourne',
 }: {
   events: AgentCalendarEvent[]
   assigneeId?: string
+  dashboardWeekOffset?: number
   dashboardDays?: Array<{ key: string; label: string; dateLabel: string; isToday: boolean }>
   bookingApiPath?: string
   timeZone?: string
@@ -280,8 +282,12 @@ export default function AgentCalendarPanel({
 
       </> : <>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-xl font-bold text-[#1a2744]">Seven-day calendar</h2><p className="text-sm text-gray-600">Appointments, availability and block-outs from today.</p></div>
-          <Link href={`/availability/quoters/${encodeURIComponent(assigneeId || '')}`} className="text-sm font-bold text-green-700">Open full calendar</Link>
+          <div><h2 className="text-xl font-bold text-[#1a2744]">Seven-day calendar</h2><p className="text-sm text-gray-600">Appointments, availability and block-outs for {dashboardDays[0]?.dateLabel} - {dashboardDays[dashboardDays.length - 1]?.dateLabel}.</p></div>
+          <div className="flex flex-wrap items-center gap-3 text-sm font-bold text-green-700">
+            {dashboardWeekOffset > 0 ? <><Link scroll={false} href={`/availability/dashboard/${encodeURIComponent(assigneeId || '')}?week=${dashboardWeekOffset - 1}`} aria-label="Previous week">&larr; Previous week</Link><Link scroll={false} href={`/availability/dashboard/${encodeURIComponent(assigneeId || '')}`}>This week</Link></> : null}
+            <Link href={`/availability/quoters/${encodeURIComponent(assigneeId || '')}`}>Open full calendar</Link>
+            {dashboardWeekOffset < 52 ? <Link scroll={false} href={`/availability/dashboard/${encodeURIComponent(assigneeId || '')}?week=${dashboardWeekOffset + 1}`} aria-label="Next week">Next week &rarr;</Link> : null}
+          </div>
         </div>
         <div className="mt-4 overflow-x-auto"><div className="grid min-w-[820px] grid-cols-7 gap-2">
           {dashboardDays.map((day) => {
@@ -291,7 +297,7 @@ export default function AgentCalendarPanel({
               <div className="mt-2 space-y-2">{!dayEvents.length ? <p className="text-xs text-gray-400">No events</p> : null}
                 {dayEvents.map((event) => <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} className={`block w-full rounded-lg border p-2 text-left text-xs ${eventTone(event.kind)}`}>
                   <div className="font-bold">{new Date(event.startsAt).toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}</div>
-                  <div className="mt-1 font-semibold">{event.title}</div>{event.subtitle ? <div>{event.subtitle}</div> : null}
+                  <div className="mt-1 font-semibold">{event.title}</div>{event.kind !== 'availability' && event.subtitle ? <div>{event.subtitle}</div> : null}
                 </button>)}
               </div>
             </article>

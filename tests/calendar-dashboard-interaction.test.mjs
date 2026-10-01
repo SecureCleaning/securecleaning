@@ -20,3 +20,16 @@ import AgentCalendarPanel from '../src/components/availability/AgentCalendarPane
   assert.doesNotMatch(html, /No events/)
   assert.match(html, /\/availability\/quoters\/agent-one/)
 })
+
+test('availability cards omit long area lists and next-week navigation preserves dashboard context', () => {
+  const html = renderToStaticMarkup(React.createElement(AgentCalendarPanel, {
+    events: [{ id: 'window', kind: 'availability', title: 'Thursday', subtitle: 'Sydney North West, Sydney South', startsAt: '2026-10-01T00:00:00Z', endsAt: '2026-10-01T06:00:00Z' }],
+    assigneeId: 'agent-one', timeZone: 'Australia/Sydney', dashboardWeekOffset: 1,
+    dashboardDays: [{ key: '2026-10-01', label: 'Thu', dateLabel: '1 Oct', isToday: false }],
+  }))
+  assert.doesNotMatch(html, /Sydney North West/)
+  assert.match(html, /Thursday/)
+  assert.match(html, /\?week=2/)
+  assert.match(html, /Previous week/)
+  assert.match(html, /This week/)
+})

@@ -52,7 +52,7 @@ export default function AgentPortalDashboard({ assigneeId, agentName, city, data
       <SmsInbox />
       <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(19rem,0.8fr)] xl:items-start">
         <div className="min-w-0">
-          <AgentCalendarPanel events={data.week.flatMap((day) => day.events)} dashboardDays={data.week} timeZone={data.timeZone} assigneeId={assigneeId} bookingApiPath={`/api/availability-agent/${encodeURIComponent(assigneeId)}/bookings`} />
+          <AgentCalendarPanel key={data.weekOffset} dashboardWeekOffset={data.weekOffset} events={data.week.flatMap((day) => day.events)} dashboardDays={data.week} timeZone={data.timeZone} assigneeId={assigneeId} bookingApiPath={`/api/availability-agent/${encodeURIComponent(assigneeId)}/bookings`} />
         </div>
 
         <ClientFollowUps compact />

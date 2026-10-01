@@ -305,12 +305,12 @@ async function getAgentContractSaleInspectionsForCalendar(assignee: Availability
 export async function getAgentCalendarEvents(
   config: AvailabilityConfig,
   assignee: AvailabilityAssignee,
-  options?: { daysBehind?: number; daysAhead?: number; includeAvailability?: boolean }
+  options?: { daysBehind?: number; daysAhead?: number; includeAvailability?: boolean; anchorDate?: Date }
 ) {
   const daysBehind = options?.daysBehind ?? 42
   const daysAhead = options?.daysAhead ?? 28
   const includeAvailability = options?.includeAvailability ?? true
-  const range = getAgentCalendarDateRange(new Date(), assignee.city, daysBehind, daysAhead)
+  const range = getAgentCalendarDateRange(options?.anchorDate ?? new Date(), assignee.city, daysBehind, daysAhead)
   const weeklySlots = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id && slot.active)
   const oneOffBlocks = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id && block.active)
   const zones = config.zones.filter((zone) => zone.city === assignee.city)
