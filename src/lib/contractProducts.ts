@@ -547,7 +547,7 @@ export async function getJobsAccessLink(accessLinkId: string): Promise<{ id: str
 }
 
 export async function unsubscribeCleanerBroadcast(token: string) {
-  if (!/^[0-9a-f-]{36}$/i.test(token)) return false
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(token)) return false
   const { data, error } = await getAdminSupabase().rpc('unsubscribe_cleaner_broadcast', { p_token: token })
   if (error) throw error
   return data === true

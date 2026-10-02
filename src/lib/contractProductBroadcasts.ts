@@ -653,7 +653,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   const { data: recipientRows, error: recipientError } = await db.from('cleaner_broadcast_recipients')
     .select('id, cleaner_id, to_email, cleaner_name_snapshot, status').eq('campaign_id', campaignId).eq('status', 'queued').order('id').limit(EMAIL_DELIVERY_STEP_SIZE)
   if (recipientError) throw recipientError
-  const cleanerIds = (recipientRows ?? []).map((row) => String(row.cleaner_id))
+  const cleanerIds = (recipientRows ?? []).filter((row) => row.cleaner_id != null).map((row) => String(row.cleaner_id))
   const { data: cleanerRows, error: cleanerError } = cleanerIds.length > 0
     ? await db.from('cleaners').select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token').in('id', cleanerIds)
     : { data: [], error: null }

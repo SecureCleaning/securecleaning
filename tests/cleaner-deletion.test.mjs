@@ -62,11 +62,22 @@ test('authorized deletion passes only signed attribution and handles repeat dele
     const blocked = await send()
     assert.equal(blocked.status, 400)
     const result = await blocked.json()
-    assert.match(result.error, /linked sales, offers or broadcast history/)
+    assert.match(result.error, /linked sale or offer/)
     assert.doesNotMatch(result.error, /private database/)
     responseBody = { code: 'P0001', message: 'cleaner_has_documents' }
     assert.match((await (await send()).json()).error, /Remove the uploaded documents/)
   } finally {
     globalThis.fetch = originalFetch
   }
+})
+
+test('broadcast deletion override preserves history snapshots and the unsubscribe', () => {
+  const sql = readFileSync(new URL('../supabase/cleaner_deletion_broadcast_history_override_migration.sql', import.meta.url), 'utf8')
+  assert.match(sql, /cleaner_broadcast_recipients_cleaner_id_fkey[\s\S]*ON DELETE SET NULL/)
+  assert.match(sql, /cleaner_broadcast_suppressions_cleaner_id_fkey[\s\S]*ON DELETE SET NULL/)
+  assert.match(sql, /attach_existing_cleaner_broadcast_suppression/)
+  assert.match(sql, /INSERT INTO public\.cleaner_broadcast_suppressions/)
+  assert.ok(sql.indexOf('INSERT INTO public.cleaner_broadcast_suppressions') < sql.lastIndexOf('DELETE FROM public.cleaners'))
+  assert.doesNotMatch(sql, /ALTER TABLE public\.contract_product_sales/)
+  assert.doesNotMatch(sql, /ALTER TABLE public\.contract_product_interests/)
 })

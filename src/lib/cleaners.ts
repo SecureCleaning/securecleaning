@@ -597,7 +597,7 @@ export async function deleteCleanerPermanently(cleanerId: string, actor: Cleaner
     p_actor_role: actor.role,
   })
   if (error) {
-    if (error.code === '23503') throw new Error('This cleaner has linked sales, offers or broadcast history and cannot be deleted. Keep the record rejected instead.')
+    if (error.code === '23503') throw new Error('This cleaner has a linked sale or offer and cannot be deleted. Cancel or reassign that operational record first.')
     if (error.message === 'cleaner_has_documents') throw new Error('Remove the uploaded documents before deleting this cleaner.')
     throw new Error('Unable to delete cleaner. Check that the cleaner deletion migration has been applied.')
   }

@@ -714,7 +714,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
   async function deleteSelectedCleaner() {
     if (!selectedCleaner || !canDelete || isDeleting || isSaving) return
     const cleanerId = selectedCleaner.id
-    const confirmation = window.prompt(`Permanently delete ${getCleanerDisplayName(selectedCleaner)} (${selectedCleaner.email})? This removes the profile, comments and direct email history and cannot be undone. Linked sales, offers, broadcasts or uploaded documents prevent deletion. Deletion does not block future re-registration or import. Type DELETE to confirm.`)
+    const confirmation = window.prompt(`Permanently delete ${getCleanerDisplayName(selectedCleaner)} (${selectedCleaner.email})? This removes the profile, comments and direct email history and cannot be undone. Historical broadcasts remain in the audit history, and this email stays suppressed from future cleaner broadcasts even if it is registered again. Linked sales, offers or uploaded documents still prevent deletion. Type DELETE to confirm.`)
     if (confirmation !== 'DELETE') return
     setIsDeleting(true)
     try {

@@ -83,6 +83,12 @@ RPC used by the owner-only dashboard control. Accepted or sent final quotes and 
 linked to bookings, winning opportunities, contract products, or product sales are
 protected from deletion. CRM opportunities remain after removable quote links are cleared.
 
+Apply `cleaner_deletion_broadcast_history_override_migration.sql` after
+`contract_products_migration.sql` and `cleaner_permanent_deletion_migration.sql`.
+It lets owner and manager deletion retain immutable broadcast recipient snapshots while
+clearing the cleaner foreign key, preserves an email-level cleaner broadcast suppression,
+and leaves sales, offers, and uploaded documents protected from deletion.
+
 Apply `final_quote_document_guard_repair_migration.sql` after the final-quote revision
 migrations. It restores the versioned-document trigger after production drift introduced
 a misspelled `EXCLUDED.superseded_by` reference that blocked revised final quote saves.
@@ -106,3 +112,5 @@ Apply `sms_quote_status_enum_repair.sql` after `sms_workflow_migration.sql`. It 
 workflow-only terminal statuses out of PostgreSQL enum coercion in quote update and SMS dispatch checks.
 See `docs/sms-workflow-release.md` for environment prerequisites, controlled tests, cancellation,
 operating costs and rollback. Do not enable sending or create provider credentials in SQL history.
+
+Deletion override verification: run `PGLITE_MODULE=/absolute/path/to/@electric-sql/pglite/dist/index.js node scripts/test-cleaner-deletion-database.mjs` against an external test-only PGlite install. This covers snapshot retention, re-registration suppression, an already-suppressed cleaner changing email, protected-record rollback, and execution permissions without touching production data. Detached recipient links are excluded from broadcast cleaner lookups and follow the existing `cleaner_record_unavailable` skip path.
