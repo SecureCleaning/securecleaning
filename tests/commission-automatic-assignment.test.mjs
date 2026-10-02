@@ -28,5 +28,6 @@ test('owner correction preserves rates and closes after an invoice or payout', (
   assert.match(domain, /'settings', 'assign', 'correct', 'claim', 'payout'/)
   assert.match(workspace, /Review assigned commissions/)
   assert.match(workspace, /Save correction/)
-  assert.match(workspace, /Locked rates do not change/)
+  assert.match(workspace, /Agent attribution corrections close after an invoice or payout/ )
+  assert.match(workspace, /Revise commission/)
 })

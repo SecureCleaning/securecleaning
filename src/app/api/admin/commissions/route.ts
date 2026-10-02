@@ -17,6 +17,6 @@ export async function POST(request: NextRequest) {
   if (!actor) return NextResponse.json({ error: 'Commission access required.' }, { status: 403 })
   const limited = rateLimit(request, { key: `commission:${actor.id}`, limit: 60, windowMs: 3600000 })
   if (limited) return limited
-  try { await manageCommission(actor, await request.json()); return NextResponse.json({ success: true }) }
+  try { const result = await manageCommission(actor, await request.json()); return NextResponse.json({ success: true, ...result }, { headers: { 'Cache-Control': 'private, no-store' } }) }
   catch (error) { return NextResponse.json({ error: error instanceof ContractProductError ? error.message : 'Unable to save commissions.' }, { status: error instanceof ContractProductError ? error.status : 500 }) }
 }
