@@ -1,3 +1,5 @@
+import { createQuoteCapability, createQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+import { escapeHtml } from '@/lib/htmlEscape'
 import { NextRequest, NextResponse } from 'next/server'
 import { calculateQuote, formatPriceRange, generateQuoteRef } from '@/lib/quoteEngine'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -29,9 +31,9 @@ export async function POST(request: NextRequest) {
     const blocked =
       rejectCrossOriginMutation(request) ??
       rejectLargePayload(request, 64 * 1024) ??
-      rateLimit(request, { key: 'quote:minute', limit: 3, windowMs: 60 * 1000 }) ??
-      rateLimit(request, { key: 'quote:hour', limit: 8, windowMs: 60 * 60 * 1000 }) ??
-      rateLimit(request, { key: 'quote:day', limit: 20, windowMs: 24 * 60 * 60 * 1000 })
+      await rateLimit(request, { key: 'quote:minute', limit: 3, windowMs: 60 * 1000 }) ??
+      await rateLimit(request, { key: 'quote:hour', limit: 8, windowMs: 60 * 60 * 1000 }) ??
+      await rateLimit(request, { key: 'quote:day', limit: 20, windowMs: 24 * 60 * 60 * 1000 })
 
     if (blocked) return blocked
 
@@ -58,9 +60,9 @@ export async function POST(request: NextRequest) {
     const untrustedInputs = body as QuoteInputs
     const { latitude: _browserLatitude, longitude: _browserLongitude, ...rawInputs } = untrustedInputs
     const identityLimit =
-      rateLimitValue(rawInputs.email, { key: 'quote:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
-      rateLimitValue(rawInputs.phone, { key: 'quote:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
-      rateLimitValue(rawInputs.businessName, { key: 'quote:business:day', limit: 5, windowMs: 24 * 60 * 60 * 1000 })
+      await rateLimitValue(rawInputs.email, { key: 'quote:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      await rateLimitValue(rawInputs.phone, { key: 'quote:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      await rateLimitValue(rawInputs.businessName, { key: 'quote:business:day', limit: 5, windowMs: 24 * 60 * 60 * 1000 })
     if (identityLimit) return identityLimit
 
     const roomScope = sanitizePublicRoomScope(rawInputs.roomScope ?? [])
@@ -201,18 +203,18 @@ export async function POST(request: NextRequest) {
     const adminHtml = `
       <div style="font-family: Arial, sans-serif; line-height: 1.5;">
         <p><strong>New quote generated:</strong> ${quoteRef}</p>
-        <p>Business: ${businessLabel}<br>
-        Contact: ${inputs.contactName}<br>
-        Email: ${inputs.email}<br>
-        Phone: ${inputs.phone}<br>
+        <p>Business: ${escapeHtml(businessLabel)}<br>
+        Contact: ${escapeHtml(inputs.contactName)}<br>
+        Email: ${escapeHtml(inputs.email)}<br>
+        Phone: ${escapeHtml(inputs.phone)}<br>
         City: ${cityLabel}<br>
-        Locality: ${inputs.suburb} ${inputs.postcode}<br>
-        Premises: ${inputs.premisesType} — ${inputs.floorArea} sqm<br>
-        Frequency: ${inputs.frequency}<br>
+        Locality: ${escapeHtml(inputs.suburb)} ${escapeHtml(inputs.postcode)}<br>
+        Premises: ${escapeHtml(inputs.premisesType)} — ${escapeHtml(inputs.floorArea)} sqm<br>
+        Frequency: ${escapeHtml(inputs.frequency)}<br>
         ${inputs.addOns.bathrooms > 0 ? `Bathrooms / amenities: ${inputs.addOns.bathrooms}<br>` : ''}
-        ${bathroomSummary.length > 0 ? `Bathroom areas: ${bathroomSummary.join(', ')}<br>` : ''}
+        ${bathroomSummary.length > 0 ? `Bathroom areas: ${escapeHtml(bathroomSummary.join(', '))}<br>` : ''}
         ${inputs.addOns.kitchens > 0 ? `Kitchens / kitchenettes: ${inputs.addOns.kitchens}<br>` : ''}
-        ${roomScopeSummary.length > 0 ? `Other scoped areas: ${roomScopeSummary.join(', ')}<br>` : ''}
+        ${roomScopeSummary.length > 0 ? `Other scoped areas: ${escapeHtml(roomScopeSummary.join(', '))}<br>` : ''}
         Estimate: ${formatPriceRange(displayPrice.low, displayPrice.high)} per visit</p>
       </div>
     `
@@ -223,6 +225,8 @@ export async function POST(request: NextRequest) {
       success: true,
       quoteRef,
       result: customerResult,
+      bookingHandoffToken: await createQuoteBookingHandoffToken(quoteRef),
+      documentAccessToken: await createQuoteCapability(quoteRef, 'document'),
       emailSent,
       emailError,
     })

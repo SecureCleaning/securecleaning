@@ -1,3 +1,4 @@
+import { mintTestSession, installTestAccounts, testAccountResponse } from './security-auth-fixture.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
@@ -110,7 +111,7 @@ test('PDF endpoint authorizes preview and preserves private downloads by default
   try {
     const base = 'https://example.test/api/admin/contract-sales/invoices?saleId=sale-1&invoiceId=invoice-1'
     assert.equal((await GET(new NextRequest(base + '&preview=1'))).status, 403)
-    const headers = {cookie: `${ADMIN_SESSION_COOKIE}=${createAdminSessionToken(actor)}`}
+    const headers = {cookie: `${ADMIN_SESSION_COOKIE}=${await mintTestSession(actor)}`}
     for (const [query, disposition] of [['','attachment'],['&preview=1','inline']]) {
       const response = await GET(new NextRequest(base + query, {headers}))
       assert.equal(response.status, 200)

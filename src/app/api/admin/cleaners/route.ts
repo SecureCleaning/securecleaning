@@ -3,7 +3,7 @@ import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { createCleaner, deleteSampleCleaners, searchCleanerPage } from '@/lib/cleaners'
 
 export async function GET(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'list')
+  const authorization = await authorizeCleanerAdminRequest(request, 'list')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'mutate')
+  const authorization = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'sampleDelete')
+  const authorization = await authorizeCleanerAdminRequest(request, 'sampleDelete')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

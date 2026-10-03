@@ -24,6 +24,7 @@ test('cleaner unsubscribe records a valid token before showing success', async (
   try {
     let rpcBody
     globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith('/consume_public_rate_limit')) return new Response(JSON.stringify({ allowed: true }), { headers: { 'Content-Type': 'application/json' } })
       assert.ok(String(url).endsWith('/rest/v1/rpc/unsubscribe_cleaner_broadcast'))
       rpcBody = JSON.parse(String(options?.body))
       return new Response('true', { status: 200, headers: { 'Content-Type': 'application/json' } })
@@ -41,7 +42,8 @@ test('cleaner unsubscribe rejects malformed and unknown tokens without claiming 
   const originalFetch = globalThis.fetch
   try {
     let fetchCount = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/consume_public_rate_limit')) return new Response(JSON.stringify({ allowed: true }), { headers: { 'Content-Type': 'application/json' } })
       fetchCount += 1
       return new Response('false', { status: 200, headers: { 'Content-Type': 'application/json' } })
     }

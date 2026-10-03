@@ -3,7 +3,7 @@ import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { exportCleanersCsv } from '@/lib/cleaners'
 
 export async function GET(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'export')
+  const authorization = await authorizeCleanerAdminRequest(request, 'export')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

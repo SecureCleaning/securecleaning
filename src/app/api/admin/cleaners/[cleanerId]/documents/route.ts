@@ -16,7 +16,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'documentUpload')
+  const authorization = await authorizeCleanerAdminRequest(request, 'documentUpload')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -29,7 +29,7 @@ export async function POST(
       : ''
 
     if (replaceDocumentId) {
-      const deleteAuthorization = authorizeCleanerAdminRequest(request, 'documentDelete')
+      const deleteAuthorization = await authorizeCleanerAdminRequest(request, 'documentDelete')
       if (!deleteAuthorization.identity) {
         return NextResponse.json(
           { success: false, error: deleteAuthorization.error },

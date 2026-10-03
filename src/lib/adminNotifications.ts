@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/lib/htmlEscape'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailOrThrow } from '@/lib/email'
 
@@ -23,7 +24,7 @@ export async function createAdminNotification(type: string, subject: string, mes
       to: ADMIN_EMAIL,
       replyTo: ADMIN_EMAIL,
       subject,
-      html: html ?? `<div style="font-family: Arial, sans-serif; line-height: 1.5;"><h2>${subject}</h2><p>${message}</p></div>`,
+      html: html ?? `<div style="font-family: Arial, sans-serif; line-height: 1.5;"><h2>${escapeHtml(subject)}</h2><p>${escapeHtml(message)}</p></div>`,
     })
   } catch (error) {
     console.error('[adminNotifications] Failed to send notification email:', error)

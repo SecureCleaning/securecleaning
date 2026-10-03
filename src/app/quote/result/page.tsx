@@ -59,6 +59,8 @@ function QuoteResultContent() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <QuoteResultComponent
           quoteRef={stored.quoteRef}
+          bookingHandoffToken={stored.bookingHandoffToken}
+          documentAccessToken={stored.documentAccessToken}
           result={stored.result}
           inputs={stored.inputs}
           emailSent={stored.emailSent}

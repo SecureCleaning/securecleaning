@@ -26,7 +26,7 @@ function endTimeFor(startTime: string) {
 }
 
 async function isAuthorized(request: NextRequest, assigneeId: string) {
-  return isAuthorizedAdminRequest(request) || await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
+  return await isAuthorizedAdminRequest(request) || await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
 }
 
 async function getAssignedBooking(config: AvailabilityConfig, assignee: AvailabilityAssignee, bookingRef: string) {

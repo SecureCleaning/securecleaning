@@ -1,3 +1,4 @@
+import { escapeHtml } from '../src/lib/htmlEscape.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -156,10 +157,11 @@ function emailFixture(options = {}) {
   const payloads = []
   const lookups = []
   const exports = loadTs('src/lib/email.ts', {
+    '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
-    './quoteEngine': { formatPriceRange }, './calendarInvite': {},
+    './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },
     './siteUrl': { getSiteUrl: () => 'https://example.com' }, './publicRoomScope': scope,
-    './availability': {}, './quoteBookingAccess': { createQuoteBookingHandoffToken: () => 'sample-token' },
+    './availability': {}, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => 'document-token' },
     './quoteEmailRecipients': { getQuoteAgentCc: async (...args) => {
       lookups.push(args)
       if (options.lookupError) throw options.lookupError
@@ -261,6 +263,7 @@ function finalRouteFixture(kind, options = {}) {
     : 'src/app/api/availability-agent/[assigneeId]/quotes/[ref]/send/route.ts', {
     'next/server': { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } },
     'node:crypto': { randomUUID: () => 'attempt-id' },
+    '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
     '@/lib/adminAuth': { isAuthorizedAdminRequest: () => options.authorized !== false, getAdminSessionIdentityFromRequest: () => ({ id: 'staff', username: 'Staff' }) },
     '@/lib/availabilityAgentAuth': { isAuthorizedAvailabilityAgentRequest: async () => options.authorized !== false },
@@ -356,6 +359,8 @@ test('public quote remains available online and preserves admin notification whe
   const calls = []
   class ClientCrmError extends Error {}
   const { POST } = loadTs('src/app/api/quote/route.ts', {
+    '@/lib/htmlEscape': { escapeHtml },
+    '@/lib/quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'booking-token', createQuoteCapability: async () => 'document-token' },
     'next/server': { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } },
     '@/lib/quoteEngine': { ...engine, generateQuoteRef: () => 'SC-TEST' },
     '@/lib/quoteWorkflow': workflow,
@@ -385,4 +390,21 @@ test('public quote remains available online and preserves admin notification whe
   assert.match(response.body.emailError, /quote is ready online/)
   assert.doesNotMatch(response.body.emailError, /agent|CRM|assigned/i)
   assert.deepEqual(calls, ['save quote', 'notify admin'])
+})
+
+
+test('public quote, scope and booking email text cannot inject HTML into captured messages', async () => {
+  const fixture = emailFixture()
+  const injected = { ...inputs, contactName: '<img src=x>', businessName: '<b>spoof</b>', address: '<iframe>x</iframe>',
+    suburb: '<script>bad</script>', phone: '<svg>phone</svg>', postcode: '2000', preferredStartDate: '2026-10-04',
+    preferredInspectionSlotLabel: '<a href="https://evil.test">click</a>', preferredInspectionAssigneeId: undefined,
+  }
+  await fixture.sendQuoteEmail('SC-TEST', injected, { totalLow: 100, totalHigh: 120 })
+  await fixture.sendScopeOfWorksEmail('SC-TEST', injected)
+  await fixture.sendBookingConfirmationEmail('BK-TEST', injected)
+  assert.equal(fixture.payloads.length, 4)
+  for (const email of fixture.payloads) {
+    assert.doesNotMatch(email.html, /<img src=x>|<b>spoof|<iframe>|<script>|<svg>|href="https:\/\/evil.test"/)
+    assert.match(email.html, /&lt;img src=x&gt;/)
+  }
 })

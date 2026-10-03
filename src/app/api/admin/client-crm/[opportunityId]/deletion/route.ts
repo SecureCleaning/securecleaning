@@ -26,7 +26,7 @@ function errorResponse(error: unknown) {
 }
 
 export async function GET(request: NextRequest, { params }: { params: { opportunityId: string } }) {
-  if (!isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (!await isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     const actor = await getClientCrmActor(request)
     if (!actor || actor.role !== 'owner') return NextResponse.json({ success: false, error: 'Active owner access required.' }, { status: 403 })
@@ -38,12 +38,12 @@ export async function GET(request: NextRequest, { params }: { params: { opportun
 }
 
 export async function DELETE(request: NextRequest, { params }: { params: { opportunityId: string } }) {
-  if (!isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (!await isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const blockedRequest = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
   if (blockedRequest) return blockedRequest
 
   try {
-    const identity = getAdminSessionIdentityFromRequest(request)
+    const identity = await getAdminSessionIdentityFromRequest(request)
     if (!identity || identity.role !== 'owner') return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     const body = await request.json().catch(() => null)
     if (!body || typeof body.deleteBookings !== 'boolean' || typeof body.override !== 'boolean' || typeof body.previewToken !== 'string') {

@@ -11,16 +11,17 @@ import { verifyAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 
 export const AVAILABILITY_AGENT_SESSION_COOKIE = 'securecleaning_availability_agent_session'
 export const AVAILABILITY_AGENT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
-const AVAILABILITY_AGENT_SESSION_VERSION = 1
-const AVAILABILITY_AGENT_FEED_VERSION = 1
+const AVAILABILITY_AGENT_SESSION_VERSION = 2
+const AVAILABILITY_AGENT_FEED_VERSION = 2
 
 function normalize(value: string | null | undefined) {
   return typeof value === 'string' ? value.trim() : ''
 }
 
 function getAvailabilityAgentSessionSecret(assigneeId: string, accessCodeHash: string) {
-  return assigneeId && accessCodeHash
-    ? `securecleaning-availability-agent:${assigneeId}:${accessCodeHash}`
+  const secret = process.env.AVAILABILITY_AGENT_SIGNING_SECRET?.trim() ?? ''
+  return assigneeId && accessCodeHash && secret.length >= 32
+    ? createHmac('sha256', secret).update(`agent-v2:${assigneeId}:${accessCodeHash}`).digest('hex')
     : ''
 }
 
@@ -38,6 +39,7 @@ export function createAvailabilityAgentSessionToken(assigneeId: string, accessCo
     JSON.stringify({
       v: AVAILABILITY_AGENT_SESSION_VERSION,
       a: assigneeId,
+      scope: 'session',
       exp: Math.floor(Date.now() / 1000) + AVAILABILITY_AGENT_SESSION_MAX_AGE_SECONDS,
     })
   ).toString('base64url')
@@ -57,6 +59,7 @@ export function createAvailabilityAgentFeedToken(assigneeId: string, accessCodeH
       v: AVAILABILITY_AGENT_FEED_VERSION,
       a: assigneeId,
       scope: 'feed',
+      exp: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60,
     })
   ).toString('base64url')
 
@@ -72,42 +75,7 @@ export function isValidAvailabilityAgentSessionToken(
   accessCodeHash: string
 ) {
   const candidate = normalize(token)
-  if (!candidate) return false
-
-  const [payload, signature] = candidate.split('.')
-  if (!payload || !signature) return false
-
-  const expectedSignature = signAvailabilityAgentPayload(payload, assigneeId, accessCodeHash)
-  if (!expectedSignature || expectedSignature.length !== signature.length) return false
-
-  const providedBuffer = Buffer.from(signature)
-  const expectedBuffer = Buffer.from(expectedSignature)
-
-  if (!timingSafeEqual(providedBuffer, expectedBuffer)) return false
-
-  try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-      v?: number
-      a?: string
-      exp?: number
-    }
-
-    if (parsed.v !== AVAILABILITY_AGENT_SESSION_VERSION) return false
-    if (parsed.a !== assigneeId) return false
-    if (typeof parsed.exp !== 'number' || parsed.exp <= Math.floor(Date.now() / 1000)) return false
-    return true
-  } catch {
-    return false
-  }
-}
-
-export function isValidAvailabilityAgentFeedToken(
-  token: string | null | undefined,
-  assigneeId: string,
-  accessCodeHash: string
-) {
-  const candidate = normalize(token)
-  if (!candidate) return false
+  if (!candidate || candidate.split('.').length !== 2) return false
 
   const [payload, signature] = candidate.split('.')
   if (!payload || !signature) return false
@@ -125,12 +93,53 @@ export function isValidAvailabilityAgentFeedToken(
       v?: number
       a?: string
       scope?: string
+      exp?: number
+    }
+
+    if (parsed.v !== AVAILABILITY_AGENT_SESSION_VERSION) return false
+    if (parsed.a !== assigneeId || parsed.scope !== 'session') return false
+    if (typeof parsed.exp !== 'number' || parsed.exp <= Math.floor(Date.now() / 1000)) return false
+    if (parsed.exp > Math.floor(Date.now() / 1000) + AVAILABILITY_AGENT_SESSION_MAX_AGE_SECONDS) return false
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function isValidAvailabilityAgentFeedToken(
+  token: string | null | undefined,
+  assigneeId: string,
+  accessCodeHash: string
+) {
+  const candidate = normalize(token)
+  if (!candidate || candidate.split('.').length !== 2) return false
+
+  const [payload, signature] = candidate.split('.')
+  if (!payload || !signature) return false
+
+  const expectedSignature = signAvailabilityAgentPayload(payload, assigneeId, accessCodeHash)
+  if (!expectedSignature || expectedSignature.length !== signature.length) return false
+
+  const providedBuffer = Buffer.from(signature)
+  const expectedBuffer = Buffer.from(expectedSignature)
+
+  if (!timingSafeEqual(providedBuffer, expectedBuffer)) return false
+
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      v?: number
+      a?: string
+      scope?: string
+      exp?: number
     }
 
     return (
       parsed.v === AVAILABILITY_AGENT_FEED_VERSION &&
       parsed.a === assigneeId &&
-      parsed.scope === 'feed'
+      parsed.scope === 'feed' &&
+      typeof parsed.exp === 'number' &&
+      parsed.exp > Math.floor(Date.now() / 1000) &&
+      parsed.exp <= Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60
     )
   } catch {
     return false
@@ -167,7 +176,7 @@ export async function isAuthorizedAvailabilityAgentRequest(request: NextRequest,
   const assignee = getAvailabilityAssignee(config, assigneeId)
   if (!assignee?.active) return false
 
-  const identity = getAdminSessionIdentityFromRequest(request)
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (identity?.role === 'agent') {
     const account = await getStaffAccountById(identity.id)
     if (account?.active && account.role === 'agent' && account.availability_assignee_id === assigneeId) return true

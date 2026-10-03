@@ -6,7 +6,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'detail')
+  const authorization = await authorizeCleanerAdminRequest(request, 'detail')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -24,7 +24,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'mutate')
+  const authorization = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -46,7 +46,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'delete')
+  const authorization = await authorizeCleanerAdminRequest(request, 'delete')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

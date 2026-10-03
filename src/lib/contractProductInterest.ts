@@ -1,3 +1,4 @@
+import type { CleanerPortalClaims } from '@/lib/cleanerPortalAccess'
 import 'server-only'
 
 import { getAdminSupabase } from '@/lib/supabase'
@@ -177,13 +178,14 @@ async function sendInterestNotifications(input: {
 }
 
 export async function registerContractProductInterest(input: {
+  identity?: CleanerPortalClaims | null
   productCode: string
   accessLinkId: string
   email: string
   note?: string
 }) {
   const db = getAdminSupabase()
-  const email = clean(input.email, 320).toLowerCase()
+  const email = clean(input.identity?.email ?? input.email, 320).toLowerCase()
   if (!validEmail(email)) return { accepted: false as const }
   const accessLink = await getJobsAccessLink(input.accessLinkId)
   if (!accessLink) return { accepted: false as const }
@@ -202,8 +204,10 @@ export async function registerContractProductInterest(input: {
     assignedStaffId: typeof productRow.assigned_staff_id === 'string' ? productRow.assigned_staff_id : null,
   }
 
-  const { data: cleanerRow, error: cleanerError } = await db.from('cleaners')
-    .select('id, email, state, status, contact_name, phone').eq('email', email).maybeSingle()
+  const { data: cleanerRow, error: cleanerError } = input.identity?.mode === 'update' && input.identity.cleanerId
+    ? await db.from('cleaners').select('id, email, state, status, contact_name, phone')
+      .eq('id', input.identity.cleanerId).eq('email', email).maybeSingle()
+    : { data: null, error: null }
   if (cleanerError) throw cleanerError
   const cleaner = cleanerRow?.status === 'approved' && String(cleanerRow.state ?? '').toUpperCase() === product.state
     ? {
@@ -213,9 +217,14 @@ export async function registerContractProductInterest(input: {
       phone: clean(cleanerRow.phone, 40) || null,
     }
     : null
+  if (input.identity && !cleaner) return { accepted: false as const }
+  const { data: previous, error: previousError } = await db.from('contract_product_interests')
+    .select('id, match_status').eq('product_id', product.id).eq('email_normalized', email).maybeSingle()
+  if (previousError) throw previousError
+  if (previous && (!cleaner || previous.match_status === 'approved_cleaner')) return { accepted: true as const, matched: previous.match_status === 'approved_cleaner' }
   const note = clean(input.note, 1000)
   const submittedAt = new Date().toISOString()
-  const { data: interest, error: interestError } = await db.from('contract_product_interests').upsert({
+  const interestPayload = {
     product_id: product.id,
     cleaner_id: cleaner?.id ?? null,
     access_link_id: input.accessLinkId,
@@ -225,8 +234,13 @@ export async function registerContractProductInterest(input: {
     note: note || null,
     match_status: cleaner ? 'approved_cleaner' : 'unmatched',
     last_submitted_at: submittedAt,
-  }, { onConflict: 'product_id,email_normalized' }).select('id').single()
+  }
+  const { data: interest, error: interestError } = previous
+    ? await db.from('contract_product_interests').update(interestPayload).eq('id', previous.id).eq('match_status', 'unmatched').select('id').maybeSingle()
+    : await db.from('contract_product_interests').insert(interestPayload).select('id').single()
+  if (interestError?.code === '23505') return { accepted: true as const, matched: Boolean(cleaner) }
   if (interestError) throw interestError
+  if (!interest) return { accepted: true as const, matched: Boolean(cleaner) }
 
   const { data: activity, error: activityError } = await db.from('contract_product_activity').insert({
     product_id: product.id,

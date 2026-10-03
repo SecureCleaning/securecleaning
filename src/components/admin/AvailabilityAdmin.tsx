@@ -330,6 +330,7 @@ export default function AvailabilityAdmin({
                         <label className="mb-1 block text-sm font-medium text-gray-700">Calendar ID</label>
                         <input
                           value={assignee.calendarId ?? ''}
+                          placeholder="Leave blank to keep the saved calendar"
                           onChange={(event) => updateAssignee(assignee.id, { calendarId: event.target.value })}
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
@@ -351,7 +352,7 @@ export default function AvailabilityAdmin({
                             updateAssignee(assignee.id, { calendarSubscriptionUrl: event.target.value })
                           }
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                          placeholder="Optional ICS / webcal / external subscription link"
+                          placeholder="Leave blank to keep the saved subscription"
                         />
                       </div>
                       <div className="rounded-lg border border-teal-100 bg-teal-50 p-3 text-sm text-teal-900">

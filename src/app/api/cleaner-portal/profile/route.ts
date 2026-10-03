@@ -4,7 +4,7 @@ import { CLEANER_PORTAL_COOKIE, createCleanerPortalToken, verifyCleanerPortalTok
 import { saveCleanerPortalProfile } from '@/lib/cleanerPortal'
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 32 * 1024) ?? rateLimit(request, { key: 'cleaner-portal-profile', limit: 20, windowMs: 60 * 60 * 1000 })
+  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 32 * 1024) ?? await rateLimit(request, { key: 'cleaner-portal-profile', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
   const claims = verifyCleanerPortalToken(request.cookies.get(CLEANER_PORTAL_COOKIE)?.value)
   if (!claims) return NextResponse.json({ success: false, error: 'Your access link is invalid or has expired.' }, { status: 401 })

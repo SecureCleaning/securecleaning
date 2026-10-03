@@ -1,11 +1,11 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { NextRequest } from 'next/server'
-import type { AdminRole } from '@/lib/staffAccounts'
+import { getStaffAccountById, type AdminRole } from '@/lib/staffAccounts'
 
 export const ADMIN_SESSION_COOKIE = 'securecleaning_admin_session'
 export const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
-const ADMIN_SESSION_VERSION = 2
+const ADMIN_SESSION_VERSION = 3
 
 function getExpectedPassword() {
   return (process.env.CONTENT_ADMIN_PASSWORD ?? '').trim()
@@ -38,15 +38,25 @@ export type AdminSessionIdentity = {
   role: AdminRole
 }
 
-export function createAdminSessionToken(identity: AdminSessionIdentity) {
+function accountRevision(account: NonNullable<Awaited<ReturnType<typeof getStaffAccountById>>>) {
+  return createHmac('sha256', getAdminSessionSecret()).update(JSON.stringify([
+    account.session_version, account.username, account.password_hash, account.legacy_password_hash, account.role,
+    account.active, account.availability_assignee_id,
+  ])).digest('base64url')
+}
+
+export async function createAdminSessionToken(identity: AdminSessionIdentity) {
   const secret = getAdminSessionSecret()
   if (!secret) {
     return null
   }
 
+  const account = await getStaffAccountById(identity.id)
+  if (!account?.active || account.role !== identity.role) return null
   const payload = Buffer.from(
     JSON.stringify({
       v: ADMIN_SESSION_VERSION,
+      rev: accountRevision(account),
       sub: identity.id,
       username: identity.username,
       role: identity.role,
@@ -62,13 +72,13 @@ export function createAdminSessionToken(identity: AdminSessionIdentity) {
   return `${payload}.${signature}`
 }
 
-export function isValidAdminSessionToken(token: string | null | undefined) {
-  return Boolean(getAdminSessionIdentity(token))
+export async function isValidAdminSessionToken(token: string | null | undefined) {
+  return Boolean(await getAdminSessionIdentity(token))
 }
 
-export function getAdminSessionIdentity(token: string | null | undefined): AdminSessionIdentity | null {
+export async function getAdminSessionIdentity(token: string | null | undefined): Promise<AdminSessionIdentity | null> {
   const candidate = normalize(token)
-  if (!candidate) {
+  if (!candidate || candidate.split('.').length !== 2) {
     return null
   }
 
@@ -91,6 +101,7 @@ export function getAdminSessionIdentity(token: string | null | undefined): Admin
 
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+      rev?: string
       v?: number
       sub?: string
       username?: string
@@ -104,7 +115,9 @@ export function getAdminSessionIdentity(token: string | null | undefined): Admin
     if (typeof parsed.sub !== 'string' || typeof parsed.username !== 'string') return null
     if (parsed.role !== 'owner' && parsed.role !== 'manager' && parsed.role !== 'staff' && parsed.role !== 'agent' && parsed.role !== 'viewer') return null
 
-    return { id: parsed.sub, username: parsed.username, role: parsed.role }
+    const account = await getStaffAccountById(parsed.sub)
+    if (!account?.active || parsed.rev !== accountRevision(account)) return null
+    return { id: account.id, username: account.username, role: account.role }
   } catch {
     return null
   }
@@ -112,8 +125,8 @@ export function getAdminSessionIdentity(token: string | null | undefined): Admin
 
 const ROLE_LEVEL: Record<AdminRole, number> = { viewer: 0, agent: 1, staff: 2, manager: 3, owner: 4 }
 
-export function isAuthorizedAdminRequest(request: NextRequest, requiredRole?: AdminRole) {
-  const identity = getAdminSessionIdentityFromRequest(request)
+export async function isAuthorizedAdminRequest(request: NextRequest, requiredRole?: AdminRole) {
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return false
 
   // Agents use the regional availability portal, not the general admin APIs.
@@ -124,7 +137,7 @@ export function isAuthorizedAdminRequest(request: NextRequest, requiredRole?: Ad
   return ROLE_LEVEL[identity.role] >= ROLE_LEVEL[minimumRole]
 }
 
-export function getAdminSessionIdentityFromRequest(request: NextRequest) {
+export async function getAdminSessionIdentityFromRequest(request: NextRequest) {
   return getAdminSessionIdentity(request.cookies.get(ADMIN_SESSION_COOKIE)?.value)
 }
 
@@ -141,7 +154,7 @@ export async function hasAdminSession() {
     return false
   }
 
-  return Boolean(getAdminSessionIdentity(cookieValue.value))
+  return Boolean(await getAdminSessionIdentity(cookieValue.value))
 }
 
 export async function getAdminSessionIdentityFromCookies() {

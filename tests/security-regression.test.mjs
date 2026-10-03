@@ -1,3 +1,5 @@
+process.env.AVAILABILITY_AGENT_SIGNING_SECRET = 'synthetic-signing-material-32-characters-long'
+import { mintTestSession, installTestAccounts, testAccountResponse } from './security-auth-fixture.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
@@ -7,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { NextRequest } from 'next/server'
 
 process.env.CONTENT_ADMIN_PASSWORD = 'test-admin-password'
+installTestAccounts()
 process.env.ADMIN_SESSION_SECRET = 'test-session-secret'
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
@@ -46,7 +49,7 @@ const {
   locationMatchesServiceZones,
 } = await import('../src/lib/availability.ts')
 
-test('availability access codes verify only against their exact hash', () => {
+test('availability access codes verify only against their exact hash', async () => {
   const hash = hashAvailabilityAccessCode('  NSW-Agent-Secret  ')
 
   assert.equal(verifyAvailabilityAccessCode('NSW-Agent-Secret', hash), true)
@@ -54,40 +57,40 @@ test('availability access codes verify only against their exact hash', () => {
   assert.equal(verifyAvailabilityAccessCode('', hash), false)
 })
 
-test('admin sessions are signed and reject tampering', () => {
+test('admin sessions are signed and reject tampering', async () => {
   assert.equal(isValidAdminPassword('test-admin-password'), true)
   assert.equal(isValidAdminPassword('wrong-password'), false)
 
-  const token = createAdminSessionToken({ id: 'owner-id', username: 'owner', role: 'owner' })
+  const token = await mintTestSession({ id: 'owner-id', username: 'owner', role: 'owner' })
   assert.ok(token)
-  assert.equal(isValidAdminSessionToken(token), true)
-  assert.equal(isValidAdminSessionToken(`${token}tampered`), false)
-  assert.equal(isValidAdminSessionToken(null), false)
+  assert.equal(await isValidAdminSessionToken(token), true)
+  assert.equal(await isValidAdminSessionToken(`${token}tampered`), false)
+  assert.equal(await isValidAdminSessionToken(null), false)
 })
 
-test('admin API authorization requires the signed session cookie', () => {
+test('admin API authorization requires the signed session cookie', async () => {
   const headerOnlyRequest = new NextRequest('https://securecleaning.com.au/api/admin/reporting', {
     headers: { 'x-admin-password': 'test-admin-password' },
   })
-  assert.equal(isAuthorizedAdminRequest(headerOnlyRequest), false)
+  assert.equal(await isAuthorizedAdminRequest(headerOnlyRequest), false)
 
-  const sessionToken = createAdminSessionToken({ id: 'staff-id', username: 'staff.one', role: 'staff' })
+  const sessionToken = await mintTestSession({ id: 'staff-id', username: 'staff.one', role: 'staff' })
   const sessionRequest = new NextRequest('https://securecleaning.com.au/api/admin/reporting', {
     headers: { cookie: `${ADMIN_SESSION_COOKIE}=${sessionToken}` },
   })
-  assert.equal(isAuthorizedAdminRequest(sessionRequest), true)
-  assert.equal(isAuthorizedAdminRequest(sessionRequest, 'owner'), false)
-  assert.equal(isAuthorizedAdminRequest(sessionRequest, 'viewer'), true)
+  assert.equal(await isAuthorizedAdminRequest(sessionRequest), true)
+  assert.equal(await isAuthorizedAdminRequest(sessionRequest, 'owner'), false)
+  assert.equal(await isAuthorizedAdminRequest(sessionRequest, 'viewer'), true)
 
-  const agentToken = createAdminSessionToken({ id: 'agent-id', username: 'regional.agent', role: 'agent' })
+  const agentToken = await mintTestSession({ id: 'agent-id', username: 'regional.agent', role: 'agent' })
   const agentRequest = new NextRequest('https://securecleaning.com.au/api/admin/reporting', {
     headers: { cookie: `${ADMIN_SESSION_COOKIE}=${agentToken}` },
   })
-  assert.equal(isAuthorizedAdminRequest(agentRequest), false)
-  assert.equal(isAuthorizedAdminRequest(agentRequest, 'agent'), true)
+  assert.equal(await isAuthorizedAdminRequest(agentRequest), false)
+  assert.equal(await isAuthorizedAdminRequest(agentRequest, 'agent'), true)
 })
 
-test('staff passwords are salted, hashed, and roles are constrained', () => {
+test('staff passwords are salted, hashed, and roles are constrained', async () => {
   const hash = hashStaffPassword('a-long-staff-password')
   assert.notEqual(hash, 'a-long-staff-password')
   assert.equal(verifyStaffPassword('a-long-staff-password', hash), true)
@@ -106,7 +109,7 @@ function findRouteFiles(directory) {
   })
 }
 
-test('protected admin and agent API routes retain server-side guards', () => {
+test('protected admin and agent API routes retain server-side guards', async () => {
   const projectRoot = fileURLToPath(new URL('..', import.meta.url))
   const adminRoutes = findRouteFiles(join(projectRoot, 'src/app/api/admin'))
     .filter((path) => !path.endsWith('/session/route.ts'))
@@ -128,7 +131,7 @@ test('protected admin and agent API routes retain server-side guards', () => {
   }
 })
 
-test('agent sessions are bound to the agent and access-code hash', () => {
+test('agent sessions are bound to the agent and access-code hash', async () => {
   const accessCodeHash = hashAvailabilityAccessCode('nsw-secret')
   const token = createAvailabilityAgentSessionToken('nsw-agent', accessCodeHash)
   const feedToken = createAvailabilityAgentFeedToken('nsw-agent', accessCodeHash)
@@ -145,7 +148,7 @@ test('agent sessions are bound to the agent and access-code hash', () => {
   assert.equal(isValidAvailabilityAgentFeedToken(feedToken, 'other-agent', accessCodeHash), false)
 })
 
-test('regional zone matching accepts suburb or postcode but rejects another city', () => {
+test('regional zone matching accepts suburb or postcode but rejects another city', async () => {
   const zones = [
     {
       id: 'randwick',
@@ -163,7 +166,7 @@ test('regional zone matching accepts suburb or postcode but rejects another city
   assert.equal(locationMatchesServiceZones({ suburb: 'Newtown' }, 'sydney', zones), false)
 })
 
-test('inspection availability includes the published end time as a valid start', () => {
+test('inspection availability includes the published end time as a valid start', async () => {
   assert.deepEqual(getInspectionAppointmentWindows('10:00', '15:00'), [
     { startTime: '10:00', endTime: '10:10' },
     { startTime: '11:00', endTime: '11:10' },
@@ -187,7 +190,7 @@ test('public submissions reject honeypots and missing acceptable-use consent', a
   assert.match((await consentResponse.json()).error, /genuine authorised enquiry/)
 })
 
-test('public submissions reject stale or automated form timings', () => {
+test('public submissions reject stale or automated form timings', async () => {
   const response = validatePublicSubmission(
     { formStartedAt: Date.now() - 1_000 },
     { minElapsedMs: 5_000 }

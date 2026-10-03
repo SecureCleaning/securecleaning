@@ -2,15 +2,17 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import QuoteResultView from '@/components/quote/QuoteResultView'
 import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
-import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+import { verifyQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false, noarchive: true },
 }
 
-export default async function QuoteByRefPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string } }) {
+export default async function QuoteByRefPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string; access?: string } }) {
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
-  const quote = await getPublicQuoteDocumentByRef(params.ref, variant)
+  const quote = await getPublicQuoteDocumentByRef(params.ref, variant, searchParams?.access)
 
   if (!quote) {
     notFound()
@@ -27,7 +29,8 @@ export default async function QuoteByRefPage({ params, searchParams }: { params:
           customerJourney={quote.customerJourney}
           isFirmPrice={quote.isFirmPrice}
           includeConsumablesCatalogue={quote.includeConsumablesCatalogue}
-          bookingHandoffToken={isQuoteBookingHandoffToken(searchParams?.handoff) ? searchParams?.handoff : undefined}
+          documentAccessToken={searchParams?.access}
+          bookingHandoffToken={await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff) ? searchParams?.handoff : undefined}
         />
       </div>
     </div>

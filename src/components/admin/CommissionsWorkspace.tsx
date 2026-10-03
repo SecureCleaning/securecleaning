@@ -1,4 +1,5 @@
 'use client'
+import { csvCell } from '@/lib/csvCell'
 import { useCallback, useEffect, useState } from 'react'
 import type { getCommissionWorkspace } from '@/lib/commissions'
 import { commissionCents } from '@/lib/commissionPolicy'
@@ -50,7 +51,7 @@ export default function CommissionsWorkspace() {
   const estimate = gross > 0 && Number.isSafeInteger(gross) && rate >= 0 && rate <= 10000 ? commissionCents(gross, Math.round(gross / 11), gross, rate, false) : null
   function statement() {
     const lines = [['Sale', 'Agent ID', 'Commission earned excl GST', 'Commission paid excl GST', 'Unpaid excl GST'], ...data!.balances.map(row => [row.sale_code, row.agent_id, money(row.earned_cents), money(row.paid_cents), money(Number(row.earned_cents) - Number(row.paid_cents))])]
-    const csv = lines.map(row => row.map(value => '"' + String(value).replace(/^[=+@-]/, "'$&").replace(/"/g, '""') + '"').join(',')).join('\r\n')
+    const csv = lines.map(row => row.map(csvCell).join(',')).join('\r\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'commission-statement.csv'; a.click(); URL.revokeObjectURL(url)
   }
   return <div className="space-y-5">

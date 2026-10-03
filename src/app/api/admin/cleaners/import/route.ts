@@ -4,7 +4,7 @@ import { importCleaners } from '@/lib/cleaners'
 import { rejectLargePayload } from '@/lib/abuseProtection'
 
 export async function POST(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'import')
+  const authorization = await authorizeCleanerAdminRequest(request, 'import')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

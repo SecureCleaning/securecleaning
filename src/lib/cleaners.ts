@@ -1,3 +1,4 @@
+import { csvCell } from '@/lib/csvCell'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
 import { writeAuditLog } from '@/lib/auditLog'
@@ -619,17 +620,6 @@ export async function deleteSampleCleaners(actor: CleanerAuditActor) {
   const deletedCount = data?.length ?? 0
   await writeAuditLog('cleaner', 'sample-cleaners', 'cleaner.sample_data.deleted', withActorDetails(actor, { deletedCount }))
   return deletedCount
-}
-
-function csvCell(value: unknown) {
-  const normalised = Array.isArray(value)
-    ? value.join('; ')
-    : typeof value === 'boolean'
-      ? value ? 'yes' : 'no'
-      : value == null
-        ? ''
-        : String(value)
-  return `"${normalised.replace(/"/g, '""')}"`
 }
 
 export async function exportCleanersCsv(actor: CleanerAuditActor) {

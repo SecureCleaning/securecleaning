@@ -1,3 +1,5 @@
+import { getAdminSupabase } from '@/lib/supabase'
+import { isIP } from 'node:net'
 import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 
@@ -7,10 +9,6 @@ type RateLimitPolicy = {
   windowMs: number
 }
 
-type RateRecord = {
-  count: number
-  resetAt: number
-}
 
 type AbuseValidationOptions = {
   requireAcceptableUse?: boolean
@@ -18,7 +16,6 @@ type AbuseValidationOptions = {
   maxElapsedMs?: number
 }
 
-const rateStore = new Map<string, RateRecord>()
 const HONEYPOT_FIELDS = ['website', 'companyWebsiteUrl', 'faxNumber', 'middleName']
 
 function now() {
@@ -29,23 +26,15 @@ function hash(value: string) {
   return createHash('sha256').update(value).digest('hex').slice(0, 24)
 }
 
-function normalizeHeaderIp(value: string | null) {
-  return value?.split(',')[0]?.trim() || ''
-}
-
 export function getClientIp(request: NextRequest) {
-  return (
-    normalizeHeaderIp(request.headers.get('cf-connecting-ip')) ||
-    normalizeHeaderIp(request.headers.get('x-real-ip')) ||
-    normalizeHeaderIp(request.headers.get('x-forwarded-for')) ||
-    'unknown'
-  )
+  // Vercel overwrites this header at its ingress. Other deployments share a
+  // conservative bucket until their trusted ingress contract is configured.
+  const value = process.env.VERCEL === '1' ? request.headers.get('x-vercel-forwarded-for')?.trim() : null
+  return value && isIP(value) ? value : 'unknown'
 }
 
 export function getClientFingerprint(request: NextRequest) {
-  const ip = getClientIp(request)
-  const userAgent = request.headers.get('user-agent')?.slice(0, 160) ?? 'unknown'
-  return hash(`${ip}|${userAgent}`)
+  return hash(getClientIp(request))
 }
 
 export function rejectLargePayload(request: NextRequest, maxBytes: number) {
@@ -78,70 +67,29 @@ export function rejectCrossOriginMutation(request: NextRequest) {
   return null
 }
 
-export function rateLimit(request: NextRequest, policy: RateLimitPolicy) {
-  const currentTime = now()
-  const clientKey = `${policy.key}:${getClientFingerprint(request)}`
-  const existing = rateStore.get(clientKey)
-
-  if (!existing || existing.resetAt <= currentTime) {
-    rateStore.set(clientKey, {
-      count: 1,
-      resetAt: currentTime + policy.windowMs,
+async function consumeRateLimit(subject: string, policy: RateLimitPolicy) {
+  try {
+    const { data, error } = await getAdminSupabase().rpc('consume_public_rate_limit', {
+      p_policy: policy.key, p_subject: subject, p_limit: policy.limit, p_window_ms: policy.windowMs,
     })
-    return null
+    if (error || !data || typeof data.allowed !== 'boolean') throw new Error('Limiter unavailable')
+    if (data.allowed) return null
+    return NextResponse.json({ success: false, error: 'Too many requests. Please wait before trying again.' }, {
+      status: 429, headers: { 'Retry-After': String(Math.max(1, Number(data.retry_after) || 60)) },
+    })
+  } catch {
+    return NextResponse.json({ success: false, error: 'Service temporarily unavailable. Please try again shortly.' }, {
+      status: 503, headers: { 'Retry-After': '60' },
+    })
   }
-
-  if (existing.count >= policy.limit) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - currentTime) / 1000))
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Too many requests. Please wait before trying again.',
-      },
-      {
-        status: 429,
-        headers: {
-          'Retry-After': String(retryAfterSeconds),
-          'X-RateLimit-Limit': String(policy.limit),
-          'X-RateLimit-Remaining': '0',
-          'X-RateLimit-Reset': String(Math.ceil(existing.resetAt / 1000)),
-        },
-      }
-    )
-  }
-
-  existing.count += 1
-  rateStore.set(clientKey, existing)
-  return null
 }
-
-export function rateLimitValue(value: string | null | undefined, policy: RateLimitPolicy) {
-  const normalized = value?.trim().toLowerCase()
+export async function rateLimit(request: NextRequest, policy: RateLimitPolicy) {
+  return consumeRateLimit(getClientFingerprint(request), policy)
+}
+export async function rateLimitValue(value: string | null | undefined, policy: RateLimitPolicy) {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : ''
   if (!normalized) return null
-
-  const currentTime = now()
-  const key = `${policy.key}:${hash(normalized)}`
-  const existing = rateStore.get(key)
-
-  if (!existing || existing.resetAt <= currentTime) {
-    rateStore.set(key, {
-      count: 1,
-      resetAt: currentTime + policy.windowMs,
-    })
-    return null
-  }
-
-  if (existing.count >= policy.limit) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((existing.resetAt - currentTime) / 1000))
-    return NextResponse.json(
-      { success: false, error: 'Too many submissions for these details. Please try again later.' },
-      { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
-    )
-  }
-
-  existing.count += 1
-  rateStore.set(key, existing)
-  return null
+  return consumeRateLimit(hash(normalized), policy)
 }
 
 export function validatePublicSubmission(

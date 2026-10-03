@@ -19,12 +19,12 @@ function hasSignature(buffer: Uint8Array, signatures: number[][]) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request, 'manager')) {
+  if (!await isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })
   }
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 6 * 1024 * 1024)
   if (blocked) return blocked
-  const identity = getAdminSessionIdentityFromRequest(request)
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })
   try {
     const form = await request.formData()

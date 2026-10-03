@@ -8,7 +8,7 @@ const allowedTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'ima
 const maxBytes = 10 * 1024 * 1024
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rateLimit(request, { key: 'cleaner-portal-upload', limit: 20, windowMs: 60 * 60 * 1000 })
+  const blocked = rejectCrossOriginMutation(request) ?? await rateLimit(request, { key: 'cleaner-portal-upload', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
   const claims = verifyCleanerPortalToken(request.cookies.get(CLEANER_PORTAL_COOKIE)?.value)
   if (!claims) return NextResponse.json({ success: false, error: 'Your access link is invalid or has expired.' }, { status: 401 })

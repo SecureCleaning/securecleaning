@@ -27,6 +27,7 @@ type StaffAccountRow = StaffAccount & {
   created_at: string
   updated_at: string
   availability_assignee_id: string | null
+  session_version: string
   legacy_password_hash: string | null
 }
 
@@ -47,7 +48,7 @@ function toStaffAccount(row: StaffAccountRow): StaffAccount {
   }
 }
 
-const STAFF_ACCOUNT_SELECT = 'id, username, display_name, email, job_title, phone, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at'
+const STAFF_ACCOUNT_SELECT = 'session_version, id, username, display_name, email, job_title, phone, role, active, availability_assignee_id, password_hash, legacy_password_hash, last_login_at, created_at, updated_at'
 
 export function normalizeStaffUsername(value: unknown) {
   return typeof value === 'string'

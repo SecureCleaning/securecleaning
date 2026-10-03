@@ -6,7 +6,7 @@ import { canAccessClientCrm } from '@/lib/clientCrmPolicy'
 export type ClientCrmActor = StaffAccount & { role: 'owner' | 'manager' | 'agent' }
 
 export async function getClientCrmActor(request: NextRequest): Promise<ClientCrmActor | null> {
-  const identity = getAdminSessionIdentityFromRequest(request)
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity || !canAccessClientCrm(identity.role)) return null
 
   const account = await getStaffAccountProfileById(identity.id)

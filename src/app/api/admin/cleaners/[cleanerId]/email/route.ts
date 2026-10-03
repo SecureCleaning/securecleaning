@@ -9,7 +9,7 @@ export async function POST(
 ) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
-  const authorization = authorizeCleanerAdminRequest(request, 'email')
+  const authorization = await authorizeCleanerAdminRequest(request, 'email')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

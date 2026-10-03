@@ -6,7 +6,7 @@ import { migrateAvailabilityAgentsToStaffAccounts } from '@/lib/staffAgentMigrat
 export async function POST(request: NextRequest) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
   if (blocked) return blocked
-  if (!isAuthorizedAdminRequest(request, 'owner')) {
+  if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })
   }
 

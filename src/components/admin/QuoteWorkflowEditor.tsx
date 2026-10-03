@@ -211,17 +211,28 @@ export default function QuoteWorkflowEditor({
     }
   }
 
-  function getScopeUrl() {
-    const variant = finalPublished || firmQuoteDraft.status === 'sent' ? '?variant=final' : ''
-    return `${window.location.origin}/scope/${quote.quoteRef}${variant}`
+  async function getScopeUrl() {
+    const variant = finalPublished || firmQuoteDraft.status === 'sent' ? 'final' : 'remote_review'
+    const response = await fetch(`/api/quote/${encodeURIComponent(quote.quoteRef)}/access`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ variant }),
+    })
+    const result = await response.json()
+    if (!response.ok || !result.token) throw new Error(result.error || 'Unable to create the link.')
+    return `${window.location.origin}/scope/${quote.quoteRef}?${new URLSearchParams({ variant, access: result.token })}`
   }
 
   async function copyScopeLink() {
+    setScopeAction({ busy: true, message: null, error: null })
     try {
-      await navigator.clipboard.writeText(getScopeUrl())
+      if (typeof ClipboardItem !== 'undefined') {
+        const link = getScopeUrl().then((url) => new Blob([url], { type: 'text/plain' }))
+        await navigator.clipboard.write([new ClipboardItem({ 'text/plain': link })])
+      } else {
+        await navigator.clipboard.writeText(await getScopeUrl())
+      }
       setScopeAction({ busy: false, message: 'Client scope link copied.', error: null })
-    } catch {
-      setScopeAction({ busy: false, message: null, error: 'Your browser did not allow the link to be copied.' })
+    } catch (error) {
+      setScopeAction({ busy: false, message: null, error: error instanceof Error ? error.message : 'Your browser did not allow the link to be copied.' })
     }
   }
 
@@ -591,6 +602,7 @@ export default function QuoteWorkflowEditor({
           <button
             type="button"
             onClick={copyScopeLink}
+            disabled={scopeAction.busy}
             className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700"
           >
             Copy link

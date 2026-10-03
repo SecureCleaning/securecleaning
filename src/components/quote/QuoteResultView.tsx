@@ -11,6 +11,7 @@ interface QuoteResultViewProps {
   quoteRef: string
   result: QuoteResultType | Pick<QuoteResultType, 'totalLow' | 'totalHigh' | 'carpetSteamSeparate'>
   inputs: QuoteInputs | PublicQuoteDisplayInputs
+  documentAccessToken?: string
   emailSent?: boolean
   emailError?: string | null
   documentVariant?: 'remote_review' | 'final'
@@ -58,6 +59,7 @@ export default function QuoteResultView({
   documentVariant = 'remote_review',
   customerEmail,
   bookingHandoffToken,
+  documentAccessToken,
   customerJourney = 'online_enquiry',
   isFirmPrice = false,
   includeConsumablesCatalogue = false,
@@ -204,7 +206,7 @@ export default function QuoteResultView({
       </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {showSelfServiceActions ? <Link
+        {showSelfServiceActions && bookingHandoffToken ? <Link
           href={`/booking?${new URLSearchParams({
             quoteRef,
             ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
@@ -218,6 +220,7 @@ export default function QuoteResultView({
         </Link> : null}
         <Link
           href={`/scope/${quoteRef}?${new URLSearchParams({
+            ...(documentAccessToken ? { access: documentAccessToken } : {}),
             ...(documentVariant === 'final' ? { variant: 'final' } : {}),
             ...(bookingHandoffToken ? { handoff: bookingHandoffToken } : {}),
           }).toString()}`}
@@ -235,7 +238,7 @@ export default function QuoteResultView({
         >
           View Consumables Pricing
         </Link> : null}
-        {showSelfServiceActions ? <Link
+        {showSelfServiceActions && bookingHandoffToken ? <Link
           href={bookingHandoffToken
             ? `/quote?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
             : '/quote'}

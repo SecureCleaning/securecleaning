@@ -5,8 +5,8 @@ import { limitString, rateLimit } from '@/lib/abuseProtection'
 
 export async function GET(request: NextRequest) {
   const blocked =
-    rateLimit(request, { key: 'availability:minute', limit: 20, windowMs: 60 * 1000 }) ??
-    rateLimit(request, { key: 'availability:hour', limit: 120, windowMs: 60 * 60 * 1000 })
+    await rateLimit(request, { key: 'availability:minute', limit: 20, windowMs: 60 * 1000 }) ??
+    await rateLimit(request, { key: 'availability:hour', limit: 120, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 
   const { searchParams } = new URL(request.url)
@@ -50,5 +50,5 @@ export async function GET(request: NextRequest) {
     city,
     preferredDate || undefined
   )
-  return NextResponse.json(availability)
+  return NextResponse.json({ ...availability, suggestions: availability.suggestions.map(({ calendarId: _calendarId, ...safe }) => safe) })
 }

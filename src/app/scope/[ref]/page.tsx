@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation'
 import ScopePrintButton from '@/components/scope/ScopePrintButton'
 import { getPublicScopeDocumentByRef } from '@/lib/quoteWorkflowData'
 import { getSiteUrl } from '@/lib/siteUrl'
-import { isQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+import { verifyQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 import { getRoomTaskCadenceLabel } from '@/lib/roomTypeConfig'
 import { isQuoteReference } from '@/lib/quoteReference'
 import { isSelfServiceQuoteJourney } from '@/lib/quoteCustomerJourney'
@@ -22,10 +22,10 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
 }
 
-export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string } }) {
+export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string; access?: string } }) {
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
-  const handoff = isQuoteBookingHandoffToken(searchParams?.handoff) ? searchParams?.handoff : undefined
-  const report = isQuoteReference(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant) : null
+  const handoff = await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff) ? searchParams?.handoff : undefined
+  const report = isQuoteReference(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant, searchParams?.access) : null
   const siteUrl = getSiteUrl()
 
   if (!report) {
@@ -70,7 +70,7 @@ export default async function ScopeOfWorksPage({ params, searchParams }: { param
                   <p className="mt-1 text-2xl font-bold text-slate-950">{report.displayedPrice}</p>
                   <p className="mt-1 text-xs text-slate-600">Prices exclude GST</p>
                 </div>
-                {variant !== 'final' && isSelfServiceQuoteJourney(report.customerJourney) ? <Link
+                {handoff && variant !== 'final' && isSelfServiceQuoteJourney(report.customerJourney) ? <Link
                   href={`/booking?${new URLSearchParams({
                     quoteRef: report.quoteRef,
                     ...(handoff ? { handoff } : {}),

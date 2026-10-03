@@ -3,7 +3,7 @@ import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/
 import { getUnresolvedFinalQuoteSendAttempt, QuoteWorkflowConflictError, reconcileFinalQuoteSend } from '@/lib/quoteWorkflowData'
 
 export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
-  if (!isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  if (!await isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     return NextResponse.json({ success: true, attempt: await getUnresolvedFinalQuoteSendAttempt(params.ref) })
   } catch (error) {
@@ -13,8 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: { ref: str
 }
 
 export async function POST(request: NextRequest, { params }: { params: { ref: string } }) {
-  if (!isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-  const identity = getAdminSessionIdentityFromRequest(request)
+  if (!await isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     const body = await request.json().catch(() => ({})) as Record<string, unknown>

@@ -3,7 +3,7 @@ import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getAdminAlerts } from '@/lib/alerts'
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 

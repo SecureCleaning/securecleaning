@@ -6,7 +6,7 @@ import { getQuoteRoomTypeConfig, saveQuoteRoomTypeConfig } from '@/lib/roomTypeC
 const MAX_ROOM_TYPE_PAYLOAD_BYTES = 256 * 1024
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, MAX_ROOM_TYPE_PAYLOAD_BYTES)
   if (blocked) return blocked
 
-  if (!isAuthorizedAdminRequest(request, 'manager')) {
+  if (!await isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

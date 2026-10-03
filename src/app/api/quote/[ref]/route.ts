@@ -7,7 +7,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { ref: string } }
 ) {
-  const blocked = rateLimit(request, { key: 'quote-lookup:hour', limit: 30, windowMs: 60 * 60 * 1000 })
+  const blocked = await rateLimit(request, { key: 'quote-lookup:hour', limit: 30, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 
   const quoteRef = params.ref?.trim()
@@ -17,11 +17,11 @@ export async function GET(
   }
 
   const variant = request.nextUrl.searchParams.get('variant') === 'final' ? 'final' : 'remote_review'
-  const quote = await getPublicQuoteDocumentByRef(quoteRef, variant)
+  const quote = await getPublicQuoteDocumentByRef(quoteRef, variant, request.nextUrl.searchParams.get('access') ?? undefined)
 
   if (!quote) {
     return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, quote })
+  return NextResponse.json({ success: true, quote }, { headers: { 'Cache-Control': 'private, no-store' } })
 }

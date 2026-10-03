@@ -1,3 +1,4 @@
+import { toBrowserAssignee } from '@/lib/availability'
 import CalendarAdmin from '@/components/admin/CalendarAdmin'
 import { getAvailabilityConfig } from '@/lib/availability'
 import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
@@ -12,7 +13,7 @@ export default async function AdminCalendarPage() {
       config.assignees
         .filter((assignee) => assignee.active)
         .map(async (assignee) => ({
-          assignee,
+          assignee: toBrowserAssignee(assignee),
           events: await getAgentCalendarEvents(config, assignee, {
             daysBehind: 42,
             daysAhead: 120,

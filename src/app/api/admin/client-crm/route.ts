@@ -59,17 +59,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, result: await updateCrmProfile(actor, body) })
     }
     if (action === 'opportunity-note.add') {
-      const limited = rateLimit(request, { key: `client-crm-note:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `client-crm-note:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await addCrmOpportunityNote(actor, body) }, { status: 201 })
     }
     if (action === 'inspection.create') {
-      const limited = rateLimit(request, { key: `client-crm-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `client-crm-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await createCrmInspectionAppointment(actor, body) }, { status: 201 })
     }
     if (action === 'quote.create') {
-      const limited = rateLimit(request, { key: `client-crm-quote:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `client-crm-quote:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await createCrmQuoteDraft(actor, body) }, { status: 201 })
     }
@@ -82,12 +82,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })
     }
     if (action === 'email.preview') {
-      const limited = rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await previewClientCrmEmail(actor, body) })
     }
     if (action === 'email.send') {
-      const limited = rateLimit(request, { key: `client-crm-send:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `client-crm-send:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await sendClientCrmEmail(actor, body) })
     }

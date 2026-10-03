@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
     const blocked =
       rejectCrossOriginMutation(request) ??
       rejectLargePayload(request, 4 * 1024) ??
-      rateLimit(request, { key: 'availability-agent-login:minute', limit: 5, windowMs: 60 * 1000 }) ??
-      rateLimit(request, { key: 'availability-agent-login:hour', limit: 20, windowMs: 60 * 60 * 1000 })
+      await rateLimit(request, { key: 'availability-agent-login:minute', limit: 5, windowMs: 60 * 1000 }) ??
+      await rateLimit(request, { key: 'availability-agent-login:hour', limit: 20, windowMs: 60 * 60 * 1000 })
     if (blocked) return blocked
 
     const body = await request.json()

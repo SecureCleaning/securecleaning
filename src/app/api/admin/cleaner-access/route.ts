@@ -6,9 +6,9 @@ import { sendCleanerPortalLink } from '@/lib/cleanerPortal'
 export async function POST(request: NextRequest) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
   if (blocked) return blocked
-  const authorization = authorizeCleanerAdminRequest(request, 'mutate')
+  const authorization = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!authorization.identity) return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
-  const throttled = rateLimit(request, { key: `admin-cleaner-access:${authorization.identity.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+  const throttled = await rateLimit(request, { key: `admin-cleaner-access:${authorization.identity.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
   if (throttled) return throttled
   try {
     const body = await request.json()

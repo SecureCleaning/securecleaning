@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAvailabilityConfig, saveAvailabilityConfig, validateAvailabilityZoneConfig } from '@/lib/availability'
+import { toBrowserAvailabilityConfig, getAvailabilityConfig, saveAvailabilityConfig, validateAvailabilityZoneConfig } from '@/lib/availability'
 import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getAdminSupabase } from '@/lib/supabase'
 import { validateOwnerOperatorLinks } from '@/lib/availabilityLinkage'
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const config = await getAvailabilityConfig()
-  return NextResponse.json({ config })
+  return NextResponse.json({ config: toBrowserAvailabilityConfig(config) })
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request, 'manager')) {
+  if (!await isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -44,26 +44,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const nextConfig =
-      draftAccessCodes && typeof draftAccessCodes === 'object'
-        ? {
-            ...config,
-            assignees: Array.isArray(config.assignees)
-              ? config.assignees.map((assignee: { id?: string; accessCodeHash?: string }) => {
-                  const nextAccessCode = typeof draftAccessCodes[assignee.id ?? ''] === 'string'
-                    ? draftAccessCodes[assignee.id ?? ''].trim()
-                    : ''
-
-                  return {
-                    ...assignee,
-                    accessCodeHash: nextAccessCode
-                      ? hashAvailabilityAccessCode(nextAccessCode)
-                      : assignee.accessCodeHash,
-                  }
-                })
-              : config.assignees,
-          }
-        : config
+    const existing = await getAvailabilityConfig()
+    const nextConfig = {
+      ...config,
+      assignees: Array.isArray(config.assignees) ? config.assignees.map((assignee: { id: string; calendarId?: string; calendarSubscriptionUrl?: string }) => {
+        const previous = existing.assignees.find((item) => item.id === assignee.id)
+        const code = typeof draftAccessCodes?.[assignee.id] === 'string' ? draftAccessCodes[assignee.id].trim() : ''
+        return { ...assignee, calendarId: assignee.calendarId?.trim() || previous?.calendarId,
+          calendarSubscriptionUrl: assignee.calendarSubscriptionUrl?.trim() || previous?.calendarSubscriptionUrl,
+          accessCodeHash: code ? hashAvailabilityAccessCode(code) : previous?.accessCodeHash }
+      }) : [],
+    }
 
     const db = getAdminSupabase()
     const { data: ownerOperators, error: ownerOperatorsError } = await db
@@ -77,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     const savedConfig = await saveAvailabilityConfig(nextConfig)
-    return NextResponse.json({ config: savedConfig })
+    return NextResponse.json({ config: toBrowserAvailabilityConfig(savedConfig) })
   } catch (error) {
     console.error('[api/admin/availability] Failed to save availability config:', error)
     return NextResponse.json({ error: 'Failed to save availability config.' }, { status: 500 })

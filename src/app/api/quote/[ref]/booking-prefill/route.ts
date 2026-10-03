@@ -6,12 +6,12 @@ import { getQuoteByRef } from '@/lib/quoteData'
 import { isQuoteReference } from '@/lib/quoteReference'
 
 export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
-  const blocked = rateLimit(request, { key: 'quote-booking-prefill:hour', limit: 20, windowMs: 60 * 60 * 1000 })
+  const blocked = await rateLimit(request, { key: 'quote-booking-prefill:hour', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 
   const quoteRef = params.ref?.trim()
   const handoff = request.nextUrl.searchParams.get('handoff')
-  if (!isQuoteReference(quoteRef) || !verifyQuoteBookingHandoffToken(quoteRef, handoff)) {
+  if (!isQuoteReference(quoteRef) || !await verifyQuoteBookingHandoffToken(quoteRef, handoff)) {
     return NextResponse.json({ success: false, error: 'Quote booking details are unavailable.' }, { status: 404 })
   }
 
@@ -24,5 +24,5 @@ export async function GET(request: NextRequest, { params }: { params: { ref: str
     success: true,
     prefill: buildBookingPrefillFromQuoteInputs(quoteRef, quote.inputs),
     quotePrefill: buildQuoteEditPrefillFromQuoteInputs(quote.inputs),
-  })
+  }, { headers: { 'Cache-Control': 'private, no-store' } })
 }

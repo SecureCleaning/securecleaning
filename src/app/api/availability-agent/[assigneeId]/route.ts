@@ -1,3 +1,4 @@
+import { toBrowserAssignee } from '@/lib/availability'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   AvailabilityConfig,
@@ -84,12 +85,12 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ assigneeId: string }> }
 ) {
-  const blocked = rateLimit(request, { key: 'availability-agent-read:minute', limit: 60, windowMs: 60 * 1000 })
+  const blocked = await rateLimit(request, { key: 'availability-agent-read:minute', limit: 60, windowMs: 60 * 1000 })
   if (blocked) return blocked
 
   const { assigneeId } = await context.params
 
-  const isAdmin = isAuthorizedAdminRequest(request)
+  const isAdmin = await isAuthorizedAdminRequest(request)
   const isAgent = await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
 
   if (!isAdmin && !isAgent) {
@@ -104,7 +105,7 @@ export async function GET(
   }
 
   return NextResponse.json({
-    assignee,
+    assignee: toBrowserAssignee(assignee),
     weeklySlots: config.weeklySlots.filter((slot) => slot.assigneeId === assigneeId),
     oneOffBlocks: config.oneOffBlocks.filter((block) => block.assigneeId === assigneeId),
     zones: config.zones.filter((zone) => zone.city === assignee.city),
@@ -118,12 +119,12 @@ export async function POST(
   const blocked =
     rejectCrossOriginMutation(request) ??
     rejectLargePayload(request, 64 * 1024) ??
-    rateLimit(request, { key: 'availability-agent-save:minute', limit: 20, windowMs: 60 * 1000 })
+    await rateLimit(request, { key: 'availability-agent-save:minute', limit: 20, windowMs: 60 * 1000 })
   if (blocked) return blocked
 
   const { assigneeId } = await context.params
 
-  const isAdmin = isAuthorizedAdminRequest(request)
+  const isAdmin = await isAuthorizedAdminRequest(request)
   const isAgent = await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
 
   if (!isAdmin && !isAgent) {
@@ -150,7 +151,7 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      assignee: getAvailabilityAssignee(savedConfig, assigneeId),
+      assignee: toBrowserAssignee(getAvailabilityAssignee(savedConfig, assigneeId)!),
       weeklySlots: savedConfig.weeklySlots.filter((slot) => slot.assigneeId === assigneeId),
       oneOffBlocks: savedConfig.oneOffBlocks.filter((block) => block.assigneeId === assigneeId),
       zones: savedConfig.zones.filter((zone) => zone.city === assignee.city),

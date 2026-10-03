@@ -10,7 +10,7 @@ import { normalizeContractProductState } from '@/lib/contractProductPolicy'
 import { getJobsAccessLink } from '@/lib/contractProducts'
 
 export async function GET(request: NextRequest, { params }: { params: { token: string } }) {
-  const limited = rateLimit(request, { key: 'cleaner-jobs-access', limit: 60, windowMs: 60 * 60 * 1000 })
+  const limited = await rateLimit(request, { key: 'cleaner-jobs-access', limit: 60, windowMs: 60 * 60 * 1000 })
   if (limited) return limited
   const accessLinkId = verifyCleanerJobsAccessToken(params.token)
   const accessLink = accessLinkId ? await getJobsAccessLink(accessLinkId) : null

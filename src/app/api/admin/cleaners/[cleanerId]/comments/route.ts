@@ -6,7 +6,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { cleanerId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'comment')
+  const authorization = await authorizeCleanerAdminRequest(request, 'comment')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

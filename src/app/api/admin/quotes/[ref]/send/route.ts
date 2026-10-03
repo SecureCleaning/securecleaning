@@ -14,8 +14,8 @@ import { getSendFailureDisposition, resolveFinalQuoteRecipient } from '@/lib/fin
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(request: NextRequest, { params }: { params: { ref: string } }) {
-  if (!isAuthorizedAdminRequest(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-  const identity = getAdminSessionIdentityFromRequest(request)
+  if (!await isAuthorizedAdminRequest(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   let attemptId: string | null = null
   let providerAccepted = false

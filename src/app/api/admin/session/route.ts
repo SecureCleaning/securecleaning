@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
     const blocked =
       rejectCrossOriginMutation(request) ??
       rejectLargePayload(request, 4 * 1024) ??
-      rateLimit(request, { key: 'admin-login:minute', limit: 5, windowMs: 60 * 1000 }) ??
-      rateLimit(request, { key: 'admin-login:hour', limit: 20, windowMs: 60 * 60 * 1000 })
+      await rateLimit(request, { key: 'admin-login:minute', limit: 5, windowMs: 60 * 1000 }) ??
+      await rateLimit(request, { key: 'admin-login:hour', limit: 20, windowMs: 60 * 60 * 1000 })
     if (blocked) return blocked
 
     const body = await request.json()
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       await recordStaffLogin(storedAccount.id)
     }
 
-    const sessionToken = createAdminSessionToken({
+    const sessionToken = await createAdminSessionToken({
       id: account.id,
       username: account.username,
       role: account.role,

@@ -1,3 +1,5 @@
+import { canStaffAccessQuote } from '@/lib/quoteStaffAccess'
+import { resolveQuoteCapability } from '@/lib/quoteBookingAccess'
 import { getAdminSupabase } from '@/lib/supabase'
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
 import {
@@ -146,11 +148,12 @@ export async function getQuoteWorkflowByRef(
   }
 }
 
-export async function getPublicScopeByRef(quoteRef: string): Promise<ClientScopeReport | null> {
-  return getPublicScopeDocumentByRef(quoteRef, 'remote_review')
+export async function getPublicScopeByRef(quoteRef: string, token?: string): Promise<ClientScopeReport | null> {
+  return getPublicScopeDocumentByRef(quoteRef, 'remote_review', token)
 }
 
-export async function getPublicScopeDocumentByRef(quoteRef: string, variant: QuoteDocumentVariant): Promise<ClientScopeReport | null> {
+export async function getPublicScopeDocumentByRef(quoteRef: string, variant: QuoteDocumentVariant, token?: string): Promise<ClientScopeReport | null> {
+  if (!await resolveQuoteCapability(quoteRef, token, 'document', variant) && !await canStaffAccessQuote(quoteRef)) return null
   const quote = await getPublicQuoteWorkflowByRef(quoteRef, variant)
   if (!quote) return null
   return buildClientScopeReport(quote.quoteRef, quote.inputs, quote.result, quote.firmQuoteDraft, quote.roomTypeConfig,
@@ -183,7 +186,8 @@ export async function getPublicQuoteWorkflowByRef(
   }
 }
 
-export async function getPublicQuoteDocumentByRef(quoteRef: string, variant: QuoteDocumentVariant = 'remote_review') {
+export async function getPublicQuoteDocumentByRef(quoteRef: string, variant: QuoteDocumentVariant = 'remote_review', token?: string) {
+  if (!await resolveQuoteCapability(quoteRef, token, 'document', variant) && !await canStaffAccessQuote(quoteRef)) return null
   const record = await getPublicQuoteWorkflowByRef(quoteRef, variant)
   return record ? toPublicQuoteDocument(record, variant) : null
 }

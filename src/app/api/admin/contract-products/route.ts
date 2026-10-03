@@ -67,36 +67,36 @@ export async function POST(request: NextRequest) {
     const action = typeof body.action === 'string' ? body.action : ''
     if (action === 'product.update') return NextResponse.json({ success: true, result: await updateContractProduct(actor, body) })
     if (action === 'product.refresh-scope') {
-      const limited = rateLimit(request, { key: `contract-product-scope-refresh:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-product-scope-refresh:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await refreshContractProductScope(actor, body) })
     }
     if (action === 'product.publish') return NextResponse.json({ success: true, result: await publishContractProduct(actor, body) })
     if (action === 'product.withdraw') return NextResponse.json({ success: true, result: await withdrawContractProduct(actor, body) })
     if (action === 'broadcast.recipients') {
-      const limited = rateLimit(request, { key: `contract-product-broadcast-recipients:${actor.id}`, limit: 60, windowMs: 10 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-product-broadcast-recipients:${actor.id}`, limit: 60, windowMs: 10 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await listEligibleContractProductBroadcastCleaners(actor, body) })
     }
     if (action === 'broadcast.preview') return NextResponse.json({ success: true, result: await previewContractProductBroadcast(actor, body) })
     if (action === 'broadcast.history.preview') return NextResponse.json({ success: true, result: await getContractProductBroadcastHistoryPreview(actor, body) })
     if (action === 'broadcast.template.save') {
-      const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await saveContractProductBroadcastTemplate(actor, body) })
     }
     if (action === 'broadcast.template.archive') {
-      const limited = rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await archiveContractProductBroadcastTemplate(actor, body) })
     }
     if (action === 'broadcast.continue') {
-      const limited = rateLimit(request, { key: `contract-product-broadcast-continue:${actor.id}`, limit: 120, windowMs: 60_000 })
+      const limited = await rateLimit(request, { key: `contract-product-broadcast-continue:${actor.id}`, limit: 120, windowMs: 60_000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await continueContractProductBroadcast(actor, body) })
     }
     if (action === 'broadcast.send') {
-      const limited = rateLimit(request, { key: `contract-product-broadcast:${actor.id}`, limit: 5, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-product-broadcast:${actor.id}`, limit: 5, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await sendContractProductBroadcast(actor, body) })
     }

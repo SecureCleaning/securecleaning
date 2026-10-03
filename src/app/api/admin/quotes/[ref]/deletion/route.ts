@@ -33,7 +33,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { ref: string } },
 ) {
-  if (!isAuthorizedAdminRequest(request, 'owner')) {
+  if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -51,7 +51,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { ref: string } },
 ) {
-  if (!isAuthorizedAdminRequest(request, 'owner')) {
+  if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -59,7 +59,7 @@ export async function DELETE(
   if (blockedRequest) return blockedRequest
 
   try {
-    const identity = getAdminSessionIdentityFromRequest(request)
+    const identity = await getAdminSessionIdentityFromRequest(request)
     if (!identity || identity.role !== 'owner') {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }

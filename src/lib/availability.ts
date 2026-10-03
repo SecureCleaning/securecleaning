@@ -665,7 +665,7 @@ export async function getAvailabilityConfig(): Promise<AvailabilityConfig> {
   try {
     const db = getAdminSupabase()
     const { data, error } = await db
-      .from('site_content')
+      .from('availability_private_config')
       .select('content')
       .eq('key', AVAILABILITY_CONTENT_KEY)
       .maybeSingle()
@@ -689,7 +689,7 @@ export async function saveAvailabilityConfig(config: AvailabilityConfig): Promis
   const merged = mergeAvailabilityConfig(config)
 
   const { error } = await db
-    .from('site_content')
+    .from('availability_private_config')
     .upsert({
       key: AVAILABILITY_CONTENT_KEY,
       title: AVAILABILITY_CONTENT_TITLE,
@@ -810,4 +810,13 @@ export async function getAvailabilityCalendar(
     nextAvailableDate,
     nextAvailableSuggestions,
   }
+}
+
+export function toBrowserAssignee(assignee: AvailabilityAssignee): AvailabilityAssignee {
+  const { accessCodeHash, calendarId, calendarSubscriptionUrl, ...safe } = assignee
+  return safe
+}
+
+export function toBrowserAvailabilityConfig(config: AvailabilityConfig): AvailabilityConfig {
+  return { ...config, assignees: config.assignees.map(toBrowserAssignee) }
 }

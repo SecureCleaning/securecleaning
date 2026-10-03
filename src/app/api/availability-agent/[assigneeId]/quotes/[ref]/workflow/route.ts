@@ -48,7 +48,7 @@ export async function POST(
     if ((firmQuoteDraft.status === 'reviewed' || firmQuoteDraft.status === 'accepted') && !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
     }
-    const sessionIdentity = getAdminSessionIdentityFromRequest(request)
+    const sessionIdentity = await getAdminSessionIdentityFromRequest(request)
     const staffAccount = sessionIdentity ? await getStaffAccountById(sessionIdentity.id) : null
     const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
       ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }

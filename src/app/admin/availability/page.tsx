@@ -1,3 +1,4 @@
+import { toBrowserAvailabilityConfig } from '@/lib/availability'
 import AvailabilityAdmin from '@/components/admin/AvailabilityAdmin'
 import { getAvailabilityConfig } from '@/lib/availability'
 import { withAdminPage } from '@/lib/adminPage'
@@ -14,6 +15,6 @@ export default async function AdminAvailabilityPage() {
       .select('id, business_name, operator_name, city, is_active')
       .order('business_name', { ascending: true })
 
-    return <AvailabilityAdmin initialConfig={initialConfig} ownerOperators={ownerOperators ?? []} />
+    return <AvailabilityAdmin initialConfig={toBrowserAvailabilityConfig(initialConfig)} ownerOperators={ownerOperators ?? []} />
   })
 }

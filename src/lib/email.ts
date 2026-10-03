@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/lib/htmlEscape'
 import { sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import type { QuoteInputs, QuoteResult, BookingInputs } from './types'
 import { formatPriceRange } from './quoteEngine'
@@ -6,7 +7,7 @@ import { getSiteUrl } from './siteUrl'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from './publicRoomScope'
 import type { FirmQuoteDisplayPrice } from './quoteWorkflow'
 import { getAvailabilityAssignee, getAvailabilityConfig } from './availability'
-import { createQuoteBookingHandoffToken } from './quoteBookingAccess'
+import { createQuoteCapability, createQuoteBookingHandoffToken } from './quoteBookingAccess'
 import { getQuoteAgentCc } from './quoteEmailRecipients'
 
 /**
@@ -47,14 +48,6 @@ async function getSelectedInspectionAssigneeEmail(inputs: BookingInputs): Promis
   }
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-}
 
 function startsWithGreeting(value: string): boolean {
   return /^(?:hi|hello|dear|good\s+(?:morning|afternoon|evening))\b/i.test(value.trim())
@@ -115,10 +108,11 @@ export async function sendQuoteEmail(
   const bathroomScopeSummary = summarizePublicRoomScope(
     sanitizePublicRoomScope(inputs.roomScope).filter((room) => isBathroomRoomScopeType(room.type))
   )
-  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
+  const bookingHandoffToken = await createQuoteBookingHandoffToken(quoteRef)
   const bookingUrl = `${SITE_URL}/booking?${new URLSearchParams({ quoteRef, handoff: bookingHandoffToken }).toString()}`
-  const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ handoff: bookingHandoffToken }).toString()}`
+  const documentAccessToken = await createQuoteCapability(quoteRef, 'document')
+  const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ access: documentAccessToken, handoff: bookingHandoffToken }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ access: documentAccessToken, handoff: bookingHandoffToken }).toString()}`
   const agentCc = await getQuoteAgentCc(quoteRef, inputs)
 
   // Email to client
@@ -135,8 +129,8 @@ export async function sendQuoteEmail(
           <p style="color: #22c55e; margin: 4px 0 0;">Professional Commercial Cleaning</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${inputs.contactName},</p>
-          <p>Thank you for requesting a remote quote from Secure Cleaning. Here's your estimate for <strong>${businessLabel}</strong> in ${cityLabel}.</p>
+          <p>Hi ${escapeHtml(inputs.contactName)},</p>
+          <p>Thank you for requesting a remote quote from Secure Cleaning. Here's your estimate for <strong>${escapeHtml(businessLabel)}</strong> in ${cityLabel}.</p>
           
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 16px;">Quote Reference: ${quoteRef}</h2>
@@ -149,14 +143,14 @@ export async function sendQuoteEmail(
 
           <h3 style="color: #1a2744;">Service Details</h3>
           <ul style="color: #334155; line-height: 1.8;">
-            <li>Premises: ${inputs.premisesType} (${inputs.floorArea} sqm, ${inputs.floors} floor${inputs.floors > 1 ? 's' : ''})</li>
-            <li>Frequency: ${inputs.frequency.replace(/_/g, ' ')}</li>
+            <li>Premises: ${escapeHtml(inputs.premisesType)} (${escapeHtml(inputs.floorArea)} sqm, ${escapeHtml(inputs.floors)} floor${inputs.floors > 1 ? 's' : ''})</li>
+            <li>Frequency: ${escapeHtml(inputs.frequency.replace(/_/g, ' '))}</li>
             <li>Time preference: ${timeLabel}</li>
             <li>City: ${cityLabel}</li>
-            <li>Locality: ${inputs.suburb} ${inputs.postcode}</li>
-            ${bathroomScopeSummary.length > 0 ? bathroomScopeSummary.map((item) => `<li>${item}</li>`).join('') : inputs.addOns.bathrooms > 0 ? `<li>Bathrooms / amenities: ${inputs.addOns.bathrooms}</li>` : ''}
+            <li>Locality: ${escapeHtml(inputs.suburb)} ${escapeHtml(inputs.postcode)}</li>
+            ${bathroomScopeSummary.length > 0 ? bathroomScopeSummary.map((item) => `<li>${escapeHtml(item)}</li>`).join('') : inputs.addOns.bathrooms > 0 ? `<li>Bathrooms / amenities: ${inputs.addOns.bathrooms}</li>` : ''}
             ${inputs.addOns.kitchens > 0 ? `<li>Kitchens / kitchenettes: ${inputs.addOns.kitchens}</li>` : ''}
-            ${roomScopeSummary.map((item) => `<li>${item}</li>`).join('')}
+            ${roomScopeSummary.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}
             ${inputs.addOns.glassCleaningRequired ? '<li>Glass cleaning requested — estimated separately during site inspection</li>' : ''}
           </ul>
 
@@ -195,10 +189,10 @@ export async function sendScopeOfWorksEmail(
   inputs: QuoteInputs,
   variant: 'remote_review' | 'final' = 'remote_review'
 ): Promise<void> {
-  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
+  const documentAccessToken = await createQuoteCapability(quoteRef, 'document', variant)
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({
     ...(variant === 'final' ? { variant: 'final' } : {}),
-    handoff: bookingHandoffToken,
+    access: documentAccessToken,
   }).toString()}`
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const frequencyLabel = inputs.frequency.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase())
@@ -218,9 +212,9 @@ export async function sendScopeOfWorksEmail(
           <p style="color: #bbf7d0; margin: 4px 0 0;">Client Scope of Works</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${inputs.contactName},</p>
-          <p>Your client scope of works for <strong>${businessLabel}</strong> is ready to view online.</p>
-          <p><strong>Service frequency:</strong> ${frequencyLabel}</p>
+          <p>Hi ${escapeHtml(inputs.contactName)},</p>
+          <p>Your client scope of works for <strong>${escapeHtml(businessLabel)}</strong> is ready to view online.</p>
+          <p><strong>Service frequency:</strong> ${escapeHtml(frequencyLabel)}</p>
           <p>The report lists the planned areas, regular tasks, and options selected for your ${variant === 'final' ? 'final quote' : 'remote quotation'}. Any agreed changes can be reflected in the same online report.</p>
           <p style="margin: 28px 0; text-align: center;">
             <a href="${scopeUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #22c55e; color: white; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: bold;">View Scope of Works</a>
@@ -251,9 +245,9 @@ export async function sendUpdatedQuoteEmail(
 ) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
-  const bookingHandoffToken = createQuoteBookingHandoffToken(quoteRef)
-  const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', handoff: bookingHandoffToken }).toString()}`
+  const documentAccessToken = await createQuoteCapability(quoteRef, 'document', 'final')
+  const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', access: documentAccessToken }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', access: documentAccessToken }).toString()}`
   const consumablesUrl = `${SITE_URL}/consumables`
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
@@ -355,17 +349,17 @@ export async function sendBookingConfirmationEmail(
           <p style="color: #22c55e; margin: 4px 0 0;">${staffConfirmed ? 'Site Inspection Confirmed' : 'Site Inspection Request Received'} ✓</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${inputs.contactName},</p>
+          <p>Hi ${escapeHtml(inputs.contactName)},</p>
           <p>${staffConfirmed ? 'Your Secure Cleaning site inspection has been scheduled for the confirmed date and time below.' : "Your site inspection request has been received. We'll be in touch shortly to confirm the inspection details, scope, and next steps."}</p>
           
           <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 24px; margin: 24px 0;">
             <h2 style="color: #1a2744; margin: 0 0 8px;">Inspection Request Reference: ${bookingRef}</h2>
             <p style="color: #334155; margin: 0;">
-              ${businessLabel}<br>
-              ${inputs.address}, ${inputs.suburb} ${inputs.postcode}, ${cityLabel}<br>
-              Cleaning frequency: ${inputs.frequency.replace(/_/g, ' ')}<br>
-              Preferred inspection date: ${inputs.preferredStartDate}<br>
-              Cleaning time preference: ${inputs.timePreference.replace(/_/g, ' ')}${selectedInspectionWindow ? `<br>${staffConfirmed ? 'Confirmed inspection time' : 'Provisional inspection time'}: ${selectedInspectionWindow}` : ''}
+              ${escapeHtml(businessLabel)}<br>
+              ${escapeHtml(inputs.address)}, ${escapeHtml(inputs.suburb)} ${escapeHtml(inputs.postcode)}, ${cityLabel}<br>
+              Cleaning frequency: ${escapeHtml(inputs.frequency.replace(/_/g, ' '))}<br>
+              Preferred inspection date: ${escapeHtml(inputs.preferredStartDate)}<br>
+              Cleaning time preference: ${escapeHtml(inputs.timePreference.replace(/_/g, ' '))}${selectedInspectionWindow ? `<br>${staffConfirmed ? 'Confirmed inspection time' : 'Provisional inspection time'}: ${escapeHtml(selectedInspectionWindow)}` : ''}
             </p>
           </div>
 
@@ -399,14 +393,14 @@ export async function sendBookingConfirmationEmail(
     subject: `[${staffConfirmed ? 'Site Inspection Booked' : 'New Site Inspection Request'}] ${bookingRef} — ${adminBusinessLabel} (${cityLabel})`,
     html: `
       <p><strong>New site inspection request submitted:</strong> ${bookingRef}</p>
-      <p>Business: ${adminBusinessLabel}<br>
-      Contact: ${inputs.contactName}<br>
-      Email: ${inputs.email}<br>
-      Phone: ${inputs.phone}<br>
-      Address: ${inputs.address}, ${inputs.suburb} ${inputs.postcode}, ${cityLabel}<br>
-      Cleaning frequency: ${inputs.frequency}<br>
-      Preferred inspection date: ${inputs.preferredStartDate}<br>
-      Cleaning time preference: ${inputs.timePreference}${selectedInspectionWindow ? `<br>Inspection appointment window: ${selectedInspectionWindow}` : ''}${inputs.preferredInspectionAssigneeName ? `<br>Assigned quoter: ${inputs.preferredInspectionAssigneeName}` : ''}</p>
+      <p>Business: ${escapeHtml(adminBusinessLabel)}<br>
+      Contact: ${escapeHtml(inputs.contactName)}<br>
+      Email: ${escapeHtml(inputs.email)}<br>
+      Phone: ${escapeHtml(inputs.phone)}<br>
+      Address: ${escapeHtml(inputs.address)}, ${escapeHtml(inputs.suburb)} ${escapeHtml(inputs.postcode)}, ${cityLabel}<br>
+      Cleaning frequency: ${escapeHtml(inputs.frequency)}<br>
+      Preferred inspection date: ${escapeHtml(inputs.preferredStartDate)}<br>
+      Cleaning time preference: ${escapeHtml(inputs.timePreference)}${selectedInspectionWindow ? `<br>Inspection appointment window: ${escapeHtml(selectedInspectionWindow)}` : ''}${inputs.preferredInspectionAssigneeName ? `<br>Assigned quoter: ${escapeHtml(inputs.preferredInspectionAssigneeName)}` : ''}</p>
     `,
   })
 }

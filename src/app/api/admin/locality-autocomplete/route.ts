@@ -48,13 +48,13 @@ function stateCodeFromName(value?: string | null) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
   const blocked =
-    rateLimit(request, { key: 'admin-locality-autocomplete:minute', limit: 30, windowMs: 60 * 1000 }) ??
-    rateLimit(request, { key: 'admin-locality-autocomplete:hour', limit: 180, windowMs: 60 * 60 * 1000 })
+    await rateLimit(request, { key: 'admin-locality-autocomplete:minute', limit: 30, windowMs: 60 * 1000 }) ??
+    await rateLimit(request, { key: 'admin-locality-autocomplete:hour', limit: 180, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 
   const { searchParams } = request.nextUrl

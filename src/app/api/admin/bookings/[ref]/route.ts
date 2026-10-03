@@ -8,7 +8,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { ref: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 

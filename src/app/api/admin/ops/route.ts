@@ -14,7 +14,7 @@ import { updateLeadFollowUp, updateQuoteFollowUp } from '@/lib/crmOps'
 import { dismissAdminAlert, isValidAdminAlertId } from '@/lib/alerts'
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 

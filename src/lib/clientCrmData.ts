@@ -155,7 +155,7 @@ function resolvePublicContactMatch(rows: Array<Record<string, unknown>>, input: 
     const savedPhone = normalizeCrmPhone(typeof row.phone === 'string' ? row.phone : null)
     return String(row.business_name ?? '').trim().toLowerCase() === normalizedBusiness
       && String(row.contact_name ?? '').trim().toLowerCase() === normalizedContact
-      && (!savedPhone || !normalizedPhone || savedPhone === normalizedPhone)
+      && (Boolean(savedPhone) && Boolean(normalizedPhone) && savedPhone === normalizedPhone)
   })
   if (matching.length !== 1) {
     throw new ClientCrmError('These contact details match more than one existing client record or conflict with the saved record. Please contact Secure Cleaning so we can reconcile the client before continuing.', 409)

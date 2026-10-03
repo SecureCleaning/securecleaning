@@ -1,8 +1,10 @@
+import { mintTestSession, installTestAccounts, testAccountResponse } from './security-auth-fixture.mjs'
 import test from 'node:test'
 import { createRequire } from 'node:module'
 globalThis.require = createRequire(import.meta.url)
 import assert from 'node:assert/strict'
 import { NextRequest } from 'next/server'
+installTestAccounts()
 process.env.ADMIN_SESSION_SECRET = 'test-session-secret'
 process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
@@ -18,13 +20,13 @@ const draft = { emails: 'cleaner@example.test', subject: 'Hello {{first_name}}',
 const sender = { displayName: 'Staff Member', jobTitle: 'Operations', phone: '0400000000', email: 'staff@example.test' }
 const cleaner = { id: cleanerId, email: draft.emails, first_name: '<script>bad</script>', contact_name: 'Test Cleaner', business_name: 'Test Business', status: 'approved', broadcast_unsubscribe_token: 'test-token' }
 
-test('recipient validation rejects duplicates, invalid addresses, oversized lists, unsupported fields and header injection', () => {
+test('recipient validation rejects duplicates, invalid addresses, oversized lists, unsupported fields and header injection', async () => {
   for (const change of [{ emails: '' }, { emails: 'bad' }, { emails: 'a@example.test,A@example.test' }, { emails: 'x'.repeat(300001) }, { subject: 'Hello\nBcc: bad@example.test' }, { body: '{{internal_notes}}' }]) {
     assert.throws(() => parseCleanerEmailInput({ ...draft, ...change }))
   }
   assert.equal(parseCleanerEmailInput({ ...draft, emails: ' CLEANER@EXAMPLE.TEST ' }).emails[0], 'cleaner@example.test')
 })
-test('rich personalisation keeps formatting while escaping cleaner values and unsafe HTML', () => {
+test('rich personalisation keeps formatting while escaping cleaner values and unsafe HTML', async () => {
   const input = parseCleanerEmailInput({ ...draft, bodyHtml: draft.bodyHtml + '<script>alert(1)</script><a href="javascript:alert(1)">bad link</a>' })
   const rendered = renderCleanerEmail(input, cleaner, sender, 'https://example.test/unsubscribe?token=one')
   assert.match(rendered.html, /<strong>&lt;script&gt;bad&lt;\/script&gt;<\/strong>/)
@@ -35,7 +37,7 @@ test('rich personalisation keeps formatting while escaping cleaner values and un
 test('new cleaner email API denies anonymous, viewer and regional agent sessions', async () => {
   for (const role of [null, 'viewer', 'agent']) {
     const headers = { 'Content-Type': 'application/json' }
-    if (role) headers.cookie = `${ADMIN_SESSION_COOKIE}=${createAdminSessionToken({ ...actor, role })}`
+    if (role) headers.cookie = `${ADMIN_SESSION_COOKIE}=${await mintTestSession({ ...actor, role })}`
     const response = await POST(new NextRequest('https://example.test/api/admin/cleaners/email', { method:'POST', headers, body:JSON.stringify({ action:'send',...draft }) }))
     assert.equal(response.status, role ? 403 : 401)
   }

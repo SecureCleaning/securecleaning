@@ -36,7 +36,7 @@ test('creation accepts absent business names, defaults NSW, preserves named busi
   global.fetch = async (url, options) => {
     const path = new URL(String(url)).pathname
     let response
-    if (path.endsWith('/site_content')) response = { content: JSON.stringify({ assignees, weeklySlots: [] }) }
+    if (path.endsWith('/availability_private_config')) response = { content: JSON.stringify({ assignees, weeklySlots: [] }) }
     else if (path.endsWith('/admin_staff_accounts')) response = []
     else if (path.endsWith('/rpc/create_client_crm_opportunity')) { writes.push(JSON.parse(options.body)); response = 'created-id' }
     else throw new Error('Unexpected request: ' + path)

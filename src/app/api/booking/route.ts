@@ -1,3 +1,4 @@
+import { resolveQuoteCapability, quoteCapabilityHash } from '@/lib/quoteBookingAccess'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendBookingConfirmationEmail } from '@/lib/email'
@@ -29,9 +30,9 @@ export async function POST(request: NextRequest) {
     const blocked =
       rejectCrossOriginMutation(request) ??
       rejectLargePayload(request, 64 * 1024) ??
-      rateLimit(request, { key: 'booking:minute', limit: 2, windowMs: 60 * 1000 }) ??
-      rateLimit(request, { key: 'booking:hour', limit: 4, windowMs: 60 * 60 * 1000 }) ??
-      rateLimit(request, { key: 'booking:day', limit: 12, windowMs: 24 * 60 * 60 * 1000 })
+      await rateLimit(request, { key: 'booking:minute', limit: 2, windowMs: 60 * 1000 }) ??
+      await rateLimit(request, { key: 'booking:hour', limit: 4, windowMs: 60 * 60 * 1000 }) ??
+      await rateLimit(request, { key: 'booking:day', limit: 12, windowMs: 24 * 60 * 60 * 1000 })
 
     if (blocked) return blocked
 
@@ -56,7 +57,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'One or more fields are too long.' }, { status: 400 })
     }
 
-    const rawInputs = body as BookingInputs
+    // Authorize quote linkage before lookup-dependent writes or provider calls.
+    const linked = Object.hasOwn(bodyRecord, 'quoteRef') || Object.hasOwn(bodyRecord, 'handoff')
+    const capability = linked && typeof bodyRecord.quoteRef === 'string'
+      ? await resolveQuoteCapability(bodyRecord.quoteRef, bodyRecord.handoff, 'booking') : null
+    if (linked && (!capability || !capability.quote.client_id)) return NextResponse.json({ success: false, error: 'Quote booking details are unavailable.' }, { status: 404 })
+    const normalizedPhone = (value: unknown) => typeof value === 'string' ? value.replace(/[^0-9]/g, '').replace(/^61/, '0') : ''
+    if (capability && (
+      typeof bodyRecord.email !== 'string' || bodyRecord.email.trim().toLowerCase() !== String(capability.quote.inputs.email ?? '').trim().toLowerCase() ||
+      normalizedPhone(bodyRecord.phone).length < 8 || normalizedPhone(bodyRecord.phone) !== normalizedPhone(capability.quote.inputs.phone)
+    )) return NextResponse.json({ success: false, error: 'Use the contact details from your quote or contact Secure Cleaning to change them.' }, { status: 400 })
+    if (capability?.consumed_booking_id) {
+      const { data: existing, error } = await getAdminSupabase().from('bookings').select('booking_ref')
+        .eq('id', capability.consumed_booking_id).eq('quote_id', capability.quote.id).maybeSingle()
+      if (error || !existing) throw new Error('Booking could not be recovered.')
+      return NextResponse.json({ success: true, bookingRef: existing.booking_ref })
+    }
+    const { handoff: _handoff, inspectionBookingSource: _source,
+      preferredInspectionCalendarId: _calendarId, preferredInspectionAssigneeId: _assigneeId,
+      preferredInspectionAssigneeName: _assigneeName, preferredInspectionSlotLabel: _slotLabel,
+      preferredInspectionDay: _day, preferredInspectionStartTime: _start, preferredInspectionEndTime: _end,
+      ...safeBody } = body
+    const rawInputs = safeBody as BookingInputs
     const { latitude: _browserLatitude, longitude: _browserLongitude, ...inputs } = rawInputs
 
     if (
@@ -70,9 +92,9 @@ export async function POST(request: NextRequest) {
     }
     const businessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
     const identityLimit =
-      rateLimitValue(inputs.email, { key: 'booking:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
-      rateLimitValue(inputs.phone, { key: 'booking:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
-      rateLimitValue(inputs.businessName, { key: 'booking:business:day', limit: 5, windowMs: 24 * 60 * 60 * 1000 })
+      await rateLimitValue(inputs.email, { key: 'booking:email:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      await rateLimitValue(inputs.phone, { key: 'booking:phone:day', limit: 3, windowMs: 24 * 60 * 60 * 1000 }) ??
+      await rateLimitValue(inputs.businessName, { key: 'booking:business:day', limit: 5, windowMs: 24 * 60 * 60 * 1000 })
     if (identityLimit) return identityLimit
 
     // ── Validate required fields ──────────────────────────────────────────
@@ -184,7 +206,7 @@ export async function POST(request: NextRequest) {
 
     let clientData: { id: string; existing: boolean } | null = null
     try {
-      clientData = await resolvePublicSubmissionClient({
+      clientData = capability?.quote.client_id ? { id: capability.quote.client_id, existing: true } : await resolvePublicSubmissionClient({
         businessName: businessLabel,
         contactName: inputs.contactName,
         email: inputs.email,
@@ -206,32 +228,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── Resolve quote ID if quoteRef provided ─────────────────────────────
-    let quoteId: string | null = null
-    if (inputs.quoteRef) {
-      const { data: quoteData, error: quoteLookupError } = await db
-        .from('quotes')
-        .select('id, client_id')
-        .eq('quote_ref', inputs.quoteRef)
-        .eq('client_id', clientData.id)
-        .maybeSingle()
-      if (quoteLookupError || !quoteData) {
-        return NextResponse.json(
-          { success: false, error: 'The quote could not be matched to these booking details.' },
-          { status: 400 }
-        )
-      }
-      quoteId = quoteData?.id ?? null
-
-      // Mark quote as accepted
-      if (quoteId) {
-        await db.from('quotes').update({ status: 'accepted' }).eq('id', quoteId)
-      }
-    }
+    const quoteId: string | null = capability?.quote.id ?? null
 
     // ── Match or create site ──────────────────────────────────────────────
-    let matchedSite = await findMatchingSiteForBooking(bookingInputs, clientData.id)
-    if (!matchedSite) {
+    let matchedSite: { id: string } | null = capability ? null : await findMatchingSiteForBooking(bookingInputs, clientData.id)
+    if (!matchedSite && !capability) {
       try {
         matchedSite = await createSiteFromBooking(bookingInputs, clientData.id)
       } catch (siteError) {
@@ -240,9 +241,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Insert booking ────────────────────────────────────────────────────
-    const bookingRef = generateBookingRef()
+    let bookingRef = generateBookingRef()
 
-    const { data: bookingData, error: bookingError } = await db.from('bookings').insert({
+    const bookingPayload = {
       booking_ref: bookingRef,
       quote_id: quoteId,
       client_id: clientData.id,
@@ -257,7 +258,10 @@ export async function POST(request: NextRequest) {
         frequency: inputs.frequency,
         timeStart: inputs.timePreference === 'after_hours' ? '18:00' : '08:00',
       },
-    }).select('id').single()
+    }
+    const { data: bookingData, error: bookingError } = capability
+      ? await db.rpc('create_authorized_quote_booking', { p_token_hash: quoteCapabilityHash(String(bodyRecord.handoff)), p_quote_ref: inputs.quoteRef, p_booking: bookingPayload })
+      : await db.from('bookings').insert(bookingPayload).select('id').single()
 
     if (bookingError) {
       console.error('[booking] Insert failed:', bookingError)
@@ -267,6 +271,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (capability) {
+      bookingRef = bookingData.booking_ref
+      matchedSite = { id: bookingData.site_id }
+      if (!bookingData.created) return NextResponse.json({ success: true, bookingRef })
+    }
     // Keep one CRM opportunity connected from the first enquiry through booking.
     try {
       await syncBookingCrmOpportunity({
@@ -291,13 +300,16 @@ export async function POST(request: NextRequest) {
     // ── Send confirmation emails ──────────────────────────────────────────
     try {
       await sendBookingConfirmationEmail(bookingRef, bookingInputs)
+      if (capability) await db.from('booking_security_outbox').update({ email_state: 'sent' }).eq('booking_id', bookingData.id)
     } catch (err) {
-      console.error('[booking] Email send failed:', err)
+      if (capability) await db.from('booking_security_outbox').update({ email_state: 'review_required' }).eq('booking_id', bookingData.id)
+      console.error('[booking] Email send failed')
     }
 
-    // ── Create Google Calendar follow-up event (non-blocking) ─────────────
-    createBookingFollowUpEvent(bookingRef, bookingInputs)
-      .then((result) => {
+    // ── Create Google Calendar follow-up event before returning ─────────────
+    await createBookingFollowUpEvent(bookingRef, bookingInputs)
+      .then(async (result) => {
+        if (capability) await db.from('booking_security_outbox').update({ calendar_state: result.created ? 'sent' : 'review_required' }).eq('booking_id', bookingData.id)
         if (!result.created && result.reason) {
           console.warn('[booking] Calendar event not created:', result.reason)
         }
@@ -309,7 +321,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       bookingRef,
-      inputs: bookingInputs,
+      inputs: { ...bookingInputs, preferredInspectionCalendarId: undefined },
     })
   } catch (error) {
     console.error('[api/booking] Unhandled error:', error)

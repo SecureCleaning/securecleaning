@@ -12,6 +12,8 @@ export interface StoredQuoteResult {
   quoteRef: string
   result: QuoteResult
   inputs: QuoteInputs
+  documentAccessToken?: string
+  bookingHandoffToken?: string
   emailSent?: boolean
   emailError?: string | null
 }

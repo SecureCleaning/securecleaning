@@ -1,3 +1,4 @@
+import { mintTestSession, installTestAccounts, testAccountResponse } from './security-auth-fixture.mjs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -6,6 +7,10 @@ import { fileURLToPath } from 'node:url'
 
 import { NextRequest } from 'next/server'
 
+installTestAccounts()
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
+process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 process.env.ADMIN_SESSION_SECRET = 'test-session-secret'
 
 const {
@@ -32,7 +37,7 @@ const actions = [
   'delete',
 ]
 
-test('cleaner permissions match the bounded role matrix', () => {
+test('cleaner permissions match the bounded role matrix', async () => {
   const expected = {
     viewer: ['list', 'detail'],
     staff: ['list', 'detail', 'mutate', 'comment', 'documentUpload', 'email', 'import'],
@@ -51,36 +56,36 @@ test('cleaner permissions match the bounded role matrix', () => {
   }
 })
 
-test('cleaner route authorization distinguishes missing sessions from insufficient roles', () => {
+test('cleaner route authorization distinguishes missing sessions from insufficient roles', async () => {
   const missingSessionRequest = new NextRequest('https://securecleaning.com.au/api/admin/cleaners/export')
-  assert.deepEqual(authorizeCleanerAdminRequest(missingSessionRequest, 'export'), {
+  assert.deepEqual(await authorizeCleanerAdminRequest(missingSessionRequest, 'export'), {
     identity: null,
     error: 'Unauthorized',
     status: 401,
   })
 
-  const viewerToken = createAdminSessionToken({ id: 'viewer-id', username: 'viewer.one', role: 'viewer' })
+  const viewerToken = await mintTestSession({ id: 'viewer-id', username: 'viewer.one', role: 'viewer' })
   const viewerRequest = new NextRequest('https://securecleaning.com.au/api/admin/cleaners/export', {
     headers: { cookie: `${ADMIN_SESSION_COOKIE}=${viewerToken}` },
   })
-  assert.deepEqual(authorizeCleanerAdminRequest(viewerRequest, 'export'), {
+  assert.deepEqual(await authorizeCleanerAdminRequest(viewerRequest, 'export'), {
     identity: null,
     error: 'Forbidden',
     status: 403,
   })
 
-  const staffToken = createAdminSessionToken({ id: 'staff-id', username: 'staff.one', role: 'staff' })
+  const staffToken = await mintTestSession({ id: 'staff-id', username: 'staff.one', role: 'staff' })
   const staffRequest = new NextRequest('https://securecleaning.com.au/api/admin/cleaners/cleaner-1/comments', {
     headers: { cookie: `${ADMIN_SESSION_COOKIE}=${staffToken}` },
   })
-  assert.deepEqual(authorizeCleanerAdminRequest(staffRequest, 'comment').identity, {
+  assert.deepEqual((await authorizeCleanerAdminRequest(staffRequest, 'comment')).identity, {
     id: 'staff-id',
     username: 'staff.one',
     role: 'staff',
   })
 })
 
-test('cleaner mutations use signed identity and cannot use browser attribution fields', () => {
+test('cleaner mutations use signed identity and cannot use browser attribution fields', async () => {
   const projectRoot = fileURLToPath(new URL('..', import.meta.url))
   const routeFiles = [
     'src/app/api/admin/cleaners/[cleanerId]/comments/route.ts',
@@ -104,7 +109,7 @@ test('cleaner mutations use signed identity and cannot use browser attribution f
   assert.match(emailRoute, /actor: authorization\.identity/)
 })
 
-test('document replacement requires manager-level document delete permission', () => {
+test('document replacement requires manager-level document delete permission', async () => {
   const source = readFileSync(
     fileURLToPath(new URL('../src/app/api/admin/cleaners/[cleanerId]/documents/route.ts', import.meta.url)),
     'utf8',

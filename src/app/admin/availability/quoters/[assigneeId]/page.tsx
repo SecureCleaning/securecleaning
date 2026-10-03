@@ -1,3 +1,4 @@
+import { toBrowserAssignee } from '@/lib/availability'
 import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import AssigneeAvailabilityEditor from '@/components/availability/AssigneeAvailabilityEditor'
@@ -48,7 +49,7 @@ export default async function AdminAvailabilityQuoterPage({
           backLabel="Back to availability"
         />
         <AssigneeAvailabilityEditor
-          assignee={assignee}
+          assignee={toBrowserAssignee(assignee)}
           initialWeeklySlots={config.weeklySlots.filter((slot) => slot.assigneeId === assigneeId)}
           initialOneOffBlocks={config.oneOffBlocks.filter((block) => block.assigneeId === assigneeId)}
           zones={config.zones.filter((zone) => zone.city === assignee.city)}

@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
     const blocked =
       rejectCrossOriginMutation(request) ??
       rejectLargePayload(request, 32 * 1024) ??
-      rateLimit(request, { key: 'chat:minute', limit: 6, windowMs: 60 * 1000 }) ??
-      rateLimit(request, { key: 'chat:day', limit: 40, windowMs: 24 * 60 * 60 * 1000 })
+      await rateLimit(request, { key: 'chat:minute', limit: 6, windowMs: 60 * 1000 }) ??
+      await rateLimit(request, { key: 'chat:day', limit: 40, windowMs: 24 * 60 * 60 * 1000 })
 
     if (blocked) return blocked
 

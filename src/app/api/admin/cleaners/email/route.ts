@@ -7,9 +7,9 @@ import { CleanerEmailError } from '@/lib/cleanerEmailPolicy'
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
-  const authorization = authorizeCleanerAdminRequest(request, 'email')
+  const authorization = await authorizeCleanerAdminRequest(request, 'email')
   if (!authorization.identity) return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
-  const blocked = rejectCrossOriginMutation(request) || rateLimit(request, { key: `cleaner-email:${authorization.identity.id}`, limit: 120, windowMs: 60_000 })
+  const blocked = rejectCrossOriginMutation(request) || await rateLimit(request, { key: `cleaner-email:${authorization.identity.id}`, limit: 120, windowMs: 60_000 })
   if (blocked) return blocked
   try {
     const text = await request.text()

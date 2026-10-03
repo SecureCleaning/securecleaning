@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     if (subject && subject.length > 180) return NextResponse.json({ success: false, error: 'The email subject is too long.' }, { status: 400 })
     if (message && message.length > 4000) return NextResponse.json({ success: false, error: 'The email message is too long.' }, { status: 400 })
 
-    const sessionIdentity = getAdminSessionIdentityFromRequest(request)
+    const sessionIdentity = await getAdminSessionIdentityFromRequest(request)
     const staffAccount = sessionIdentity ? await getStaffAccountById(sessionIdentity.id) : null
     const actor = staffAccount?.active && staffAccount.role === 'agent' && staffAccount.availability_assignee_id === assignee.id
       ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }

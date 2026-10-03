@@ -8,7 +8,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { cleanerId: string; documentId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'documentDownload')
+  const authorization = await authorizeCleanerAdminRequest(request, 'documentDownload')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
@@ -31,7 +31,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { cleanerId: string; documentId: string } }
 ) {
-  const authorization = authorizeCleanerAdminRequest(request, 'documentDelete')
+  const authorization = await authorizeCleanerAdminRequest(request, 'documentDelete')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }

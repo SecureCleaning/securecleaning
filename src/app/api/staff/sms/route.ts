@@ -26,7 +26,7 @@ export async function GET(request:NextRequest) {
   } catch(error) {return failure(error)}
 }
 export async function POST(request:NextRequest) {
-  const rejected=rejectCrossOriginMutation(request)||rejectLargePayload(request,16000)||rateLimit(request,{key:'staff-sms',limit:30,windowMs:60_000})
+  const rejected=rejectCrossOriginMutation(request)||rejectLargePayload(request,16000)||await rateLimit(request,{key:'staff-sms',limit:30,windowMs:60_000})
   if(rejected) return rejected
   try {
     const actor=await smsActor(request),raw=await request.text()

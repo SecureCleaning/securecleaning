@@ -165,16 +165,9 @@ export default function BookingForm() {
     const privatePrefillUrl = handoffToken
       ? `/api/quote/${encodeURIComponent(quoteRef)}/booking-prefill?handoff=${encodeURIComponent(handoffToken)}`
       : null
-    const publicPrefillUrl = `/api/quote/${encodeURIComponent(quoteRef)}`
-
-    fetch(privatePrefillUrl ?? publicPrefillUrl, { signal: controller.signal })
+    if (!privatePrefillUrl) return
+    fetch(privatePrefillUrl, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok && privatePrefillUrl) {
-          const fallback = await fetch(publicPrefillUrl, { signal: controller.signal })
-          if (!fallback.ok) return null
-          const fallbackPayload = await fallback.json()
-          return fallbackPayload.success && fallbackPayload.quote?.inputs ? fallbackPayload.quote.inputs : null
-        }
         if (!response.ok) return null
         const payload = await response.json()
         if (!payload.success) return null
@@ -325,7 +318,7 @@ export default function BookingForm() {
       const res = await fetch('/api/booking', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, handoff: handoffToken }),
       })
       const data = await res.json()
       if (!res.ok || !data.success) throw new Error(data.error ?? 'Inspection request failed')

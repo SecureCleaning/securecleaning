@@ -13,7 +13,7 @@ const AVAILABILITY_SENT_ACTION = 'contract_sale.inspection.availability_sent'
 
 async function getAuthorizedAgent(request: NextRequest, assigneeId: string) {
   if (!(await isAuthorizedAvailabilityAgentRequest(request, assigneeId))) return null
-  const identity = getAdminSessionIdentityFromRequest(request)
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity || identity.role !== 'agent') return null
   const account = await getStaffAccountById(identity.id)
   return account?.active && account.role === 'agent' && account.availability_assignee_id === assigneeId
@@ -26,14 +26,14 @@ export async function GET(
   context: { params: Promise<{ assigneeId: string }> }
 ) {
   const { assigneeId } = await context.params
-  const limited = rateLimit(request, { key: `availability-agent-sale-alerts:${assigneeId}:minute`, limit: 60, windowMs: 60 * 1000 })
+  const limited = await rateLimit(request, { key: `availability-agent-sale-alerts:${assigneeId}:minute`, limit: 60, windowMs: 60 * 1000 })
   if (limited) return limited
 
   if (!(await isAuthorizedAvailabilityAgentRequest(request, assigneeId))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const identity = getAdminSessionIdentityFromRequest(request)
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity || identity.role !== 'agent') {
     return NextResponse.json({ error: 'Agent account required.' }, { status: 403 })
   }
@@ -108,7 +108,7 @@ export async function POST(
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
   if (blocked) return blocked
   const { assigneeId } = await context.params
-  const limited = rateLimit(request, { key: `availability-agent-sale-alert-dismiss:${assigneeId}:minute`, limit: 30, windowMs: 60 * 1000 })
+  const limited = await rateLimit(request, { key: `availability-agent-sale-alert-dismiss:${assigneeId}:minute`, limit: 30, windowMs: 60 * 1000 })
   if (limited) return limited
 
   const account = await getAuthorizedAgent(request, assigneeId)

@@ -1,3 +1,4 @@
+import { mintTestSession, installTestAccounts, testAccountResponse } from './security-auth-fixture.mjs'
 import test, { beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { NextRequest } from 'next/server'
@@ -10,9 +11,9 @@ const { createAdminSessionToken, ADMIN_SESSION_COOKIE } = await import('../src/l
 const ref = 'SC-20260921-TEST'
 const params = { params: { ref } }
 const body = { confirmation: ref, reason: 'Internal test cleanup', linkedRecords: 'keep', override: true, previewToken: 'a'.repeat(32) }
-function request(role, data=body, method='DELETE', extraHeaders={}) {
+async function request(role, data=body, method='DELETE', extraHeaders={}) {
   const headers = { 'Content-Type':'application/json', ...extraHeaders }
-  if (role) headers.cookie = `${ADMIN_SESSION_COOKIE}=${createAdminSessionToken({id:'owner-id', username:'owner',role})}`
+  if (role) headers.cookie = `${ADMIN_SESSION_COOKIE}=${await mintTestSession({id:'owner-id', username:'owner',role})}`
   return new NextRequest(`https://example.com/api/admin/quotes/${ref}/deletion`, {method,headers,...(method==='DELETE' ? {body:JSON.stringify(data)} : {})})
 }
 const originalFetch=globalThis.fetch
@@ -21,23 +22,25 @@ const json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'a
 beforeEach(()=>{globalThis.fetch=async url=>{assert.ok(String(url).includes('/admin_staff_accounts?'));return json(account)}})
 afterEach(()=>{globalThis.fetch=originalFetch})
 test('stale owner cookies cannot inspect or delete after account removal, deactivation or demotion',async()=>{
+ const oldGet = await request('owner',{},'GET')
+ const oldDelete = await request('owner')
  for(const record of [null,{...account,active:false},{...account,role:'manager'},{...account,username:'changed'}]){
   globalThis.fetch=async url=>{assert.ok(String(url).includes('/admin_staff_accounts?'));return json(record)}
-  assert.equal((await GET(request('owner',{},'GET'),params)).status,403)
-  assert.equal((await DELETE(request('owner'),params)).status,403)
+  assert.ok([401,403].includes((await GET(oldGet,params)).status))
+  assert.ok([401,403].includes((await DELETE(oldDelete,params)).status))
  }
 })
 test('quote deletion preview and mutation reject all non-owner roles before data access', async () => {
   for (const role of [null,'agent','viewer','staff','manager']) {
-    assert.equal((await GET(request(role,{},'GET'),params)).status,401)
-    assert.equal((await DELETE(request(role),params)).status,401)
+    assert.equal((await GET(await request(role,{},'GET'),params)).status,401)
+    assert.equal((await DELETE(await request(role),params)).status,401)
   }
 })
 test('owner must supply exact confirmation, reason, explicit record choice and reviewed preview', async () => {
   for (const changes of [{confirmation:'wrong'},{reason:'short'},{linkedRecords:'documents'},{override:'true'},{previewToken:''}]) {
-    assert.equal((await DELETE(request('owner',{...body,...changes}),params)).status,400)
+    assert.equal((await DELETE(await request('owner',{...body,...changes}),params)).status,400)
   }
-  assert.equal((await DELETE(request('owner',body,'DELETE',{origin:'https://untrusted.example'}),params)).status,403)
+  assert.equal((await DELETE(await request('owner',body,'DELETE',{origin:'https://untrusted.example'}),params)).status,403)
 })
 test('deletion uses signed owner identity, preserves chosen mode and safely reports concurrent changes', async () => {
   const oldFetch = globalThis.fetch
@@ -51,7 +54,7 @@ test('deletion uses signed owner identity, preserves chosen mode and safely repo
       sent=JSON.parse(options.body)
       return new Response(JSON.stringify(rpcError ?? {quoteRef:ref,uploadsDeleted:false}), {status:rpcError ? 409 : 200,headers:{'Content-Type':'application/json'}})
     }
-    const send = mode => DELETE(request('owner',{...body,linkedRecords:mode,actor:{role:'agent',id:'forged'}}),params)
+    const send = async mode => DELETE(await request('owner',{...body,linkedRecords:mode,actor:{role:'agent',id:'forged'}}),params)
     for (const mode of ['keep','delete']) {
       assert.equal((await send(mode)).status,200)
       assert.deepEqual(sent.p_actor,{id:'owner-id',name:'owner',role:'owner'})

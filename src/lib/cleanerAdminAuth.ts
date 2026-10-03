@@ -39,13 +39,13 @@ export function canAccessCleanerAdminAction(role: AdminRole, action: CleanerAdmi
   return hasAdminRole(role, minimumRoleByAction[action])
 }
 
-export function authorizeCleanerAdminRequest(
+export async function authorizeCleanerAdminRequest(
   request: NextRequest,
   action: CleanerAdminAction,
-):
+): Promise<
   | { identity: AdminSessionIdentity; error: null; status: null }
-  | { identity: null; error: 'Unauthorized' | 'Forbidden'; status: 401 | 403 } {
-  const identity = getAdminSessionIdentityFromRequest(request)
+  | { identity: null; error: 'Unauthorized' | 'Forbidden'; status: 401 | 403 }> {
+  const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) {
     return { identity: null, error: 'Unauthorized', status: 401 }
   }

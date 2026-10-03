@@ -33,7 +33,7 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ assigneeId: string }> }
 ) {
-  const blocked = rateLimit(request, { key: 'availability-agent-feed:minute', limit: 30, windowMs: 60 * 1000 })
+  const blocked = await rateLimit(request, { key: 'availability-agent-feed:minute', limit: 30, windowMs: 60 * 1000 })
   if (blocked) return blocked
 
   const { assigneeId } = await context.params

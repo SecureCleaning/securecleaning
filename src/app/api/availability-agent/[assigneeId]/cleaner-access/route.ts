@@ -8,7 +8,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
   if (blocked) return blocked
   const context = await getCleanerAgentContext(request, params.assigneeId)
   if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-  const throttled = rateLimit(request, { key: `agent-cleaner-access:${context.assignee.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+  const throttled = await rateLimit(request, { key: `agent-cleaner-access:${context.assignee.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
   if (throttled) return throttled
 
   try {

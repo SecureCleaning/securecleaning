@@ -7,7 +7,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorizedAdminRequest(request, 'manager')) {
+  if (!await isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })
   }
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 6 * 1024 * 1024)

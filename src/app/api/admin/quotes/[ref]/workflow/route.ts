@@ -9,7 +9,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: { ref: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -25,7 +25,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { ref: string } }
 ) {
-  if (!isAuthorizedAdminRequest(request)) {
+  if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -61,12 +61,12 @@ export async function POST(
       return NextResponse.json({ success: false, error: readiness.errors[0] }, { status: 400 })
     }
 
-    const identity = getAdminSessionIdentityFromRequest(request)
+    const identity = await getAdminSessionIdentityFromRequest(request)
     if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     const actor = { kind: 'staff_account' as const, id: identity.id, name: identity.username }
 
     if (quote.finalDocument) {
-      if (acceptedRevision && !isAuthorizedAdminRequest(request, 'owner')) {
+      if (acceptedRevision && !await isAuthorizedAdminRequest(request, 'owner')) {
         return NextResponse.json({ success: false, error: 'Only the owner can correct an accepted quote from the admin workbench.' }, { status: 403 })
       }
       if (body?.revision !== true || !Number.isInteger(body?.expectedDocumentVersion) || body.expectedDocumentVersion < 1) {

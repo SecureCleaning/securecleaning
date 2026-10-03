@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
+process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
@@ -10,15 +12,10 @@ const { createQuoteBookingHandoffToken, verifyQuoteBookingHandoffToken } = await
 const { buildBookingPrefillFromQuoteInputs } = await import('../src/lib/quoteBookingPrefill.ts')
 const { buildQuoteEditPrefillFromQuoteInputs } = await import('../src/lib/quoteBookingPrefill.ts')
 
-test('booking handoff tokens are quote-bound, tamper-resistant, and expire', () => {
-  const now = Date.UTC(2026, 7, 17)
-  const quoteRef = 'SC-20260817-TEST'
-  const token = createQuoteBookingHandoffToken(quoteRef, now)
-
-  assert.equal(verifyQuoteBookingHandoffToken(quoteRef, token, now), true)
-  assert.equal(verifyQuoteBookingHandoffToken('SC-20260817-NOPE', token, now), false)
-  assert.equal(verifyQuoteBookingHandoffToken(quoteRef, `${token.slice(0, -1)}x`, now), false)
-  assert.equal(verifyQuoteBookingHandoffToken(quoteRef, token, now + 31 * 24 * 60 * 60 * 1000), false)
+test('legacy signed and malformed booking tokens are rejected before database access', async () => {
+  for (const token of [null, '', 'v1.1234567890.' + 'a'.repeat(43), 'bad']) {
+    assert.equal(await verifyQuoteBookingHandoffToken('SC-20260817-TEST', token), false)
+  }
 })
 
 test('authorized booking prefill contains customer and premises fields but not quote pricing', () => {
@@ -83,7 +80,7 @@ test('private booking prefill route is token-protected and the public quote endp
   assert.match(quoteForm, /payload\.quotePrefill/)
   assert.match(quoteResult, /quoteRef, handoff: bookingHandoffToken/)
   assert.match(quoteResult, /bookingHandoffToken \? \{ handoff: bookingHandoffToken \}/)
-  assert.match(scopePage, /isQuoteBookingHandoffToken/)
+  assert.match(scopePage, /verifyQuoteBookingHandoffToken/)
   assert.match(scopePage, /\.\.\.\(handoff \? \{ handoff \} : \{\}\)/)
   assert.match(quoteSession, /storedResult\?\.quoteRef !== quoteRef/)
   assert.match(quoteSession, /quoteRef \? null : storedDraft/)

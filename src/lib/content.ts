@@ -337,6 +337,7 @@ export async function getPublicContentMap(): Promise<ContentMap> {
     const { data, error } = await supabase
       .from('site_content')
       .select('key, content')
+      .in('key', Object.keys(DEFAULT_CONTENT_MAP))
 
     if (error || !data) {
       if (error) {
@@ -346,7 +347,7 @@ export async function getPublicContentMap(): Promise<ContentMap> {
     }
 
     return data.reduce<ContentMap>((acc, row) => {
-      acc[row.key] = replaceLegacyAssistantName(row.content)
+      if (Object.hasOwn(DEFAULT_CONTENT_MAP, row.key)) acc[row.key] = replaceLegacyAssistantName(row.content)
       return acc
     }, { ...DEFAULT_CONTENT_MAP })
   } catch (error) {

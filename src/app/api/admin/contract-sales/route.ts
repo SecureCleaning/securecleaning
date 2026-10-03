@@ -58,37 +58,37 @@ export async function POST(request: NextRequest) {
     if (action === 'inspection-email.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionEmail(actor, body) })
     if (action === 'inspection-confirmations.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionConfirmations(actor, body) })
     if (action === 'inspection-availability.send') {
-      const limited = rateLimit(request, { key: `contract-sale-inspection-availability:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-inspection-availability:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await sendContractSaleInspectionAvailabilityRequest(actor, body) })
     }
     if (action === 'inspection-checklist.save') return NextResponse.json({ success: true, result: await saveContractSaleChecklist(actor, body) })
     if (action === 'invoice-bank.apply') return NextResponse.json({ success: true, result: await applyContractSaleInvoiceBankDetails(actor, body) })
     if (action === 'invoice.issue') {
-      const limited = rateLimit(request, { key: `contract-sale-invoice:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-invoice:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await issueContractSaleInvoice(actor, body) })
     }
     if (action === 'invoice.resend') {
-      const limited = rateLimit(request, { key: `contract-sale-invoice-resend:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-invoice-resend:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await resendContractSaleInvoice(actor, body) })
     }
     if (action === 'payment.record') {
-      const limited = rateLimit(request, { key: `contract-sale-payment:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-payment:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await recordContractSalePayment(actor, body) })
     }
     if (action === 'payment.confirm') return NextResponse.json({ success: true, result: await confirmContractSalePayment(actor, body) })
     if (action === 'inspection.schedule') {
-      const limited = rateLimit(request, { key: `contract-sale-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await scheduleContractSaleInspection(actor, body) })
     }
     if (action === 'inspection.complete') return NextResponse.json({ success: true, result: await completeContractSaleInspection(actor, body) })
     if (action === 'agreement.create') return NextResponse.json({ success: true, result: await createContractSaleAgreement(actor, body) })
     if (action === 'agreement.send') {
-      const limited = rateLimit(request, { key: `contract-sale-agreement:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
+      const limited = await rateLimit(request, { key: `contract-sale-agreement:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await sendContractSaleAgreement(actor, body) })
     }

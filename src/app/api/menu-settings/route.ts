@@ -10,7 +10,7 @@ const headers = { 'Cache-Control': 'private, no-store' }
 
 export async function GET(request: NextRequest) {
   try {
-    const actor = await getMenuSettingsActor(getAdminSessionIdentityFromRequest(request))
+    const actor = await getMenuSettingsActor(await getAdminSessionIdentityFromRequest(request))
     if (!actor) return NextResponse.json({ error: 'Staff login required.' }, { status: 401, headers })
     if (request.nextUrl.searchParams.get('edit') === '1') {
       if (actor.role !== 'owner') return NextResponse.json({ error: 'Only an owner can configure menus.' }, { status: 403, headers })
@@ -29,9 +29,9 @@ export async function PUT(request: NextRequest) {
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 16384)
   if (blocked) return blocked
   try {
-    const actor = await getMenuSettingsActor(getAdminSessionIdentityFromRequest(request))
+    const actor = await getMenuSettingsActor(await getAdminSessionIdentityFromRequest(request))
     if (actor?.role !== 'owner') return NextResponse.json({ error: 'Only an active owner can configure menus.' }, { status: 403, headers })
-    const limited = rateLimit(request, { key: `menu-settings:${actor.id}`, limit: 30, windowMs: 60_000 })
+    const limited = await rateLimit(request, { key: `menu-settings:${actor.id}`, limit: 30, windowMs: 60_000 })
     if (limited) return limited
     let config, revision: string | null
     try {

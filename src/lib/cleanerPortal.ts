@@ -1,3 +1,4 @@
+import { escapeHtml } from '@/lib/htmlEscape'
 import { getAdminSupabase } from '@/lib/supabase'
 import { createCleaner, updateCleaner, uploadCleanerDocument, type CleanerAuditActor } from '@/lib/cleaners'
 import { sendEmailOrThrow } from '@/lib/email'
@@ -73,7 +74,7 @@ export async function saveCleanerPortalProfile(claims: CleanerPortalClaims, cand
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: recipient.email,
     replyTo: claims.email,
     subject: `Cleaner registration awaiting approval — ${payload.businessName}`,
-    html: `<p>A new cleaner registration is awaiting approval.</p><p><strong>${payload.businessName}</strong><br>${payload.contactName}<br>${payload.state}</p><p><a href="${recipient.reviewUrl}">Review cleaner record</a></p><p>The cleaner cannot receive contract offers until an agent or owner changes the status to approved.</p>`,
+    html: `<p>A new cleaner registration is awaiting approval.</p><p><strong>${escapeHtml(payload.businessName)}</strong><br>${escapeHtml(payload.contactName)}<br>${escapeHtml(payload.state)}</p><p><a href="${escapeHtml(recipient.reviewUrl)}">Review cleaner record</a></p><p>The cleaner cannot receive contract offers until an agent or owner changes the status to approved.</p>`,
   })))
   return { cleanerId: cleaner.id, profile: toProfile(cleaner as unknown as Record<string, unknown>), created: true }
 }
