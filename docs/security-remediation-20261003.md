@@ -216,3 +216,33 @@ The list below includes asynchronous authorization/limiter caller migrations as 
 - `tests/security-auth-fixture.mjs`
 - `tests/security-regression.test.mjs`
 - `tests/security-remediation.test.mjs`
+
+## Workflow audit follow-up - 2026-10-04
+
+The live NSW availability calendar recovered from React hydration errors 418/423.
+Its fortnight view grouped events using host-local dates, while displaying times
+in the agent's regional timezone. This code predates the security release.
+
+The correction uses regional YYYY-MM-DD keys and UTC calendar-label arithmetic
+for fortnight navigation, including daylight-saving boundaries. The full calendar
+has an identical initial loading state before reading the browser clock. The
+server-supplied seven-day dashboard retains its immediate rendered content.
+
+Changed files: AgentCalendarPanel.tsx, availabilityCalendarClient.ts,
+agent-calendar-timezone.test.mjs, and this report. No migrations, API/data contract
+changes, environment changes, or dependency changes are required.
+
+Validation: type-check, lint, all 438 tests, production build, and diff whitespace
+check passed. Regression tests cover differing host timezones, midnight, both DST
+transitions, year boundaries, navigation, and stable initial render. Build retains
+existing SWC-minifier and Browserslist age warnings.
+
+Manual live checks so far: owner cleaner directory and nominated sample record;
+NSW agent dashboard, regional quotes, quote workbench, final scope preview,
+availability, client CRM, and existing test opportunity-to-product/cleaner scope.
+Isolated PostgreSQL checks pass for access restrictions, migration replay, staff
+revocation, rate-limit concurrency/expiry, and atomic booking creation/replay.
+These checks do not establish live email delivery, cleaner self-service login,
+new booking/calendar writes, or full customer-to-cleaner handoff. Those remain
+pending the requested test email/appointment authorization. No live business
+records were changed during these checks.

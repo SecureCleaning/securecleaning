@@ -3,24 +3,11 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
-
-function startOfWeek(value: Date) {
-  const next = new Date(value)
-  const day = next.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  next.setDate(next.getDate() + diff)
-  next.setHours(0, 0, 0, 0)
-  return next
-}
-
-function addDays(value: Date, days: number) {
-  const next = new Date(value)
-  next.setDate(next.getDate() + days)
-  return next
-}
+import { calendarDateKey, calendarFortnight } from '@/lib/availabilityCalendarClient'
 
 function formatDayHeader(value: Date) {
   return value.toLocaleDateString('en-AU', {
+    timeZone: 'UTC',
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -96,6 +83,8 @@ export default function AgentCalendarPanel({
   bookingApiPath?: string
   timeZone?: string
 }) {
+  const [now, setNow] = useState<Date | null>(null)
+  useEffect(() => { setNow(new Date()) }, [])
   const [weekOffset, setWeekOffset] = useState(0)
   const [calendarEvents, setCalendarEvents] = useState(events)
   const [selectedEvent, setSelectedEvent] = useState<AgentCalendarEvent | null>(null)
@@ -108,23 +97,16 @@ export default function AgentCalendarPanel({
     setCalendarEvents(events)
   }, [events])
 
-  const weekStart = useMemo(() => {
-    const base = startOfWeek(new Date())
-    return addDays(base, weekOffset * 14)
-  }, [weekOffset])
-
   const calendarWeeks = useMemo(
-    () => Array.from({ length: 2 }, (_, weekIndex) =>
-      Array.from({ length: 7 }, (_, dayIndex) => addDays(weekStart, weekIndex * 7 + dayIndex))
-    ),
-    [weekStart]
+    () => now ? calendarFortnight(now, timeZone, weekOffset) : [],
+    [now, timeZone, weekOffset]
   )
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, AgentCalendarEvent[]>()
 
     for (const event of calendarEvents) {
-      const dayKey = new Date(event.startsAt).toDateString()
+      const dayKey = calendarDateKey(new Date(event.startsAt), timeZone)
       const dayEvents = map.get(dayKey) ?? []
       dayEvents.push(event)
       map.set(dayKey, dayEvents)
@@ -135,10 +117,10 @@ export default function AgentCalendarPanel({
     }
 
     return map
-  }, [calendarEvents])
+  }, [calendarEvents, timeZone])
 
   const upcomingCount = calendarEvents.filter((event) => (
-    (event.kind === 'booking' || event.kind === 'sale_inspection') && new Date(event.startsAt) >= new Date()
+    (event.kind === 'booking' || event.kind === 'sale_inspection') && now !== null && new Date(event.startsAt) >= now
   )).length
 
   function beginEdit(event: AgentCalendarEvent) {
@@ -196,6 +178,8 @@ export default function AgentCalendarPanel({
     }
   }
 
+  if (!now && !dashboardDays) return <section aria-busy="true" aria-label="Schedule calendar">Loading calendar...</section>
+
   return (
     <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       {!dashboardDays ? <>
@@ -245,7 +229,7 @@ export default function AgentCalendarPanel({
             </div>
             <div className="grid gap-3 lg:grid-cols-7">
               {weekDays.map((day) => {
-                const dayEvents = eventsByDay.get(day.toDateString()) ?? []
+                const dayEvents = eventsByDay.get(day.toISOString().slice(0, 10)) ?? []
                 return (
                   <div key={day.toISOString()} className="rounded-xl border border-gray-200 bg-gray-50 p-2">
                     <div className="mb-2">
