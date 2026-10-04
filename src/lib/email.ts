@@ -55,13 +55,22 @@ function startsWithGreeting(value: string): boolean {
 
 // ─── Quote Email ──────────────────────────────────────────────────────────────
 
+function toProviderPayload(payload: Record<string, unknown>) {
+  // The installed Resend SDK forwards API field names unchanged.
+  const { replyTo, ...providerPayload } = payload
+  if (replyTo !== undefined && providerPayload.reply_to === undefined) {
+    providerPayload.reply_to = replyTo
+  }
+  return providerPayload
+}
+
 export async function sendEmailOrThrow(payload: Record<string, unknown>) {
   const resend = getResend()
   if (!resend) {
     throw new Error('Email service is not configured. Check RESEND_API_KEY.')
   }
 
-  const response = await resend.emails.send(payload)
+  const response = await resend.emails.send(toProviderPayload(payload))
   if (response?.error) {
     throw new EmailProviderRejectedError(response.error.message || 'Email send failed', response.error.name)
   }
@@ -79,7 +88,7 @@ export async function sendEmailWithResult(payload: Record<string, unknown>) {
     throw new Error('Email service is not configured. Check RESEND_API_KEY.')
   }
 
-  const response = await resend.emails.send(payload)
+  const response = await resend.emails.send(toProviderPayload(payload))
   if (response?.error) {
     throw new Error(response.error.message || 'Email send failed')
   }

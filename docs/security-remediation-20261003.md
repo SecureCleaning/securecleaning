@@ -268,3 +268,25 @@ A temporary preferred-work change persisted after reload; the field was restored
 The labelled public quote SC-20261004-0Z8O was created through the UI, and both
 customer and admin notification emails were delivered. Browser upload testing
 was blocked by the extension's file-URL permission; that setting was not changed.
+
+### Provider reply-to correction - 2026-10-04
+
+The regional cleaner test email was delivered and logged after the sender fix.
+Provider verification then showed reply_to was null. The installed Resend 3.x
+SDK forwards payloads unchanged and expects reply_to; existing callers supplied
+replyTo. Both shared send helpers now normalize that field at the provider
+boundary, preserving any explicit reply_to and leaving recipients, copies,
+attachments and other headers unchanged. No dependency upgrade is needed.
+
+Changed files: src/lib/email.ts, tests/email-provider-routing.test.mjs, this report.
+No migration, public API/data-contract, dependency or environment changes.
+Validation: type-check, lint, all 444 tests, production build and diff check passed.
+Tests exercise both helpers through the installed SDK and verify the actual JSON
+request, non-mutation, explicit-field precedence, attachments, and rejection type.
+
+Further live evidence: remote quote and scope links returned 200 without staff
+cookies; the sample cleaner upload API saved the harmless other-type PNG, it
+appeared in the regional UI, and its downloaded bytes matched. Browser file-picker
+verification remains blocked by the extension setting. Cleaner profile comparison
+confirmed only updated_at changed after restoration. Booking submission is staged
+for 20 October 2026, 11:00 Sydney time, pending action-time Terms confirmation.
