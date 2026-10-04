@@ -21,7 +21,7 @@ function loadTs(path, dependencies, env = {}) {
   const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } })
   const module = { exports: {} }
   vm.runInNewContext(outputText, {
-    module, exports: module.exports, console: { warn() {}, error() {} }, URLSearchParams,
+    module, exports: module.exports, console: { warn() {}, error() {} }, URLSearchParams, Buffer,
     process: { env },
     require(name) {
       if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`)

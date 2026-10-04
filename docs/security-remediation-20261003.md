@@ -290,3 +290,32 @@ appeared in the regional UI, and its downloaded bytes matched. Browser file-pick
 verification remains blocked by the extension setting. Cleaner profile comparison
 confirmed only updated_at changed after restoration. Booking submission is staged
 for 20 October 2026, 11:00 Sydney time, pending action-time Terms confirmation.
+
+### Booking attachment correction - 2026-10-04
+
+The authorised test booking BK-20261004-DVUL passed creation, customer/admin
+email delivery and regional calendar/feed checks for 20 October at 11:00 Sydney
+time. Cancellation through the regional UI changed both stored statuses to
+cancelled and removed the feed event. Final quote SC-20261004-0Z8O was reviewed,
+published and sent; provider delivery and both customer document links passed.
+Internal inspection notes were absent from customer output.
+
+Inspection of the actual delivered booking attachment found corrupted bytes:
+plain ICS text was sent where Resend expects Base64, and contentType did not
+match the installed SDK's content_type field. The booking sender now encodes
+UTF-8 as Base64 and supplies the correct MIME field. Other attachment callers
+already encode Base64. The regression test calls the real booking sender through
+the installed SDK, decodes the outbound payload, and checks calendar framing,
+reference, exact UTC start/end and MIME type.
+
+Changed files: src/lib/email.ts, tests/email-provider-routing.test.mjs,
+tests/quote-email-cc.test.mjs (Node Buffer in its VM harness), this report.
+No migration, public API/data-contract, dependency or environment changes.
+All 445 tests pass. Live corrected sender verification delivered an attachment
+with MIME text/calendar, valid VCALENDAR framing, correct reference and UTC
+times 20261020T000000Z to 20261020T001000Z. This verification used the actual
+source sender and installed SDK, without creating or reactivating a booking.
+Browser file-picker and external calendar-client import remain unverified.
+
+Validation for the attachment correction: type-check, lint, 445 tests, production
+build and git diff --check passed. Existing build warnings are unchanged.

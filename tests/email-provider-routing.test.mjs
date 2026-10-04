@@ -6,10 +6,13 @@ import vm from 'node:vm'
 import * as ts from 'typescript'
 const require = createRequire(import.meta.url)
 const source = ts.transpileModule(readFileSync(new URL('../src/lib/email.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
+const calendar = {}
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/calendarInvite.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: calendar })
 const email = {}
 vm.runInNewContext(source, {
   exports: email,
-  require: name => name === 'resend' ? require('resend') : name === './siteUrl' ? { getSiteUrl: () => 'https://example.test' } : {},
+  require: name => name === 'resend' ? require('resend') : name === './siteUrl' ? { getSiteUrl: () => 'https://example.test' } : name === './calendarInvite' ? calendar : name === '@/lib/htmlEscape' ? { escapeHtml: value => String(value ?? '') } : {},
+  Buffer,
   process: { env: { RESEND_API_KEY: 're_synthetic_test_key' } }, console,
 })
 test('both email helpers send reply-to through the installed SDK using the provider field name', async () => {
@@ -47,5 +50,30 @@ test('provider rejection retains the definitive-rejection error used by send rec
   try {
     globalThis.fetch = async () => new Response('{"message":"Rejected test","name":"validation_error"}', { status: 422, headers: { 'Content-Type': 'application/json' } })
     await assert.rejects(email.sendEmailOrThrow({ replyTo: 'agent@example.test' }), error => error instanceof email.EmailProviderRejectedError && error.outcome === 'provider_rejected')
+  } finally { globalThis.fetch = saved }
+})
+
+test('booking email attachment survives provider Base64 decoding with correct calendar time and type', async () => {
+  const saved = globalThis.fetch
+  const sent = []
+  try {
+    globalThis.fetch = async (_, options) => { sent.push(JSON.parse(options.body)); return new Response('{"id":"test"}', { headers: { 'Content-Type': 'application/json' } }) }
+    await email.sendBookingConfirmationEmail('BK-TEST-ENCODING', {
+      city: 'sydney', businessName: 'Test Company', contactName: 'Test Contact', email: 'test@example.test', phone: '0400000000',
+      address: 'Test address', suburb: 'Alexandria', postcode: '2015', frequency: '2x_week', timePreference: 'business_hours',
+      preferredStartDate: '2026-10-20', preferredInspectionStartTime: '11:00', preferredInspectionEndTime: '11:10',
+      notes: 'TEST ONLY',
+    })
+    const attachment = sent[0].attachments[0]
+    const decoded = Buffer.from(attachment.content, 'base64').toString('utf8')
+    assert.equal(attachment.filename, 'BK-TEST-ENCODING.ics')
+    assert.equal(attachment.content_type, 'text/calendar')
+    assert.equal('contentType' in attachment, false)
+    assert.ok(decoded.startsWith('BEGIN:VCALENDAR\r\n'))
+    assert.ok(decoded.endsWith('END:VCALENDAR'))
+    assert.match(decoded, /Booking reference: BK-TEST-ENCODING/)
+    assert.match(decoded, /DTSTART:20261020T000000Z/)
+    assert.match(decoded, /DTEND:20261020T001000Z/)
+    assert.equal(sent.length, 2)
   } finally { globalThis.fetch = saved }
 })

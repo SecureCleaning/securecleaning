@@ -347,8 +347,8 @@ export async function sendBookingConfirmationEmail(
     attachments: [
       {
         filename: `${bookingRef}.ics`,
-        content: bookingInvite,
-        contentType: 'text/calendar',
+        content: Buffer.from(bookingInvite, 'utf8').toString('base64'),
+        content_type: 'text/calendar',
       },
     ],
     html: `
