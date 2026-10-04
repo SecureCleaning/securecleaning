@@ -246,3 +246,25 @@ These checks do not establish live email delivery, cleaner self-service login,
 new booking/calendar writes, or full customer-to-cleaner handoff. Those remain
 pending the requested test email/appointment authorization. No live business
 records were changed during these checks.
+
+### Regional cleaner email correction - 2026-10-04
+
+Live testing with the authorised NSW Cleaning Sample Company exposed a separate
+regional email preview failure: the availability assignee identifier was passed
+to a staff UUID lookup (PostgreSQL 22P02). Sender resolution now reads the active
+regional assignee's work email, validates the state and email, and retains the
+existing staff-account path for owner/admin sends. Preview and send use the same
+resolution, so sender changes invalidate the preview fingerprint.
+
+Changed files: src/lib/cleaners.ts, tests/cleaner-regional-email.test.mjs, and this
+report. No migrations, API/data contracts, dependencies or environment changes.
+Validation: type-check, lint, 441 passing tests, production build and diff check.
+Read-only verification against the live nominated cleaner confirmed the fixed
+preview resolves the recipient and NSW sender correctly. Production browser
+send and delivery checks follow deployment.
+
+The nominated cleaner's access-link email was delivered and its portal worked.
+A temporary preferred-work change persisted after reload; the field was restored.
+The labelled public quote SC-20261004-0Z8O was created through the UI, and both
+customer and admin notification emails were delivered. Browser upload testing
+was blocked by the extension's file-URL permission; that setting was not changed.

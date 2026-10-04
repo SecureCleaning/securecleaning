@@ -1,3 +1,5 @@
+import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
+import { getStateForAvailabilityCity } from '@/lib/cleanerAgentPolicy'
 import { csvCell } from '@/lib/csvCell'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
@@ -1037,8 +1039,19 @@ async function prepareCleanerEmail(payload: CleanerEmailInput) {
   }
   if (!subject || !content.text) throw new Error('Subject and message are required.')
 
-  const sender = await getStaffAccountProfileById(payload.actor.id)
-  const senderEmail = sender?.active && sender.email ? sender.email : process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au'
+  let senderEmail: string
+  if (payload.actor.role === 'availability_agent') {
+    // Availability assignee IDs are not staff-account UUIDs.
+    const assignee = getAvailabilityAssignee(await getAvailabilityConfig(), payload.actor.id)
+    const email = assignee?.email?.trim().toLowerCase() ?? ''
+    if (!assignee?.active || getStateForAvailabilityCity(assignee.city) !== payload.state || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('The regional agent needs an active account and valid work email for this state.')
+    }
+    senderEmail = email
+  } else {
+    const sender = await getStaffAccountProfileById(payload.actor.id)
+    senderEmail = sender?.active && sender.email ? sender.email : process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au'
+  }
   const from = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
   const finalHtml = buildCleanerEmailHtml(content.html)
   const finalText = content.text
