@@ -13,7 +13,8 @@ import { getSendFailureDisposition, resolveFinalQuoteRecipient } from '@/lib/fin
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export async function POST(request: NextRequest, { params }: { params: { ref: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })

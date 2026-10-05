@@ -5,10 +5,8 @@ import { getFinalQuoteReadiness, isEditableFirmQuoteStatus, parseFirmQuoteDraft,
 import { getQuoteRoomTypeConfig } from '@/lib/roomTypeConfig'
 import { getQuotePricingConfig } from '@/lib/pricing'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { ref: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
@@ -21,10 +19,8 @@ export async function GET(
   return NextResponse.json({ success: true, quote })
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { ref: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }

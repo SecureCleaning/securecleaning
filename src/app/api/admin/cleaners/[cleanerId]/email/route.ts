@@ -3,10 +3,8 @@ import { rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtec
 import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { previewCleanerEmail, sendCleanerEmail } from '@/lib/cleaners'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { cleanerId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
   const authorization = await authorizeCleanerAdminRequest(request, 'email')

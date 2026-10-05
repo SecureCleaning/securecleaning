@@ -4,10 +4,8 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLog } from '@/lib/auditLog'
 import { isBookingStatus } from '@/lib/bookingStatus'
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { ref: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }

@@ -5,7 +5,8 @@ import { buildBookingPrefillFromQuoteInputs, buildQuoteEditPrefillFromQuoteInput
 import { getQuoteByRef } from '@/lib/quoteData'
 import { isQuoteReference } from '@/lib/quoteReference'
 
-export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   const blocked = await rateLimit(request, { key: 'quote-booking-prefill:hour', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 

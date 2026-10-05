@@ -17,8 +17,12 @@ import { getSendFailureDisposition, resolveFinalQuoteRecipient } from '@/lib/fin
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export async function POST(request: NextRequest, { params }: { params: { assigneeId: string; ref: string } }) {
-  if (!(await isAuthorizedAvailabilityAgentRequest(request, params.assigneeId))) {
+export async function POST(
+  request: NextRequest,
+  props: { params: Promise<{ assigneeId: string; ref: string }> }
+) {
+  const params = await props.params
+  if (!await isAuthorizedAvailabilityAgentRequest(request, params.assigneeId)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
   let attemptId: string | null = null
@@ -55,7 +59,7 @@ export async function POST(request: NextRequest, { params }: { params: { assigne
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
     const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
     attemptId = randomUUID()
-    if (!(await createFinalQuoteSendAttempt(params.ref, attemptId, actor, to, quote.finalDocument.version))) {
+    if (!await createFinalQuoteSendAttempt(params.ref, attemptId, actor, to, quote.finalDocument.version)) {
       return NextResponse.json({ success: false, error: 'This final quote already has a sent or unresolved delivery attempt.' }, { status: 409 })
     }
     const finalQuote = await getPublicQuoteWorkflowByRef(params.ref, 'final')

@@ -1,0 +1,179 @@
+Secure Cleaning - Next.js security patch review
+Date: 2026-10-04
+Status: prepared locally; not committed, merged, pushed or deployed.
+Baseline: 2cc6bfe6b42943a3edc359b798d5534494a8668d
+
+Versions and compatibility
+Next.js 14.2.35 -> 15.5.27 (Maintenance LTS).
+eslint-config-next 14.2.3 -> 15.5.27.
+React / React DOM 18.3.1 -> 19.2.8; React type packages moved to 19.2.
+PostCSS pinned to 8.5.28, including nested Next.js copies via an npm override.
+Removed react-day-picker 8.10.1: no imports anywhere in this repository; its React <=18 peer constraint conflicts with React 19. Existing booking calendar is custom and remains intact.
+The lockfile captures associated transitive dependency changes.
+
+Implementation
+Migrated dynamic route/page params and searchParams to awaited promises using the official Next.js codemod, then reviewed the changes.
+Cleaner portal now awaits cookies. Existing shared auth helpers already await cookies.
+Moved serverComponentsExternalPackages to serverExternalPackages and removed the unsupported swcMinify setting.
+Preserved security response headers, redirects, authorization, capability checks, email reply-to normalization and base64 calendar attachment handling.
+Next.js 15 changes fetch/GET caching defaults. Supabase already uses no-store fetch; protected responses retain private/no-store headers. No new caching opt-ins were added.
+No migrations, public API payload changes, or database/data-contract changes. Framework-internal handler parameter types changed.
+
+Validation
+npm ci: PASS. Repeated the full suite after the clean lockfile install; all checks below passed again.
+npm run type-check: PASS.
+npm run lint: PASS (Next.js warns next lint is deprecated for a future Next.js 16 upgrade).
+npm test: PASS, 447 tests, 0 failed, 0 skipped.
+npm run build: PASS, Next.js 15.5.27 production build.
+git diff --check: PASS.
+Regression fixtures now supply promised params for owner quote deletion and admin/agent quote sending.
+Added executable promised-param quote-document and booking-prefill route regressions.
+Existing tests cover staff revocation/roles/regions, signed feed tokens, quote capability scope/expiry/revocation, booking rejection before side effects, quote recipient routing, HTML injection escaping, installed Resend SDK payloads, ICS base64/MIME and Sydney times.
+
+Manual / runtime verification
+Ran the built production app on 127.0.0.1:3115 with synthetic service credentials.
+Chrome: booking page rendered; NSW selection enabled address controls; choosing 20 October updated the calendar selection. Admin page rendered the individual staff login form.
+Local HTTP: unauthenticated admin quote workflow and regional cleaner APIs returned 401; invalid quote and scope links returned 404 with private/no-store; cleaner portal/jobs/admin rendered without application error.
+Browser logs included extension listener warnings/errors; no React hydration error was observed. This is not a claim of a completely clean browser console.
+No booking or email was submitted in this upgrade verification. Successful authenticated live sessions, real email delivery and external calendar refresh were not rerun against the upgraded version because it is not deployed. Earlier production checks were on the previous version.
+
+Advisory assessment
+Official release: https://nextjs.org/blog/september-2026-security-release
+Upgrade guide: https://nextjs.org/docs/app/guides/upgrading/version-15
+The September maintainer release recommends 15.5.27 / 16.3.8. The smaller supported major upgrade was selected.
+The release also says fixes for one critical and one high vulnerability were postponed due to upstream delays. Applicability is not established from the published note; absence from npm audit is not proof these risks are resolved.
+Audit counts are vulnerable package entries, not unique CVEs:
+Before: {'info': 0, 'low': 1, 'moderate': 7, 'high': 20, 'critical': 1, 'total': 29}
+After: {'info': 0, 'low': 1, 'moderate': 7, 'high': 12, 'critical': 0, 'total': 20}
+All 23 direct Next.js advisories reported against 14.2.35 are absent after upgrade. Next.js and PostCSS have no final npm audit finding.
+Remaining findings were not force-fixed: unrelated major upgrades/downgrades (Tailwind, Google APIs, ExcelJS) would expand this patch and need separate compatibility review. Some remaining findings may allow compatible dependency updates; they remain explicitly open.
+
+Resolved audit advisories (before minus after)
+- minimatch | high | minimatch ReDoS: nested *() extglobs generate catastrophically backtracking regular expressions | https://github.com/advisories/GHSA-23c5-xmqv-rm74
+- nanoid | high | nanoid: non-secure generators can loop indefinitely with negative size | https://github.com/advisories/GHSA-28wg-ghj8-5hjv
+- nanoid | high | nanoid: custom generators can loop indefinitely when size is zero | https://github.com/advisories/GHSA-2v37-7h3g-55p8
+- next | critical | Next.js: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used | https://github.com/advisories/GHSA-2xp9-vwfh-vxw4
+- next | high | Next.js has a Middleware / Proxy bypass in Pages Router applications using i18n | https://github.com/advisories/GHSA-36qx-fr4f-26g5
+- next | low | Next.js's Middleware / Proxy redirects can be cache-poisoned | https://github.com/advisories/GHSA-3g8h-86w9-wvmq
+- minimatch | high | minimatch has a ReDoS via repeated wildcards with non-matching literal in pattern | https://github.com/advisories/GHSA-3ppc-4f35-3m26
+- next | moderate | Next.js: Unbounded next/image disk cache growth can exhaust storage | https://github.com/advisories/GHSA-3x4c-7xq6-9pq8
+- next | moderate | Next.js: Cache confusion of response bodies for requests with bodies containing invalid UTF-8 byte sequences | https://github.com/advisories/GHSA-4633-3j49-mh5q
+- next | moderate | Next.js: Unbounded Server Action payload in Edge runtime | https://github.com/advisories/GHSA-4c39-4ccg-62r3
+- glob | high | glob CLI: Command injection via -c/--cmd executes matches with shell:true | https://github.com/advisories/GHSA-5j98-mcp5-4vw2
+- next | moderate | Next.js: Cache confusion of response bodies for requests with bodies | https://github.com/advisories/GHSA-68g3-v927-f742
+- postcss | high | PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments | https://github.com/advisories/GHSA-6g55-p6wh-862q
+- minimatch | high | minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments | https://github.com/advisories/GHSA-7r86-cg39-jmmj
+- next | high | Next.js: Server-Side Request Forgery in Server Actions on custom servers | https://github.com/advisories/GHSA-89xv-2m56-2m9x
+- next | high | Next.js Vulnerable to Denial of Service with Server Components | https://github.com/advisories/GHSA-8h8q-6873-q5fj
+- next | moderate | Next.js: Unauthenticated disclosure of internal Server Function endpoints | https://github.com/advisories/GHSA-955p-x3mx-jcvp
+- next | moderate | Next.js self-hosted applications vulnerable to DoS via Image Optimizer remotePatterns configuration | https://github.com/advisories/GHSA-9g9p-9gw9-jx7f
+- next | high | Next.js vulnerable to server-side request forgery in applications using WebSocket upgrades | https://github.com/advisories/GHSA-c4j6-fc7j-m34r
+- next | moderate | Next.js vulnerable to cross-site scripting in App Router applications using CSP nonces | https://github.com/advisories/GHSA-ffhc-5mcf-pf4q
+- postcss | moderate | PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset | https://github.com/advisories/GHSA-fxqj-rqcc-2cmp
+- next | moderate | Next.js: HTTP request smuggling in rewrites | https://github.com/advisories/GHSA-ggv3-7p47-pfv8
+- next | moderate | Next.js has cross-site scripting in beforeInteractive scripts with untrusted input | https://github.com/advisories/GHSA-gx5p-jg67-6x7h
+- next | high | Next.js HTTP request deserialization can lead to DoS when using insecure React Server Components | https://github.com/advisories/GHSA-h25m-26qc-wcjf
+- next | moderate | Next.js has a Denial of Service in the Image Optimization API | https://github.com/advisories/GHSA-h64f-5h5j-jqjh
+- next | high | Next.js: Denial of Service in App Router using Server Actions | https://github.com/advisories/GHSA-m99w-x7hq-7vfj
+- next | critical | Next.js: Unauthenticated Remote Code Execution on windows-hosted servers | https://github.com/advisories/GHSA-p293-qw3h-jr36
+- next | high | Next.js: Server-Side Request Forgery in rewrites via attacker-controlled destination hostname | https://github.com/advisories/GHSA-p9j2-gv94-2wf4
+- next | high | Next.js has a Denial of Service with Server Components | https://github.com/advisories/GHSA-q4gf-8mx6-v5v3
+- js-cookie | high | JavaScript Cookie: Per-instance prototype hijack in assign() enables cookie-attribute injection | https://github.com/advisories/GHSA-qjx8-664m-686j
+- postcss | moderate | PostCSS has XSS via Unescaped </style> in its CSS Stringify Output | https://github.com/advisories/GHSA-qx2v-qp2m-jg93
+- postcss | high | PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure | https://github.com/advisories/GHSA-r28c-9q8g-f849
+- next | low | Next.js vulnerable to cache poisoning via collisions in React Server Component cache-busting | https://github.com/advisories/GHSA-vfv6-92ff-j949
+- next | moderate | Next.js vulnerable to cache poisoning in React Server Component responses | https://github.com/advisories/GHSA-wfc6-r584-vfw7
+- nanoid | high | nanoid: Integer Overflow or Wraparound | https://github.com/advisories/GHSA-xwg4-73v4-xw9w
+
+Remaining unique audit advisories
+- js-yaml | high | js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources | https://github.com/advisories/GHSA-2883-xcg3-v3hh
+- brace-expansion | high | brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups | https://github.com/advisories/GHSA-3jxr-9vmj-r5cp
+- picomatch | moderate | Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching | https://github.com/advisories/GHSA-3v7f-55p6-f55p
+- qs | moderate | qs: Denial of Service via Attacker Controlled isBuffer | https://github.com/advisories/GHSA-4mjr-xmp4-gh2g
+- js-yaml | high | js-yaml: YAML merge-key chains can force quadratic CPU consumption | https://github.com/advisories/GHSA-52cp-r559-cp3m
+- js-yaml | high | JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported | https://github.com/advisories/GHSA-5p4m-2wfm-xmqj
+- brace-expansion | high | brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion | https://github.com/advisories/GHSA-6j4f-fj2g-mc7p
+- browserslist | high | Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats) | https://github.com/advisories/GHSA-73wf-gq98-2v4g
+- picomatch | high | Picomatch has a ReDoS vulnerability via extglob quantifiers | https://github.com/advisories/GHSA-c2c7-rcm5-vvqj
+- browserslist | high | Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM | https://github.com/advisories/GHSA-c83g-rgw3-j3cx
+- brace-expansion | moderate | brace-expansion: Zero-step sequence causes process hang and memory exhaustion | https://github.com/advisories/GHSA-f886-m6hf-6m8v
+- js-yaml | moderate | JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases | https://github.com/advisories/GHSA-h67p-54hq-rp68
+- form-data | high | form-data: CRLF injection in form-data via unescaped multipart field names and filenames | https://github.com/advisories/GHSA-hmw2-7cc7-3qxx
+- brace-expansion | high | brace-expansion: DoS via unbounded expansion length causing an out-of-memory process crash | https://github.com/advisories/GHSA-mh99-v99m-4gvg
+- brace-expansion | moderate | brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service | https://github.com/advisories/GHSA-q2hr-2g5m-vwhr
+- qs | moderate | qs has a remotely triggerable DoS: qs.stringify crashes with TypeError on null/undefined entries in comma-format arrays when encodeValuesOnly is set | https://github.com/advisories/GHSA-q8mj-m7cp-5q26
+- brace-expansion | high | brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion | https://github.com/advisories/GHSA-qhr7-859c-m2p7
+- brace-expansion | high | brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation | https://github.com/advisories/GHSA-rgw5-rvv9-x895
+- braces | high | braces vulnerable to stack-exhaustion denial of service through deeply nested patterns | https://github.com/advisories/GHSA-vfj7-8cjw-p6xm
+- uuid | moderate | uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided | https://github.com/advisories/GHSA-w5hq-g745-h8pq
+- baseline-browser-mapping | moderate | baseline-browser-mapping process termination on invalid input causes denial of service | https://github.com/advisories/GHSA-w5vr-8v7q-w6rv
+- postcss-selector-parser | low | postcss-selector-parser allows denial of service through uncontrolled AST recursion | https://github.com/advisories/GHSA-w9m9-85wc-3x92
+- qs | moderate | qs array-limit bypass via bracket-key comma parsing | https://github.com/advisories/GHSA-x5fp-wj9c-mxmx
+
+Remaining affected packages (including inherited findings)
+- @next/eslint-plugin-next: high; direct=False; via=fast-glob
+- baseline-browser-mapping: moderate; direct=False; via=GHSA-w5vr-8v7q-w6rv
+- brace-expansion: high; direct=False; via=GHSA-f886-m6hf-6m8v, GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895, GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p
+- braces: high; direct=False; via=GHSA-vfj7-8cjw-p6xm
+- browserslist: high; direct=False; via=GHSA-c83g-rgw3-j3cx, GHSA-73wf-gq98-2v4g
+- chokidar: high; direct=False; via=braces
+- eslint-config-next: high; direct=True; via=@next/eslint-plugin-next
+- exceljs: moderate; direct=True; via=uuid
+- fast-glob: high; direct=False; via=micromatch
+- form-data: high; direct=False; via=GHSA-hmw2-7cc7-3qxx
+- gaxios: moderate; direct=False; via=uuid
+- googleapis: moderate; direct=True; via=googleapis-common
+- googleapis-common: moderate; direct=False; via=uuid
+- js-yaml: high; direct=False; via=GHSA-h67p-54hq-rp68, GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh
+- micromatch: high; direct=False; via=braces
+- picomatch: high; direct=False; via=GHSA-3v7f-55p6-f55p, GHSA-3v7f-55p6-f55p, GHSA-c2c7-rcm5-vvqj, GHSA-c2c7-rcm5-vvqj
+- postcss-selector-parser: low; direct=False; via=GHSA-w9m9-85wc-3x92
+- qs: moderate; direct=False; via=GHSA-q8mj-m7cp-5q26, GHSA-x5fp-wj9c-mxmx, GHSA-4mjr-xmp4-gh2g
+- tailwindcss: high; direct=True; via=chokidar, fast-glob, micromatch
+- uuid: moderate; direct=False; via=GHSA-w5hq-g745-h8pq
+
+Files changed
+next.config.js
+package-lock.json
+package.json
+src/app/admin/clients/page.tsx
+src/app/admin/products/page.tsx
+src/app/admin/quotes/[ref]/page.tsx
+src/app/admin/sales/page.tsx
+src/app/admin/staff/page.tsx
+src/app/api/admin/bookings/[ref]/route.ts
+src/app/api/admin/cleaners/[cleanerId]/comments/route.ts
+src/app/api/admin/cleaners/[cleanerId]/documents/[documentId]/route.ts
+src/app/api/admin/cleaners/[cleanerId]/documents/route.ts
+src/app/api/admin/cleaners/[cleanerId]/email/route.ts
+src/app/api/admin/cleaners/[cleanerId]/route.ts
+src/app/api/admin/client-crm/[opportunityId]/deletion/route.ts
+src/app/api/admin/quotes/[ref]/deletion/route.ts
+src/app/api/admin/quotes/[ref]/send/reconcile/route.ts
+src/app/api/admin/quotes/[ref]/send/route.ts
+src/app/api/admin/quotes/[ref]/workflow/route.ts
+src/app/api/availability-agent/[assigneeId]/bookings/[bookingRef]/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaner-access/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/comments/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/documents/[documentId]/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/documents/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/email/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/route.ts
+src/app/api/availability-agent/[assigneeId]/cleaners/route.ts
+src/app/api/availability-agent/[assigneeId]/quotes/[ref]/send/route.ts
+src/app/api/availability-agent/[assigneeId]/quotes/[ref]/workflow/route.ts
+src/app/api/availability-agent/[assigneeId]/route.ts
+src/app/api/quote/[ref]/access/route.ts
+src/app/api/quote/[ref]/booking-prefill/route.ts
+src/app/api/quote/[ref]/route.ts
+src/app/availability/invoices/[assigneeId]/page.tsx
+src/app/cleaners/portal/page.tsx
+src/app/jobs/[code]/page.tsx
+src/app/jobs/access/[token]/route.ts
+src/app/jobs/page.tsx
+src/app/quote/[ref]/page.tsx
+src/app/scope/[ref]/page.tsx
+tests/quote-deletion-override.test.mjs
+tests/quote-email-cc.test.mjs
+tests/next15-route-regression.test.mjs
+docs/nextjs-security-review-20261004.txt

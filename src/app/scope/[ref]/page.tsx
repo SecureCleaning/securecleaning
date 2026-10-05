@@ -22,9 +22,13 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'long', year: 'numeric' }).format(date)
 }
 
-export default async function ScopeOfWorksPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string; access?: string } }) {
+export default async function ScopeOfWorksPage(
+  props: { params: Promise<{ ref: string }>; searchParams?: Promise<{ variant?: string; handoff?: string; access?: string }> }
+) {
+  const searchParams = await props.searchParams
+  const params = await props.params
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
-  const handoff = await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff) ? searchParams?.handoff : undefined
+  const handoff = (await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff)) ? searchParams?.handoff : undefined
   const report = isQuoteReference(params.ref) ? await getPublicScopeDocumentByRef(params.ref, variant, searchParams?.access) : null
   const siteUrl = getSiteUrl()
 

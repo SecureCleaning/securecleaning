@@ -6,8 +6,9 @@ export const runtime = 'nodejs'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { cleanerId: string; documentId: string } }
+  props: { params: Promise<{ cleanerId: string; documentId: string }> }
 ) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'documentDownload')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
@@ -29,8 +30,9 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { cleanerId: string; documentId: string } }
+  props: { params: Promise<{ cleanerId: string; documentId: string }> }
 ) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'documentDelete')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })

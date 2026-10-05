@@ -29,10 +29,8 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ success: false, error: 'The quote deletion could not be completed.' }, { status: 500 })
 }
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { ref: string } },
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
@@ -47,10 +45,8 @@ export async function GET(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { ref: string } },
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }

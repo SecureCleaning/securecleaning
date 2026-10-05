@@ -3,7 +3,8 @@ import { getCleanerAgentContext } from '@/lib/cleanerAgentAccess'
 import { createCleanerForState, getCleanerTemplates, searchAgentCleanerPage } from '@/lib/cleaners'
 import { rateLimit, rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
 
-export async function GET(request: NextRequest, { params }: { params: { assigneeId: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ assigneeId: string }> }) {
+  const params = await props.params
   const context = await getCleanerAgentContext(request, params.assigneeId)
   if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const page = Number(request.nextUrl.searchParams.get('page') ?? '1')
@@ -24,7 +25,8 @@ export async function GET(request: NextRequest, { params }: { params: { assignee
   return NextResponse.json({ success: true, state: context.state, templates, ...result })
 }
 
-export async function POST(request: NextRequest, { params }: { params: { assigneeId: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ assigneeId: string }> }) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 32 * 1024)
   if (blocked) return blocked
   const context = await getCleanerAgentContext(request, params.assigneeId)

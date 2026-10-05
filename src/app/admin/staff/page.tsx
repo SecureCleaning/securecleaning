@@ -4,7 +4,10 @@ import { withAdminPage } from '@/lib/adminPage'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminStaffPage({ searchParams }: { searchParams?: { account?: string | string[]; returnTo?: string | string[] } }) {
+export default async function AdminStaffPage(
+  props: { searchParams?: Promise<{ account?: string | string[]; returnTo?: string | string[] }> }
+) {
+  const searchParams = await props.searchParams
   const initialAccountId = typeof searchParams?.account === 'string' ? searchParams.account : ''
   const requestedReturnHref = typeof searchParams?.returnTo === 'string' ? searchParams.returnTo : ''
   const returnHref = /^\/admin\/clients(?:[?#]|$)/.test(requestedReturnHref) ? requestedReturnHref : ''

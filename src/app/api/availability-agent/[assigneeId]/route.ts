@@ -119,7 +119,7 @@ export async function POST(
   const blocked =
     rejectCrossOriginMutation(request) ??
     rejectLargePayload(request, 64 * 1024) ??
-    await rateLimit(request, { key: 'availability-agent-save:minute', limit: 20, windowMs: 60 * 1000 })
+    (await rateLimit(request, { key: 'availability-agent-save:minute', limit: 20, windowMs: 60 * 1000 }))
   if (blocked) return blocked
 
   const { assigneeId } = await context.params

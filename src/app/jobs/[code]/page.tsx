@@ -18,7 +18,8 @@ function taskDisplay(task: string | { label: string; cadence: Parameters<typeof 
   return typeof task === 'string' ? { label: task, cadence: 'Every clean' } : { label: task.label, cadence: getRoomTaskCadenceLabel(task.cadence) }
 }
 
-export default async function AvailableJobDetailPage({ params }: { params: { code: string } }) {
+export default async function AvailableJobDetailPage(props: { params: Promise<{ code: string }> }) {
+  const params = await props.params
   noStore()
   const cookieStore = await cookies()
   const accessLinkId = verifyCleanerJobsSessionToken(cookieStore.get(CLEANER_JOBS_SESSION_COOKIE)?.value)

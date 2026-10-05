@@ -3,10 +3,8 @@ import { getPublicQuoteDocumentByRef } from '@/lib/quoteWorkflowData'
 import { rateLimit } from '@/lib/abuseProtection'
 import { isQuoteReference } from '@/lib/quoteReference'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { ref: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   const blocked = await rateLimit(request, { key: 'quote-lookup:hour', limit: 30, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 

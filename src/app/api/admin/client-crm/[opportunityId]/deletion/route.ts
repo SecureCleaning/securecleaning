@@ -25,7 +25,11 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ success: false, error: 'The CRM record deletion could not be completed.' }, { status: 500 })
 }
 
-export async function GET(request: NextRequest, { params }: { params: { opportunityId: string } }) {
+export async function GET(
+  request: NextRequest,
+  props: { params: Promise<{ opportunityId: string }> }
+) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     const actor = await getClientCrmActor(request)
@@ -37,7 +41,11 @@ export async function GET(request: NextRequest, { params }: { params: { opportun
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { opportunityId: string } }) {
+export async function DELETE(
+  request: NextRequest,
+  props: { params: Promise<{ opportunityId: string }> }
+) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const blockedRequest = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
   if (blockedRequest) return blockedRequest

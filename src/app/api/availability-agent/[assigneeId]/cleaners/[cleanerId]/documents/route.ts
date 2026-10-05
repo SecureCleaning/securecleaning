@@ -10,8 +10,9 @@ const maxUploadBytes = 10 * 1024 * 1024
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; cleanerId: string } },
+  props: { params: Promise<{ assigneeId: string; cleanerId: string }> }
 ) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request)
   if (blocked) return blocked
   const context = await getCleanerAgentContext(request, params.assigneeId)

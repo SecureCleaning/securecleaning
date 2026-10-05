@@ -5,7 +5,10 @@ import { getStaffAccountProfileById } from '@/lib/staffAccounts'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminContractSalesPage({ searchParams }: { searchParams?: { product?: string | string[]; sale?: string | string[]; invoice?: string | string[]; tab?: string | string[] } }) {
+export default async function AdminContractSalesPage(
+  props: { searchParams?: Promise<{ product?: string | string[]; sale?: string | string[]; invoice?: string | string[]; tab?: string | string[] }> }
+) {
+  const searchParams = await props.searchParams
   const identity = await getAdminSessionIdentityFromCookies()
   if (identity?.role === 'agent') {
     const account = await getStaffAccountProfileById(identity.id)

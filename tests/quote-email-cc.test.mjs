@@ -293,7 +293,7 @@ function finalRouteFixture(kind, options = {}) {
     },
   })
   const request = { json: async () => ({ to: inputs.email, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
-  return { calls, run: () => exports.POST(request, { params: { assigneeId: 'regional', ref: 'SC-TEST' } }) }
+  return { calls, run: () => exports.POST(request, { params: Promise.resolve({ assigneeId: 'regional', ref: 'SC-TEST' }) }) }
 }
 
 for (const kind of ['admin', 'agent']) {

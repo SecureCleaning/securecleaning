@@ -11,7 +11,8 @@ function money(cents: number) {
   return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD', maximumFractionDigits: 0 }).format(cents / 100)
 }
 
-export default async function AvailableJobsPage({ searchParams }: { searchParams?: { state?: string | string[] } }) {
+export default async function AvailableJobsPage(props: { searchParams?: Promise<{ state?: string | string[] }> }) {
+  const searchParams = await props.searchParams
   noStore()
   const cookieStore = await cookies()
   const accessLinkId = verifyCleanerJobsSessionToken(cookieStore.get(CLEANER_JOBS_SESSION_COOKIE)?.value)

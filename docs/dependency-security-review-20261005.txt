@@ -1,0 +1,64 @@
+Secure Cleaning - dependency remediation and deployment result
+Date: 2026-10-05
+
+Deployment: BLOCKED by Vercel commit-author/team authorization.
+Attempt: dpl_C5SBhfS6QewdgHP9Y18zEik4es2W
+Dashboard: https://vercel.com/lyles-projects-1cf7cd8c/openclawsecurecleaning/C5SBhfS6QewdgHP9Y18zEik4es2W
+Commit author: Secure Cleaning <info@securecleaning.au>. Signed-in Vercel identity: lyleopenclaw-5285.
+Vercel reason: The deployment was blocked because the commit author does not have permission to create deployments for this project.
+The public securecleaning.com.au alias remains on dpl_9MPAiaQKd3U4eg6fct3CDNV6E4Lg, verified through the alias API.
+Public home/booking: HTTP 200. Unauthenticated admin quote workflow API: HTTP 401.
+No new release reached production; no access protections were bypassed. User input requested to resolve the authorized author/team identity.
+
+Dependency changes
+Applied compatible npm audit fix updates, then pinned UUID 11.1.1 for ExcelJS/Google dependencies. Existing callers use v4 and have executable compatibility coverage.
+The final seven inherited findings were all GHSA-vfj7-8cjw-p6xm in braces 3.0.3. No upstream patched version exists: https://github.com/advisories/GHSA-vfj7-8cjw-p6xm
+Added a local MIT-licensed maintenance fork named @securecleaning/braces-hardened, version 3.0.3-securecleaning.1.
+Parser nesting is bounded to 128. Iterative validation bounds AST depth/node count/pending work and rejects cycles before recursive compile/expand/stringify.
+Reviewable source: vendor/braces/. Reproducible npm archive: vendor/securecleaning-braces-hardened-3.0.3-securecleaning.1.tgz.
+The root dev dependency and npm override apply that same archive throughout the build-tool tree. The lockfile records its integrity hash.
+This is a local mitigation, not an upstream release. npm audit does not assess the fork. The archive/source parity and attack-regression tests must remain enabled; replace the override when upstream publishes a suitable fix.
+
+Validation
+npm ci: PASS.
+npm run type-check: PASS.
+npm run lint: PASS (next lint deprecation notice only).
+npm test: PASS, 453 tests, 0 failures/skips.
+npm run build: PASS, Next.js 15.5.27.
+git diff --check: PASS.
+npm audit: 0 findings (previously 20 affected-package entries); subject to local-fork limitation above.
+New tests cover ordinary globs/brace ranges/escaping, deeply nested patterns, malformed/cyclic ASTs, real ExcelJS export/import with conditional formatting, synthetic Google API multipart upload with UUID boundaries, and installed-package/source parity.
+No external email, booking, calendar event or Google file was created during these checks. The existing workflow/security regression suite also passed.
+
+Files changed for this follow-up
+package.json
+package-lock.json
+tests/dependency-security.test.mjs
+vendor/braces/index.js, lib/*.js, package.json, LICENSE, README.md, SECURITY-PATCH.txt
+vendor/securecleaning-braces-hardened-3.0.3-securecleaning.1.tgz
+docs/dependency-security-review-20261005.txt
+The earlier Next.js patch remains in the isolated checkout and is listed in docs/nextjs-security-review-20261004.txt.
+
+Migrations: none. API/data-contract changes: none. No commits, merges or pushes performed.
+Remaining release work: resolve Vercel author authorization, deploy, then verify the new production build.
+Remaining maintenance risk: local braces fork, existing deprecated build dependencies, and the two postponed upstream issues noted in the Next.js September security release. Zero audit findings do not imply no possible vulnerabilities.
+
+Installed version changes relative to the Next.js-only patch:
+node_modules/baseline-browser-mapping: 2.10.8 -> 2.11.27
+node_modules/brace-expansion: 1.1.12 -> 1.1.21
+node_modules/braces: 3.0.3 -> 3.0.3-securecleaning.1
+node_modules/browserslist: 4.28.1 -> 4.29.3
+node_modules/caniuse-lite: 1.0.30001780 -> 1.0.30001814
+node_modules/electron-to-chromium: 1.5.321 -> 1.5.444
+node_modules/form-data: 4.0.5 -> 4.0.6
+node_modules/hasown: 2.0.2 -> 2.0.4
+node_modules/js-yaml: 4.1.1 -> 4.3.2
+node_modules/node-releases: 2.0.36 -> 2.0.57
+node_modules/picomatch: 2.3.1 -> 2.3.2
+node_modules/postcss-selector-parser: 6.1.2 -> 6.1.4
+node_modules/qs: 6.15.0 -> 6.16.0
+node_modules/side-channel: 1.1.0 -> 1.1.1
+node_modules/side-channel-list: 1.0.0 -> 1.0.1
+node_modules/tinyglobby/node_modules/picomatch: 4.0.3 -> 4.0.7
+node_modules/update-browserslist-db: 1.2.3 -> 1.3.3
+node_modules/uuid: 9.0.1 -> 11.1.1

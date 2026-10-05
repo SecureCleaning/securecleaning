@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { deleteCleanerPermanently, getCleanerDetail, updateCleaner } from '@/lib/cleaners'
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { cleanerId: string } }
-) {
+export async function GET(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'detail')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
@@ -20,10 +18,8 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { cleanerId: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
@@ -42,10 +38,8 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { cleanerId: string } }
-) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'delete')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })

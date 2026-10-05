@@ -11,9 +11,10 @@ import { getStaffAccountById } from '@/lib/staffAccounts'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; ref: string } }
+  props: { params: Promise<{ assigneeId: string; ref: string }> }
 ) {
-  if (!(await isAuthorizedAvailabilityAgentRequest(request, params.assigneeId))) {
+  const params = await props.params
+  if (!await isAuthorizedAvailabilityAgentRequest(request, params.assigneeId)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 

@@ -5,8 +5,9 @@ import { addCleanerCommentForState } from '@/lib/cleaners'
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; cleanerId: string } },
+  props: { params: Promise<{ assigneeId: string; cleanerId: string }> }
 ) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
   if (blocked) return blocked
 

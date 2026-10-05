@@ -10,7 +10,8 @@ import { getCrmOpportunityIdForQuote } from '@/lib/clientCrmQuoteAccess'
 
 export const dynamic = 'force-dynamic'
 
-export default async function AdminQuoteWorkflowPage({ params }: { params: { ref: string } }) {
+export default async function AdminQuoteWorkflowPage(props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   return withAdminPage(async () => {
     const pricingConfig = await getQuotePricingConfig()
     const roomTypeConfig = await getQuoteRoomTypeConfig()

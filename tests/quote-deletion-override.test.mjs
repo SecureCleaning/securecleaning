@@ -9,7 +9,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 const { GET, DELETE } = await import('../src/app/api/admin/quotes/[ref]/deletion/route.ts')
 const { createAdminSessionToken, ADMIN_SESSION_COOKIE } = await import('../src/lib/adminAuth.ts')
 const ref = 'SC-20260921-TEST'
-const params = { params: { ref } }
+const params = { params: Promise.resolve({ ref }) }
 const body = { confirmation: ref, reason: 'Internal test cleanup', linkedRecords: 'keep', override: true, previewToken: 'a'.repeat(32) }
 async function request(role, data=body, method='DELETE', extraHeaders={}) {
   const headers = { 'Content-Type':'application/json', ...extraHeaders }

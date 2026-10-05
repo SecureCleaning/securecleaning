@@ -1,0 +1,4 @@
+Upstream: braces 3.0.3, MIT, https://github.com/micromatch/braces
+Local maintenance fork for GHSA-vfj7-8cjw-p6xm / CVE-2026-93687; no upstream patch available as of 2026-10-05.
+Changes: parser stack bounded to 128; iterative AST validation before compile/expand/stringify bounds depth and nodes and rejects cycles. Existing normal pattern behavior retained.
+This is locally maintained code, not an upstream security release. Replace this override once a suitable upstream patch is available. npm audit does not assess this local fork; regression tests are required.

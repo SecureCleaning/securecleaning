@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getUnresolvedFinalQuoteSendAttempt, QuoteWorkflowConflictError, reconcileFinalQuoteSend } from '@/lib/quoteWorkflowData'
 
-export async function GET(request: NextRequest, { params }: { params: { ref: string } }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
     return NextResponse.json({ success: true, attempt: await getUnresolvedFinalQuoteSendAttempt(params.ref) })
@@ -12,7 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: { ref: str
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { ref: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'manager')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })

@@ -26,7 +26,7 @@ function endTimeFor(startTime: string) {
 }
 
 async function isAuthorized(request: NextRequest, assigneeId: string) {
-  return await isAuthorizedAdminRequest(request) || await isAuthorizedAvailabilityAgentRequest(request, assigneeId)
+  return (await isAuthorizedAdminRequest(request)) || (await isAuthorizedAvailabilityAgentRequest(request, assigneeId));
 }
 
 async function getAssignedBooking(config: AvailabilityConfig, assignee: AvailabilityAssignee, bookingRef: string) {
@@ -49,8 +49,9 @@ async function getAssignedBooking(config: AvailabilityConfig, assignee: Availabi
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; bookingRef: string } },
+  props: { params: Promise<{ assigneeId: string; bookingRef: string }> }
 ) {
+  const params = await props.params
   if (!await isAuthorized(request, params.assigneeId)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
@@ -131,8 +132,9 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; bookingRef: string } },
+  props: { params: Promise<{ assigneeId: string; bookingRef: string }> }
 ) {
+  const params = await props.params
   if (!await isAuthorized(request, params.assigneeId)) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }

@@ -10,7 +10,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, noarchive: true },
 }
 
-export default async function QuoteByRefPage({ params, searchParams }: { params: { ref: string }; searchParams?: { variant?: string; handoff?: string; access?: string } }) {
+export default async function QuoteByRefPage(
+  props: { params: Promise<{ ref: string }>; searchParams?: Promise<{ variant?: string; handoff?: string; access?: string }> }
+) {
+  const searchParams = await props.searchParams
+  const params = await props.params
   const variant = searchParams?.variant === 'final' ? 'final' : 'remote_review'
   const quote = await getPublicQuoteDocumentByRef(params.ref, variant, searchParams?.access)
 
@@ -30,7 +34,7 @@ export default async function QuoteByRefPage({ params, searchParams }: { params:
           isFirmPrice={quote.isFirmPrice}
           includeConsumablesCatalogue={quote.includeConsumablesCatalogue}
           documentAccessToken={searchParams?.access}
-          bookingHandoffToken={await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff) ? searchParams?.handoff : undefined}
+          bookingHandoffToken={(await verifyQuoteBookingHandoffToken(params.ref, searchParams?.handoff)) ? searchParams?.handoff : undefined}
         />
       </div>
     </div>

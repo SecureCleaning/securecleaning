@@ -7,8 +7,9 @@ export const runtime = 'nodejs'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; cleanerId: string; documentId: string } },
+  props: { params: Promise<{ assigneeId: string; cleanerId: string; documentId: string }> }
 ) {
+  const params = await props.params
   const context = await getCleanerAgentContext(request, params.assigneeId)
   if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   try {
@@ -26,8 +27,9 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { assigneeId: string; cleanerId: string; documentId: string } },
+  props: { params: Promise<{ assigneeId: string; cleanerId: string; documentId: string }> }
 ) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request)
   if (blocked) return blocked
   const context = await getCleanerAgentContext(request, params.assigneeId)

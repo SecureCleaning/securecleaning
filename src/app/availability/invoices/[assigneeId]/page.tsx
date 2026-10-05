@@ -6,7 +6,8 @@ import { getMenuSettingsActor } from '@/lib/menuSettingsAuth'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 
 export const dynamic = 'force-dynamic'
-export default async function AgentInvoicesPage({ params }: { params: { assigneeId: string } }) {
+export default async function AgentInvoicesPage(props: { params: Promise<{ assigneeId: string }> }) {
+  const params = await props.params
   const { assigneeId } = params
   const actor = await getMenuSettingsActor(await getAdminSessionIdentityFromCookies())
   const assignee = getAvailabilityAssignee(await getAvailabilityConfig(), assigneeId)

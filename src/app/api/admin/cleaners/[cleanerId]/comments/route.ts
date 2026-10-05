@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { addCleanerComment } from '@/lib/cleaners'
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { cleanerId: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
+  const params = await props.params
   const authorization = await authorizeCleanerAdminRequest(request, 'comment')
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })

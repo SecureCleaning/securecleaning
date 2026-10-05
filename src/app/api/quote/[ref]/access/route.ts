@@ -5,9 +5,10 @@ import { getQuoteWorkflowByRef } from '@/lib/quoteWorkflowData'
 import { rateLimit, rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
 import { isQuoteReference } from '@/lib/quoteReference'
 
-export async function POST(request: NextRequest, { params }: { params: { ref: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
+  const params = await props.params
   const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 1024)
-    ?? await rateLimit(request, { key: 'quote-share:hour', limit: 30, windowMs: 3600000 })
+    ?? (await rateLimit(request, { key: 'quote-share:hour', limit: 30, windowMs: 3600000 }))
   if (blocked) return blocked
   if (!isQuoteReference(params.ref) || !await canStaffAccessQuote(params.ref, true))
     return NextResponse.json({ success: false, error: 'Quote unavailable.' }, { status: 404 })
