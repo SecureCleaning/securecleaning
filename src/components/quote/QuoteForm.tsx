@@ -1,5 +1,7 @@
 'use client'
 
+import { QUOTE_SMS_NOTICE_VERSION } from '@/lib/quoteSmsNotice'
+
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import ProgressBar from '@/components/ui/ProgressBar'
@@ -159,7 +161,7 @@ export default function QuoteForm() {
       const response = await fetch('/api/quote', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, smsQuoteNoticeVersion: QUOTE_SMS_NOTICE_VERSION }),
       })
 
       const data = await response.json()

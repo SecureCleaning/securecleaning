@@ -1,4 +1,7 @@
 import { createQuoteCapability, createQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
+import { recordQuoteSmsRequest, recordRemoteQuoteEmail } from '@/lib/quoteSmsRequest'
+import { QUOTE_SMS_NOTICE_VERSION } from '@/lib/quoteSmsNotice'
+import { smsAlert } from '@/lib/smsAlerts'
 import { escapeHtml } from '@/lib/htmlEscape'
 import { NextRequest, NextResponse } from 'next/server'
 import { calculateQuote, formatPriceRange, generateQuoteRef } from '@/lib/quoteEngine'
@@ -55,6 +58,10 @@ export async function POST(request: NextRequest) {
       limitString(bodyRecord.notes, 1500)
     ) {
       return NextResponse.json({ success: false, error: 'One or more fields are too long.' }, { status: 400 })
+    }
+
+    if (bodyRecord.smsQuoteEmailOnly !== undefined && typeof bodyRecord.smsQuoteEmailOnly !== 'boolean') {
+      return NextResponse.json({ success: false, error: 'Choose a valid quote contact preference.' }, { status: 400 })
     }
 
     const untrustedInputs = body as QuoteInputs
@@ -181,12 +188,31 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Old clients can still request an email, but cannot silently acquire SMS permission.
+    if (quoteData?.id && bodyRecord.smsQuoteNoticeVersion === QUOTE_SMS_NOTICE_VERSION) {
+      try {
+        await recordQuoteSmsRequest({ quoteRef, phone: inputs.phone, source: 'online_request', actorId: 'online_customer', allowed: bodyRecord.smsQuoteEmailOnly !== true })
+      } catch {
+        console.error('[quote] SMS request record failed; email will continue without new SMS permission.')
+        await smsAlert('quote_sms_permission_record_failed').catch(() => undefined)
+      }
+    }
+
     let emailSent = false
     let emailError: string | null = null
 
     try {
-      await sendQuoteEmail(quoteRef, inputs, result, displayPrice)
+      const providerMessageId = await sendQuoteEmail(quoteRef, inputs, result, displayPrice)
       emailSent = true
+      if (quoteData?.id) {
+        try {
+          await recordRemoteQuoteEmail({ quoteRef, phone: inputs.phone, email: inputs.email, providerMessageId })
+        } catch {
+          // Never turn an accepted email into a retry because its SMS could not be queued.
+          console.error('[quote] Email accepted but SMS queue recording failed.')
+          await smsAlert('remote_quote_sms_queue_failed').catch(() => undefined)
+        }
+      }
     } catch (err) {
       console.error('[quote] Email send failed:', err)
       emailError = err instanceof QuoteAgentEmailError

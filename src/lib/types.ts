@@ -72,6 +72,7 @@ export interface QuoteAddOns {
 }
 
 export interface QuoteInputs {
+  smsQuoteEmailOnly?: boolean
   acceptableUseAccepted?: boolean
   formStartedAt?: number
   website?: string

@@ -32,7 +32,7 @@ export async function saveSmsSettings(actor:ClientCrmActor,body:Record<string,un
   const next = { auto_enabled: body.auto_enabled===true, delay_minutes:Number(body.delay_minutes),template:String(body.template||''),alert_email:String(body.alert_email||'').trim().toLowerCase(),low_credit_threshold:Number(body.low_credit_threshold),credit_price_cents:Number(body.credit_price_cents),max_parts:Number(body.max_parts),updated_at:new Date().toISOString() }
   try { renderSms(next.template,{first_name:'Client',client_name:'Client',quote_reference:'SC-EXAMPLE'}) } catch(error) {throw new SmsError(error instanceof Error?error.message:'Invalid SMS template.')}
   if(!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(next.alert_email)||next.alert_email.length>254) throw new SmsError('Enter one valid alert email address.')
-  if(!Number.isInteger(next.delay_minutes)||next.delay_minutes<1||next.delay_minutes>120||!Number.isInteger(next.low_credit_threshold)||next.low_credit_threshold<0||!Number.isFinite(next.credit_price_cents)||next.credit_price_cents<0||next.credit_price_cents>100||!Number.isInteger(next.max_parts)||next.max_parts<1||next.max_parts>5) throw new SmsError('Check the delay, credit threshold, price and segment limit.')
+  if(!Number.isInteger(next.delay_minutes)||next.delay_minutes<0||next.delay_minutes>120||!Number.isInteger(next.low_credit_threshold)||next.low_credit_threshold<0||!Number.isFinite(next.credit_price_cents)||next.credit_price_cents<0||next.credit_price_cents>100||!Number.isInteger(next.max_parts)||next.max_parts<1||next.max_parts>5) throw new SmsError('Check the delay, credit threshold, price and segment limit.')
   if(next.auto_enabled) {
     const current=await smsSettings()
     if(!smsLiveEnabled()||current.health.ready!==true||!current.worker_at||Date.now()-Date.parse(current.worker_at)>5*60_000) throw new SmsError('Enable the server and check the connection and scheduler before activating automatic SMS.',409)
@@ -45,15 +45,16 @@ export async function saveSmsSettings(actor:ClientCrmActor,body:Record<string,un
 export async function quoteSmsHistory(actor:ClientCrmActor,ref:string) {
   const quote=await smsQuote(actor,ref), db=getAdminSupabase()
   const mobile=normalizeSmsMobile(quote.finalDocument?.inputs.phone || quote.inputs.phone)
-  const [jobs,pref]=await Promise.all([
+  const [jobs,pref,request]=await Promise.all([
     db.from('sms_jobs').select('id,purpose,mobile,message,status,reason,due_at,created_at,submitted_at,credits,cancel_requested').eq('quote_ref',ref).order('created_at',{ascending:false}).limit(50),
     mobile? db.from('sms_preferences').select('consent,opted_out,updated_at').eq('mobile',mobile).maybeSingle():Promise.resolve({data:null,error:null}),
+    mobile? db.from('sms_quote_requests').select('source,allowed,recorded_at,notice_version').eq('quote_ref',ref).eq('mobile',mobile).maybeSingle():Promise.resolve({data:null,error:null}),
   ])
-  if(jobs.error||pref.error) throw jobs.error||pref.error
+  if(jobs.error||pref.error||request.error) throw jobs.error||pref.error||request.error
   const ids=(jobs.data||[]).map(j=>j.id)
   const replies=ids.length?await db.from('sms_replies').select('id,message,received_at,read_at,opted_out').in('job_id',ids).order('received_at',{ascending:false}).limit(50):{data:[],error:null}
   if(replies.error) throw replies.error
-  return {mobile,preference:pref.data,jobs:jobs.data,replies:replies.data,template:(await smsSettings()).template}
+  return {mobile,preference:pref.data,quoteRequest:request.data,jobs:jobs.data,replies:replies.data,template:(await smsSettings()).template}
 }
 export async function setSmsPreference(actor:ClientCrmActor,ref:string,body:Record<string,unknown>) {
   const quote=await smsQuote(actor,ref), mobile=normalizeSmsMobile(quote.finalDocument?.inputs.phone||quote.inputs.phone)
@@ -88,6 +89,9 @@ export async function prepareSms(actor:ClientCrmActor,body:Record<string,unknown
     const pref=mobile?await db.from('sms_preferences').select('consent,opted_out').eq('mobile',mobile).maybeSingle():{data:null,error:null}
     if(pref.error) throw pref.error
     if(!pref.data?.consent||pref.data.opted_out) throw new SmsError('SMS permission is missing or this number has opted out.')
+    const request=await db.from('sms_quote_requests').select('allowed').eq('quote_ref',ref).eq('mobile',mobile).maybeSingle()
+    if(request.error) throw request.error
+    if(request.data?.allowed===false) throw new SmsError('The client requested email-only contact for this quote.')
     const name=quote.finalDocument.inputs.contactName||'';fields={first_name:name.split(' ')[0],client_name:name,quote_reference:ref}
   }
   if(!mobile||!zone) throw new SmsError('Confirm an Australian mobile number and client service region.')

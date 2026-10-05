@@ -1,3 +1,4 @@
+import { recordQuoteSmsRequest } from '@/lib/quoteSmsRequest'
 import { getQuoteAgentCc, QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
@@ -39,7 +40,7 @@ export async function POST(
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] ?? 'The final document is not ready.' }, { status: 409 })
     }
-    const body = await request.json().catch(() => ({})) as { to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
+    const body = await request.json().catch(() => ({})) as { quoteRequestConfirmed?: unknown; to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
     const recipient = resolveFinalQuoteRecipient(quote.finalDocument.inputs.email, body.to)
     if (!recipient.matches) {
       return NextResponse.json({ success: false, error: 'The recipient must match the reviewed final document.' }, { status: 400 })
@@ -58,6 +59,9 @@ export async function POST(
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
     const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
+    if (body.quoteRequestConfirmed === true) {
+      await recordQuoteSmsRequest({ quoteRef: params.ref, phone: quote.finalDocument.inputs.phone, source: 'agent_request', actorId: actor.id, allowed: true })
+    }
     attemptId = randomUUID()
     if (!await createFinalQuoteSendAttempt(params.ref, attemptId, actor, to, quote.finalDocument.version)) {
       return NextResponse.json({ success: false, error: 'This final quote already has a sent or unresolved delivery attempt.' }, { status: 409 })

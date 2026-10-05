@@ -101,7 +101,7 @@ export async function sendQuoteEmail(
   inputs: QuoteInputs,
   result: QuoteResult,
   displayPrice?: FirmQuoteDisplayPrice
-): Promise<void> {
+): Promise<string | null> {
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const priceRangeFmt = formatPriceRange(displayPrice?.low ?? result.totalLow, displayPrice?.high ?? result.totalHigh)
@@ -125,7 +125,7 @@ export async function sendQuoteEmail(
   const agentCc = await getQuoteAgentCc(quoteRef, inputs)
 
   // Email to client
-  await sendEmailOrThrow({
+  const providerResult = await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
@@ -179,6 +179,7 @@ export async function sendQuoteEmail(
             View Scope of Works
           </a>
 
+          <p style="color: #64748b; font-size: 13px;">For a requested quote, we may send an SMS to the mobile number you supplied when this email is sent. Reply STOP to opt out, or reply to this email to request email-only contact. This does not subscribe you to unrelated marketing. <a href="${SITE_URL}/terms">Terms of Service</a> | <a href="${SITE_URL}/privacy">Privacy Policy</a>.</p>
           <p style="color: #64748b; font-size: 13px; margin-top: 32px;">
             This remote quote is valid for 30 days. Prices exclude GST. Final pricing is confirmed after a site inspection.
           </p>
@@ -190,7 +191,7 @@ export async function sendQuoteEmail(
       </div>
     `,
   })
-
+  return typeof providerResult?.id === 'string' ? providerResult.id : null
 }
 
 export async function sendScopeOfWorksEmail(
@@ -311,6 +312,7 @@ export async function sendUpdatedQuoteEmail(
             ${options?.includeConsumablesCatalogue ? `<a href="${consumablesUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #d39f2a; color: #172033; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px; margin-left: 8px;">View Consumables Pricing</a>` : ''}
           </p>
 
+          <p style="color: #64748b; font-size: 13px;">For a requested quote, we may send an SMS to the mobile number you supplied when this email is sent. Reply STOP to opt out, or reply to this email to request email-only contact. This does not subscribe you to unrelated marketing. <a href="${SITE_URL}/terms">Terms of Service</a> | <a href="${SITE_URL}/privacy">Privacy Policy</a>.</p>
           <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>
         </div>
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">Secure Cleaning | Melbourne & Sydney</div>

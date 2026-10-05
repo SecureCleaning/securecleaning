@@ -132,3 +132,30 @@ test('provider rejection, timeout and disabled environment have distinct safe ou
  const f=workerFixture({job:baseJob});assert.equal(f.mod.smsResult({status:'complete',results:[{status:'blocked'}]}),null)
  assert.throws(()=>f.mod.smsResult({status:'complete',results:[]}),/unknown/)
 })
+
+test('manual SMS cannot override quote-specific email-only contact',async()=>{
+ const f=dataFixture()
+ f.values.sms_quote_requests={allowed:false}
+ await assert.rejects(f.mod.prepareSms(f.actor,{quoteRef:'SC-1'}),/email-only/)
+ assert.equal(f.rpcCalls.length,0)
+})
+test('quote-request persistence uses normalized mobile, fixed notice version and no global preference',async()=>{
+ const calls=[]
+ const db={rpc:async(name,args)=>{calls.push({name,args});return{data:true,error:null}}}
+ const m=moduleWithMocks('src/lib/quoteSmsRequest.ts',{
+  './supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,
+  './quoteSmsNotice':{QUOTE_SMS_NOTICE_VERSION:'2026-10-06'},
+ })
+ assert.equal(await m.recordQuoteSmsRequest({quoteRef:'SC-1',phone:'(04) 1234 5678',source:'online_request',actorId:'online_customer',allowed:false}),true)
+ assert.equal(calls[0].name,'sms_record_quote_request')
+ assert.equal(calls[0].args.p_mobile,'61412345678')
+ assert.equal(calls[0].args.p_allowed,false)
+ assert.equal(calls[0].args.p_notice_version,'2026-10-06')
+ assert.equal(await m.recordQuoteSmsRequest({quoteRef:'SC-1',phone:'02 9999 9999',source:'agent_request',actorId:'agent',allowed:true}),false)
+ assert.equal(calls.length,1)
+ assert.equal(await m.recordRemoteQuoteEmail({quoteRef:'SC-1',phone:'0412345678',email:'client@example.test',providerMessageId:null}),false)
+ assert.equal(calls.length,1)
+ assert.equal(await m.recordRemoteQuoteEmail({quoteRef:'SC-1',phone:'0412345678',email:'client@example.test',providerMessageId:'email-id'}),true)
+ assert.equal(calls[1].name,'sms_record_remote_quote_email')
+ assert.equal(calls[1].args.p_provider_message_id,'email-id')
+})

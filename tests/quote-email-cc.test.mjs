@@ -272,6 +272,7 @@ function finalRouteFixture(kind, options = {}) {
     '@/lib/staffAccounts': { getStaffAccountById: async () => null },
     '@/lib/quoteWorkflow': { getFinalQuoteReadiness: () => ({ ready: true }) },
     '@/lib/finalQuoteSendPolicy': sendPolicy,
+    '@/lib/quoteSmsRequest': { recordQuoteSmsRequest: async input => { calls.push(['permission', input]); if (options.permissionError) throw new Error('Database unavailable'); return true } },
     '@/lib/quoteEmailRecipients': { QuoteAgentEmailError, getQuoteAgentCc: async () => {
       calls.push('resolve')
       if (options.noAgent) throw new QuoteAgentEmailError('Assign an active agent with a valid email address before sending this quote.')
@@ -292,7 +293,7 @@ function finalRouteFixture(kind, options = {}) {
       recordFinalQuoteSendFailure: async (...args) => { calls.push(['failed', ...args]) },
     },
   })
-  const request = { json: async () => ({ to: inputs.email, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
+  const request = { json: async () => ({ to: inputs.email, quoteRequestConfirmed: options.confirmed, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
   return { calls, run: () => exports.POST(request, { params: Promise.resolve({ assigneeId: 'regional', ref: 'SC-TEST' }) }) }
 }
 
@@ -350,7 +351,7 @@ test('out-of-region agent cannot resolve recipients or send a quote', async () =
   assert.deepEqual(fixture.calls, [])
 })
 
-test('public quote remains available online and preserves admin notification when agent setup prevents email', async () => {
+async function publicQuoteFixture(options = {}) {
   const engine = await import('../src/lib/quoteEngine.ts')
   const workflow = await import('../src/lib/quoteWorkflow.ts')
   const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
@@ -359,6 +360,12 @@ test('public quote remains available online and preserves admin notification whe
   const calls = []
   class ClientCrmError extends Error {}
   const { POST } = loadTs('src/app/api/quote/route.ts', {
+    '@/lib/quoteSmsNotice': { QUOTE_SMS_NOTICE_VERSION: '2026-10-06' },
+    '@/lib/quoteSmsRequest': {
+      recordQuoteSmsRequest: async input => { calls.push(['permission', input]); if(options.permissionError) throw new Error('Unavailable'); return true },
+      recordRemoteQuoteEmail: async input => { calls.push(['queue', input]); if(options.queueError) throw new Error('Unavailable'); return true },
+    },
+    '@/lib/smsAlerts': { smsAlert: async code => calls.push(['alert', code]) },
     '@/lib/htmlEscape': { escapeHtml },
     '@/lib/quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'booking-token', createQuoteCapability: async () => 'document-token' },
     'next/server': { NextResponse: { json: (body, init = {}) => ({ body, status: init.status ?? 200 }) } },
@@ -369,9 +376,12 @@ test('public quote remains available online and preserves admin notification whe
     '@/lib/publicRoomScope': scope,
     '@/lib/supabase': { getAdminSupabase: () => ({ from: () => ({ insert: () => {
       calls.push('save quote')
-      return { select: () => ({ single: async () => ({ data: { id: 'quote-id' }, error: null }) }) }
+      return { select: () => ({ single: async () => ({ data: options.saveError ? null : { id: 'quote-id' }, error: options.saveError ? new Error('Database failed') : null }) }) }
     } }) }) },
-    '@/lib/email': { sendQuoteEmail: async () => { throw new QuoteAgentEmailError('More than one agent covers this quote. Assign the responsible agent in CRM before sending.') } },
+    '@/lib/email': { sendQuoteEmail: async () => {
+      if(options.emailError) throw new QuoteAgentEmailError('More than one agent covers this quote. Assign the responsible agent in CRM before sending.')
+      calls.push('email accepted'); return 'remote-provider-id'
+    } },
     '@/lib/quoteEmailRecipients': { QuoteAgentEmailError },
     '@/lib/adminNotifications': { createAdminNotification: async () => { calls.push('notify admin') } },
     '@/lib/clientCrmData': {
@@ -381,7 +391,12 @@ test('public quote remains available online and preserves admin notification whe
       'limitString', 'rateLimit', 'rateLimitValue', 'rejectCrossOriginMutation', 'rejectLargePayload', 'validatePublicSubmission',
     ].map((name) => [name, () => null])),
   })
-  const response = await POST({ json: async () => inputs })
+  return { calls, run: body => POST({ json: async () => ({ ...inputs, ...body }) }) }
+}
+
+test('public quote remains available online and preserves admin notification when agent setup prevents email', async () => {
+  const {calls, run} = await publicQuoteFixture({ emailError: true })
+  const response = await run({})
   assert.equal(response.status, 200)
   assert.equal(response.body.success, true)
   assert.equal(response.body.quoteRef, 'SC-TEST')
@@ -406,5 +421,83 @@ test('public quote, scope and booking email text cannot inject HTML into capture
   for (const email of fixture.payloads) {
     assert.doesNotMatch(email.html, /<img src=x>|<b>spoof|<iframe>|<script>|<svg>|href="https:\/\/evil.test"/)
     assert.match(email.html, /&lt;img src=x&gt;/)
+  }
+})
+
+for (const kind of ['admin', 'agent']) {
+  test(`${kind} records a confirmed quote request before the email send, without inventing express consent`, async () => {
+    const f = finalRouteFixture(kind, {confirmed:true})
+    assert.equal((await f.run()).status,200)
+    const index=f.calls.findIndex(c => c[0]==='permission')
+    assert.ok(index >= 0 && index < f.calls.indexOf('claim'))
+    assert.equal(f.calls[index][1].source,'agent_request')
+    assert.equal(f.calls[index][1].quoteRef,'SC-TEST')
+    assert.equal(f.calls[index][1].phone,inputs.phone)
+    assert.equal(f.calls[index][1].actorId,kind==='admin'?'staff':'regional')
+    const legacy=finalRouteFixture(kind)
+    await legacy.run()
+    assert.equal(legacy.calls.some(c => c[0]==='permission'),false)
+    const unauth=finalRouteFixture(kind,{confirmed:true,authorized:false})
+    assert.equal((await unauth.run()).status,401)
+    assert.equal(unauth.calls.length,0)
+  })
+  test(`${kind} fails safely before email if a requested permission record cannot be saved`, async () => {
+    const f=finalRouteFixture(kind,{confirmed:true,permissionError:true})
+    assert.equal((await f.run()).body.providerAccepted,false)
+    assert.equal(f.calls.some(c => c==='claim'||c[0]==='send'),false)
+  })
+}
+test('out-of-region agents cannot record a quote request',async()=>{
+  const f=finalRouteFixture('agent',{confirmed:true,inRegion:false})
+  assert.equal((await f.run()).status,403)
+  assert.equal(f.calls.length,0)
+})
+test('online request permission precedes email; only provider acceptance can queue its SMS',async()=>{
+  const f=await publicQuoteFixture()
+  const response=await f.run({smsQuoteNoticeVersion:'2026-10-06'})
+  assert.equal(response.body.emailSent,true)
+  const permission=f.calls.find(c=>c[0]==='permission'), queued=f.calls.find(c=>c[0]==='queue')
+  assert.equal(permission[1].allowed,true)
+  assert.equal(permission[1].source,'online_request')
+  assert.equal(permission[1].actorId,'online_customer')
+  assert.equal(queued[1].providerMessageId,'remote-provider-id')
+  assert.ok(f.calls.indexOf(permission)<f.calls.indexOf('email accepted'))
+  assert.ok(f.calls.indexOf(queued)>f.calls.indexOf('email accepted'))
+  const failed=await publicQuoteFixture({emailError:true})
+  assert.equal((await failed.run({smsQuoteNoticeVersion:'2026-10-06'})).body.emailSent,false)
+  assert.equal(failed.calls.some(c=>c[0]==='queue'),false)
+})
+test('online email-only preference is recorded and old forms cannot silently acquire permission',async()=>{
+  const f=await publicQuoteFixture()
+  await f.run({smsQuoteNoticeVersion:'2026-10-06',smsQuoteEmailOnly:true})
+  assert.equal(f.calls.find(c=>c[0]==='permission')[1].allowed,false)
+  const legacy=await publicQuoteFixture()
+  await legacy.run({smsQuoteNoticeVersion:'old'})
+  assert.equal(legacy.calls.some(c=>c[0]==='permission'),false)
+  const invalid=await publicQuoteFixture()
+  assert.equal((await invalid.run({smsQuoteEmailOnly:'false'})).status,400)
+  assert.equal(invalid.calls.length,0)
+})
+test('SMS persistence failure does not repeat or misreport a successful online email',async()=>{
+  for(const failure of ['permissionError','queueError']) {
+    const f=await publicQuoteFixture({[failure]:true})
+    const response=await f.run({smsQuoteNoticeVersion:'2026-10-06'})
+    assert.equal(response.body.emailSent,true)
+    assert.equal(response.body.emailError,null)
+    assert.equal(f.calls.filter(c=>c==='email accepted').length,1)
+    assert.ok(f.calls.some(c=>c[0]==='alert'))
+  }
+  const failedSave=await publicQuoteFixture({saveError:true})
+  await failedSave.run({smsQuoteNoticeVersion:'2026-10-06'})
+  assert.equal(failedSave.calls.some(c=>['permission','queue'].includes(c[0])),false)
+})
+test('quote email returns the accepted provider ID and includes SMS terms for remote and final quotes',async()=>{
+  const f=emailFixture()
+  assert.equal(await f.sendQuoteEmail('SC-TEST',inputs,{totalLow:100,totalHigh:120}),'provider-id')
+  await f.sendUpdatedQuoteEmail('SC-TEST',inputs,{low:100,high:120})
+  for(const payload of f.payloads) {
+    assert.match(payload.html,/Reply STOP/)
+    assert.match(payload.html,/https:\/\/example.com\/terms/)
+    assert.match(payload.html,/unrelated marketing/)
   }
 })

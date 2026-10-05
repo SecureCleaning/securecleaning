@@ -1,5 +1,6 @@
 'use client'
 
+import { QUOTE_SMS_NOTICE } from '@/lib/quoteSmsNotice'
 import Input from '@/components/ui/Input'
 import Select from '@/components/ui/Select'
 import type { QuoteInputs } from '@/lib/types'
@@ -96,6 +97,14 @@ export default function StepFour({ data, onChange, errors }: StepFourProps) {
       {errors.acceptableUseAccepted ? (
         <p className="text-sm text-red-600">{errors.acceptableUseAccepted}</p>
       ) : null}
+
+      <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+        <p>{QUOTE_SMS_NOTICE} See our <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">Terms of Service</a> and <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">Privacy Policy</a>.</p>
+        <label className="mt-3 flex items-start gap-3">
+          <input type="checkbox" checked={data.smsQuoteEmailOnly ?? false} onChange={e => onChange({ smsQuoteEmailOnly: e.target.checked })} className="mt-1 h-4 w-4" />
+          <span>Email only for this quote - please do not send SMS notifications.</span>
+        </label>
+      </div>
 
       {/* Summary reminder */}
       <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-sm text-blue-800">

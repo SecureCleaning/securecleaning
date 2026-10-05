@@ -1,0 +1,128 @@
+Secure Cleaning quote-request SMS review - 6 October 2026
+
+Status
+Implemented and locally validated in the existing security worktree. Not committed,
+migrated to production, or deployed in this task. No customer email/SMS was sent.
+
+Behaviour
+- Online quote submission records the specific quote/mobile request, source,
+  timestamp, actor and notice version 2026-10-06. The final form step shows the
+  notification notice and an email-only choice. Old forms without the current
+  notice version can still obtain an email but do not gain SMS permission.
+- The shared owner/regional-agent final-quote composer has an unchecked
+  confirmation that the client requested the quote, supplied the mobile for quote
+  contact, and was told about the SMS and opt-out. Selecting it records the request
+  at send time, using the authenticated actor and reviewed document's mobile.
+  Existing online request evidence works without another staff confirmation.
+- Evidence applies only to that quote/mobile. It is not global marketing consent.
+  Original request evidence is retained on retries. An online email-only choice
+  cannot be overridden by the agent confirmation. Existing global STOP/opt-outs
+  remain authoritative at dispatch.
+- One fixed factual notification follows provider acceptance of an online estimate;
+  one follows each emailed final quote version. Resends do not add notifications.
+  Online estimates use a separate provider-acceptance receipt and version 0.
+  Final publication cancels any pending estimate notification it supersedes.
+- The existing worker, provider idempotency keys, receipt reconciliation, sender
+  checks, credit controls, expiry, regional authorization and no-live-send guard
+  are retained. Inferred request permission cannot authorise arbitrary manual SMS.
+- Zero delay means the next scheduler run during Mon-Fri 9am-6pm in the service
+  region, normally within a minute; after-hours/weekends wait until next weekday
+  9am. Existing five-minute default changes to zero in the forward migration.
+  Other configured delays are retained. Prior queued dates are not rewritten.
+- Estimate/final notices for the same quote are spaced at least one minute apart.
+  Daily recipient cooldown remains across unrelated quotes; unresolved provider
+  sends still block another submission. Suppression and expiry can prevent delivery.
+- Terms, privacy page, public form and remote/final quote email footers explain
+  SMS purpose, scope, STOP/email-only and record handling. Contact email unchanged.
+
+Files changed
+src/lib/quoteSmsNotice.ts (new versioned notice)
+src/lib/quoteSmsRequest.ts (new server-only persistence helpers)
+src/lib/types.ts (optional email-only preference)
+src/lib/email.ts (remote provider ID return and quote email notices)
+src/lib/smsData.ts (zero delay, scoped evidence history, manual email-only guard)
+src/app/api/quote/route.ts
+src/app/api/admin/quotes/[ref]/send/route.ts
+src/app/api/availability-agent/[assigneeId]/quotes/[ref]/send/route.ts
+src/components/quote/QuoteForm.tsx
+src/components/quote/StepFour.tsx
+src/components/admin/QuoteWorkflowEditor.tsx
+src/components/sms/QuoteSmsPanel.tsx
+src/components/sms/SmsSettingsAdmin.tsx
+src/app/terms/page.tsx
+src/app/privacy/page.tsx
+tests/quote-email-cc.test.mjs
+tests/sms-security.test.mjs
+scripts/test-quote-sms-database.mjs (new isolated integration suite)
+supabase/migrations/20261005215106_quote_request_sms_permission.sql (new)
+This report.
+
+Migration / API and data contracts
+One forward migration, not yet applied. Requires the existing SMS workflow and
+quote-status-enum repair. Adds sms_quote_requests and sms_remote_quote_emails,
+both RLS-enabled with access only for service_role; no public/client grants.
+Adds server-only RPCs sms_record_quote_request and sms_record_remote_quote_email.
+Updates final email queue and dispatch functions, retaining locked eligibility
+checks, fixed search paths and restricted function execution. Local role/privilege
+checks passed. Production Supabase advisors were not run for this unapplied change.
+Public quote accepts optional smsQuoteNoticeVersion and smsQuoteEmailOnly fields;
+existing clients remain email-compatible. Staff send routes accept optional boolean
+quoteRequestConfirmed. SMS history adds quoteRequest. Internal sendQuoteEmail now
+returns provider message ID or null; existing resend callers may ignore the return.
+No dependency changes. No change to SMS provider credentials, sender or webhook.
+
+Validation
+npm run type-check: passed.
+npm run lint: passed (Next.js emits its existing next lint deprecation notice).
+npm test: 464 passed, zero failures/skips.
+npm run build: passed, Next.js 15.5.27 production build.
+git diff --check: passed.
+Existing isolated SMS PostgreSQL suite: passed.
+New isolated quote-request PostgreSQL suite: passed, including migration replay,
+service-role execution, ACL/RLS, both sources, rejected/missing email acceptance,
+per-stage dedupe, no historical backfill/global opt-in, STOP, email-only, mobile
+changes, expiry/deletion, same-quote cooldown and business-hour/DST calculations.
+No production writes or messages in either suite.
+
+Manual verification
+Ran the completed production build locally with SMS sending disabled. Browser
+checked Terms SMS section and Privacy SMS section. Entered synthetic details and
+walked all four online quote form steps without submitting. Verified the notice,
+Terms/Privacy links and email-only checkbox (checked state). Browser error logs
+were empty and the final form layout was visually inspected.
+Agent/owner send paths were exercised through executable route tests including
+unauthenticated and out-of-region denial, request recording before email, and
+provider failures. New authenticated agent UI and real carrier delivery have not
+been tested live; production rollout and a controlled test remain necessary.
+
+Rollout / remaining work
+1. Review the migration, existing pending jobs and current settings; take the
+   normal database/release backup before production changes.
+2. Apply the forward migration before deploying this application version. Do not
+   backfill request evidence or replay historically skipped SMS. The migration
+   itself does not create customer messages or historical permission records.
+3. Deploy the checked application with existing production SMS worker/sender,
+   signed webhook and live-send settings. Confirm auto_enabled, worker freshness,
+   sender readiness and zero delay. Existing automation toggles retain their
+   documented cancellation behaviour.
+4. Use the authorised sample cleaner/customer for a new online request and an
+   agent-confirmed requested quote. Check one provider-accepted email and one SMS
+   job/delivery for each stage, and test an email-only request without sending SMS.
+5. Preserve evidence and avoid blind resend after uncertain provider outcomes.
+   There remains a fail-closed gap if the process stops after email acceptance
+   but before its receipt can be persisted: no unconfirmed SMS is sent. Caught
+   persistence failures create an operational alert and do not misreport an
+   accepted email as failed. Owner review is needed in that case.
+6. Existing skipped test quote SC-20261004-0Z8O is unchanged.
+
+Source review
+ACMA guidance distinguishes context-supported inferred consent from simply having
+contact details, and requires honouring withdrawals:
+https://www.acma.gov.au/avoid-sending-spam
+The feature therefore limits inferred permission to a requested quote notification
+and records the request context rather than creating blanket marketing consent.
+Supabase changelog and current database function/security guidance were reviewed:
+https://supabase.com/changelog.md
+https://supabase.com/docs/guides/database/functions
+The reviewed recent extension/operator changes do not affect the built-in JSON,
+row-locking, timestamp and RPC constructs introduced here.
