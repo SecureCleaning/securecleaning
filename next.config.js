@@ -19,7 +19,7 @@ const nextConfig = {
   },
   async headers() {
     return [
-      ...['/quote/:path*', '/scope/:path*', '/api/quote/:path*', '/booking/:path*'].map(source => ({ source, headers: [{ key: 'Cache-Control', value: 'private, no-store' }] })),
+      ...['/admin/:path*', '/availability/:path*', '/quote/:path*', '/scope/:path*', '/api/quote/:path*', '/booking/:path*'].map(source => ({ source, headers: [{ key: 'Cache-Control', value: 'private, no-store' }] })),
       {
         source: '/:path*',
         headers: [

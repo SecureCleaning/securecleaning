@@ -50,7 +50,11 @@ test('Data API hardening covers every table and sequence created by the reposito
   const sequenceNames = new Set(['contract_sale_invoice_bank_revisions_id_seq'])
   for (const name of sqlFiles) {
     const source = readFileSync(`${root}/supabase/${name}`, 'utf8')
-    for (const table of createdTables(source)) tableNames.add(table)
+    for (const table of createdTables(source)) {
+      // New migrations carry their own grants; the historical catch-up migration stays immutable.
+      if (legacyTableFiles.has(name)) tableNames.add(table)
+      else assert.match(source, new RegExp(`GRANT[^;]*\\b${table}\\b[^;]*TO\\s+service_role`, 'i'))
+    }
     for (const sequence of createdSequences(source)) sequenceNames.add(sequence)
   }
 

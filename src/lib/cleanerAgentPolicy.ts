@@ -18,6 +18,8 @@ export function toAgentCleanerEmailHistory(email: CleanerEmail): AgentCleanerEma
   return {
     id: email.id,
     subject: email.subject,
+    final_html_snapshot: email.final_html_snapshot,
+    to_email: email.to_email,
     status: email.status,
     template_name: email.template_name,
     created_at: email.created_at,

@@ -72,6 +72,11 @@ export async function sendEmailOrThrow(payload: Record<string, unknown>) {
 
   const response = await resend.emails.send(toProviderPayload(payload))
   if (response?.error) {
+    // Resend uses application_error for network failures and unreadable responses.
+    // The provider may already have accepted the email; callers must reconcile it.
+    if (response.error.name === 'application_error' || response.error.name === 'internal_server_error') {
+      throw new Error('Email delivery outcome is uncertain. Check provider activity before retrying.')
+    }
     throw new EmailProviderRejectedError(response.error.message || 'Email send failed', response.error.name)
   }
   return response?.data ?? response

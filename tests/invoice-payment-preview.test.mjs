@@ -9,7 +9,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 process.env.RESEND_API_KEY = 'test-resend-key'
-const { applyContractSaleInvoiceBankDetails, downloadContractSaleInvoice, resendContractSaleInvoice, sendContractSaleAgreement } = await import('../src/lib/contractSales.ts')
+const { getContractSaleInvoiceEmailPreview, applyContractSaleInvoiceBankDetails, downloadContractSaleInvoice, resendContractSaleInvoice, sendContractSaleAgreement } = await import('../src/lib/contractSales.ts')
 process.env.ADMIN_SESSION_SECRET = 'invoice-preview-test-secret'
 const { GET } = await import('../src/app/api/admin/contract-sales/invoices/route.ts')
 const { ADMIN_SESSION_COOKIE, createAdminSessionToken } = await import('../src/lib/adminAuth.ts')
@@ -23,13 +23,21 @@ const invoice = {
   payment_terms_snapshot: '{deposit_inc_gst} deposit including GST is due on receipt and must clear before the site inspection. The remaining balance of {balance_inc_gst} is due before cleaning commences unless an approved payment plan applies.',
   sender_name_snapshot: 'Test Owner', sender_email_snapshot: 'owner@example.test', issued_at: '2026-09-17T00:00:00Z',
 }
-function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null, planTerms = null, correction = null, termsRevision = null } = {}) {
+function backend({ paid = 50000, failLedger = false, status = 'part_paid', state = 'NSW', assigned = null, planTerms = null, correction = null, termsRevision = null, archiveFailure = false, providerFailure = false } = {}) {
   const sent = []
+  const archived = []
   const json = value => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
-  return { sent, fetch: async (url, init = {}) => {
+  return { sent, archived, fetch: async (url, init = {}) => {
     const parsed = new URL(url)
     const table = parsed.pathname.split('/').pop()
-    if (parsed.hostname === 'api.resend.com') { sent.push(JSON.parse(init.body)); return json({ id: 'synthetic-send' }) }
+    if (parsed.hostname === 'api.resend.com') { sent.push(JSON.parse(init.body)); if (providerFailure) throw new Error('Provider timeout'); return json({ id: 'synthetic-send' }) }
+    if (table === 'contract_sale_invoice_email_deliveries') {
+      if (init.method === 'POST') { if (archiveFailure) return new Response(JSON.stringify({message:'Archive unavailable'}), {status:400}); archived.push(JSON.parse(init.body)); return json({ id: 'archive-1' }) }
+      if (init.method === 'PATCH') { Object.assign(archived[0], JSON.parse(init.body)); return new Response(null, { status: 204 }) }
+      assert.equal(parsed.searchParams.get('sale_id'), 'eq.sale-1')
+      assert.equal(parsed.searchParams.get('invoice_id'), 'eq.invoice-1')
+      return json(parsed.searchParams.get('id') === 'eq.archive-1' && archived.length ? { id: 'archive-1', ...archived[0], created_at: '2026-10-06T00:00:00Z' } : null)
+    }
     if (table === 'contract_product_sales') return json({ id: 'sale-1', sale_code: 'PS-2026-01001', product_id: 'product-1', cleaner_id: 'cleaner-1', opportunity_id: 'opp-1', source_quote_id: 'quote-1', assigned_staff_id: assigned })
     if (table === 'contract_products') return json({ id: 'product-1', product_code: 'C001001', state, suburb: 'Alexandria' })
     if (table === 'cleaners') return json({ contact_name: 'Alex Cleaner', email: 'cleaner@example.test', status: 'approved' })
@@ -64,6 +72,9 @@ test('preview/download and resend use identical PDFs and confirmed balances at e
       const preview = await downloadContractSaleInvoice(actor, 'sale-1', 'invoice-1')
       await resendContractSaleInvoice(actor, { saleId: 'sale-1', invoiceId: 'invoice-1' })
       assert.equal(mock.sent.length, 1)
+      assert.equal(mock.archived[0].html_snapshot, mock.sent[0].html)
+      assert.equal(mock.archived[0].delivery_status, 'sent')
+      assert.equal(mock.archived[0].recipient_email_snapshot, mock.sent[0].to)
       assert.equal(mock.sent[0].attachments[0].content, preview.pdf.toString('base64'))
       assert.ok(mock.sent[0].html.includes(`<strong>Outstanding balance:</strong> $${outstanding}`))
       assert.ok(mock.sent[0].html.includes(`<strong>Deposit payable now:</strong> $${deposit}`))
@@ -236,4 +247,30 @@ test('custom payment reference and explicit updated terms reach preview, resend 
    }
   }
  } finally {globalThis.fetch=previous}
+})
+
+
+test('invoice archive failure prevents delivery and uncertain sends retain their snapshot', async () => {
+  const previous = globalThis.fetch
+  try {
+    const failed = backend({archiveFailure:true}); globalThis.fetch = failed.fetch
+    await assert.rejects(resendContractSaleInvoice(actor, {saleId:'sale-1', invoiceId:'invoice-1'}))
+    assert.equal(failed.sent.length, 0)
+    const uncertain = backend({providerFailure:true}); globalThis.fetch = uncertain.fetch
+    await assert.rejects(resendContractSaleInvoice(actor, {saleId:'sale-1', invoiceId:'invoice-1'}))
+    assert.equal(uncertain.archived[0].delivery_status, 'unknown')
+    assert.equal(uncertain.archived[0].html_snapshot, uncertain.sent[0].html)
+  } finally { globalThis.fetch = previous }
+})
+test('archived invoice previews recheck sale access and bind delivery to invoice and sale', async () => {
+  const previous = globalThis.fetch
+  try {
+    const mock = backend(); globalThis.fetch = mock.fetch
+    await resendContractSaleInvoice(actor, {saleId:'sale-1', invoiceId:'invoice-1'})
+    const preview = await getContractSaleInvoiceEmailPreview(actor, {saleId:'sale-1', invoiceId:'invoice-1',deliveryId:'archive-1'})
+    assert.equal(preview.html, mock.sent[0].html)
+    await assert.rejects(getContractSaleInvoiceEmailPreview(actor, {saleId:'sale-1',invoiceId:'invoice-1',deliveryId:'missing'}), /not found/)
+    await assert.rejects(getContractSaleInvoiceEmailPreview({...actor,role:'agent',productState:'VIC'}, {saleId:'sale-1',invoiceId:'invoice-1',deliveryId:'archive-1'}))
+    assert.equal(mock.sent.length, 1)
+  } finally { globalThis.fetch = previous }
 })

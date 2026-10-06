@@ -675,6 +675,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                     <th className="px-3 py-2 text-left">Reference</th>
                     <th className="px-3 py-2 text-left">Business</th>
                     <th className="px-3 py-2 text-left">City</th>
+                    <th className="px-3 py-2 text-left">Location</th>
                     <th className="px-3 py-2 text-left">Frequency</th>
                     <th className="px-3 py-2 text-left" aria-sort={quoteStatusSort === 'priority' ? 'ascending' : 'descending'}>
                       <button
@@ -692,7 +693,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                 <tbody>
                   {visibleQuotes.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-600">
+                      <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-600">
                         No quotes match this search and status.
                       </td>
                     </tr>
@@ -705,6 +706,7 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
                       </td>
                       <td className="px-3 py-2">{quote.inputs?.businessName ?? '—'}</td>
                       <td className="px-3 py-2 capitalize">{quote.inputs?.city ?? '—'}</td>
+                      <td className="px-3 py-2">{[quote.inputs?.suburb, quote.inputs?.postcode].filter(Boolean).join(' ') || quote.inputs?.city || '—'}</td>
                       <td className="px-3 py-2">{quote.inputs?.frequency?.replace(/_/g, ' ') ?? '—'}</td>
                       <td className="px-3 py-2">
                         <select

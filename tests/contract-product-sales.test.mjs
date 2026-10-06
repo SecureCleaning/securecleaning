@@ -267,7 +267,7 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, /\{sale\.clientBusiness \|\| 'Not provided'\}/)
   assert.match(workspace, /Contact: \{sale\.clientName\}/)
   assert.match(workspace, /paymentRequestId/)
-  assert.match(workspace, /\['overview', 'invoices', 'agreement', 'inspection', 'activity'\]/)
+  assert.match(workspace, /\['overview', 'invoices', 'agreement', 'inspection', 'followup', 'activity'\]/)
   assert.match(workspace, /Full sale tax invoice/)
   assert.match(workspace, /Download PDF/)
   assert.match(workspace, /Resend invoice only/)

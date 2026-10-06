@@ -53,6 +53,19 @@ export type ContractSaleInvoice = {
   deliveryStatus: string
   issuedAt: string
   paidCents: number
+  emailDeliveries: ContractSaleInvoiceEmailDelivery[]
+}
+
+export type ContractSaleInvoiceEmailDelivery = {
+  id: string
+  deliveryKind: 'invoice_only' | 'document_bundle'
+  recipientEmail: string
+  subject: string
+  deliveryStatus: string
+  providerMessageId: string | null
+  attachmentNames: string[]
+  sentAt: string | null
+  createdAt: string
 }
 
 export type ContractSalePayment = {
@@ -424,7 +437,7 @@ function actorAudit(actor: ContractProductActor) {
   return { actorId: actor.id, actorUsername: actor.username, actorRole: actor.role }
 }
 
-async function getAuthorizedSale(actor: ContractProductActor, saleId: string) {
+export async function getAuthorizedSale(actor: ContractProductActor, saleId: string) {
   const { data, error } = await getAdminSupabase().from('contract_product_sales')
     .select(SALE_SELECT).eq('id', saleId).maybeSingle()
   if (error) throw error
@@ -438,7 +451,7 @@ async function getAuthorizedSale(actor: ContractProductActor, saleId: string) {
   return data as Row
 }
 
-async function loadSaleContext(sale: Row) {
+export async function loadSaleContext(sale: Row) {
   const db = getAdminSupabase()
   const [product, cleaner, opportunity, quote, staff, creatorStaff] = await Promise.all([
     db.from('contract_products').select('id, product_code, state, suburb, start_date, frequency, time_preference, cleaner_scope_snapshot').eq('id', sale.product_id).single(),
@@ -487,12 +500,13 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const opportunityIds = Array.from(new Set(saleRows.map((sale) => String(sale.opportunity_id))))
   const quoteIds = Array.from(new Set(saleRows.flatMap((sale) => sale.source_quote_id ? [String(sale.source_quote_id)] : [])))
   const siteIds = Array.from(new Set(saleRows.map((sale) => String(sale.site_id ?? '')).filter(Boolean)))
-  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
+  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
     cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
     siteIds.length ? db.from('sites').select('id, site_name, address, suburb, postcode, city, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_invoices').select(INVOICE_SELECT).in('sale_id', saleIds).order('issued_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_invoice_email_deliveries').select('id, invoice_id, sale_id, delivery_kind, recipient_email_snapshot, subject_snapshot, delivery_status, provider_message_id, attachment_names_snapshot, sent_at, created_at').in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, calendar_status, calendar_error, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
@@ -501,7 +515,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     saleIds.length ? db.from('contract_sale_site_checklists').select('id, sale_id, status, checklist_data').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_checklist_uploads').select('id, sale_id, checklist_id, file_name, mime_type, uploaded_at').in('sale_id', saleIds).order('uploaded_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
   ])
-  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
+  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
   const invoiceIds = (invoicesResult.data ?? []).map((row) => String(row.id))
   const planIds = (plansResult.data ?? []).map((row) => String(row.id))
   const [allocationsResult, instalmentsResult] = await Promise.all([
@@ -573,6 +587,13 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
         depositRequiredIncGstCents: Number(row.deposit_required_inc_gst_cents ?? (row.invoice_type === 'deposit' ? row.total_inc_gst_cents : 0)),
         dueOn: typeof row.due_on === 'string' ? row.due_on : null, paymentTerms: String(row.payment_terms_snapshot), deliveryStatus: String(row.delivery_status),
         issuedAt: String(row.issued_at), paidCents: allocationsByInvoice.get(String(row.id)) ?? 0,
+        emailDeliveries: (invoiceDeliveriesResult.data ?? []).filter((delivery) => String(delivery.invoice_id) === String(row.id)).map((delivery) => ({
+          id: String(delivery.id), deliveryKind: delivery.delivery_kind as 'invoice_only' | 'document_bundle',
+          recipientEmail: String(delivery.recipient_email_snapshot), subject: String(delivery.subject_snapshot),
+          deliveryStatus: String(delivery.delivery_status), providerMessageId: typeof delivery.provider_message_id === 'string' ? delivery.provider_message_id : null,
+          attachmentNames: Array.isArray(delivery.attachment_names_snapshot) ? delivery.attachment_names_snapshot.map(String) : [],
+          sentAt: typeof delivery.sent_at === 'string' ? delivery.sent_at : null, createdAt: String(delivery.created_at),
+        })),
       })),
       payments: ((paymentsResult.data ?? []).filter((row) => String(row.sale_id) === String(sale.id))).map((row) => ({
         id: String(row.id), amountCents: Number(row.amount_cents), receivedOn: String(row.received_on), method: String(row.payment_method),
@@ -818,7 +839,59 @@ async function invoiceWithConfirmedPayments(invoice: Row, saleId: string, agreem
   return { ...invoice, ...correction, ...(termsRevision ? { payment_terms_snapshot: termsRevision.payment_terms_snapshot, payment_terms_revised: true } : {}), paid_cents: paidCents, plan_terms: plan ? `${plan.status === 'awaiting_acceptance' ? 'PROPOSED PAYMENT PLAN - SUBJECT TO SIGNED ACCEPTANCE' : 'AGREED PAYMENT PLAN'}\n${plan.terms_snapshot}` : null }
 }
 
-async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
+type ArchivedEmailAttachment = { filename: string; content: string }
+
+async function sendAndArchiveInvoiceEmail(input: {
+  actor: ContractProductActor
+  invoice: Row
+  saleId: string
+  deliveryKind: 'invoice_only' | 'document_bundle'
+  to: string
+  replyTo: string
+  subject: string
+  html: string
+  attachments: ArchivedEmailAttachment[]
+}) {
+  const db = getAdminSupabase()
+  const { data: delivery, error: deliveryError } = await db.from('contract_sale_invoice_email_deliveries').insert({
+    invoice_id: input.invoice.id, sale_id: input.saleId, delivery_kind: input.deliveryKind,
+    recipient_email_snapshot: input.to, reply_to_email_snapshot: input.replyTo,
+    subject_snapshot: input.subject, html_snapshot: input.html,
+    attachment_names_snapshot: input.attachments.map((attachment) => attachment.filename),
+    sent_by_staff_id: input.actor.id, sender_name_snapshot: input.actor.displayName,
+    sender_email_snapshot: input.actor.email,
+  }).select('id').single()
+  if (deliveryError) throw deliveryError
+
+  try {
+    const result = await sendEmailOrThrow({
+      from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
+      to: input.to,
+      replyTo: input.replyTo,
+      subject: input.subject,
+      html: input.html,
+      attachments: input.attachments,
+    }) as { id?: string } | null
+    const providerMessageId = result?.id ?? ''
+    const { error } = await db.from('contract_sale_invoice_email_deliveries').update({
+      delivery_status: providerMessageId ? 'sent' : 'unknown', provider_message_id: providerMessageId || null,
+      sent_at: providerMessageId ? new Date().toISOString() : null, completed_at: new Date().toISOString(),
+    }).eq('id', delivery.id).eq('delivery_status', 'pending')
+    if (error) throw error
+    return providerMessageId
+  } catch (sendError) {
+    const rejected = sendError instanceof EmailProviderRejectedError
+    const { error } = await db.from('contract_sale_invoice_email_deliveries').update({
+      delivery_status: rejected ? 'failed' : 'unknown',
+      delivery_error: clean(sendError instanceof Error ? sendError.message : 'Provider outcome unknown', 500),
+      completed_at: new Date().toISOString(),
+    }).eq('id', delivery.id).eq('delivery_status', 'pending')
+    if (error) throw error
+    throw sendError
+  }
+}
+
+async function sendInvoiceEmail(actor: ContractProductActor, invoice: Row, sale: Row, context: Awaited<ReturnType<typeof loadSaleContext>>) {
   const pdfInput = invoicePdfInput(invoice, sale, context)
   const outstanding = Math.max(0, pdfInput.totalIncGstCents - pdfInput.paidCents)
   const depositDue = Math.min(outstanding, Math.max(0, pdfInput.depositRequiredIncGstCents - pdfInput.paidCents))
@@ -828,15 +901,14 @@ async function sendInvoiceEmail(invoice: Row, sale: Row, context: Awaited<Return
     ? `<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Bank payment details</strong></p><p style="margin:0 0 4px">Account name: ${escapeHtml(pdfInput.bankAccountName)}</p>${pdfInput.bankName ? `<p style="margin:0 0 4px">Bank: ${escapeHtml(pdfInput.bankName)}</p>` : ''}<p style="margin:0 0 4px">BSB: ${escapeHtml(pdfInput.bankBsb)}</p><p style="margin:0">Account number: ${escapeHtml(pdfInput.bankAccountNumber)}</p></div>`
     : ''
   const fileName = `${pdfInput.invoiceNumber.replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`
-  const result = await sendEmailOrThrow({
-    from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
-    to: invoice.recipient_email_snapshot,
-    replyTo: invoice.sender_email_snapshot,
+  return sendAndArchiveInvoiceEmail({
+    actor, invoice, saleId: String(sale.id), deliveryKind: 'invoice_only',
+    to: String(invoice.recipient_email_snapshot),
+    replyTo: String(invoice.sender_email_snapshot),
     subject: renderContractSaleInvoiceTemplateText(String(invoice.email_subject_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailSubjectTemplate), tokens),
     html: `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><h1 style="color:#0f766e">${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}</h1><h2>${escapeHtml(String(invoice.invoice_title_snapshot ?? 'Tax Invoice'))} ${escapeHtml(String(invoice.invoice_number))}</h2><p>Hi ${escapeHtml(String(invoice.recipient_name_snapshot))},</p>${renderContractSaleInvoiceEmailIntro(String(invoice.email_intro_template_snapshot ?? DEFAULT_CONTRACT_SALE_INVOICE_TEMPLATE.emailIntroTemplate), invoice.email_intro_html_snapshot, tokens)}<div style="border:1px solid #d1d5db;border-radius:10px;padding:18px;margin:20px 0"><p style="margin:0 0 8px"><strong>Total contract purchase:</strong> ${money(Number(invoice.total_inc_gst_cents))} including GST</p><p style="margin:0 0 8px"><strong>${pdfInput.paymentPlanTerms ? 'Deposit still required' : 'Deposit payable now'}:</strong> ${money(depositDue)} including GST</p><p style="margin:0 0 8px"><strong>Payments received:</strong> ${money(pdfInput.paidCents)}</p><p style="margin:0"><strong>Outstanding balance:</strong> ${money(outstanding)}</p></div><p><strong>Payment terms:</strong> ${escapeHtml(pdfInput.paymentPlanTerms ? 'See the payment schedule attached to this invoice. A proposed plan requires signed acceptance; Secure Cleaning retains contract and assignment rights until payment in full.' : pdfInput.paymentTerms)}</p>${pdfInput.paymentPlanTerms && pdfInput.paymentTermsRevised ? `<p><strong>Updated invoice payment terms (agreed payment schedule unchanged):</strong> ${escapeHtml(pdfInput.paymentTerms)}</p>` : ''}${bankDetails}<p>Please use <strong>${escapeHtml(pdfInput.paymentReference ?? String(invoice.invoice_number))}</strong> as the payment reference.</p><p>Kind regards,<br>${escapeHtml(String(invoice.sender_name_snapshot))}${invoice.sender_title_snapshot ? `<br>${escapeHtml(String(invoice.sender_title_snapshot))}` : ''}<br>${escapeHtml(String(invoice.supplier_name_snapshot ?? SECURE_CLEANING_NAME))}<br>${escapeHtml(String(invoice.sender_email_snapshot))}</p></div>`,
     attachments: [{ filename: fileName, content: pdf.toString('base64') }],
-  }) as { id?: string } | null
-  return result?.id ?? ''
+  })
 }
 
 type CleanerProfileEmailOutcome = 'sent' | 'not_first' | 'failed' | 'unknown'
@@ -982,7 +1054,7 @@ export async function resendContractSaleInvoice(actor: ContractProductActor, inp
   if (invoice.delivery_status === 'unknown') throw new ContractProductError('Delivery is unresolved. Verify the recipient inbox or provider activity before deliberately resending.', 409)
   const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row, String(sale.id))
   try {
-    const providerMessageId = await sendInvoiceEmail(currentInvoice, sale, context)
+    const providerMessageId = await sendInvoiceEmail(actor, currentInvoice, sale, context)
     const { error: deliveryError } = await getAdminSupabase().from('contract_sale_invoices').update({ provider_message_id: providerMessageId || null, delivery_status: providerMessageId ? 'sent' : 'unknown', delivery_error: null }).eq('id', invoice.id)
     if (deliveryError) throw deliveryError
   } catch (sendError) {
@@ -1006,6 +1078,27 @@ export async function downloadContractSaleInvoice(actor: ContractProductActor, s
   const currentInvoice = await invoiceWithConfirmedPayments(invoice as Row, String(sale.id))
   const pdf = buildContractSaleTaxInvoicePdf(invoicePdfInput(currentInvoice, sale, context))
   return { pdf, fileName: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf` }
+}
+
+export async function getContractSaleInvoiceEmailPreview(actor: ContractProductActor, input: Record<string, unknown>) {
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  const invoiceId = clean(input.invoiceId, 100)
+  const deliveryId = clean(input.deliveryId, 100)
+  const { data: delivery, error } = await getAdminSupabase().from('contract_sale_invoice_email_deliveries')
+    .select('id, invoice_id, delivery_kind, recipient_email_snapshot, reply_to_email_snapshot, subject_snapshot, html_snapshot, attachment_names_snapshot, sender_name_snapshot, sender_email_snapshot, delivery_status, provider_message_id, delivery_error, sent_at, created_at')
+    .eq('id', deliveryId).eq('invoice_id', invoiceId).eq('sale_id', sale.id).maybeSingle()
+  if (error) throw error
+  if (!delivery) throw new ContractProductError('Invoice email history entry not found.', 404)
+  return {
+    id: String(delivery.id), invoiceId: String(delivery.invoice_id), deliveryKind: String(delivery.delivery_kind),
+    recipientEmail: String(delivery.recipient_email_snapshot), replyToEmail: String(delivery.reply_to_email_snapshot),
+    subject: String(delivery.subject_snapshot), html: String(delivery.html_snapshot),
+    attachmentNames: Array.isArray(delivery.attachment_names_snapshot) ? delivery.attachment_names_snapshot.map(String) : [],
+    senderName: String(delivery.sender_name_snapshot), senderEmail: String(delivery.sender_email_snapshot),
+    deliveryStatus: String(delivery.delivery_status), providerMessageId: typeof delivery.provider_message_id === 'string' ? delivery.provider_message_id : null,
+    deliveryError: typeof delivery.delivery_error === 'string' ? delivery.delivery_error : null,
+    sentAt: typeof delivery.sent_at === 'string' ? delivery.sent_at : null, createdAt: String(delivery.created_at),
+  }
 }
 
 export async function recordContractSalePayment(actor: ContractProductActor, input: Record<string, unknown>) {
@@ -1458,15 +1551,17 @@ export async function sendContractSaleAgreement(actor: ContractProductActor, inp
   const agreementPdf = buildContractSaleAgreementPdf(agreementInput)
   let result: { id?: string } | null = null
   try {
-    result = await sendEmailOrThrow({
-      from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: email, replyTo: actor.email,
+    const archivedProviderId = await sendAndArchiveInvoiceEmail({
+      actor, invoice, saleId: String(sale.id), deliveryKind: 'document_bundle',
+      to: email, replyTo: actor.email,
       subject: `Contract sale documents — ${context.product.product_code}`,
       html: renderContractSaleAgreementEmailHtml(agreementInput),
       attachments: [
         { filename: `${String(invoice.invoice_number).replace(/[^A-Za-z0-9_-]/g, '-')}.pdf`, content: invoicePdf.toString('base64') },
         { filename: `agreement-${String(sale.sale_code).replace(/[^A-Za-z0-9_-]/g, '-')}-v${agreement.version}.pdf`, content: agreementPdf.toString('base64') },
       ],
-    }) as { id?: string } | null
+    })
+    result = { id: archivedProviderId }
   } catch (sendError) {
     if (sendError instanceof EmailProviderRejectedError) {
       const [release, invoiceOutcome] = await Promise.all([

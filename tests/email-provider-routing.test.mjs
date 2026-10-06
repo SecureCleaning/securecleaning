@@ -77,3 +77,12 @@ test('booking email attachment survives provider Base64 decoding with correct ca
     assert.equal(sent.length, 2)
   } finally { globalThis.fetch = saved }
 })
+
+
+test('SDK network failures are uncertain rather than definitive rejections', async () => {
+  const saved = globalThis.fetch
+  try {
+    globalThis.fetch = async () => { throw new Error('synthetic timeout') }
+    await assert.rejects(email.sendEmailOrThrow({to:'test@example.test'}), error => !(error instanceof email.EmailProviderRejectedError) && /uncertain/.test(error.message))
+  } finally { globalThis.fetch = saved }
+})

@@ -1,0 +1,15 @@
+export type FollowupAudience = 'client' | 'cleaner'
+
+export const FOLLOWUP_TEMPLATES = [
+  { id: 'first-clean', audience: 'client', name: 'First clean check-in', description: 'Ask how the first clean went.', subject: 'How was your first clean with Secure Cleaning?', body: 'Thank you for welcoming our cleaning team. I wanted to check in after your first clean and hear how everything went.\n\nWere you happy with the standard of cleaning? Please let us know what worked well and whether there are any areas you would like us to give extra attention.\n\nSimply reply to this email with your feedback. We look forward to keeping your space looking its best.' },
+  { id: 'client-issue', audience: 'client', name: 'Issue follow-up', description: 'Check progress on a reported concern.', subject: 'Following up on your cleaning feedback', body: 'I am following up on the cleaning concern you raised with Secure Cleaning. Thank you for taking the time to let us know.\n\nCould you please confirm whether the area now meets your expectations, or let us know what still needs attention? Any specific details will help us coordinate the next steps with the cleaning team.\n\nWe appreciate the opportunity to make things right.' },
+  { id: 'client-check-in', audience: 'client', name: 'Ongoing service check-in', description: 'Keep in touch about the service.', subject: 'Checking in on your cleaning service', body: 'I wanted to check that your regular cleaning service is meeting your expectations.\n\nIs there anything you would like us to adjust, or any upcoming changes at your site that we should know about?\n\nYour feedback helps us maintain a consistent service. Please reply whenever convenient.' },
+  { id: 'cleaner-performance', audience: 'cleaner', name: 'Performance feedback', description: 'Share observations and agree next steps.', subject: 'Cleaning performance follow-up', body: 'I am checking in about your recent work at this site.\n\nPlease review the agreed cleaning scope and check that each area is being completed consistently. Let us know about any missed tasks, access difficulties, or areas where extra time or support is needed.\n\nPlease reply to confirm the actions you will take and when they will be completed. Let us know if you need any support or clarification.' },
+  { id: 'cleaner-thanks', audience: 'cleaner', name: 'Positive feedback', description: 'Recognise good work.', subject: 'Thank you for your cleaning work', body: 'Thank you for the care and effort you have put into your recent cleaning work at this site. Your attention to detail and consistent service are appreciated.\n\nPlease keep up the good work, and let us know if there is anything you need to maintain this standard.' },
+] as const
+
+export function followupDraft(templateId: string, name: string, siteAddress: string) {
+  const template = FOLLOWUP_TEMPLATES.find((item) => item.id === templateId)
+  if (!template) throw new Error('Select a follow-up template.')
+  return { subject: template.subject, body: `Hi ${name.trim() || 'there'},\n\n${siteAddress ? `Regarding your cleaning service at ${siteAddress}.\n\n` : ''}${template.body}` }
+}

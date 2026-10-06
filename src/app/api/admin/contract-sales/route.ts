@@ -16,6 +16,7 @@ import {
   saveContractSaleChecklist,
   sendContractSaleInspectionAvailabilityRequest,
   getContractSaleWorkspace,
+  getContractSaleInvoiceEmailPreview,
   issueContractSaleInvoice,
   recordContractSalePayment,
   resendContractSaleInvoice,
@@ -27,6 +28,8 @@ import {
   updateContractSaleInspectionTemplate,
 } from '@/lib/contractSales'
 import { ContractProductError } from '@/lib/contractProducts'
+
+import { contractSaleFollowup } from '@/lib/contractSaleFollowups'
 
 export const dynamic = 'force-dynamic'
 
@@ -49,6 +52,11 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
+    if (['followup.history', 'followup.preview', 'followup.send'].includes(action)) {
+      const limited = await rateLimit(request, { key: `contract-sale-followup:${actor.id}:${action}`, limit: action === 'followup.send' ? 20 : 120, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await contractSaleFollowup(actor, body) })
+    }
     if (action === 'cleaner.create') return NextResponse.json({ success: true, result: await createCleanerInsideContractSale(actor, body) })
     if (action === 'sale.create') return NextResponse.json({ success: true, result: await createContractSale(actor, body) })
     if (action === 'sale.update') return NextResponse.json({ success: true, result: await updateContractSale(actor, body) })
@@ -64,6 +72,7 @@ export async function POST(request: NextRequest) {
     }
     if (action === 'inspection-checklist.save') return NextResponse.json({ success: true, result: await saveContractSaleChecklist(actor, body) })
     if (action === 'invoice-bank.apply') return NextResponse.json({ success: true, result: await applyContractSaleInvoiceBankDetails(actor, body) })
+    if (action === 'invoice-email.preview') return NextResponse.json({ success: true, result: await getContractSaleInvoiceEmailPreview(actor, body) })
     if (action === 'invoice.issue') {
       const limited = await rateLimit(request, { key: `contract-sale-invoice:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited

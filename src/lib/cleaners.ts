@@ -175,10 +175,10 @@ export type AgentCleanerDetail = {
 
 export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'suburb' | 'state' | 'status'>
 export type AgentCleanerRecord = CleanerRecord
-export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'template_name' | 'created_at' | 'sent_at'>
+export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'template_name' | 'created_at' | 'sent_at' | 'final_html_snapshot' | 'to_email'>
 
 const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, suburb, state, status'
-const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at'
+const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at, final_html_snapshot, to_email'
 
 const CLEANER_SELECT =
   'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
