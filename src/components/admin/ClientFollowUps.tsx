@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import styles from './ClientFollowUps.module.css'
 import { followUpSummary } from '@/lib/crmFollowUpSummary'
 import type { CrmEmailTemplate, CrmOpportunity } from '@/lib/clientCrmData'
 import { followUpGroup, followUpInput, followUpIso } from '@/lib/crmFollowUpTime'
@@ -41,25 +42,23 @@ export default function ClientFollowUps({ refreshKey, compact = false }: { refre
   }
   const items = (data?.opportunities ?? []).filter((item) => item.nextFollowUpAt && !['won', 'lost', 'cancelled'].includes(item.stage)).sort((a, b) => Date.parse(a.nextFollowUpAt!) - Date.parse(b.nextFollowUpAt!))
   const base = data?.actor.role === 'agent' ? `/availability/clients/${encodeURIComponent(data.actor.availabilityAssigneeId || '')}` : '/admin/clients'
-  return <section className={`${compact ? '' : 'my-5'} min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm`} aria-label="Client follow-ups">
-    <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
-      <h2 className="text-xl font-bold text-[#1a2744]">Client follow-ups</h2>
+  return <section className={`${styles.panel} ${compact ? '' : 'my-5'} min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm`} aria-label="Client follow-ups">
+    <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
+      <h2 className="text-lg font-bold text-[#1a2744]">Client follow-ups</h2>
       <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800">{items.length}</span>
     </div>
     {error ? <p role="alert" className="px-5 py-3 text-red-700">{error}</p> : null}
     {!data && !error ? <p className="px-5 py-4 text-sm text-gray-500">Loading follow-ups...</p> : null}
     {data && !items.length ? <p className="px-5 py-6 text-sm text-gray-500">No outstanding follow-ups.</p> : null}
-    <div className="max-h-[32rem] divide-y divide-gray-100 overflow-y-auto">{items.map((item) => {
+    <div className="max-h-60 divide-y divide-gray-100 overflow-y-auto">{items.map((item) => {
       const group = followUpGroup(item.nextFollowUpAt!, now)
       const tone = group === 'Overdue' ? 'bg-red-50 text-red-700' : group === 'Today' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-700'
-      return <article key={item.id} className="px-5 py-4 text-sm">
-        <div className="flex items-start justify-between gap-2">
-          <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="min-w-0 font-bold text-gray-900 hover:text-teal-700 hover:underline">{item.businessName || item.contactName || 'Client opportunity'}</a>
-          <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{group}</span>
-        </div>
-        <p className="mt-1 text-xs text-gray-500">{new Date(item.nextFollowUpAt!).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-sm text-teal-800">{followUpSummary(item, data?.templates ?? [])}</summary>
+      return <article key={item.id} className={`${styles.row} px-5 py-2.5 text-sm`}>
+          <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} title={item.businessName || item.contactName || 'Client opportunity'} className={`${styles.client} min-w-0 font-bold text-gray-900 hover:text-teal-700 hover:underline`}>{item.businessName || item.contactName || 'Client opportunity'}</a>
+          <span className={`${styles.status} shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{group}</span>
+        <p className={`${styles.date} text-xs text-gray-500`}>{new Date(item.nextFollowUpAt!).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
+        <details className={styles.details}>
+          <summary className="cursor-pointer text-sm text-teal-800" title={followUpSummary(item, data?.templates ?? [])}>{followUpSummary(item, data?.templates ?? [])}</summary>
           <p className="mt-2 text-xs text-gray-500">Assigned to {item.assignedStaffName || 'Unassigned'}</p>
           <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="mt-2 inline-block text-teal-700 underline">Open client activity</a>
           <div className="mt-3 flex gap-4"><button disabled={!!busy} onClick={() => void update(item, null)} className="font-semibold text-green-700 disabled:opacity-50">Complete</button><button disabled={!!busy} onClick={() => { setEditing(item.id); setWhen(followUpInput(item.nextFollowUpAt)) }} className="font-semibold text-teal-700 disabled:opacity-50">Reschedule</button></div>
