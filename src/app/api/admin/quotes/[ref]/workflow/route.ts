@@ -38,7 +38,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
       return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
     }
 
-    const acceptedRevision = Boolean(quote.finalDocument) && (quote.status === 'accepted' || quote.firmQuoteDraft.status === 'accepted')
+    const acceptedRevision = quote.status === 'accepted' || quote.firmQuoteDraft.status === 'accepted'
     if (requestedStatus === 'accepted' && !acceptedRevision) {
       return NextResponse.json({ success: false, error: 'Accepted status can only be preserved while correcting an accepted final quote.' }, { status: 400 })
     }
@@ -60,6 +60,18 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     const identity = await getAdminSessionIdentityFromRequest(request)
     if (!identity) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     const actor = { kind: 'staff_account' as const, id: identity.id, name: identity.username }
+
+    if (acceptedRevision && !quote.finalDocument) {
+      if (!await isAuthorizedAdminRequest(request, 'owner')) {
+        return NextResponse.json({ success: false, error: 'Only the owner can correct an accepted quote.' }, { status: 403 })
+      }
+      if (body.initializeAccepted !== true || requestedStatus !== 'accepted' || typeof body.expectedUpdatedAt !== 'string' || !Number.isFinite(Date.parse(body.expectedUpdatedAt))) {
+        return NextResponse.json({ success: false, error: 'Reload the accepted quote before saving a correction.' }, { status: 409 })
+      }
+      const document = await reviseQuoteWorkflowByRef(params.ref, 0, inspectionReport, firmQuoteDraft, actor,
+        await getQuotePricingConfig(), roomTypeConfig, body.expectedUpdatedAt)
+      return NextResponse.json({ success: true, status: 'accepted', revised: true, documentVersion: document.version })
+    }
 
     if (quote.finalDocument) {
       if (acceptedRevision && !await isAuthorizedAdminRequest(request, 'owner')) {

@@ -184,9 +184,9 @@ export default function QuoteWorkflowEditor({
     }))
     return [...fields.values()]
   }, [roomTypeConfig])
-  const isAcceptedFinal = Boolean(quote.finalDocument) && (quote.status === 'accepted' || firmQuoteDraft.status === 'accepted')
-  const canReviseFinal = Boolean(quote.finalDocument) && (!isAcceptedFinal || canReviseAcceptedFinal)
-  const acceptedEditingLocked = firmQuoteDraft.status === 'accepted' && !canReviseFinal
+  const isAcceptedFinal = quote.status === 'accepted' || firmQuoteDraft.status === 'accepted'
+  const canReviseFinal = (Boolean(quote.finalDocument) || isAcceptedFinal) && (!isAcceptedFinal || canReviseAcceptedFinal)
+  const acceptedEditingLocked = isAcceptedFinal && !canReviseFinal
 
   function openPreview(options?: { smooth?: boolean }) {
     const behavior = options?.smooth === false ? 'auto' : 'smooth'
@@ -353,13 +353,15 @@ export default function QuoteWorkflowEditor({
     setSaveState({ saving: true, message: null, error: null })
 
     try {
-      const isRevision = Boolean(quote.finalDocument)
+      const isRevision = Boolean(quote.finalDocument) || (isAcceptedFinal && finalPublished)
+      const initializeAccepted = isAcceptedFinal && !isRevision
+      if (initializeAccepted && !canReviseAcceptedFinal) throw new Error('Only the owner can correct an accepted quote.')
       if (isRevision && (!canReviseFinal || !documentVersion)) {
         throw new Error('This final quote cannot be revised from the workbench.')
       }
       const submittedDraft: FirmQuoteDraft = {
         ...firmQuoteDraft,
-        status: isRevision ? (isAcceptedFinal ? 'accepted' : 'reviewed') : firmQuoteDraft.status,
+        status: isAcceptedFinal ? 'accepted' : isRevision ? 'reviewed' : firmQuoteDraft.status,
         revisedInputs: derivedInputs,
       }
       const response = await fetch(workflowApiPath, {
@@ -369,6 +371,8 @@ export default function QuoteWorkflowEditor({
           inspectionReport,
           firmQuoteDraft: submittedDraft,
           revision: isRevision,
+          initializeAccepted,
+          expectedUpdatedAt: initializeAccepted ? quote.updatedAt : undefined,
           expectedDocumentVersion: isRevision ? documentVersion : undefined,
         }),
       })
@@ -381,7 +385,7 @@ export default function QuoteWorkflowEditor({
       const savedDraft = result.status === 'accepted' ? { ...submittedDraft, status: 'accepted' as const } : submittedDraft
       setFirmQuoteDraft(savedDraft)
       if (result.revised && Number.isInteger(result.documentVersion)) setDocumentVersion(result.documentVersion)
-      if (result.status === 'reviewed') setFinalPublished(true)
+      if (result.status === 'reviewed' || result.status === 'accepted') setFinalPublished(true)
       if (result.status === 'reviewed') {
         setQuoteEmailDraft((current) => ({ ...current, to: derivedInputs.email.trim().toLowerCase() }))
       }

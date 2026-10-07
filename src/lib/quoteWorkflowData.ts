@@ -55,6 +55,7 @@ export type QuoteWorkflowRecord = {
   customerJourney: QuoteCustomerJourney
   validUntil?: string | null
   createdAt?: string | null
+  updatedAt?: string | null
   inspectionReport: InspectionReport
   firmQuoteDraft: FirmQuoteDraft
   workflowColumnsAvailable: boolean
@@ -89,7 +90,7 @@ export async function getQuoteWorkflowByRef(
 ): Promise<QuoteWorkflowRecord | null> {
   const db = getAdminSupabase()
   const { data, error } = await db.from('quotes')
-    .select('id, quote_ref, inputs, result, status, valid_until, created_at')
+    .select('id, quote_ref, inputs, result, status, valid_until, created_at, updated_at')
     .eq('quote_ref', quoteRef).maybeSingle()
   if (error) {
     console.error('[quoteWorkflowData] Failed to load base quote:', error)
@@ -143,7 +144,7 @@ export async function getQuoteWorkflowByRef(
   return {
     id: data.id, quoteRef: data.quote_ref, inputs: data.inputs as QuoteInputs, result: data.result as QuoteResult,
     customerJourney,
-    status: data.status, validUntil: data.valid_until, createdAt: data.created_at, inspectionReport, firmQuoteDraft,
+    status: data.status, validUntil: data.valid_until, createdAt: data.created_at, updatedAt: data.updated_at, inspectionReport, firmQuoteDraft,
     workflowColumnsAvailable, finalDocument, finalDocumentVersion, reviewedAt, reviewedBy, sentAt, sentBy, sentTo, sentDocumentVariant,
   }
 }
@@ -243,16 +244,18 @@ export async function reviseQuoteWorkflowByRef(
   firmQuoteDraft: FirmQuoteDraft,
   actor: QuoteWorkflowActor,
   pricingConfig: QuotePricingConfig,
-  roomTypeConfig: QuoteRoomTypeConfig
+  roomTypeConfig: QuoteRoomTypeConfig,
+  expectedUpdatedAt?: string
 ) {
   const current = await getQuoteWorkflowByRef(quoteRef, roomTypeConfig)
-  if (!current?.finalDocument) throw new QuoteWorkflowConflictError('There is no published final quote to revise.')
+  const initializeAccepted = expectedDocumentVersion === 0 && Boolean(expectedUpdatedAt) && !current?.finalDocument && (current?.status === 'accepted' || current?.firmQuoteDraft.status === 'accepted')
+  if (!current || (!current.finalDocument && !initializeAccepted)) throw new QuoteWorkflowConflictError('There is no published final quote to revise.')
   const preserveAcceptance = current.status === 'accepted' || current.firmQuoteDraft.status === 'accepted'
   const revisionStatus = preserveAcceptance ? 'accepted' : 'reviewed'
   const reviewedDraft: FirmQuoteDraft = { ...firmQuoteDraft, status: 'reviewed' }
   const readiness = getFinalQuoteReadiness(reviewedDraft)
   if (!readiness.ready) throw new Error(readiness.errors[0])
-  if (current.finalDocumentVersion !== expectedDocumentVersion) {
+  if (!initializeAccepted && current.finalDocumentVersion !== expectedDocumentVersion) {
     throw new QuoteWorkflowConflictError('The final quote changed before this revision was saved. Reload and review the latest version.')
   }
 
@@ -269,9 +272,9 @@ export async function reviseQuoteWorkflowByRef(
   }
 
   const db = getAdminSupabase()
-  const { data, error } = await db.rpc('revise_final_quote_document', {
+  const { data, error } = await db.rpc(initializeAccepted ? 'correct_accepted_remote_quote' : 'revise_final_quote_document', {
     p_quote_ref: quoteRef,
-    p_expected_document_version: expectedDocumentVersion,
+    ...(initializeAccepted ? { p_expected_updated_at: expectedUpdatedAt } : { p_expected_document_version: expectedDocumentVersion }),
     p_inspection_report: inspectionReport,
     p_firm_quote_draft: revisionDraft,
     p_final_document: finalDocument,
