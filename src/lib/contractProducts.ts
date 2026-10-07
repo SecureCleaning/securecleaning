@@ -55,6 +55,7 @@ export type ContractProduct = {
   formalContract: boolean
   freeInitialClean: boolean
   clientPricePerVisitExGstCents: number
+  annualValueMethod: 'calculated' | 'manual'
   annualContractValueExGstCents: number
   purchasePriceExGstCents: number
   pricingMethod: 'default_50_percent' | 'manual'
@@ -177,6 +178,7 @@ function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductAct
     formalContract: Boolean(row.formal_contract),
     freeInitialClean: Boolean(row.free_initial_clean),
     clientPricePerVisitExGstCents: Number(row.client_price_per_visit_ex_gst_cents ?? 0),
+    annualValueMethod: row.annual_value_method === 'manual' ? 'manual' : 'calculated',
     annualContractValueExGstCents: Number(row.annual_contract_value_ex_gst_cents ?? 0),
     purchasePriceExGstCents: Number(row.purchase_price_ex_gst_cents ?? 0),
     pricingMethod: row.pricing_method === 'manual' ? 'manual' : 'default_50_percent',
@@ -191,7 +193,7 @@ function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductAct
   }
 }
 
-const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
+const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, annual_value_method, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
 
 async function getAuthorizedProduct(actor: ContractProductActor, productId: string) {
   const db = getAdminSupabase()
@@ -387,7 +389,15 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   if (pricingMethod === 'manual' && !manualPurchaseCents) throw new ContractProductError('Enter a valid manual purchase price.')
 
   const pricing = calculateContractProductPricing(Number(current.client_price_per_visit_ex_gst_cents), annualVisits)
-  const purchasePrice = pricingMethod === 'manual' ? manualPurchaseCents! : pricing.suggestedPurchasePriceExGstCents
+  const annualValueMethod = input.annualValueMethod === undefined
+    ? (current.annual_value_method === 'manual' ? 'manual' : 'calculated') : input.annualValueMethod
+  if (!['calculated', 'manual'].includes(String(annualValueMethod))) throw new ContractProductError('Select a valid annual value method.')
+  const manualAnnualCents = input.annualValueExGst === undefined
+    ? Number(current.annual_contract_value_ex_gst_cents) : parseMoneyToCents(input.annualValueExGst)
+  if (annualValueMethod === 'manual' && !manualAnnualCents) throw new ContractProductError('Enter a valid annual value excluding GST.')
+  const annualValue = annualValueMethod === 'manual' ? manualAnnualCents! : pricing.annualValueExGstCents
+  if (!Number.isSafeInteger(annualValue) || annualValue <= 0 || annualValue > 1_000_000_000) throw new ContractProductError('Annual value must be between $0.01 and $10,000,000 excluding GST.')
+  const purchasePrice = pricingMethod === 'manual' ? manualPurchaseCents! : Math.round(annualValue * 0.5)
   if (Math.round(purchasePrice * 1.1) <= 50_000) {
     throw new ContractProductError('The cleaner purchase price must be greater than the $500 GST-inclusive deposit.')
   }
@@ -403,7 +413,8 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
     keyed_job: keyedJob,
     formal_contract: input.formalContract === true,
     free_initial_clean: input.freeInitialClean === true,
-    annual_contract_value_ex_gst_cents: pricing.annualValueExGstCents,
+    annual_value_method: annualValueMethod,
+    annual_contract_value_ex_gst_cents: annualValue,
     purchase_price_ex_gst_cents: purchasePrice,
     pricing_method: pricingMethod,
     pricing_note: clean(input.pricingNote, 1000) || null,
@@ -413,7 +424,7 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   return mapProduct(data as ProductRow)
 }
 
-export async function refreshContractProductScope(actor: ContractProductActor, input: Record<string, unknown>) {
+export async function refreshContractProductScope(actor: ContractProductActor, input: Record<string, unknown>, recalculate = false) {
   const productId = clean(input.productId, 100)
   const expectedUpdatedAt = clean(input.expectedUpdatedAt, 100)
   if (!productId || !expectedUpdatedAt) throw new ContractProductError('Product ID and current version are required.')
@@ -428,7 +439,7 @@ export async function refreshContractProductScope(actor: ContractProductActor, i
   if (!current.source_quote_id) throw new ContractProductError('The source quote was deleted. This product retains its saved scope.', 409)
   const db = getAdminSupabase()
   const { data: quote, error: quoteError } = await db.from('quotes')
-    .select('id, inputs, result, firm_quote_workflow, final_quote_document, final_quote_document_version')
+    .select('id, inputs, result, firm_quote_workflow, final_quote_document, final_quote_document_version, updated_at')
     .eq('id', String(current.source_quote_id)).maybeSingle()
   if (quoteError) throw quoteError
   if (!quote) throw new ContractProductError('The winning quote is no longer available.', 409)
@@ -446,7 +457,8 @@ export async function refreshContractProductScope(actor: ContractProductActor, i
   const sourceVersion = quote.final_quote_document
     ? Math.max(1, Math.round(Number(quote.final_quote_document_version) || 1))
     : 1
-  const { data, error } = await db.rpc('refresh_contract_product_cleaner_scope', {
+  const { data, error } = await db.rpc(recalculate ? 'recalculate_contract_product_from_quote' : 'refresh_contract_product_cleaner_scope', {
+    ...(recalculate ? { p_expected_quote_updated_at: quote.updated_at, p_client_rate_cents: Math.round(sourceSnapshot.displayPrice.low * 100) } : {}),
     p_product_id: productId,
     p_expected_updated_at: expectedUpdatedAt,
     p_source_quote_document_version: sourceVersion,
@@ -455,7 +467,8 @@ export async function refreshContractProductScope(actor: ContractProductActor, i
     p_actor_role: actor.role,
     p_actor_state: actor.productState,
   })
-  if (error?.code === '40001') throw new ContractProductError('This product changed while you were editing it. Reload and try again.', 409)
+  if (error?.code === '40001') throw new ContractProductError('The product or winning quote changed. Reload and try again.', 409)
+  if (error?.code === '23514') throw new ContractProductError('The quote pricing is not valid for recalculation, or the product is no longer editable.', 409)
   if (error?.code === '42501') throw new ContractProductError('You cannot refresh this product.', 403)
   if (error) throw error
   return { productId, updatedAt: String(data) }
@@ -474,7 +487,8 @@ export async function publishContractProduct(actor: ContractProductActor, input:
     p_actor_role: actor.role,
     p_actor_state: actor.productState,
   })
-  if (error?.code === '40001') throw new ContractProductError('This product changed while you were editing it. Reload and try again.', 409)
+  if (error?.code === '40001') throw new ContractProductError('The product or winning quote changed. Reload and try again.', 409)
+  if (error?.code === '23514') throw new ContractProductError('The quote pricing is not valid for recalculation, or the product is no longer editable.', 409)
   if (error?.code === '42501') throw new ContractProductError('You cannot publish this product.', 403)
   if (error) throw error
   return { productId, version: Number(data) }

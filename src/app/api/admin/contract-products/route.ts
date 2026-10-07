@@ -66,10 +66,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
     if (action === 'product.update') return NextResponse.json({ success: true, result: await updateContractProduct(actor, body) })
-    if (action === 'product.refresh-scope') {
+    if (action === 'product.refresh-scope' || action === 'product.recalculate') {
       const limited = await rateLimit(request, { key: `contract-product-scope-refresh:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
-      return NextResponse.json({ success: true, result: await refreshContractProductScope(actor, body) })
+      return NextResponse.json({ success: true, result: await refreshContractProductScope(actor, body, action === 'product.recalculate') })
     }
     if (action === 'product.publish') return NextResponse.json({ success: true, result: await publishContractProduct(actor, body) })
     if (action === 'product.withdraw') return NextResponse.json({ success: true, result: await withdrawContractProduct(actor, body) })

@@ -168,7 +168,7 @@ test('contract product scope refresh is authorized, source-bound, audited, and l
   assert.match(products, /\['draft', 'withdrawn'\]\.includes/)
   assert.match(products, /\.eq\('id', String\(current\.source_quote_id\)\)/)
   assert.match(products, /assertCleanerListingExcludesSourcePii/)
-  assert.match(products, /rpc\('refresh_contract_product_cleaner_scope'/)
+  assert.match(products, /rpc\(recalculate \? 'recalculate_contract_product_from_quote' : 'refresh_contract_product_cleaner_scope'/)
   assert.match(route, /product\.refresh-scope/)
   assert.match(route, /contract-product-scope-refresh/)
   assert.match(migration, /SECURITY DEFINER\s+SET search_path = public, pg_temp/)
