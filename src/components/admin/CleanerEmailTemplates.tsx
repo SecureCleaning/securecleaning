@@ -68,7 +68,7 @@ export default function CleanerEmailTemplates({ onSaved }: { onSaved: (template:
 
   return <details className="rounded-xl border border-gray-200 bg-white p-5">
     <summary className="cursor-pointer text-lg font-bold text-gray-900">Email templates</summary>
-    <p className="mt-2 text-sm text-gray-600">Create reusable cleaner emails or edit a saved template. Templates are shared with staff and regional agents. Saving a template does not send an email.</p>
+    <p className="mt-2 text-sm text-gray-600">Create reusable cleaner emails or edit a saved template. Templates are shared with staff and regional agents. Saving a template does not send an email. Do not add a fixed staff signature here: the selected sender&apos;s Team Access signature is appended automatically when you preview and send.</p>
     <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
       <section><h2 className="font-bold text-gray-900">Stored templates</h2>
         {loading ? <p className="mt-3 text-sm">Loading templates...</p> : !templates.length ? <p className="mt-3 text-sm text-gray-500">No templates found. Create one using the form or a starter below.</p> : null}

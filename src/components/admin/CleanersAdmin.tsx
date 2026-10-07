@@ -2,6 +2,7 @@
 
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
+import CleanerEmailDetails from '@/components/admin/CleanerEmailDetails'
 import CleanerEmailTemplates from '@/components/admin/CleanerEmailTemplates'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
@@ -573,7 +574,8 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
   const [documentDraft, setDocumentDraft] = useState<DocumentDraftState>(createDocumentDraft())
   const [emailDraft, setEmailDraft] = useState(buildEmailDraft(templates[0] ?? null))
   const [emailEditorKey, setEmailEditorKey] = useState(0)
-  const [emailPreview, setEmailPreview] = useState<{ subject: string; from?: string; to?: string; cc?: string; html: string; previewFingerprint?: string; history?: boolean } | null>(null)
+  const [senderStaffId, setSenderStaffId] = useState('')
+  const [emailPreview, setEmailPreview] = useState<{ subject: string; from?: string; to?: string; cc?: string; replyTo?: string; html: string; previewFingerprint?: string; history?: boolean } | null>(null)
   const [serviceAreaDraft, setServiceAreaDraft] = useState('')
   const [status, setStatus] = useState<{ type: 'idle' | 'success' | 'error'; message: string }>({ type: 'idle', message: '' })
   const [isLoading, setIsLoading] = useState(false)
@@ -1073,7 +1075,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
       const response = await fetch(`/api/admin/cleaners/${selectedCleaner.id}/email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAdminHeaders() },
-        body: JSON.stringify({ action: 'preview', ...emailDraft }),
+        body: JSON.stringify({ action: 'preview', ...emailDraft, senderStaffId }),
       })
       const result = await response.json()
       if (!response.ok || !result.success) throw new Error(result.error || 'Unable to preview email.')
@@ -1097,7 +1099,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
           'Content-Type': 'application/json',
           ...getAdminHeaders(),
         },
-        body: JSON.stringify({ ...emailDraft, previewFingerprint: emailPreview?.previewFingerprint }),
+        body: JSON.stringify({ ...emailDraft, senderStaffId, previewFingerprint: emailPreview?.previewFingerprint }),
       })
 
       const result = await response.json()
@@ -1868,6 +1870,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                     </label>
                     <div className="md:col-span-2"><RichEmailEditor value={createRichEmailContent({ document: emailDraft.bodyDocument, html: emailDraft.bodyHtml, text: emailDraft.body })} resetKey={`cleaner-email-${emailEditorKey}`} mergeFields={CLEANER_EMAIL_MERGE_FIELDS} onChange={(message) => { setEmailDraft((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
                   </div>
+                  <CleanerEmailDetails senderId={senderStaffId} disabled={isSending || isPreviewingEmail} onChange={(id) => { setSenderStaffId(id); setEmailPreview(null) }} />
                   <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewEmail()} disabled={isPreviewingEmail || !emailDraft.subject.trim() || !hasRichEmailContent({ html: emailDraft.bodyHtml, text: emailDraft.body })} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{isPreviewingEmail ? 'Preparing preview…' : 'Preview email'}</button><button type="button" onClick={() => void sendEmail()} disabled={isSending || !emailPreview?.previewFingerprint} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" style={{ backgroundColor: '#22c55e' }}>{isSending ? 'Sending…' : 'Send Email'}</button></div>
                   <p className="mt-2 text-xs text-gray-500">Preview is required after every change. The sender is copied automatically and replies go to that person&apos;s work email when available.</p>
                   </>
@@ -1905,7 +1908,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
           </div>
         </div>
       ) : null}
-      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent cleaner email' : 'Cleaner email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={isSending} onClose={() => setEmailPreview(null)} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
+      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent cleaner email' : 'Cleaner email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} replyTo={emailPreview?.replyTo} html={emailPreview?.html ?? ''} sending={isSending} onClose={() => setEmailPreview(null)} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )
 }

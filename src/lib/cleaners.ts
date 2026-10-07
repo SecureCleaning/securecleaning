@@ -1,5 +1,3 @@
-import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
-import { getStateForAvailabilityCity } from '@/lib/cleanerAgentPolicy'
 import { csvCell } from '@/lib/csvCell'
 import { getAdminSupabase } from '@/lib/supabase'
 import { sendEmailWithResult } from '@/lib/email'
@@ -7,7 +5,8 @@ import { writeAuditLog } from '@/lib/auditLog'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
 import { toAgentCleanerEmailHistory } from '@/lib/cleanerAgentPolicy'
 import { cleanerServiceAreasForImportUpdate, cleanServiceAreas, normaliseCleanerServiceAreas } from '@/lib/cleanerServiceAreas'
-import { getStaffAccountProfileById } from '@/lib/staffAccounts'
+import { resolveCleanerEmailSender } from '@/lib/cleanerEmailSenders'
+import { plainTextToEmailHtml } from '@/lib/richEmailContent'
 import { parseRichEmailContent, richEmailFingerprint, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import type { RichEmailContent } from '@/lib/richEmailContent'
 import { applyEmailMergeFields, CLEANER_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
@@ -997,6 +996,7 @@ type CleanerEmailInput = {
   bodyHtml?: string
   bodyDocument?: Record<string, unknown> | null
   previewFingerprint?: string
+  senderStaffId?: string
   actor: CleanerAuditActor
 }
 
@@ -1039,23 +1039,12 @@ async function prepareCleanerEmail(payload: CleanerEmailInput) {
   }
   if (!subject || !content.text) throw new Error('Subject and message are required.')
 
-  let senderEmail: string
-  if (payload.actor.role === 'availability_agent') {
-    // Availability assignee IDs are not staff-account UUIDs.
-    const assignee = getAvailabilityAssignee(await getAvailabilityConfig(), payload.actor.id)
-    const email = assignee?.email?.trim().toLowerCase() ?? ''
-    if (!assignee?.active || getStateForAvailabilityCity(assignee.city) !== payload.state || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      throw new Error('The regional agent needs an active account and valid work email for this state.')
-    }
-    senderEmail = email
-  } else {
-    const sender = await getStaffAccountProfileById(payload.actor.id)
-    senderEmail = sender?.active && sender.email ? sender.email : process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au'
-  }
-  const from = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
-  const finalHtml = buildCleanerEmailHtml(content.html)
-  const finalText = content.text
-  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([cleaner.id, cleaner.email, from, senderEmail, payload.actor.id]) })
+  const sender = await resolveCleanerEmailSender(payload.actor, payload.senderStaffId, payload.state)
+  const senderEmail = sender.email
+  const from = sender.from
+  const finalHtml = buildCleanerEmailHtml(`${content.html}<div style="margin-top:28px">${plainTextToEmailHtml(sender.signature)}</div>`)
+  const finalText = `${content.text}\n\n${sender.signature}`
+  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([cleaner.id, cleaner.email, from, senderEmail, sender.id, payload.actor.id]) })
   return { detail, cleaner, subject, content, senderEmail, from, finalHtml, finalText, previewFingerprint }
 }
 
@@ -1066,6 +1055,7 @@ export async function previewCleanerEmail(payload: CleanerEmailInput) {
     from: prepared.from,
     to: prepared.cleaner.email,
     cc: prepared.senderEmail,
+    replyTo: prepared.senderEmail,
     html: prepared.finalHtml,
     text: prepared.finalText,
     previewFingerprint: prepared.previewFingerprint,
@@ -1112,6 +1102,7 @@ export async function sendCleanerEmail(payload: CleanerEmailInput) {
       replyTo: senderEmail,
       subject,
       html: finalHtml,
+      text: finalText,
     })
 
     const providerMessageId = getProviderMessageId(response)
@@ -1153,6 +1144,7 @@ export async function sendCleanerEmailForState(payload: {
   bodyHtml?: string
   bodyDocument?: Record<string, unknown> | null
   previewFingerprint?: string
+  senderStaffId?: string
   actor: CleanerAuditActor
 }) {
   let templateName: string | null = null
@@ -1177,6 +1169,7 @@ export async function sendCleanerEmailForState(payload: {
     bodyHtml: payload.bodyHtml,
     bodyDocument: payload.bodyDocument,
     previewFingerprint: payload.previewFingerprint,
+    senderStaffId: payload.senderStaffId,
     actor: payload.actor,
   })
   return toAgentCleanerEmailHistory(email)

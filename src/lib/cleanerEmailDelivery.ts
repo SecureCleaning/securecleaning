@@ -1,23 +1,20 @@
 import { readEmailPages, acquireEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
 import { createHash } from 'node:crypto'
 import { getAdminSupabase } from '@/lib/supabase'
-import { getStaffAccountProfileById } from '@/lib/staffAccounts'
+import { getCleanerEmailSenders, resolveCleanerEmailSender } from '@/lib/cleanerEmailSenders'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
-import { getMissingCrmSignatureFields } from '@/lib/clientCrmPolicy'
 import { sendEmailOrThrow, EmailProviderRejectedError } from '@/lib/email'
 import { getSiteUrl } from '@/lib/siteUrl'
 import { CleanerEmailError, CLEANER_EMAIL_UUID, parseCleanerEmailInput, renderCleanerEmail, type CleanerEmailRecipient } from '@/lib/cleanerEmailPolicy'
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-async function senderFor(actor: AdminSessionIdentity) {
-  const sender = await getStaffAccountProfileById(actor.id)
-  if (!sender?.active || !['staff', 'manager', 'owner'].includes(sender.role)) throw new CleanerEmailError('An active staff account is required to send cleaner updates.')
-  if (getMissingCrmSignatureFields(sender).length) throw new CleanerEmailError('Complete your name, role, phone and email signature in Team Access before sending.')
-  return { displayName: sender.displayName, jobTitle: sender.jobTitle, phone: sender.phone, email: sender.email }
+async function senderFor(actor: AdminSessionIdentity, requested?: unknown) {
+  try { return await resolveCleanerEmailSender(actor, requested) }
+  catch (error) { throw new CleanerEmailError(error instanceof Error ? error.message : 'Unable to resolve sender.') }
 }
 async function prepare(actor: AdminSessionIdentity, value: unknown) {
   const input = parseCleanerEmailInput(value)
-  const sender = await senderFor(actor)
+  const sender = await senderFor(actor, input.senderStaffId)
   const db = getAdminSupabase()
   const rows: Array<CleanerEmailRecipient & { status: string; broadcast_unsubscribe_token: string }> = []
   const blockedEmails = new Set<string>()
@@ -54,7 +51,7 @@ async function prepare(actor: AdminSessionIdentity, value: unknown) {
 export async function previewCleanerEmail(actor: AdminSessionIdentity, value: unknown) {
   const prepared = await prepare(actor, value)
   const selectedId = typeof value === 'object' && value !== null && 'previewCleanerId' in value ? String(value.previewCleanerId) : prepared.messages[0]?.cleanerId
-  return { fingerprint: prepared.fingerprint, sender: prepared.sender, recipients: prepared.messages.map(message => ({ id: message.cleanerId, email: message.email, name: message.name, subject: message.subject, html: message.cleanerId === selectedId ? message.html : '' })) }
+  return { fingerprint: prepared.fingerprint, sender: prepared.sender, from: prepared.sender.from, replyTo: prepared.sender.replyTo, cc: prepared.sender.cc, recipients: prepared.messages.map(message => ({ id: message.cleanerId, email: message.email, name: message.name, subject: message.subject, html: message.cleanerId === selectedId ? message.html : '' })) }
 }
 async function results(actor: AdminSessionIdentity, requestId: string, duplicate: boolean) {
   const db = getAdminSupabase()
@@ -65,14 +62,14 @@ async function results(actor: AdminSessionIdentity, requestId: string, duplicate
 }
 export async function cleanerEmailResults(actor: AdminSessionIdentity, requestId: unknown) {
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('Invalid email request.')
-  await senderFor(actor)
+  await getCleanerEmailSenders(actor)
   return results(actor, requestId, true)
 }
 export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Record<string, unknown>) {
   const input = parseCleanerEmailInput(value)
   const requestId = value.requestId
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('A valid email request ID is required.')
-  await senderFor(actor)
+  await getCleanerEmailSenders(actor)
   const db = getAdminSupabase()
   const inputHash = hash(input)
   const { data: existing, error: existingError } = await db.from('cleaner_email_batches').select('actor_id,input_hash').eq('id', requestId).maybeSingle()
@@ -88,7 +85,7 @@ export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Re
     p_id: requestId, p_actor_id: actor.id, p_input_hash: inputHash,
     p_messages: prepared.messages.map(message => ({ cleaner_id: message.cleanerId, email: message.email, subject: message.subject, body: message.body, body_html: prepared.input.bodyHtml, body_document: prepared.input.bodyDocument, html: message.html, text: message.text, headers: { 'List-Unsubscribe': `<${message.unsubscribeUrl.replace('/cleaner-email-preferences/', '/api/cleaner-email-preferences/')}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' } })),
     p_template_id: input.templateId, p_template_name: prepared.templateName,
-    p_delivery: { from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', replyTo: prepared.sender.email },
+    p_delivery: { from: prepared.sender.from, replyTo: prepared.sender.replyTo, cc: prepared.sender.cc, senderStaffId: prepared.sender.id },
   })
   if (reserveError) throw new CleanerEmailError('Unable to reserve this send. Recipients may have changed, or the hourly send limit was reached. Preview again or try later.')
   if (!reserved) return results(actor, requestId, true)
@@ -97,11 +94,12 @@ export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Re
 
 export async function continueCleanerEmail(actor: AdminSessionIdentity, requestId: unknown) {
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('Invalid email request.')
-  await senderFor(actor)
+  await getCleanerEmailSenders(actor)
   const db = getAdminSupabase()
   const { data: batch, error: batchError } = await db.from('cleaner_email_batches').select('delivery').eq('id', requestId).eq('actor_id', actor.id).maybeSingle()
   if (batchError || !batch) throw new CleanerEmailError('Email request not found.')
   if (!batch.delivery?.from || !batch.delivery?.replyTo) throw new CleanerEmailError('This older email request cannot be resumed. Check its delivery history before starting another send.')
+  await senderFor(actor, batch.delivery.senderStaffId)
   const { data: entries, error: entryError } = await db.from('cleaner_emails')
     .select('id,to_email,subject,final_html_snapshot,final_text_snapshot,delivery_headers')
     .eq('batch_id', requestId).eq('delivery_outcome', 'queued').order('id').limit(EMAIL_DELIVERY_STEP_SIZE)
@@ -117,7 +115,7 @@ export async function continueCleanerEmail(actor: AdminSessionIdentity, requestI
     let providerId: string | null = null
     try {
       const response = await sendEmailOrThrow({
-        from: batch.delivery.from, to: entry.to_email, replyTo: batch.delivery.replyTo,
+        from: batch.delivery.from, to: entry.to_email, replyTo: batch.delivery.replyTo, cc: batch.delivery.cc,
         subject: entry.subject, html: entry.final_html_snapshot, text: entry.final_text_snapshot, headers: entry.delivery_headers,
       })
       providerId = response && typeof response === 'object' && 'id' in response ? String(response.id) : null

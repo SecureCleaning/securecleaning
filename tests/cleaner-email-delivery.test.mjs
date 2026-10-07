@@ -44,6 +44,7 @@ test('new cleaner email API denies anonymous, viewer and regional agent sessions
 })
 function backend(options = {}) {
   const cleanerRows = options.count ? Array.from({length:options.count},(_,i)=>({...cleaner,id:`22222222-2222-4222-8222-${String(i).padStart(12,'0')}`,email:`cleaner${i}@example.test`})) : [cleaner]
+  const staffRows = options.staffRows || [{id:actor.id,username:'staff',display_name:sender.displayName,job_title:sender.jobTitle,phone:sender.phone,email:sender.email,role:'staff',active:true}]
   let batch = null
   let entries = []
   let sent = 0
@@ -55,13 +56,17 @@ function backend(options = {}) {
     if (path.includes('api.resend.com')) {
       sent++
       assert.ok(cleanerRows.some(c=>c.email===(Array.isArray(body.to) ? body.to[0] : body.to)))
-      assert.equal(body.cc, undefined)
+      assert.deepEqual(Array.isArray(body.cc) ? body.cc : [body.cc], [(options.expectedSender || sender).email])
+      assert.match(body.from, /<info@securecleaning\.com\.au>/)
+      assert.ok(body.text.includes((options.expectedSender || sender).displayName))
+      assert.ok(body.text.includes('securecleaning.com.au'))
+      assert.ok(body.html.includes((options.expectedSender || sender).displayName))
       if (options.unknown) throw new Error('Provider timeout')
       if (options.quota) return json({statusCode:429,name:'monthly_quota_exceeded',message:'Quota'},429)
       if (options.failed) return json({statusCode:422,name:'validation_error',message:'Rejected'},422)
       return json({id:'provider-test-id'})
     }
-    if (path.includes('/admin_staff_accounts?')) return json({id:actor.id,username:'staff',display_name:sender.displayName,job_title:sender.jobTitle,phone:sender.phone,email:sender.email,role:'staff',active:true})
+    if (path.includes('/admin_staff_accounts?')) { const id = new URL(path).searchParams.get('id'); return json(id ? staffRows.find(row => 'eq.' + row.id === id) : staffRows) }
     if (path.includes('/cleaners?')) return json(cleanerRows.map(c=>({...c,status:options.rejected?'rejected':'approved'})))
     if (path.includes('/crm_email_suppressions?')) return json(options.suppressed?[{email_normalized:draft.emails}]:[])
     if (path.includes('/cleaner_broadcast_suppressions?')) return json([])
@@ -168,4 +173,28 @@ test('large send progresses in bounded steps and resumes only queued recipients 
     assert.equal(mock.sent,61);assert.equal(last.inProgress,false)
     await continueCleanerEmail(actor,id);assert.equal(mock.sent,61)
   }finally{globalThis.fetch=previous}
+})
+
+test('network owner sender choice binds preview, frozen delivery headers and permission', async () => {
+  const previous = globalThis.fetch
+  const owner = { ...actor, role: 'owner' }
+  const agentId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const selected = { displayName: 'Chosen Agent', email: 'agent@securecleaning.com.au', jobTitle: 'Agent', phone: '0400000001' }
+  const staffRows = [
+    { id: actor.id, username: 'staff', role: 'owner', active: true, display_name: sender.displayName, job_title: sender.jobTitle, phone: sender.phone, email: sender.email },
+    { id: agentId, username: 'agent', role: 'agent', active: true, display_name: selected.displayName, job_title: selected.jobTitle, phone: selected.phone, email: selected.email },
+  ]
+  const mock = backend({ staffRows, expectedSender: selected }); globalThis.fetch = mock.fetch
+  try {
+    const input = { ...draft, senderStaffId: agentId }
+    const preview = await previewCleanerEmail(owner, input)
+    assert.equal(preview.from, 'Chosen Agent - Secure Cleaning <info@securecleaning.com.au>')
+    assert.equal(preview.replyTo, selected.email); assert.equal(preview.cc, selected.email)
+    const request = { ...input, fingerprint: preview.fingerprint, requestId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }
+    await assert.rejects(deliverCleanerEmail(owner, { ...request, senderStaffId: owner.id }), /Preview again/)
+    await assert.rejects(previewCleanerEmail({ id: agentId, role: 'agent' }, { ...draft, senderStaffId: owner.id }), /cannot send/)
+    const result = await deliverCleanerEmail(owner, request)
+    assert.equal(result.recipients[0].delivery_outcome, 'sent')
+    assert.equal(mock.sent, 1)
+  } finally { globalThis.fetch = previous }
 })

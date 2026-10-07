@@ -1,5 +1,6 @@
 'use client'
 
+import CleanerEmailDetails from '@/components/admin/CleanerEmailDetails'
 import { useEffect, useState } from 'react'
 import { useEmailQueueRunner } from '@/lib/useEmailQueueRunner'
 import RichEmailComposer from '@/components/admin/RichEmailComposer'
@@ -12,6 +13,7 @@ import { getAdminHeaders } from '@/lib/useAdminHeaders'
 const defaultBody = 'Hi {{first_name}},\n\nWe are updating availability across our cleaner network.\n\nPlease reply with your current availability, preferred locations and the types of cleaning work you are interested in.\n\nThank you for keeping your details up to date.'
 const inputClass = 'mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm'
 export default function CleanerEmailComposer({ cleaners, templates, onClose }: { cleaners: CleanerRecord[]; templates: CleanerEmailTemplate[]; onClose: () => void }) {
+  const [senderStaffId, setSenderStaffId] = useState('')
   const [mode, setMode] = useState<'single' | 'multiple'>('single')
   const [emails, setEmails] = useState('')
   const [templateId, setTemplateId] = useState('')
@@ -32,7 +34,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
   const locked = Boolean(requestId)
   const invalidate = () => { setPreview(null); setConfirmed(false); setError('') }
   async function api(action: string, extra: Record<string, unknown> = {}) {
-    const response = await fetch('/api/admin/cleaners/email', { method: 'POST', headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action, emails, subject, body, bodyHtml, bodyDocument, templateId: templateId || null, fingerprint: preview?.fingerprint, requestId, ...extra }) })
+    const response = await fetch('/api/admin/cleaners/email', { method: 'POST', headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action, emails, subject, body, bodyHtml, bodyDocument, senderStaffId, templateId: templateId || null, fingerprint: preview?.fingerprint, requestId, ...extra }) })
     const data = await response.json()
     if (!response.ok || !data.success) throw new Error(data.error || 'Unable to complete email request.')
     return data
@@ -52,7 +54,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
     sessionStorage.setItem('cleaner-email-request', id)
     setRequestId(id); setBusy('send'); setError('')
     try {
-      const response = await fetch('/api/admin/cleaners/email', { method: 'POST', headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send', emails, subject, body, bodyHtml, bodyDocument, templateId: templateId || null, fingerprint: preview.fingerprint, requestId: id }) })
+      const response = await fetch('/api/admin/cleaners/email', { method: 'POST', headers: { ...getAdminHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send', emails, subject, body, bodyHtml, bodyDocument, senderStaffId, templateId: templateId || null, fingerprint: preview.fingerprint, requestId: id }) })
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.error || 'The send result could not be confirmed.')
       setResult(data.result)
@@ -122,6 +124,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
             <label className="block text-sm font-medium">Subject<input maxLength={240} value={subject} onChange={event => { setSubject(event.target.value); invalidate() }} className={inputClass} /></label>
             <RichEmailComposer value={createRichEmailContent({ text: body, html: bodyHtml, document: bodyDocument })} resetKey={`batch-${editorKey}`} disabled={(Boolean(busy) || queue.running) || locked} mergeFields={CLEANER_EMAIL_MERGE_FIELDS.filter(field => ['first_name','last_name','name','company','city','suburb','state'].includes(field.key))} onChange={message => { setBody(message.text); setBodyHtml(message.html); setBodyDocument(message.document); invalidate() }} />
             <p className="text-xs text-slate-500">Personalise with {'{{first_name}}'}, {'{{contact_name}}'} or {'{{business_name}}'}. Your Team Access signature and an unsubscribe link are included automatically.</p>
+            <CleanerEmailDetails senderId={senderStaffId} disabled={Boolean(busy) || queue.running || locked} onChange={id => { setSenderStaffId(id); invalidate() }} />
             <button type="button" onClick={() => void makePreview()} disabled={!emails.trim() || !subject.trim() || !body.trim()} className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy === 'preview' ? 'Checking recipients...' : 'Check recipients & preview'}</button>
           </fieldset>
           {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
@@ -130,7 +133,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
         </div>
         <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h3 className="font-bold text-slate-900">3. Review & send</h3>
-          {preview && selected ? <><p className="mt-2 text-sm text-slate-600">{preview.recipients.length} eligible recipient{preview.recipients.length === 1 ? '' : 's'}. Replies go to {preview.sender.email}.</p><label className="mt-4 block text-sm font-medium">Preview recipient<select value={previewIndex} disabled={Boolean(busy) || queue.running} onChange={event => void selectPreview(Number(event.target.value))} className={inputClass}>{preview.recipients.map((recipient,index) => <option key={recipient.id} value={index}>{recipient.name} - {recipient.email}</option>)}</select></label><p className="my-3 break-words text-sm"><strong>Subject:</strong> {selected.subject}</p><iframe title="Cleaner email preview" sandbox="" srcDoc={selected.html} className="h-[580px] w-full rounded-lg border bg-white" /><label className="mt-4 flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={locked || (Boolean(busy) || queue.running)} onChange={event => setConfirmed(event.target.checked)} className="mt-1" />I have checked the content and recipient list.</label><button type="button" onClick={() => void send()} disabled={!confirmed || locked || (Boolean(busy) || queue.running)} className="mt-3 w-full rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white disabled:opacity-50">{busy === 'send' ? 'Sending separate emails...' : `Send to ${preview.recipients.length} cleaner${preview.recipients.length === 1 ? '' : 's'}`}</button></> : <div className="flex min-h-80 flex-col items-center justify-center text-center text-slate-500"><div className="mb-4 rounded-xl bg-white px-6 py-4 text-xl font-bold text-[#1a2744]">SECURE CLEANING <span className="text-[#b28a29]">AUS</span></div><p className="max-w-xs text-sm">Your personalised email preview will appear here after the recipients are checked.</p></div>}
+          {preview && selected ? <><p className="mt-2 text-sm text-slate-600">{preview.recipients.length} eligible recipient{preview.recipients.length === 1 ? '' : 's'}. Replies go to {preview.sender.email}.</p><label className="mt-4 block text-sm font-medium">Preview recipient<select value={previewIndex} disabled={Boolean(busy) || queue.running} onChange={event => void selectPreview(Number(event.target.value))} className={inputClass}>{preview.recipients.map((recipient,index) => <option key={recipient.id} value={index}>{recipient.name} - {recipient.email}</option>)}</select></label><p className="my-3 break-words text-sm"><strong>Subject:</strong> {selected.subject}</p><p className="text-sm"><strong>From:</strong> {preview.from}</p><p className="mb-3 text-sm"><strong>Reply-To / CC:</strong> {preview.replyTo}</p><iframe title="Cleaner email preview" sandbox="" srcDoc={selected.html} className="h-[580px] w-full rounded-lg border bg-white" /><label className="mt-4 flex items-start gap-2 text-sm"><input type="checkbox" checked={confirmed} disabled={locked || (Boolean(busy) || queue.running)} onChange={event => setConfirmed(event.target.checked)} className="mt-1" />I have checked the content and recipient list.</label><button type="button" onClick={() => void send()} disabled={!confirmed || locked || (Boolean(busy) || queue.running)} className="mt-3 w-full rounded-lg bg-emerald-600 px-5 py-3 font-semibold text-white disabled:opacity-50">{busy === 'send' ? 'Sending separate emails...' : `Send to ${preview.recipients.length} cleaner${preview.recipients.length === 1 ? '' : 's'}`}</button></> : <div className="flex min-h-80 flex-col items-center justify-center text-center text-slate-500"><div className="mb-4 rounded-xl bg-white px-6 py-4 text-xl font-bold text-[#1a2744]">SECURE CLEANING <span className="text-[#b28a29]">AUS</span></div><p className="max-w-xs text-sm">Your personalised email preview will appear here after the recipients are checked.</p></div>}
         </div>
       </div>
     </section>

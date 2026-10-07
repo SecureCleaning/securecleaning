@@ -6,6 +6,7 @@ type Props = {
   subject: string
   from?: string
   to?: string
+  replyTo?: string
   cc?: string
   html: string
   sendLabel?: string
@@ -14,7 +15,7 @@ type Props = {
   onSend?: () => void
 }
 
-export default function EmailPreviewModal({ open, title = 'Email preview', subject, from, to, cc, html, sendLabel = 'Confirm & send', sending = false, onClose, onSend }: Props) {
+export default function EmailPreviewModal({ open, title = 'Email preview', subject, from, to, cc, replyTo, html, sendLabel = 'Confirm & send', sending = false, onClose, onSend }: Props) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-950/60 p-4" role="dialog" aria-modal="true" aria-label={title}>
@@ -28,6 +29,7 @@ export default function EmailPreviewModal({ open, title = 'Email preview', subje
         </div>
         <div className="border-b border-gray-200 bg-gray-50 px-5 py-3 text-sm">
           {from ? <p><span className="font-semibold text-gray-700">From:</span> {from}</p> : null}
+          {replyTo ? <p><span className="font-semibold text-gray-700">Reply-To:</span> {replyTo}</p> : null}
           {to ? <p><span className="font-semibold text-gray-700">To:</span> {to}</p> : null}
           {cc ? <p><span className="font-semibold text-gray-700">CC:</span> {cc}</p> : null}
           <p><span className="font-semibold text-gray-700">Subject:</span> {subject}</p>

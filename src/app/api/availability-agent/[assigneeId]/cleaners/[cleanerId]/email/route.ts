@@ -27,6 +27,7 @@ export async function POST(
       bodyHtml: body?.bodyHtml,
       bodyDocument: body?.bodyDocument,
       previewFingerprint: body?.previewFingerprint,
+      senderStaffId: body?.senderStaffId,
       actor: context.actor,
     }
     if (body?.action === 'preview') {

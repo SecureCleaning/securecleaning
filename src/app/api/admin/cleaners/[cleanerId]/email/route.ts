@@ -23,6 +23,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ clea
       bodyHtml: body?.bodyHtml,
       bodyDocument: body?.bodyDocument,
       previewFingerprint: body?.previewFingerprint,
+      senderStaffId: body?.senderStaffId,
       actor: authorization.identity,
     }
     if (body?.action === 'preview') {
