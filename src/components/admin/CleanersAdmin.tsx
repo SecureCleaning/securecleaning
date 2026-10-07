@@ -2,6 +2,7 @@
 
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
+import CleanerEmailTemplates from '@/components/admin/CleanerEmailTemplates'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CleanerComment,
@@ -554,7 +555,7 @@ function statusTone(status: string) {
 export default function CleanersAdmin({ canDelete = false, canEmail = false, initialCleaners, initialTotal, initialPage, initialPageSize, initialTemplates, initialSelected }: Props) {
   const [emailComposerOpen, setEmailComposerOpen] = useState(false)
   const [cleaners, setCleaners] = useState(initialCleaners)
-  const [templates] = useState(initialTemplates)
+  const [templates, setTemplates] = useState(initialTemplates)
   const [selectedDetail, setSelectedDetail] = useState<CleanerDetail | null>(initialSelected)
   const [editingId, setEditingId] = useState<string | null>(initialSelected?.cleaner.id ?? null)
   const [form, setForm] = useState<CleanerFormState>(toFormState(initialSelected?.cleaner))
@@ -1140,6 +1141,8 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
         </button>
         </div>
       </section>
+
+      {canEmail ? <CleanerEmailTemplates onSaved={(saved) => setTemplates((current) => [...current.filter((item) => item.id !== saved.id), ...(saved.is_active ? [saved] : [])].sort((a, b) => a.name.localeCompare(b.name)))} /> : null}
 
       {emailComposerOpen && canEmail ? <CleanerEmailComposer cleaners={cleaners} templates={templates} onClose={() => setEmailComposerOpen(false)} /> : null}
 
@@ -1849,6 +1852,8 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                     <label className="space-y-1 text-sm font-medium text-gray-700">
                       Template
                       <select value={emailDraft.templateId} onChange={(event) => selectTemplate(event.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm">
+                        <option value="">Custom email</option>
+                        {emailDraft.templateId && !templates.some((item) => item.id === emailDraft.templateId) ? <option value={emailDraft.templateId}>{emailDraft.templateName || 'Current draft'} (archived)</option> : null}
                         {templates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
                       </select>
                     </label>
