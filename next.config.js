@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ['@anthropic-ai/sdk'],
+  serverExternalPackages: ['@anthropic-ai/sdk', 'exceljs'],
+  outputFileTracingIncludes: { '/api/admin/consumables/import': ['./node_modules/exceljs/**/*'] },
   images: {
     domains: [],
   },

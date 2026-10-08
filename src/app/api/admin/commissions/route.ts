@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   catch (error) { return NextResponse.json({ error: error instanceof ContractProductError ? error.message : 'Unable to load commissions.' }, { status: error instanceof ContractProductError ? error.status : 500 }) }
 }
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 16384)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 16384)
   if (blocked) return blocked
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ error: 'Commission access required.' }, { status: 403 })

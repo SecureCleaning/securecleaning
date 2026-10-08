@@ -1,3 +1,4 @@
+import { documentDownloadHeaders } from '@/lib/documentContent'
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { deleteCleanerDocument, downloadCleanerDocument } from '@/lib/cleaners'
@@ -17,10 +18,7 @@ export async function GET(
   try {
     const { document, file } = await downloadCleanerDocument(params.cleanerId, params.documentId)
     return new Response(file, {
-      headers: {
-        'Content-Type': document.content_type || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${document.file_name.replace(/"/g, '')}"`,
-      },
+      headers: documentDownloadHeaders(document.file_name),
     })
   } catch (error) {
     console.error('[api/admin/cleaners/:id/documents/:documentId] Failed to download document:', error)

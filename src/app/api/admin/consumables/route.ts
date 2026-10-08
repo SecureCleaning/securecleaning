@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   if (!await isAuthorizedAdminRequest(request, 'manager')) {
     return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })
   }
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 1024 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 1024 * 1024)
   if (blocked) return blocked
   const identity = await getAdminSessionIdentityFromRequest(request)
   if (!identity) return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })

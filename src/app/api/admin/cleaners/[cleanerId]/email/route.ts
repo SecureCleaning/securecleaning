@@ -5,7 +5,7 @@ import { previewCleanerEmail, sendCleanerEmail } from '@/lib/cleaners'
 
 export async function POST(request: NextRequest, props: { params: Promise<{ cleanerId: string }> }) {
   const params = await props.params
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
   const authorization = await authorizeCleanerAdminRequest(request, 'email')
   if (!authorization.identity) {
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ clea
       body: body?.body,
       bodyHtml: body?.bodyHtml,
       bodyDocument: body?.bodyDocument,
+      requestId: body?.requestId,
       previewFingerprint: body?.previewFingerprint,
       senderStaffId: body?.senderStaffId,
       actor: authorization.identity,

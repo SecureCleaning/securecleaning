@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 16 * 1024 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 16 * 1024 * 1024)
     ?? await rateLimit(request, { key: 'contract-sale-checklist-upload', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
   const actor = await getContractProductActor(request)

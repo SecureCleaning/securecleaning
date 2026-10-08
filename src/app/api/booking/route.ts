@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   try {
     const blocked =
       rejectCrossOriginMutation(request) ??
-      rejectLargePayload(request, 64 * 1024) ??
+      await rejectLargePayload(request, 64 * 1024) ??
       await rateLimit(request, { key: 'booking:minute', limit: 2, windowMs: 60 * 1000 }) ??
       await rateLimit(request, { key: 'booking:hour', limit: 4, windowMs: 60 * 60 * 1000 }) ??
       await rateLimit(request, { key: 'booking:day', limit: 12, windowMs: 24 * 60 * 60 * 1000 })

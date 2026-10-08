@@ -1,6 +1,7 @@
 'use client'
 
 /* eslint-disable @next/next/no-img-element */
+import { csvCell } from '@/lib/csvCell'
 import { useMemo, useRef, useState } from 'react'
 import ActionToast from '@/components/ActionToast'
 import {
@@ -25,10 +26,6 @@ function blankProduct(sortOrder: number): ConsumableProduct {
   }
 }
 
-function csvCell(value: unknown) {
-  const text = String(value ?? '')
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text
-}
 
 export default function ConsumablesAdmin({ initialCatalog }: { initialCatalog: ConsumablesAdminCatalog }) {
   const [settings, setSettings] = useState(initialCatalog.settings)

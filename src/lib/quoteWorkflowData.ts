@@ -1,3 +1,4 @@
+import { allNumbersFinite, assertStoredDocumentBounded } from '@/lib/securityInput'
 import { canStaffAccessQuote } from '@/lib/quoteStaffAccess'
 import { resolveQuoteCapability } from '@/lib/quoteBookingAccess'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -97,6 +98,7 @@ export async function getQuoteWorkflowByRef(
     return null
   }
   if (!data) return null
+  assertStoredDocumentBounded(data.inputs, 64 * 1024)
 
   const crmLinkRes = await db.from('crm_opportunity_quotes')
     .select('link_source')
@@ -126,6 +128,9 @@ export async function getQuoteWorkflowByRef(
   if (workflowRes.error) {
     if (!isMissingColumnError(workflowRes.error)) console.error('[quoteWorkflowData] Failed to load workflow fields:', workflowRes.error)
   } else if (workflowRes.data) {
+    assertStoredDocumentBounded(workflowRes.data.inspection_report, 128 * 1024)
+    assertStoredDocumentBounded(workflowRes.data.firm_quote_workflow, 512 * 1024)
+    assertStoredDocumentBounded(workflowRes.data.final_quote_document, 1024 * 1024)
     workflowColumnsAvailable = true
     inspectionReport = parseInspectionReport(workflowRes.data.inspection_report, data.inputs as QuoteInputs)
     firmQuoteDraft = parseFirmQuoteDraft(workflowRes.data.firm_quote_workflow, data.inputs as QuoteInputs, roomTypeConfig)
@@ -226,6 +231,7 @@ export async function reviewQuoteWorkflowByRef(
     result: applyFirmQuoteDisplayPrice(current.result, displayPrice),
     firmQuoteDraft, pricingPreview, displayPrice, roomTypeConfig,
   }
+  if (!allNumbersFinite(finalDocument)) throw new Error('Quote exceeds supported pricing limits.')
   const db = getAdminSupabase()
   const { data, error } = await db.from('quotes').update({
     inspection_report: inspectionReport, firm_quote_workflow: firmQuoteDraft,
@@ -272,6 +278,7 @@ export async function reviseQuoteWorkflowByRef(
   }
 
   const db = getAdminSupabase()
+  if (!allNumbersFinite(finalDocument)) throw new Error('Quote exceeds supported pricing limits.')
   const { data, error } = await db.rpc(initializeAccepted ? 'correct_accepted_remote_quote' : 'revise_final_quote_document', {
     p_quote_ref: quoteRef,
     ...(initializeAccepted ? { p_expected_updated_at: expectedUpdatedAt } : { p_expected_document_version: expectedDocumentVersion }),

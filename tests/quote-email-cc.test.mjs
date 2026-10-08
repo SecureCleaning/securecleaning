@@ -360,6 +360,7 @@ async function publicQuoteFixture(options = {}) {
   const calls = []
   class ClientCrmError extends Error {}
   const { POST } = loadTs('src/app/api/quote/route.ts', {
+    '@/lib/securityInput': await import('../src/lib/securityInput.ts'),
     '@/lib/quoteSmsNotice': { QUOTE_SMS_NOTICE_VERSION: '2026-10-06' },
     '@/lib/quoteSmsRequest': {
       recordQuoteSmsRequest: async input => { calls.push(['permission', input]); if(options.permissionError) throw new Error('Unavailable'); return true },

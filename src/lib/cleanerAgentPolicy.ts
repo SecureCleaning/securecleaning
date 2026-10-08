@@ -21,6 +21,7 @@ export function toAgentCleanerEmailHistory(email: CleanerEmail): AgentCleanerEma
     final_html_snapshot: email.final_html_snapshot,
     to_email: email.to_email,
     status: email.status,
+    delivery_outcome: email.delivery_outcome,
     template_name: email.template_name,
     created_at: email.created_at,
     sent_at: email.sent_at,

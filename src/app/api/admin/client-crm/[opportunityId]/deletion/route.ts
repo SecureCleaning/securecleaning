@@ -47,7 +47,7 @@ export async function DELETE(
 ) {
   const params = await props.params
   if (!await isAuthorizedAdminRequest(request, 'owner')) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-  const blockedRequest = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
+  const blockedRequest = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 4 * 1024)
   if (blockedRequest) return blockedRequest
 
   try {

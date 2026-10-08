@@ -1,3 +1,4 @@
+import { rejectLargePayload } from '@/lib/abuseProtection'
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, rejectCrossOriginMutation } from '@/lib/abuseProtection'
 import { CLEANER_PORTAL_COOKIE, verifyCleanerPortalToken } from '@/lib/cleanerPortalAccess'
@@ -14,6 +15,9 @@ export async function POST(request: NextRequest) {
   if (!claims) return NextResponse.json({ success: false, error: 'Your access link is invalid or has expired.' }, { status: 401 })
   const contentLength = Number(request.headers.get('content-length') ?? 0)
   if (Number.isFinite(contentLength) && contentLength > maxBytes + 64 * 1024) return NextResponse.json({ success: false, error: 'File must be 10 MB or less.' }, { status: 413 })
+
+  const oversized = await rejectLargePayload(request, 10 * 1024 * 1024 + 64 * 1024)
+  if (oversized) return oversized
 
   try {
     const form = await request.formData()

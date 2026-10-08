@@ -4,7 +4,7 @@ import { rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtec
 import { migrateAvailabilityAgentsToStaffAccounts } from '@/lib/staffAgentMigration'
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 4 * 1024)
   if (blocked) return blocked
   if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })

@@ -7,7 +7,6 @@ import {
   getAvailabilityAssignee,
   getAvailabilityConfig,
 } from '@/lib/availability'
-import { verifyAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
 
 export const AVAILABILITY_AGENT_SESSION_COOKIE = 'securecleaning_availability_agent_session'
 export const AVAILABILITY_AGENT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
@@ -184,11 +183,9 @@ export async function isAuthorizedAvailabilityAgentRequest(request: NextRequest,
 
   if (!assignee.accessCodeHash) return false
 
-  const headerCode = request.headers.get('x-availability-access-code')
   const sessionToken = request.cookies.get(AVAILABILITY_AGENT_SESSION_COOKIE)?.value
 
   if (
-    verifyAvailabilityAccessCode(normalize(headerCode), assignee.accessCodeHash) ||
     isValidAvailabilityAgentSessionToken(sessionToken, assigneeId, assignee.accessCodeHash)
   ) return true
 

@@ -14,22 +14,36 @@ const agentId = '33333333-3333-4333-8333-333333333333'
 const owner = { id: ownerId, username: 'owner', role: 'owner' }
 const draft = { cleanerId: '22222222-2222-4222-8222-222222222222', state: 'NSW', subject: 'Test cleaner email', body: 'Authorised test', actor: { id: 'assignee-test', username: 'nsw-agent', role: 'availability_agent' } }
 function backend(options = {}) {
-  const calls = []; const sent = []; let archived
+  const calls = []; const sent = []; const providerHeaders = []; let archived
   const accounts = [
     { id: ownerId, username: 'owner', active: true, email: 'owner@securecleaning.com.au', role: 'owner', display_name: 'Owner Name', job_title: 'Owner', phone: '0400000000' },
     { id: agentId, username: 'agent', active: true, email: 'agent@securecleaning.com.au', role: 'agent', display_name: 'Agent Name', job_title: 'Regional Agent', phone: '0400000001', availability_assignee_id: 'assignee-test', ...options.account },
   ]
-  return { calls, sent, accounts, get archived() { return archived }, fetch: async (input, init = {}) => {
+  return { calls, sent, providerHeaders, accounts, get archived() { return archived }, fetch: async (input, init = {}) => {
     const url = new URL(String(input)); calls.push(url.pathname)
     const table = url.pathname.split('/').pop()
     const body = init.body ? JSON.parse(init.body) : null
     let data
-    if (url.hostname === 'api.resend.com') { sent.push(body); data = { id: 'provider-id' } }
+    if (url.hostname === 'api.resend.com') {
+      sent.push(body)
+      providerHeaders.push(new Headers(init.headers))
+      if (options.networkFailure) throw new Error('Lost provider response')
+      if (options.rejectOnce && sent.length === 1) return new Response(JSON.stringify({ name: 'validation_error', message: 'Rejected' }), { status: 422, headers: { 'Content-Type': 'application/json' } })
+      data = options.missingConfirmation ? {} : { id: 'provider-id' }
+    }
     else if (table === 'cleaners') data = { id: draft.cleanerId, email: 'cleaner@example.test', contact_name: 'Test Cleaner', business_name: 'Test Company', state: 'NSW', services: [] }
     else if (table === 'availability_private_config') data = { content: JSON.stringify({ assignees: [{ id: 'assignee-test', name: 'NSW Agent', city: 'sydney', active: true, email: 'legacy@example.test', ...options.assignee }] }) }
     else if (table === 'admin_staff_accounts') data = url.searchParams.has('id') ? accounts.find(a => 'eq.' + a.id === url.searchParams.get('id')) : accounts
-    else if (table === 'cleaner_emails' && init.method === 'POST') { archived = body; data = { ...body, id: 'email-id' } }
-    else if (table === 'cleaner_emails' && init.method === 'PATCH') data = { ...archived, ...body, id: 'email-id' }
+    else if (table === 'cleaner_emails' && init.method === 'POST') {
+      if (archived && (archived.individual_delivery_key === body.individual_delivery_key || ['sending', 'unknown'].includes(archived.delivery_outcome))) return new Response(JSON.stringify({ code: '23505', message: 'Duplicate reservation' }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+      archived = { ...body, id: 'email-id' }; data = archived
+    }
+    else if (table === 'cleaner_emails' && init.method === 'PATCH') {
+      if (options.finalizeFailure) return new Response(JSON.stringify({ message: 'Persistence failed' }), { status: 500, headers: { 'Content-Type': 'application/json' } })
+      if (url.searchParams.get('delivery_outcome') !== 'eq.' + archived.delivery_outcome) data = null
+      else { archived = { ...archived, ...body }; data = archived }
+    }
+    else if (table === 'cleaner_emails' && url.searchParams.has('individual_delivery_key')) data = url.searchParams.get('individual_delivery_key') === 'eq.' + archived?.individual_delivery_key ? archived : null
     else if (table === 'admin_audit_log') data = null
     else if (['cleaner_comments', 'cleaner_emails', 'cleaner_documents'].includes(table)) data = []
     else throw new Error(`Unexpected request: ${table}`)
@@ -94,4 +108,85 @@ test('individual provider payload and archived snapshots match signed preview HT
     assert.equal(mock.archived.final_html_snapshot, preview.html)
     assert.equal(mock.archived.final_text_snapshot, preview.text)
   } finally { globalThis.fetch = saved }
+})
+
+for (const scenario of ['accepted', 'networkFailure', 'finalizeFailure', 'missingConfirmation']) {
+  test(`individual ${scenario} delivery cannot be blindly resent on manual retry`, async () => {
+    const saved = globalThis.fetch; const mock = backend({ [scenario]: true }); globalThis.fetch = mock.fetch
+    try {
+      const preview = await previewCleanerEmail(draft)
+      const input = { ...draft, previewFingerprint: preview.previewFingerprint }
+      if (scenario === 'accepted') {
+        await sendCleanerEmail(input)
+        await sendCleanerEmail(input)
+        assert.equal(mock.archived.delivery_outcome, 'sent')
+      } else {
+        await assert.rejects(sendCleanerEmail(input), /may already have occurred/)
+        await assert.rejects(sendCleanerEmail(input), /may already have occurred/)
+        assert.equal(mock.archived.delivery_outcome, scenario === 'finalizeFailure' ? 'sending' : 'unknown')
+      }
+      assert.equal(mock.sent.length, 1)
+    } finally { globalThis.fetch = saved }
+  })
+}
+test('definite provider rejection permits manual retry of the same reservation', async () => {
+  const saved = globalThis.fetch; const mock = backend({ rejectOnce: true }); globalThis.fetch = mock.fetch
+  try {
+    const preview = await previewCleanerEmail(draft)
+    const input = { ...draft, previewFingerprint: preview.previewFingerprint }
+    await assert.rejects(sendCleanerEmail(input), /Provider rejected/)
+    assert.equal(mock.archived.delivery_outcome, 'failed')
+    await sendCleanerEmail(input)
+    assert.equal(mock.archived.delivery_outcome, 'sent')
+    assert.equal(mock.sent.length, 2)
+    assert.equal(mock.providerHeaders[0].get('Idempotency-Key'), 'cleaner-email/email-id')
+    assert.equal(mock.providerHeaders[1].get('Idempotency-Key'), mock.providerHeaders[0].get('Idempotency-Key'))
+    assert.equal(mock.providerHeaders[0].get('Authorization'), 'Bearer test-resend-key')
+  } finally { globalThis.fetch = saved }
+})
+test('concurrent individual sends share a single durable reservation', async () => {
+  const saved = globalThis.fetch; const mock = backend(); globalThis.fetch = mock.fetch
+  try {
+    const preview = await previewCleanerEmail(draft)
+    const input = { ...draft, previewFingerprint: preview.previewFingerprint }
+    await Promise.allSettled([sendCleanerEmail(input), sendCleanerEmail(input)])
+    assert.equal(mock.sent.length, 1)
+  } finally { globalThis.fetch = saved }
+})
+
+test('new composition can intentionally send identical content after confirmed delivery', async () => {
+  const saved = globalThis.fetch; const mock = backend(); globalThis.fetch = mock.fetch
+  try {
+    const preview = await previewCleanerEmail(draft)
+    const input = { ...draft, previewFingerprint: preview.previewFingerprint, requestId: '12345678-1234-4123-8123-123456789012' }
+    await sendCleanerEmail(input)
+    await sendCleanerEmail(input)
+    assert.equal(mock.sent.length, 1)
+    await sendCleanerEmail({ ...input, requestId: '12345678-1234-4123-8123-123456789013' })
+    assert.equal(mock.sent.length, 2)
+  } finally { globalThis.fetch = saved }
+})
+test('a new request ID cannot bypass an uncertain matching draft', async () => {
+  const saved = globalThis.fetch; const mock = backend({ networkFailure: true }); globalThis.fetch = mock.fetch
+  try {
+    const preview = await previewCleanerEmail(draft)
+    const input = { ...draft, previewFingerprint: preview.previewFingerprint, requestId: '12345678-1234-4123-8123-123456789012' }
+    await assert.rejects(sendCleanerEmail(input), /may already have occurred/)
+    await assert.rejects(sendCleanerEmail({ ...input, requestId: '12345678-1234-4123-8123-123456789013' }), /may already have occurred/)
+    assert.equal(mock.sent.length, 1)
+  } finally { globalThis.fetch = saved }
+})
+
+test('composer retains opaque request across retries/reload and renews only after acknowledgement', async () => {
+  const { individualEmailRequestId, completeIndividualEmailRequest } = await import('../src/lib/individualEmailRequest.ts')
+  const saved = globalThis.localStorage
+  const values = new Map()
+  globalThis.localStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }
+  try {
+    const first = individualEmailRequestId('opaque-fingerprint')
+    assert.equal(individualEmailRequestId('opaque-fingerprint'), first)
+    assert.equal(values.size, 1)
+    completeIndividualEmailRequest('opaque-fingerprint')
+    assert.notEqual(individualEmailRequestId('opaque-fingerprint'), first)
+  } finally { globalThis.localStorage = saved }
 })

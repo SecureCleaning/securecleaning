@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 12 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 12 * 1024)
   if (blocked) return blocked
   if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 12 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 12 * 1024)
   if (blocked) return blocked
   if (!await isAuthorizedAdminRequest(request, 'owner')) {
     return NextResponse.json({ success: false, error: 'Owner access required.' }, { status: 403 })

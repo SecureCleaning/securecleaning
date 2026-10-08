@@ -1,5 +1,7 @@
 'use client'
 
+import { individualEmailRequestId, completeIndividualEmailRequest } from '@/lib/individualEmailRequest'
+
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
 import CleanerEmailDetails from '@/components/admin/CleanerEmailDetails'
@@ -1088,7 +1090,8 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
   }
 
   async function sendEmail() {
-    if (!selectedCleaner) return
+    const fingerprint = emailPreview?.previewFingerprint
+    if (!selectedCleaner || !fingerprint) return
     setIsSending(true)
     setStatus({ type: 'idle', message: '' })
 
@@ -1099,7 +1102,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
           'Content-Type': 'application/json',
           ...getAdminHeaders(),
         },
-        body: JSON.stringify({ ...emailDraft, senderStaffId, previewFingerprint: emailPreview?.previewFingerprint }),
+        body: JSON.stringify({ ...emailDraft, senderStaffId, requestId: individualEmailRequestId(fingerprint), previewFingerprint: emailPreview?.previewFingerprint }),
       })
 
       const result = await response.json()
@@ -1109,6 +1112,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
 
       setSelectedDetail((current) => current ? { ...current, emails: [result.email as CleanerEmail, ...current.emails] } : current)
       setEmailPreview(null)
+      completeIndividualEmailRequest(fingerprint)
       setStatus({ type: 'success', message: 'Email sent and logged.' })
     } catch (error) {
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to send email.' })

@@ -1,3 +1,4 @@
+import * as ics from '../src/lib/ics.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -7,12 +8,12 @@ import * as ts from 'typescript'
 const require = createRequire(import.meta.url)
 const source = ts.transpileModule(readFileSync(new URL('../src/lib/email.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
 const calendar = {}
-vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/calendarInvite.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: calendar })
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/calendarInvite.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: calendar, require: name => name === '@/lib/ics' ? ics : {} })
 const email = {}
 vm.runInNewContext(source, {
   exports: email,
   require: name => name === 'resend' ? require('resend') : name === './siteUrl' ? { getSiteUrl: () => 'https://example.test' } : name === './calendarInvite' ? calendar : name === '@/lib/htmlEscape' ? { escapeHtml: value => String(value ?? '') } : {},
-  Buffer,
+  Buffer, Headers,
   process: { env: { RESEND_API_KEY: 're_synthetic_test_key' } }, console,
 })
 test('both email helpers send reply-to through the installed SDK using the provider field name', async () => {
@@ -70,7 +71,7 @@ test('booking email attachment survives provider Base64 decoding with correct ca
     assert.equal(attachment.content_type, 'text/calendar')
     assert.equal('contentType' in attachment, false)
     assert.ok(decoded.startsWith('BEGIN:VCALENDAR\r\n'))
-    assert.ok(decoded.endsWith('END:VCALENDAR'))
+    assert.ok(decoded.endsWith('END:VCALENDAR\r\n'))
     assert.match(decoded, /Booking reference: BK-TEST-ENCODING/)
     assert.match(decoded, /DTSTART:20261020T000000Z/)
     assert.match(decoded, /DTEND:20261020T001000Z/)
@@ -84,5 +85,19 @@ test('SDK network failures are uncertain rather than definitive rejections', asy
   try {
     globalThis.fetch = async () => { throw new Error('synthetic timeout') }
     await assert.rejects(email.sendEmailOrThrow({to:'test@example.test'}), error => !(error instanceof email.EmailProviderRejectedError) && /uncertain/.test(error.message))
+  } finally { globalThis.fetch = saved }
+})
+
+test('idempotency transport header preserves auth and stays out of email headers', async () => {
+  const saved = globalThis.fetch
+  try {
+    globalThis.fetch = async (_, options) => {
+      const headers = new Headers(options.headers)
+      assert.equal(headers.get('Authorization'), 'Bearer re_synthetic_test_key')
+      assert.equal(headers.get('Idempotency-Key'), 'cleaner-email/reserved-id')
+      assert.equal(JSON.parse(options.body).headers, undefined)
+      return new Response('{"id":"test"}', { headers: { 'Content-Type': 'application/json' } })
+    }
+    await email.sendEmailOrThrow({ to: 'test@example.test' }, { idempotencyKey: 'cleaner-email/reserved-id' })
   } finally { globalThis.fetch = saved }
 })

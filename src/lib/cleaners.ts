@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
+import { validateDocumentContent } from '@/lib/documentContent'
 import { csvCell } from '@/lib/csvCell'
 import { getAdminSupabase } from '@/lib/supabase'
-import { sendEmailWithResult } from '@/lib/email'
+import { sendEmailOrThrow, EmailProviderRejectedError } from '@/lib/email'
 import { writeAuditLog } from '@/lib/auditLog'
 import type { AdminSessionIdentity } from '@/lib/adminAuth'
 import { toAgentCleanerEmailHistory } from '@/lib/cleanerAgentPolicy'
@@ -174,10 +176,10 @@ export type AgentCleanerDetail = {
 
 export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'suburb' | 'state' | 'status'>
 export type AgentCleanerRecord = CleanerRecord
-export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'template_name' | 'created_at' | 'sent_at' | 'final_html_snapshot' | 'to_email'>
+export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'delivery_outcome' | 'template_name' | 'created_at' | 'sent_at' | 'final_html_snapshot' | 'to_email'>
 
 const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, suburb, state, status'
-const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at, final_html_snapshot, to_email'
+const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, delivery_outcome, template_name, created_at, sent_at, final_html_snapshot, to_email'
 
 const CLEANER_SELECT =
   'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
@@ -830,8 +832,7 @@ export async function uploadCleanerDocument(payload: {
   actor: CleanerAuditActor
 }) {
   const documentType = isCleanerDocumentType(payload.documentType) ? payload.documentType : 'other'
-  const fileName = sanitizeFileName(payload.fileName)
-  const contentType = cleanString(payload.contentType, 120) || 'application/octet-stream'
+  const { fileName, contentType, sizeBytes } = validateDocumentContent(payload.data, payload.fileName, payload.contentType)
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
   const storagePath = `${payload.cleanerId}/${timestamp}-${fileName}`
   const db = getAdminSupabase()
@@ -855,7 +856,7 @@ export async function uploadCleanerDocument(payload: {
       file_name: fileName,
       storage_path: storagePath,
       content_type: contentType,
-      size_bytes: payload.sizeBytes,
+      size_bytes: sizeBytes,
       expiry_date: payload.expiryDate || null,
       notes: nullableString(payload.notes, 500),
       uploaded_by: payload.actor.username,
@@ -995,6 +996,7 @@ type CleanerEmailInput = {
   body: string
   bodyHtml?: string
   bodyDocument?: Record<string, unknown> | null
+  requestId?: string
   previewFingerprint?: string
   senderStaffId?: string
   actor: CleanerAuditActor
@@ -1073,9 +1075,16 @@ export async function sendCleanerEmail(payload: CleanerEmailInput) {
 
   if (payload.state) await assertCleanerInState(cleaner.id, payload.state)
 
-  const { data: emailRow, error: insertError } = await db
+  // The server-recomputed preview fingerprint identifies the exact actor, recipient, sender and rendered message.
+  // A unique reservation survives response loss and prevents concurrent duplicate sends.
+  if (payload.requestId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.requestId)) throw new Error('Invalid email request.')
+  const deliveryKey = payload.requestId ? createHash('sha256').update(JSON.stringify([payload.actor.id, payload.requestId, previewFingerprint])).digest('hex') : previewFingerprint
+  let { data: emailRow, error: insertError } = await db
     .from('cleaner_emails')
     .insert({
+      individual_delivery_key: deliveryKey,
+      individual_draft_fingerprint: previewFingerprint,
+      delivery_outcome: 'sending',
       cleaner_id: cleaner.id,
       template_id: payload.templateId || null,
       template_name: payload.templateName || null,
@@ -1092,47 +1101,46 @@ export async function sendCleanerEmail(payload: CleanerEmailInput) {
     .select(EMAIL_SELECT)
     .single()
 
-  if (insertError) throw insertError
-
-  try {
-    const response = await sendEmailWithResult({
-      from,
-      to: cleaner.email,
-      cc: senderEmail,
-      replyTo: senderEmail,
-      subject,
-      html: finalHtml,
-      text: finalText,
-    })
-
-    const providerMessageId = getProviderMessageId(response)
-    const { data: sentRow, error: updateError } = await db
-      .from('cleaner_emails')
-      .update({
-        status: 'sent',
-        provider_message_id: providerMessageId,
-        sent_at: new Date().toISOString(),
-      })
-      .eq('id', emailRow.id)
-      .select(EMAIL_SELECT)
-      .single()
-
-    if (updateError) throw updateError
-    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.sent', withActorDetails(payload.actor, { emailId: sentRow.id, providerMessageId }))
-    return sentRow as CleanerEmail
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Email send failed.'
-    await db
-      .from('cleaner_emails')
-      .update({
-        status: 'failed',
-        error_message: message,
-      })
-      .eq('id', emailRow.id)
-
-    await writeAuditLog('cleaner', cleaner.id, 'cleaner.email.failed', withActorDetails(payload.actor, { emailId: emailRow.id, error: message }))
-    throw error
+  const uncertain = 'Delivery may already have occurred. Check email history and provider activity before sending another copy.'
+  if (insertError?.code === '23505') {
+    const { data: existing, error } = await db.from('cleaner_emails').select(EMAIL_SELECT)
+      .eq('individual_delivery_key', deliveryKey).single()
+    if (error || !existing) throw new Error(uncertain)
+    if (existing.delivery_outcome === 'sent') return existing as CleanerEmail
+    if (existing.delivery_outcome !== 'failed') throw new Error(uncertain)
+    // Only a definitive provider rejection can be retried; claim it atomically.
+    const retry = await db.from('cleaner_emails').update({ delivery_outcome: 'sending', status: 'draft', error_message: null })
+      .eq('id', existing.id).eq('delivery_outcome', 'failed').select(EMAIL_SELECT).maybeSingle()
+    if (retry.error || !retry.data) throw new Error(uncertain)
+    emailRow = retry.data
+    insertError = null
   }
+  if (insertError) throw insertError
+  if (!emailRow) throw new Error('Unable to reserve this email.')
+
+  let outcome: 'sent' | 'failed' | 'unknown' = 'sent'
+  let providerMessageId: string | null = null
+  try {
+    const response = await sendEmailOrThrow({ from, to: cleaner.email, cc: senderEmail, replyTo: senderEmail, subject, html: finalHtml, text: finalText }, { idempotencyKey: `cleaner-email/${emailRow.id}` })
+    providerMessageId = getProviderMessageId(response)
+    if (!providerMessageId) throw new Error('Missing provider confirmation.')
+  } catch (error) {
+    outcome = error instanceof EmailProviderRejectedError &&
+      ['validation_error', 'missing_required_field', 'invalid_access', 'invalid_api_key', 'rate_limit_exceeded'].includes(error.providerErrorName || '')
+      ? 'failed' : 'unknown'
+  }
+  // Persistence and audit errors must never convert accepted delivery into retryable failure.
+  const { data: completed, error: completionError } = await db.from('cleaner_emails').update({
+    delivery_outcome: outcome,
+    status: outcome === 'sent' ? 'sent' : outcome === 'failed' ? 'failed' : 'draft',
+    provider_message_id: providerMessageId,
+    sent_at: outcome === 'sent' ? new Date().toISOString() : null,
+    error_message: outcome === 'unknown' ? uncertain : outcome === 'failed' ? 'Provider rejected this email. Correct the issue before retrying.' : null,
+  }).eq('id', emailRow.id).eq('delivery_outcome', 'sending').select(EMAIL_SELECT).single()
+  if (completionError || !completed) throw new Error(uncertain)
+  await writeAuditLog('cleaner', cleaner.id, `cleaner.email.${outcome}`, withActorDetails(payload.actor, { emailId: emailRow.id, providerMessageId }))
+  if (outcome !== 'sent') throw new Error(completed.error_message || uncertain)
+  return completed as CleanerEmail
 }
 
 export async function sendCleanerEmailForState(payload: {
@@ -1143,6 +1151,7 @@ export async function sendCleanerEmailForState(payload: {
   body: string
   bodyHtml?: string
   bodyDocument?: Record<string, unknown> | null
+  requestId?: string
   previewFingerprint?: string
   senderStaffId?: string
   actor: CleanerAuditActor
@@ -1168,6 +1177,7 @@ export async function sendCleanerEmailForState(payload: {
     body: payload.body,
     bodyHtml: payload.bodyHtml,
     bodyDocument: payload.bodyDocument,
+    requestId: payload.requestId,
     previewFingerprint: payload.previewFingerprint,
     senderStaffId: payload.senderStaffId,
     actor: payload.actor,

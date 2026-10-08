@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, MAX_SITE_PAYLOAD_BYTES)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, MAX_SITE_PAYLOAD_BYTES)
   if (blocked) return blocked
 
   if (!await isAuthorizedAdminRequest(request, 'manager')) {
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, MAX_SITE_PAYLOAD_BYTES)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, MAX_SITE_PAYLOAD_BYTES)
   if (blocked) return blocked
 
   if (!await isAuthorizedAdminRequest(request, 'manager')) {

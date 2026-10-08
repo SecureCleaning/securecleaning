@@ -1,3 +1,4 @@
+import { escapeIcsText, serializeIcs } from '@/lib/ics'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
@@ -21,13 +22,6 @@ function toUtcIcsDate(date: Date) {
   ].join('')
 }
 
-function escapeIcsText(value: string) {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\n/g, '\\n')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-}
 
 export async function GET(
   request: NextRequest,
@@ -52,7 +46,7 @@ export async function GET(
   const events = (await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: false }))
     .filter((event) => event.kind === 'booking' || event.kind === 'sale_inspection' || event.kind === 'blockout')
 
-  const body = [
+  const body = serializeIcs([
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Secure Cleaning//Agent Feed//EN',
@@ -75,7 +69,7 @@ export async function GET(
       ]
     }),
     'END:VCALENDAR',
-  ].join('\r\n')
+  ])
 
   return new NextResponse(body, {
     status: 200,

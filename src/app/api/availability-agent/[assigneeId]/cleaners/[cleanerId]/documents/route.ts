@@ -1,3 +1,4 @@
+import { rejectLargePayload } from '@/lib/abuseProtection'
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, rejectCrossOriginMutation } from '@/lib/abuseProtection'
 import { getCleanerAgentContext } from '@/lib/cleanerAgentAccess'
@@ -19,6 +20,9 @@ export async function POST(
   if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   const throttled = await rateLimit(request, { key: `agent-cleaner-document:${context.assignee.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
   if (throttled) return throttled
+
+  const oversized = await rejectLargePayload(request, 10 * 1024 * 1024 + 64 * 1024)
+  if (oversized) return oversized
 
   try {
     const formData = await request.formData()

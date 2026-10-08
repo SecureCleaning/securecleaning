@@ -7,7 +7,7 @@ import { isQuoteReference } from '@/lib/quoteReference'
 
 export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {
   const params = await props.params
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 1024)
     ?? (await rateLimit(request, { key: 'quote-share:hour', limit: 30, windowMs: 3600000 }))
   if (blocked) return blocked
   if (!isQuoteReference(params.ref) || !await canStaffAccessQuote(params.ref, true))

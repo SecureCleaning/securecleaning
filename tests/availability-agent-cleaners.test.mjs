@@ -42,7 +42,7 @@ test('agent email response removes sensitive provider and message fields', () =>
     status: 'sent', template_name: 'Welcome', provider_message_id: 'provider-secret', error_message: 'private error',
     sent_at: '2026-08-14T00:00:00Z', created_at: '2026-08-14T00:00:00Z',
   })
-  assert.deepEqual(Object.keys(projected).sort(), ['created_at', 'final_html_snapshot', 'id', 'sent_at', 'status', 'subject', 'template_name', 'to_email'])
+  assert.deepEqual(Object.keys(projected).sort(), ['created_at', 'delivery_outcome', 'final_html_snapshot', 'id', 'sent_at', 'status', 'subject', 'template_name', 'to_email'])
   for (const field of ['body', 'provider_message_id', 'error_message']) assert.equal(field in projected, false)
   assert.equal(projected.final_html_snapshot, '<p>Archived</p>')
   assert.equal(projected.to_email, 'private@example.com')
@@ -91,7 +91,7 @@ test('agent responses expose full regional cleaner records while keeping email h
   const cleaners = read('src/lib/cleaners.ts')
   assert.match(cleaners, /AGENT_CLEANER_LIST_SELECT/)
   assert.match(cleaners, /AGENT_CLEANER_DETAIL_SELECT/)
-  assert.match(cleaners, /AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, template_name, created_at, sent_at, final_html_snapshot, to_email'/)
+  assert.match(cleaners, /AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, delivery_outcome, template_name, created_at, sent_at, final_html_snapshot, to_email'/)
   const emailRoute = read('src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/email/route.ts')
   const commentRoute = read('src/app/api/availability-agent/[assigneeId]/cleaners/[cleanerId]/comments/route.ts')
   assert.ok(emailRoute.indexOf('getCleanerAgentContext') < emailRoute.indexOf('rateLimit(request'))

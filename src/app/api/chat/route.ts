@@ -1,7 +1,7 @@
+import { validChatInput } from '@/lib/securityInput'
 import { NextRequest } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import {
-  limitString,
   rateLimit,
   rejectCrossOriginMutation,
   rejectLargePayload,
@@ -46,34 +46,17 @@ export async function POST(request: NextRequest) {
   try {
     const blocked =
       rejectCrossOriginMutation(request) ??
-      rejectLargePayload(request, 32 * 1024) ??
+      await rejectLargePayload(request, 32 * 1024) ??
       await rateLimit(request, { key: 'chat:minute', limit: 6, windowMs: 60 * 1000 }) ??
       await rateLimit(request, { key: 'chat:day', limit: 40, windowMs: 24 * 60 * 60 * 1000 })
 
     if (blocked) return blocked
 
-    const { messages, sessionToken } = await request.json()
-
-    if (!Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: 'messages array required' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    const body = await request.json().catch(() => null)
+    if (!validChatInput(body)) {
+      return Response.json({ error: 'Invalid chat messages. Please start a new chat.' }, { status: 400 })
     }
-
-    if (messages.length > 12) {
-      return new Response(JSON.stringify({ error: 'Please start a new chat before continuing.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (messages.some((msg: { content?: unknown }) => limitString(msg.content, 1200))) {
-      return new Response(JSON.stringify({ error: 'Message is too long.' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
+    const { messages } = body
 
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) {

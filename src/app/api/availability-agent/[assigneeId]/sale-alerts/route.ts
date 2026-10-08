@@ -105,7 +105,7 @@ export async function POST(
   request: NextRequest,
   context: { params: Promise<{ assigneeId: string }> }
 ) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 8 * 1024)
   if (blocked) return blocked
   const { assigneeId } = await context.params
   const limited = await rateLimit(request, { key: `availability-agent-sale-alert-dismiss:${assigneeId}:minute`, limit: 30, windowMs: 60 * 1000 })

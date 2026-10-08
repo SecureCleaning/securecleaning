@@ -1,3 +1,4 @@
+import { escapeIcsText, serializeIcs } from '@/lib/ics'
 import type { BookingInputs } from './types'
 
 const TIME_ZONE = 'Australia/Melbourne'
@@ -20,13 +21,6 @@ function toUtcIcsDate(date: Date): string {
   ].join('')
 }
 
-function escapeIcsText(value: string): string {
-  return value
-    .replace(/\\/g, '\\\\')
-    .replace(/\n/g, '\\n')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-}
 
 export function getCityTimeZone(city: BookingInputs['city']): string {
   return city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
@@ -122,14 +116,14 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
       : 'This is a provisional inspection appointment selected within the published appointment window. Travel time between inspection appointments is reserved. Secure Cleaning will confirm the exact inspection time as soon as possible.',
   ].join('\n')
 
-  return [
+  return serializeIcs([
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Secure Cleaning//Booking Hold//EN',
     'CALSCALE:GREGORIAN',
     'METHOD:REQUEST',
     'BEGIN:VEVENT',
-    `UID:${bookingRef.toLowerCase()}@securecleaning.com.au`,
+    `UID:${escapeIcsText(bookingRef.toLowerCase())}@securecleaning.com.au`,
     `DTSTAMP:${toUtcIcsDate(new Date())}`,
     `DTSTART:${toUtcIcsDate(start)}`,
     `DTEND:${toUtcIcsDate(end)}`,
@@ -141,5 +135,5 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     `X-WR-TIMEZONE:${timeZone || TIME_ZONE}`,
     'END:VEVENT',
     'END:VCALENDAR',
-  ].join('\r\n')
+  ])
 }

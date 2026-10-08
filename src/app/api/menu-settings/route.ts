@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 16384)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 16384)
   if (blocked) return blocked
   try {
     const actor = await getMenuSettingsActor(await getAdminSessionIdentityFromRequest(request))

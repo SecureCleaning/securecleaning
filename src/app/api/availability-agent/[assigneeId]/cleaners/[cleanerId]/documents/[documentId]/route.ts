@@ -1,3 +1,4 @@
+import { documentDownloadHeaders } from '@/lib/documentContent'
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, rejectCrossOriginMutation } from '@/lib/abuseProtection'
 import { getCleanerAgentContext } from '@/lib/cleanerAgentAccess'
@@ -15,10 +16,7 @@ export async function GET(
   try {
     const { document, file } = await downloadCleanerDocumentForState(params.cleanerId, params.documentId, context.state)
     return new Response(file, {
-      headers: {
-        'Content-Type': document.content_type || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${document.file_name.replace(/"/g, '')}"`,
-      },
+      headers: documentDownloadHeaders(document.file_name),
     })
   } catch {
     return NextResponse.json({ success: false, error: 'Document not found.' }, { status: 404 })

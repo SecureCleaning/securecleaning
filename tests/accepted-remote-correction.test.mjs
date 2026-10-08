@@ -7,6 +7,8 @@ function fixture(role='owner', quoteOverrides={}) {
  const writes=[]
  const quote={status:'accepted',firmQuoteDraft:{status:'accepted'},inputs:{},workflowColumnsAvailable:true,finalDocument:null,...quoteOverrides}
  const mocks={
+ '@/lib/securityInput': { validWorkflowInput: () => true },
+ '@/lib/abuseProtection': { rejectLargePayload: async () => null },
  'next/server':{NextResponse:{json:(body,options={})=>({body,status:options.status??200})}},
  '@/lib/adminAuth':{isAuthorizedAdminRequest:async(_,required)=>required?role===required:!!role,getAdminSessionIdentityFromRequest:async()=>role?{id:'owner',username:'Owner',role}:null},
  '@/lib/quoteWorkflowData':{getQuoteWorkflowByRef:async()=>quote,QuoteWorkflowConflictError:class extends Error{},reviseQuoteWorkflowByRef:async(...args)=>{writes.push(args);return{version:1}},saveQuoteWorkflowByRef:async()=>{throw Error('normal save must not run')},reviewQuoteWorkflowByRef:async()=>{throw Error('normal review must not run')}},

@@ -3,7 +3,7 @@ import { rateLimit, rejectLargePayload } from '@/lib/abuseProtection'
 import { unsubscribeCrmContact } from '@/lib/clientCrmEmail'
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectLargePayload(request, 2 * 1024)
+  const blocked = await rejectLargePayload(request, 2 * 1024)
     ?? await rateLimit(request, { key: 'crm-unsubscribe', limit: 20, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
 

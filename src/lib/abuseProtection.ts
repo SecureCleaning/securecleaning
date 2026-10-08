@@ -1,3 +1,4 @@
+import { boundRequestBody } from '@/lib/boundedBody'
 import { getAdminSupabase } from '@/lib/supabase'
 import { isIP } from 'node:net'
 import { NextRequest, NextResponse } from 'next/server'
@@ -37,15 +38,18 @@ export function getClientFingerprint(request: NextRequest) {
   return hash(getClientIp(request))
 }
 
-export function rejectLargePayload(request: NextRequest, maxBytes: number) {
+export async function rejectLargePayload(request: NextRequest, maxBytes: number) {
   const contentLength = Number(request.headers.get('content-length') ?? 0)
   if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    return NextResponse.json(
-      { success: false, error: 'Request is too large.' },
-      { status: 413 }
-    )
+    await request.body?.cancel().catch(() => undefined)
+    return NextResponse.json({ success: false, error: 'Request is too large.' }, { status: 413 })
   }
-  return null
+  try {
+    await boundRequestBody(request, maxBytes)
+    return null
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof RangeError ? 'Request is too large.' : 'Invalid request body.' }, { status: error instanceof RangeError ? 413 : 400 })
+  }
 }
 
 export function rejectCrossOriginMutation(request: NextRequest) {

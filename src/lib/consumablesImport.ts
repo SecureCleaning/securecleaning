@@ -1,4 +1,4 @@
-import ExcelJS from 'exceljs'
+import { readXlsxRows } from '@/lib/xlsxSafety'
 import { MAX_CONSUMABLE_PRODUCTS, slugifyConsumable, type ConsumableProduct } from '@/lib/consumablesShared'
 
 export type ConsumablesImportPreview = {
@@ -24,15 +24,6 @@ const HEADER_ALIASES: Record<string, string[]> = {
 
 function normalized(value: unknown) {
   return String(value ?? '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')
-}
-
-function cellValue(cell: ExcelJS.Cell): string | number | boolean | null {
-  const value = cell.value
-  if (value && typeof value === 'object') {
-    if ('result' in value && (typeof value.result === 'string' || typeof value.result === 'number' || typeof value.result === 'boolean')) return value.result
-    if ('text' in value && typeof value.text === 'string') return value.text
-  }
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? value : null
 }
 
 function numberValue(value: unknown) {
@@ -65,10 +56,12 @@ function parseCsv(input: string): Row[] {
     }
     if (character === '"') quoted = true
     else if (character === ',') {
+      if (row.length >= 64) throw new Error('Spreadsheet has too many columns.')
       row.push(field)
       field = ''
     } else if (character === '\n') {
       row.push(field.replace(/\r$/, ''))
+      if (rows.length >= 2000) throw new Error('Spreadsheet has too many rows.')
       rows.push(row)
       row = []
       field = ''
@@ -76,32 +69,17 @@ function parseCsv(input: string): Row[] {
   }
   row.push(field.replace(/\r$/, ''))
   if (row.some((value) => String(value).trim())) rows.push(row)
+  if (rows.length > 2000 || rows.some((entry) => entry.length > 64)) throw new Error('Spreadsheet dimensions exceed import limits.')
   return rows
 }
 
 async function readRows(file: File): Promise<{ rows: Row[]; formulas: Map<string, string> }> {
   const formulas = new Map<string, string>()
-  if (file.name.toLowerCase().endsWith('.csv') || file.type === 'text/csv') {
+  if (file.name.toLowerCase().endsWith('.csv')) {
     return { rows: parseCsv(await file.text()), formulas }
   }
-  const workbook = new ExcelJS.Workbook()
-  await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()) as never)
-  const worksheet = workbook.worksheets[0]
-  if (!worksheet) throw new Error('The workbook does not contain a worksheet.')
-  const rows: Row[] = []
-  worksheet.eachRow({ includeEmpty: true }, (sourceRow, rowNumber) => {
-    const row: Row = []
-    for (let column = 1; column <= worksheet.columnCount; column += 1) {
-      const cell = sourceRow.getCell(column)
-      row.push(cellValue(cell))
-      const raw = cell.value
-      if (raw && typeof raw === 'object' && 'formula' in raw && typeof raw.formula === 'string') {
-        formulas.set(`${rowNumber}:${column}`, raw.formula)
-      }
-    }
-    rows.push(row)
-  })
-  return { rows, formulas }
+  const result = await readXlsxRows(Buffer.from(await file.arrayBuffer()))
+  return { rows: result.rows, formulas: new Map(result.formulas) }
 }
 
 function findHeader(rows: Row[]) {

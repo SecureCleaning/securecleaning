@@ -1,3 +1,4 @@
+import { escapeIcsText, serializeIcs } from '@/lib/ics'
 import { parsePlanInstalments } from '@/lib/commissionPolicy'
 import { parseRichEmailContent, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import { plainTextToEmailHtml } from '@/lib/richEmailContent'
@@ -1311,8 +1312,7 @@ export async function downloadContractSaleChecklist(actor: ContractProductActor,
 function inspectionIcs(input: { uid: string; startsAt: Date; durationMinutes: number; location: string; description: string }) {
   const stamp = (date: Date) => date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z')
   const end = new Date(input.startsAt.getTime() + input.durationMinutes * 60_000)
-  const esc = (value: string) => value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/,/g, '\\,').replace(/;/g, '\\;')
-  return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Secure Cleaning//Contract Sale Inspection//EN', 'CALSCALE:GREGORIAN', 'METHOD:REQUEST', 'BEGIN:VEVENT', `UID:${input.uid}@securecleaning.com.au`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(input.startsAt)}`, `DTEND:${stamp(end)}`, 'SUMMARY:Secure Cleaning site inspection', `DESCRIPTION:${esc(input.description)}`, `LOCATION:${esc(input.location)}`, 'STATUS:CONFIRMED', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n')
+  return serializeIcs(['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Secure Cleaning//Contract Sale Inspection//EN', 'CALSCALE:GREGORIAN', 'METHOD:REQUEST', 'BEGIN:VEVENT', `UID:${escapeIcsText(input.uid)}@securecleaning.com.au`, `DTSTAMP:${stamp(new Date())}`, `DTSTART:${stamp(input.startsAt)}`, `DTEND:${stamp(end)}`, 'SUMMARY:Secure Cleaning site inspection', `DESCRIPTION:${escapeIcsText(input.description)}`, `LOCATION:${escapeIcsText(input.location)}`, 'STATUS:CONFIRMED', 'END:VEVENT', 'END:VCALENDAR'])
 }
 
 export async function scheduleContractSaleInspection(actor: ContractProductActor, input: Record<string, unknown>) {

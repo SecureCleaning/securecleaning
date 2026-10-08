@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
   const actor = await getContractProductActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Product sale access required.' }, { status: 403 })

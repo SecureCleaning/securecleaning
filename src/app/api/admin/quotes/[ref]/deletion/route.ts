@@ -51,7 +51,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ re
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
   }
 
-  const blockedRequest = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
+  const blockedRequest = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 4 * 1024)
   if (blockedRequest) return blockedRequest
 
   try {

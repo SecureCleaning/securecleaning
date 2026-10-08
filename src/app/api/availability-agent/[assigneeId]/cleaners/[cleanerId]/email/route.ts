@@ -8,7 +8,7 @@ export async function POST(
   props: { params: Promise<{ assigneeId: string; cleanerId: string }> }
 ) {
   const params = await props.params
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 512 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 512 * 1024)
   if (blocked) return blocked
 
   const context = await getCleanerAgentContext(request, params.assigneeId)
@@ -26,6 +26,7 @@ export async function POST(
       body: body?.body,
       bodyHtml: body?.bodyHtml,
       bodyDocument: body?.bodyDocument,
+      requestId: body?.requestId,
       previewFingerprint: body?.previewFingerprint,
       senderStaffId: body?.senderStaffId,
       actor: context.actor,

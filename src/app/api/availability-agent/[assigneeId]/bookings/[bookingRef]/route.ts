@@ -146,16 +146,20 @@ export async function DELETE(
 
     const booking = await getAssignedBooking(config, assignee, params.bookingRef)
     if (!booking) return NextResponse.json({ success: false, error: 'Assigned booking not found.' }, { status: 404 })
+    const nextInputs = { ...booking.inputs }
+    for (const key of ['preferredStartDate', 'preferredInspectionStartTime', 'preferredInspectionEndTime', 'preferredInspectionDay', 'preferredInspectionSlotLabel']) {
+      delete nextInputs[key]
+    }
     const db = getAdminSupabase()
     const { data, error } = await db
       .from('bookings')
-      .update({ status: 'cancelled', inspection_status: 'cancelled' })
+      .update({ inspection_status: 'cancelled', inspection_scheduled_for: null, inputs: nextInputs })
       .eq('booking_ref', params.bookingRef)
-      .select('booking_ref, status, inspection_status')
+      .select('booking_ref, status, inspection_status, inspection_scheduled_for')
       .single()
     if (error) throw error
 
-    await writeAuditLog('booking', params.bookingRef, 'agent_booking_cancelled', { assignee_id: params.assigneeId })
+    await writeAuditLog('booking', params.bookingRef, 'agent_inspection_cancelled', { assignee_id: params.assigneeId })
     return NextResponse.json({ success: true, booking: data })
   } catch (error) {
     console.error('[api/availability-agent/bookings] Failed to cancel booking:', error)

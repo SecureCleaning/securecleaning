@@ -1,3 +1,4 @@
+import { rejectLargePayload } from '@/lib/abuseProtection'
 import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCleanerAdminRequest } from '@/lib/cleanerAdminAuth'
 import { deleteCleanerDocument, uploadCleanerDocument } from '@/lib/cleaners'
@@ -18,6 +19,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ clea
   if (!authorization.identity) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
+
+  const oversized = await rejectLargePayload(request, 10 * 1024 * 1024 + 64 * 1024)
+  if (oversized) return oversized
 
   try {
     const formData = await request.formData()

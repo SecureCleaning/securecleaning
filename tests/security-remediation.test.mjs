@@ -15,6 +15,8 @@ function load(path, dependencies={}, vars=env) {
     if(name==='server-only')return {}
     if(name==='node:crypto')return crypto
     if(name==='node:net')return net
+    if(name==='@/lib/boundedBody')return {boundRequestBody:async()=>{}}
+    if(name==='@/lib/securityInput')return {assertStoredDocumentBounded:()=>{}}
     if(!(name in dependencies))throw new Error('Missing mock '+name)
     return dependencies[name]
   },process:{env:vars},Buffer,URL,URLSearchParams,Date,console:{error(){},warn(){}},setTimeout,clearTimeout})

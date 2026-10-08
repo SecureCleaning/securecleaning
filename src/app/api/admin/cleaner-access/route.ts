@@ -4,7 +4,7 @@ import { rateLimit, rejectCrossOriginMutation, rejectLargePayload } from '@/lib/
 import { sendCleanerPortalLink } from '@/lib/cleanerPortal'
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 4 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 4 * 1024)
   if (blocked) return blocked
   const authorization = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!authorization.identity) return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })

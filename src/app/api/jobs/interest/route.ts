@@ -8,7 +8,7 @@ import { registerContractProductInterest } from '@/lib/contractProductInterest'
 const ACCEPTED_MESSAGE = 'Your submission has been received. Verified cleaner interest receives a confirmation email; other enquiries are sent to the responsible agent for verification.'
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 8 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 8 * 1024)
     ?? await rateLimit(request, { key: 'contract-product-interest', limit: 10, windowMs: 60 * 60 * 1000 })
   if (blocked) return blocked
   const accessLinkId = verifyCleanerJobsSessionToken(request.cookies.get(CLEANER_JOBS_SESSION_COOKIE)?.value)

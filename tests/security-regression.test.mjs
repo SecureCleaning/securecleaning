@@ -211,7 +211,7 @@ test('mutation protection rejects cross-origin requests and oversized bodies', a
     method: 'POST',
     headers: { 'content-length': '1001' },
   })
-  const payloadResponse = rejectLargePayload(largeRequest, 1000)
+  const payloadResponse = await rejectLargePayload(largeRequest, 1000)
   assert.equal(payloadResponse?.status, 413)
   assert.match((await payloadResponse.json()).error, /too large/)
 })

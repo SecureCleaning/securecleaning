@@ -1,3 +1,4 @@
+import { allNumbersFinite, validPublicQuoteInput } from '@/lib/securityInput'
 import { createQuoteCapability, createQuoteBookingHandoffToken } from '@/lib/quoteBookingAccess'
 import { recordQuoteSmsRequest, recordRemoteQuoteEmail } from '@/lib/quoteSmsRequest'
 import { QUOTE_SMS_NOTICE_VERSION } from '@/lib/quoteSmsNotice'
@@ -33,14 +34,15 @@ export async function POST(request: NextRequest) {
   try {
     const blocked =
       rejectCrossOriginMutation(request) ??
-      rejectLargePayload(request, 64 * 1024) ??
+      await rejectLargePayload(request, 64 * 1024) ??
       await rateLimit(request, { key: 'quote:minute', limit: 3, windowMs: 60 * 1000 }) ??
       await rateLimit(request, { key: 'quote:hour', limit: 8, windowMs: 60 * 60 * 1000 }) ??
       await rateLimit(request, { key: 'quote:day', limit: 20, windowMs: 24 * 60 * 60 * 1000 })
 
     if (blocked) return blocked
 
-    const body = await request.json()
+    const body = await request.json().catch(() => null)
+    if (!validPublicQuoteInput(body)) return NextResponse.json({ success: false, error: 'Invalid quote fields or quantities.' }, { status: 400 })
     const bodyRecord = body as Record<string, unknown>
     const invalidSubmission = validatePublicSubmission(bodyRecord, {
       requireAcceptableUse: true,
@@ -135,6 +137,9 @@ export async function POST(request: NextRequest) {
     const initialPricingPreview = buildFirmQuotePreview(initialFirmQuoteDraft, pricingConfig, roomTypeConfig)
     const displayPrice = getFirmQuoteDisplayPrice(initialFirmQuoteDraft, initialPricingPreview)
     const customerResult = applyFirmQuoteDisplayPrice(result, displayPrice)
+    if (![result, initialPricingPreview, customerResult].every(allNumbersFinite)) {
+      return NextResponse.json({ success: false, error: 'Quote exceeds supported pricing limits. Please contact Secure Cleaning.' }, { status: 400 })
+    }
     const quoteRef = generateQuoteRef()
 
     const db = getAdminSupabase()

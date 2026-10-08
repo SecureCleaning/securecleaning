@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? rejectLargePayload(request, 256 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 256 * 1024)
   if (blocked) return blocked
   const auth = await authorizeCleanerAdminRequest(request, 'mutate')
   if (!auth.identity) return NextResponse.json({ success: false, error: auth.error }, { status: auth.status })

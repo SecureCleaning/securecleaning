@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: authorization.error }, { status: authorization.status })
   }
 
-  const blocked = rejectLargePayload(request, 2 * 1024 * 1024)
+  const blocked = await rejectLargePayload(request, 2 * 1024 * 1024)
   if (blocked) return blocked
 
   try {

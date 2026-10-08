@@ -64,13 +64,17 @@ function toProviderPayload(payload: Record<string, unknown>) {
   return providerPayload
 }
 
-export async function sendEmailOrThrow(payload: Record<string, unknown>) {
+export async function sendEmailOrThrow(payload: Record<string, unknown>, options?: { idempotencyKey: string }) {
   const resend = getResend()
   if (!resend) {
     throw new Error('Email service is not configured. Check RESEND_API_KEY.')
   }
 
-  const response = await resend.emails.send(toProviderPayload(payload))
+  // Resend 3.x forwards request options to fetch without an idempotencyKey adapter.
+  // Clone its transport headers so authorization is preserved and no key enters email content.
+  const requestHeaders = options ? new Headers(resend.headers) : undefined
+  if (requestHeaders) requestHeaders.set('Idempotency-Key', options!.idempotencyKey)
+  const response = await resend.emails.send(toProviderPayload(payload), requestHeaders ? { headers: requestHeaders } : undefined)
   if (response?.error) {
     // Resend uses application_error for network failures and unreadable responses.
     // The provider may already have accepted the email; callers must reconcile it.
