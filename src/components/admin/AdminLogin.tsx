@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { signInStaff } from '@/lib/staffLoginClient'
 
 export default function AdminLogin({
   title = 'Unlock admin',
@@ -20,17 +21,7 @@ export default function AdminLogin({
     setError(null)
 
     try {
-      const response = await fetch('/api/admin/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      })
-
-      const result = await response.json()
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Invalid password.')
-      }
-
+      await signInStaff(username, password)
       window.location.reload()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to unlock admin area.')
@@ -79,7 +70,7 @@ export default function AdminLogin({
               {isLoading ? 'Checking…' : 'Unlock Admin'}
             </button>
           </form>
-          {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+          {error ? <p role="alert" className="mt-4 text-sm text-red-600">{error}</p> : null}
         </div>
       </div>
     </div>

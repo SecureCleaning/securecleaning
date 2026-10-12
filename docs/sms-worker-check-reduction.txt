@@ -1,0 +1,65 @@
+SMS worker check reduction - local implementation, not published
+
+Integrated baseline: 70501f09a07cf8deba7c3ad488748270bc9d998e.
+Original implementation baseline: f6ce40a9e737b0554fa5ddbdfb14b464b6b4a769.
+Isolated worktree: /tmp/securecleaning-sms-reduce-checking-security.
+
+Account/sender/webhook checks reuse the existing persisted healthy diagnostic
+for less than five minutes on idle runs. The next worker tick at or after five
+minutes refreshes it (nominally five minutes; scheduler jitter can add a tick).
+Missing, failed, invalid or future-dated diagnostics refresh immediately.
+Every run with claimed outbound jobs performs a fresh full provider check before
+processing those jobs, even if the idle diagnostic is recent. Failures prevent
+dispatch; claimed jobs retain existing expiring leases for recovery.
+No credential or configuration fingerprint is added to persisted health.
+
+Cron remains every minute. Inbound history recovery with its one-day overlap,
+STOP suppression sync, submitted-message reconciliation eligibility (one hour),
+24-hour overdue alerts, heartbeat and stale-worker alerts are unchanged. Empty
+outbound queues do not short-circuit recovery. Cached healthy diagnostics can
+delay discovering idle provider configuration or balance changes by about five
+minutes, but outbound processing still requires fresh readiness and balance.
+
+Health and completed inbound checkpoints are saved together with the existing
+token-guarded worker lease release. The heartbeat remains at worker start.
+A normal completed live run now makes three settings writes including the lock
+RPC, instead of five: lock, heartbeat, release. This removes two SQL updates per
+normal run without changing the schema. If the process dies before release,
+the checkpoint remains old and recovery replays through existing event deduping.
+The settings release still reports database errors.
+
+For an entirely idle healthy hour, nominal full configuration checks fall from
+60 to 12 (180 to 36 provider GET requests). Actual cadence depends on scheduler
+timing, errors and outbound jobs. This does not remove cron dispatches or prove
+any reduction in measured database I/O; cumulative statement time was not I/O.
+
+Files: src/lib/smsWorker.ts; tests/sms-security.test.mjs; this document.
+No migration, dependency, API, credential, security-setting or cron changes.
+No live database write, provider call, customer/test SMS or deployment was run.
+Tests use mocked provider/database boundaries and synthetic data.
+
+Release coordination: all security fixes in 70501f09 are retained unchanged.
+Do not reapply the security migration (already live under a different timestamp).
+Wait for security publication, verify final main matches this tested baseline,
+and obtain explicit publication approval before deploying this optimization.
+If final main differs, integrate and validate again before publication.
+
+Original baseline validation completed locally: npm run type-check, npm run lint, npm test
+(494 passed, zero failures), npm run build, and git diff --check all passed.
+Build used synthetic Supabase placeholders; no production credentials copied.
+Lint only reported the existing Next.js next-lint deprecation notice.
+Focused mocked worker suite: 18 passed, including four added regression tests.
+Manual review: worker ordering, lease-token guard, checkpoint replay, cron and
+stale-alert migrations, provider adapter and unchanged dispatch protections.
+No live handset, browser or production database end-to-end check was performed.
+The optimization patch applied cleanly to security commit 70501f09.
+Only the three optimization files differ from that security baseline.
+
+Integrated baseline validation completed on 70501f09 plus this patch:
+- npm run type-check: passed.
+- npm run lint: passed, no lint warnings/errors.
+- npm test: 543 passed, zero failures/skips.
+- npm run build: passed with synthetic Supabase placeholders.
+- git diff --check: passed.
+No security fixes or migration files changed during integration.
+No production writes, SMS sends, commits or deployments performed.

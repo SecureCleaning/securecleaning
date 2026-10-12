@@ -77,6 +77,7 @@ export type CrmOpportunity = {
   contactUpdatedAt: string
   siteUpdatedAt: string | null
   suppressed: boolean
+  suppression: { reason: string; source: string; createdAt: string; updatedAt: string } | null
   hasContactUnresolvedEmail: boolean
   productId: string | null
   productStatus: string | null
@@ -419,10 +420,15 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   }
   const normalizedEmails = Array.from(new Set((contacts.data ?? []).map((row) => normalizeCrmEmail(row.email)).filter(Boolean)))
   const suppressions = normalizedEmails.length > 0
-    ? await db.from('crm_email_suppressions').select('email_normalized').in('email_normalized', normalizedEmails)
+    ? await db.from('crm_email_suppressions').select('email_normalized, reason, source, created_at, updated_at').in('email_normalized', normalizedEmails)
     : { data: [], error: null }
   if (suppressions.error) throw suppressions.error
-  const suppressedEmails = new Set((suppressions.data ?? []).map((row) => row.email_normalized))
+  const suppressionsByEmail = new Map((suppressions.data ?? []).map((row) => [row.email_normalized, {
+    reason: String(row.reason ?? ''),
+    source: String(row.source ?? ''),
+    createdAt: String(row.created_at ?? ''),
+    updatedAt: String(row.updated_at ?? ''),
+  }]))
   const unresolvedContactIds = new Set((unresolvedEmails.data ?? []).map((row) => String(row.contact_id)))
   const agentNames = new Map(agents.map((agent) => [agent.id, agent.displayName]))
   const agentNamesByAvailabilityId = new Map(agents.flatMap((agent) => (
@@ -521,7 +527,8 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       organisationUpdatedAt: String(organisation?.updated_at ?? ''),
       contactUpdatedAt: String(contact?.updated_at ?? ''),
       siteUpdatedAt: site?.updated_at ? String(site.updated_at) : null,
-      suppressed: suppressedEmails.has(normalizeCrmEmail(contact?.email)),
+      suppressed: suppressionsByEmail.has(normalizeCrmEmail(contact?.email)),
+      suppression: suppressionsByEmail.get(normalizeCrmEmail(contact?.email)) ?? null,
       hasContactUnresolvedEmail: unresolvedContactIds.has(contactId),
       productId: product?.id ? String(product.id) : null,
       productStatus: product?.status ? String(product.status) : null,

@@ -66,19 +66,19 @@ test('test sends require owner, explicit confirmation and server-side allowlist'
  await assert.rejects(f.mod.queueManualSms(owner,{...input,confirmed:true,requestId:preview.id,expires:preview.expires,fingerprint:preview.fingerprint}),/allowlist/)
  assert.equal(f.rpcCalls.length,0)
 })
-function workerFixture({job,providerHistory=[],providerError=null,enabled=true}={}) {
- const updates=[],requests=[],rpc=[]
- const settings={...policy,health:{},inbound_checked_at:new Date().toISOString(),low_credit_threshold:100,max_parts:2}
+function workerFixture({job,providerHistory=[],providerError=null,enabled=true,cachedHealth={},freshHealth={ready:true,balance:1000,sender:'61499999999'},healthError=null,inboundResults=[],inboundTotal=0,preferences=[],pending=[]}={}) {
+ const updates=[],requests=[],rpc=[],checks=[],events=[],alerts=[]
+ const settings={...policy,health:cachedHealth,inbound_checked_at:new Date().toISOString(),low_credit_threshold:100,max_parts:2}
  const db={from(table){let value={data:null,error:null};const chain=new Proxy({},{get(_,name){if(name==='then')return resolve=>resolve(value);return(...args)=>{
- if(name==='select')value={data:table==='sms_preferences'?[]:null,error:null}
+ if(name==='select')value={data:table==='sms_preferences'?preferences:null,error:null}
  if(name==='update')updates.push([table,args[0]])
- if(name==='eq'&&args[0]==='status'&&args[1]==='submitted')value={data:[],error:null}
+ if(name==='eq'&&args[0]==='status'&&args[1]==='submitted')value={data:pending,error:null}
  return chain
- }}});return chain},rpc:async(name,args)=>{rpc.push([name,args]);return{data:name==='sms_worker_lock'?true:name==='sms_claim'?[job]:name==='sms_dispatch'?[{...job,first_attempt_at:new Date().toISOString(),status:'submitting',attempt_count:1}]:null,error:null}}}
- const mod=moduleWithMocks('src/lib/smsWorker.ts',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,'./smsData':{smsSettings:async()=>settings},'./smsAlerts':{smsAlert:async()=>{},deliverSmsAlerts:async()=>{}},'./smsEvents':{processSmsEvent:async()=>{}},'./mobileMessage':{
- SmsProviderError:provider.SmsProviderError,smsLiveEnabled:()=>enabled,smsCredentialsConfigured:()=>true,providerScope:()=> 'same-scope',checkSmsConnection:async()=>({ready:true,balance:1000,sender:'61499999999'}),mobileMessageRequest:async(path,method,body,key)=>{requests.push({path,method,body,key});if(path.startsWith('inbound'))return{status:'complete',results:[],total:0};if(path.startsWith('messages?'))return{status:'complete',results:providerHistory};if(providerError)throw providerError;return {status:'complete',results:[{status:'success',message_id:'provider-1',cost:1}]}}
+ }}});return chain},rpc:async(name,args)=>{rpc.push([name,args]);return{data:name==='sms_worker_lock'?true:name==='sms_claim'?(job?[job]:[]):name==='sms_dispatch'?[{...job,first_attempt_at:new Date().toISOString(),status:'submitting',attempt_count:1}]:null,error:null}}}
+ const mod=moduleWithMocks('src/lib/smsWorker.ts',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,'./smsData':{smsSettings:async()=>settings},'./smsAlerts':{smsAlert:async(code)=>alerts.push(code),deliverSmsAlerts:async()=>alerts.push('delivered_alerts')},'./smsEvents':{processSmsEvent:async(event)=>events.push(event)},'./mobileMessage':{
+ SmsProviderError:provider.SmsProviderError,smsLiveEnabled:()=>enabled,smsCredentialsConfigured:()=>true,providerScope:()=> 'same-scope',checkSmsConnection:async()=>{checks.push('check');if(healthError)throw healthError;return freshHealth},mobileMessageRequest:async(path,method,body,key)=>{requests.push({path,method,body,key});if(path.startsWith('inbound'))return{status:'complete',results:inboundResults,total:inboundTotal};if(path.startsWith('messages?'))return{status:'complete',results:providerHistory};if(providerError)throw providerError;return {status:'complete',results:[{status:'success',message_id:'provider-1',cost:1}]}}
  }})
- return {mod,updates,requests,rpc}
+ return {mod,updates,requests,rpc,checks,events,alerts}
 }
 const baseJob={id:'12345678-1234-4234-8234-123456789012',lease_token:'lease',quote_ref:'SC-1',document_version:1,mobile:'61412345678',message:policy.DEFAULT_SMS_TEMPLATE,template:policy.DEFAULT_SMS_TEMPLATE,fields:{},time_zone:'Australia/Sydney',first_attempt_at:null,attempt_count:0,provider_scope:null,request_payload:null,purpose:'quote_followup',status:'leased'}
 test('history reconciliation supports live and documented recipient fields without resending',async()=>{
@@ -158,4 +158,52 @@ test('quote-request persistence uses normalized mobile, fixed notice version and
  assert.equal(await m.recordRemoteQuoteEmail({quoteRef:'SC-1',phone:'0412345678',email:'client@example.test',providerMessageId:'email-id'}),true)
  assert.equal(calls[1].name,'sms_record_remote_quote_email')
  assert.equal(calls[1].args.p_provider_message_id,'email-id')
+})
+
+const recentHealth=()=>({ready:true,balance:1000,sender:'61499999999',checkedAt:new Date().toISOString()})
+test('healthy idle worker reuses diagnostics but keeps inbound, STOP sync, delivery and alerts running',async()=>{
+ const job={...baseJob,provider_id:'provider-1',submitted_at:new Date(Date.now()-25*3600_000).toISOString()}
+ const f=workerFixture({cachedHealth:recentHealth(),inboundResults:[{from:baseJob.mobile,message:'STOP'}],preferences:[{mobile:baseJob.mobile}],pending:[job],providerHistory:[{to:job.mobile,custom_ref:`sms:${job.id}`,message_id:'provider-1',status:'delivered',cost:1}]})
+ await f.mod.runSmsWorker()
+ assert.equal(f.checks.length,0)
+ assert.equal(f.events[0].message,'STOP')
+ assert.ok(f.requests.some(r=>r.path==='unsubscribes'&&r.method==='POST'))
+ assert.ok(f.requests.some(r=>r.path.startsWith('messages?')))
+ assert.ok(f.alerts.includes('delivery_confirmation_overdue'))
+ assert.ok(f.alerts.includes('delivered_alerts'))
+ assert.equal(f.requests.filter(r=>r.path==='messages'&&r.method==='POST').length,0)
+ const writes=f.updates.filter(([table])=>table==='sms_settings').map(([,value])=>value)
+ assert.equal(writes.length,2)
+ assert.ok(writes[0].worker_at)
+ assert.ok(writes[1].inbound_checked_at)
+ assert.equal(writes[1].worker_token,null)
+ assert.equal(writes[1].health,undefined)
+})
+test('idle diagnostics refresh after five minutes and reject missing, invalid, future or unhealthy cache',async()=>{
+ for(const health of [{},{...recentHealth(),ready:false},{...recentHealth(),checkedAt:'invalid'},{...recentHealth(),checkedAt:new Date(Date.now()+60_000).toISOString()},{...recentHealth(),checkedAt:new Date(Date.now()-5*60_000).toISOString()}]) {
+  const f=workerFixture({cachedHealth:health});await f.mod.runSmsWorker()
+  assert.equal(f.checks.length,1)
+  const writes=f.updates.filter(([table])=>table==='sms_settings')
+  assert.equal(writes.length,2)
+  assert.equal(writes[1][1].health.ready,true)
+  assert.ok(writes[1][1].inbound_checked_at)
+ }
+})
+test('claimed jobs require fresh provider readiness and balance even with healthy cached diagnostics',async()=>{
+ for(const failure of [{freshHealth:{ready:false,balance:1000}},{healthError:new provider.SmsProviderError('provider_http_401')},{freshHealth:{ready:true,balance:0}}]) {
+  const f=workerFixture({job:baseJob,cachedHealth:recentHealth(),...failure});await f.mod.runSmsWorker()
+  assert.equal(f.checks.length,1)
+  assert.equal(f.requests.filter(r=>r.path==='messages'&&r.method==='POST').length,0)
+  assert.ok(f.alerts.some(code=>code!=='delivered_alerts'))
+ }
+ const f=workerFixture({job:baseJob,cachedHealth:recentHealth()});await f.mod.runSmsWorker()
+ assert.equal(f.checks.length,1)
+ assert.equal(f.requests.filter(r=>r.path==='messages'&&r.method==='POST').length,1)
+})
+test('inbound backlog still blocks dispatch and does not advance recovery checkpoint',async()=>{
+ const f=workerFixture({job:baseJob,cachedHealth:recentHealth(),inboundTotal:201});await f.mod.runSmsWorker()
+ assert.equal(f.rpc.some(([name])=>name==='sms_claim'),false)
+ assert.equal(f.updates.some(([,value])=>value.inbound_checked_at),false)
+ assert.ok(f.alerts.includes('inbound_backlog_requires_review'))
+ assert.equal(f.updates.at(-1)[1].health.ready,false)
 })

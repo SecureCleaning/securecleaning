@@ -43,15 +43,26 @@ export async function reconcileSmsJob(job:SmsJob):Promise<boolean> {
   }
   return true
 }
-async function work() {
+async function work(settingsUpdates:Record<string,unknown>) {
   const db=getAdminSupabase(), settings=await smsSettings(), start=Date.now()
   const heartbeat=await db.from('sms_settings').update({worker_at:new Date().toISOString()}).eq('id',true);if(heartbeat.error) throw heartbeat.error
   // Read-only setup is allowed while disabled; no queued sends are released.
   if(!smsLiveEnabled()) {await deliverSmsAlerts();return {enabled:false}}
   try {
     if(!smsCredentialsConfigured()) throw new SmsProviderError('sms_not_configured')
-    const health=await checkSmsConnection()
-    const saved=await db.from('sms_settings').update({health}).eq('id',true);if(saved.error) throw saved.error
+    const checkHealth=async()=>{
+      const result=await checkSmsConnection()
+      settingsUpdates.health=result
+      return result
+    }
+    // Reuse healthy idle diagnostics briefly; claimed sends always get a fresh check.
+    const checkedAt=Date.parse(String(settings.health.checkedAt||''))
+    const age=Date.now()-checkedAt
+    let checked=false
+    let health=settings.health as Awaited<ReturnType<typeof checkSmsConnection>>
+    if(health.ready!==true||!Number.isFinite(age)||age<0||age>=5*60_000) {
+      health=await checkHealth();checked=true
+    }
     if(health.balance<=settings.low_credit_threshold) await smsAlert('low_sms_credit')
     if(!health.ready) throw new SmsProviderError('sms_sender_or_webhook_not_ready')
     // Fetch recent inbound history as recovery for a lost webhook, without sending anything.
@@ -63,7 +74,8 @@ async function work() {
       await processSmsEvent({...event,sender:event.from})
       if(Date.now()-start>25_000) return {enabled:true,busy:true}
     }
-    const polled=await db.from('sms_settings').update({inbound_checked_at:new Date(start).toISOString()}).eq('id',true);if(polled.error) throw polled.error
+    // Persist with lease release. A crash replays the existing overlap safely.
+    settingsUpdates.inbound_checked_at=new Date(start).toISOString()
     const preferences=await db.from('sms_preferences').select('mobile').eq('provider_sync_pending',true).limit(2)
     if(preferences.error) throw preferences.error
     for(const pref of preferences.data||[]) {
@@ -71,8 +83,13 @@ async function work() {
       if(synced.status!=='complete') throw new SmsProviderError('optout_sync_failed')
       const saved=await db.from('sms_preferences').update({provider_sync_pending:false}).eq('mobile',pref.mobile);if(saved.error) throw saved.error
     }
-    let availableCredits=health.balance
     const claimed=await db.rpc('sms_claim',{p_token:randomUUID()});if(claimed.error) throw claimed.error
+    if(claimed.data?.length&&!checked) {
+      health=await checkHealth()
+      if(health.balance<=settings.low_credit_threshold) await smsAlert('low_sms_credit')
+      if(!health.ready) throw new SmsProviderError('sms_sender_or_webhook_not_ready')
+    }
+    let availableCredits=health.balance
     for(const initial of (claimed.data||[]) as SmsJob[]) {
       let job=initial
       try {
@@ -132,7 +149,7 @@ async function work() {
   } catch(error) {
     const code=error instanceof SmsProviderError?error.code:'sms_worker_error'
     await smsAlert(code)
-    const saved=await db.from('sms_settings').update({health:{ready:false,error:code,checkedAt:new Date().toISOString()}}).eq('id',true);if(saved.error) throw saved.error
+    settingsUpdates.health={ready:false,error:code,checkedAt:new Date().toISOString()}
   }
   await deliverSmsAlerts()
   return {enabled:true}
@@ -142,8 +159,9 @@ export async function runSmsWorker() {
  const db=getAdminSupabase(),token=randomUUID()
  const lock=await db.rpc('sms_worker_lock',{p_token:token});if(lock.error) throw lock.error
  if(!lock.data) return {busy:true}
- try {return await work()} finally {
-  const release=await db.from('sms_settings').update({worker_lease_until:null,worker_token:null}).eq('id',true).eq('worker_token',token)
+ const settingsUpdates:Record<string,unknown>={}
+ try {return await work(settingsUpdates)} finally {
+  const release=await db.from('sms_settings').update({...settingsUpdates,worker_lease_until:null,worker_token:null}).eq('id',true).eq('worker_token',token)
   if(release.error) throw release.error
  }
 }

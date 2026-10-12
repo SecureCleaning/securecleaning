@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { signInStaff } from '@/lib/staffLoginClient'
 import AvailabilityAgentNav from './AvailabilityAgentNav'
 
 export default function AvailabilityAgentLogin({
@@ -33,17 +34,7 @@ export default function AvailabilityAgentLogin({
     setError(null)
 
     try {
-      const response = await fetch('/api/admin/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password: accessCode }),
-      })
-
-      const result = await response.json()
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Invalid access code.')
-      }
-
+      const result = await signInStaff(username, accessCode)
       if (result.role !== 'agent' || (assigneeId && result.assigneeId !== assigneeId)) {
         throw new Error('This login is not linked to the selected regional agent.')
       }
@@ -99,7 +90,7 @@ export default function AvailabilityAgentLogin({
               {isLoading ? 'Checking…' : (submitLabel || 'Open My Schedule')}
             </button>
           </form>
-          {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
+          {error ? <p role="alert" className="mt-4 text-sm text-red-600">{error}</p> : null}
         </div>
       </div>
     </div>
