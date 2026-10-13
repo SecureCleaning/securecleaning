@@ -86,3 +86,14 @@ test('many small streamed chunks remain within the exact byte budget', async () 
  assert.equal(bytes.length,4096)
  assert.equal(bytes[4095],65)
 })
+
+test('workflow accepts configured metric IDs with spaces while retaining dictionary safeguards', () => {
+ const draft=JSON.parse(JSON.stringify(createDefaultFirmQuoteDraft(inputs)))
+ const room={...draft.roomItems[0],metrics:{'Entrance Doors':1,'Desks / workstations':2},excludedMetricFieldIds:['Entrance Doors']}
+ const workflow={inspectionReport:createDefaultInspectionReport(inputs),firmQuoteDraft:{...draft,status:'reviewed',roomItems:[room]}}
+ assert.equal(validWorkflowInput(workflow),true)
+ for(const metrics of [JSON.parse('{"__proto__":1}'),{constructor:1},{prototype:1},{'':1},{' ':1},{['x'.repeat(129)]:1},{'Entrance\nDoors':1},{'Entrance Doors':{nested:1}},{'Entrance Doors':Infinity},{'Entrance Doors':-1},Object.fromEntries(Array.from({length:101},(_,i)=>['field '+i,1]))]) {
+  assert.equal(validWorkflowInput({...workflow,firmQuoteDraft:{...workflow.firmQuoteDraft,roomItems:[{...room,metrics}]}}),false)
+ }
+ assert.equal(validWorkflowInput({...workflow,firmQuoteDraft:{...workflow.firmQuoteDraft,roomItems:[{...room,scopeTaskSelections:{'unexpected key':true}}]}}),false)
+})
