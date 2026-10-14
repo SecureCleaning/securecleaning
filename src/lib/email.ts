@@ -248,7 +248,7 @@ export async function sendScopeOfWorksEmail(
   })
 }
 
-export async function sendUpdatedQuoteEmail(
+export async function buildUpdatedQuoteEmail(
   quoteRef: string,
   inputs: QuoteInputs,
   displayPrice: FirmQuoteDisplayPrice,
@@ -261,12 +261,12 @@ export async function sendUpdatedQuoteEmail(
     messageHtml?: string
     includeConsumablesCatalogue?: boolean
   },
+  documentAccessToken = '',
 ) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
-  const documentAccessToken = await createQuoteCapability(quoteRef, 'document', 'final')
-  const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', access: documentAccessToken }).toString()}`
-  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', access: documentAccessToken }).toString()}`
+  const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', ...(documentAccessToken ? { access: documentAccessToken } : {}) }).toString()}`
+  const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', ...(documentAccessToken ? { access: documentAccessToken } : {}) }).toString()}`
   const consumablesUrl = `${SITE_URL}/consumables`
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
@@ -283,7 +283,7 @@ export async function sendUpdatedQuoteEmail(
 
   const agentCc = options?.agentCc ?? await getQuoteAgentCc(quoteRef, inputs, recipient)
 
-  return sendEmailOrThrow({
+  return {
     from: FROM_EMAIL,
     to: recipient,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
@@ -327,7 +327,17 @@ export async function sendUpdatedQuoteEmail(
         <div style="background: #f1f5f9; padding: 16px; text-align: center; color: #64748b; font-size: 12px;">Secure Cleaning | Melbourne & Sydney</div>
       </div>
     `,
-  })
+  }
+}
+
+export async function sendUpdatedQuoteEmail(
+  quoteRef: string,
+  inputs: QuoteInputs,
+  displayPrice: FirmQuoteDisplayPrice,
+  options?: Parameters<typeof buildUpdatedQuoteEmail>[3],
+) {
+  const token = await createQuoteCapability(quoteRef, 'document', 'final')
+  return sendEmailOrThrow(await buildUpdatedQuoteEmail(quoteRef, inputs, displayPrice, options, token))
 }
 
 // ─── Booking Email ────────────────────────────────────────────────────────────

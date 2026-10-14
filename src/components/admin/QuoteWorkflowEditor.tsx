@@ -1,5 +1,7 @@
 'use client'
 
+import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
@@ -159,6 +161,8 @@ export default function QuoteWorkflowEditor({
     message: null,
     error: null,
   })
+  const [quoteEmailPreview, setQuoteEmailPreview] = useState<{ from: string; to: string; cc?: string[]; replyTo: string; subject: string; html: string } | null>(null)
+  const [quoteEmailPreviewBusy, setQuoteEmailPreviewBusy] = useState(false)
   const [quoteEmailComposerOpen, setQuoteEmailComposerOpen] = useState(false)
   const [quoteEmailRich, setQuoteEmailRich] = useState({ html: '', document: null as Record<string, unknown> | null })
   const [quoteEmailDraft, setQuoteEmailDraft] = useState({
@@ -256,6 +260,23 @@ export default function QuoteWorkflowEditor({
         error: error instanceof Error ? error.message : 'Failed to send the scope link.',
       })
     }
+  }
+
+  async function previewQuoteEmail() {
+    setQuoteEmailPreview(null)
+    setQuoteEmailPreviewBusy(true)
+    setQuoteEmailAction({ busy: false, message: null, error: null })
+    try {
+      const response = await fetch(updatedQuoteApiPath, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...quoteEmailDraft, messageHtml: quoteEmailRich.html, messageDocument: quoteEmailRich.document, previewOnly: true }),
+      })
+      const result = await response.json()
+      if (!response.ok || !result.success || !result.preview) throw new Error(result.error || 'Unable to preview the email.')
+      setQuoteEmailPreview(result.preview)
+    } catch (error) {
+      setQuoteEmailAction({ busy: false, message: null, error: error instanceof Error ? error.message : 'Unable to preview the email.' })
+    } finally { setQuoteEmailPreviewBusy(false) }
   }
 
   async function sendUpdatedQuote() {
@@ -674,7 +695,8 @@ export default function QuoteWorkflowEditor({
             </div>
             <button
               type="button"
-              onClick={() => setQuoteEmailComposerOpen(false)}
+              onClick={() => { setQuoteEmailPreview(null); setQuoteEmailComposerOpen(false) }}
+              disabled={quoteEmailPreviewBusy || quoteEmailAction.busy}
               className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700"
             >
               Cancel
@@ -696,21 +718,24 @@ export default function QuoteWorkflowEditor({
               <input
                 type="text"
                 value={quoteEmailDraft.subject}
+                disabled={quoteEmailPreviewBusy || quoteEmailAction.busy}
                 onChange={(event) => setQuoteEmailDraft((current) => ({ ...current, subject: event.target.value }))}
                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900"
               />
             </label>
           </div>
-          <RichEmailEditor value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
+          <RichEmailEditor value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
           <label className="mt-3 flex items-start gap-3 text-sm text-gray-700">
             <input type="checkbox" checked={quoteRequestConfirmed} onChange={e => setQuoteRequestConfirmed(e.target.checked)} className="mt-1 h-4 w-4" />
             <span>The client requested this quote and supplied this mobile number for quote contact. I have explained that Secure Cleaning may send an SMS when the quote is emailed, and that they can reply STOP or request email-only contact. Record this quote request as the SMS permission basis. Existing opt-outs remain in force. <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">View terms</a>.</span>
           </label>
-          <div className="mt-3 flex justify-end">
+          <EmailPreviewModal open={Boolean(quoteEmailPreview)} title="Final quote email preview" subject={quoteEmailPreview?.subject ?? ''} from={quoteEmailPreview?.from} to={quoteEmailPreview?.to} cc={quoteEmailPreview?.cc?.join(', ')} replyTo={quoteEmailPreview?.replyTo} html={quoteEmailPreview?.html ?? ''} onClose={() => setQuoteEmailPreview(null)} />
+          <div className="mt-3 flex justify-end gap-3">
+            <button type="button" onClick={() => void previewQuoteEmail()} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy || saveState.saving} className="rounded-lg border border-green-700 bg-white px-4 py-2 text-sm font-semibold text-green-800 disabled:opacity-60">{quoteEmailPreviewBusy ? 'Preparing preview...' : 'Preview email'}</button>
             <button
               type="button"
               onClick={sendUpdatedQuote}
-              disabled={quoteEmailAction.busy || saveState.saving}
+              disabled={quoteEmailPreviewBusy || quoteEmailAction.busy || saveState.saving}
               className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
               {quoteEmailAction.busy ? 'Sending...' : 'Send final quote'}

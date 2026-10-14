@@ -8,7 +8,7 @@ import { isAuthorizedAvailabilityAgentRequest } from '@/lib/availabilityAgentAut
 import { canAvailabilityAgentAccessQuote } from '@/lib/clientCrmQuoteAccess'
 import { getAdminSessionIdentityFromRequest } from '@/lib/adminAuth'
 import { getStaffAccountById } from '@/lib/staffAccounts'
-import { EmailProviderRejectedError, sendUpdatedQuoteEmail } from '@/lib/email'
+import { EmailProviderRejectedError, buildUpdatedQuoteEmail, sendUpdatedQuoteEmail } from '@/lib/email'
 import {
   completeFinalQuoteSend, createFinalQuoteSendAttempt,
   getPublicQuoteWorkflowByRef, getQuoteWorkflowByRef, recordFinalQuoteProviderAccepted, recordFinalQuoteSendFailure,
@@ -40,7 +40,7 @@ export async function POST(
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] ?? 'The final document is not ready.' }, { status: 409 })
     }
-    const body = await request.json().catch(() => ({})) as { quoteRequestConfirmed?: unknown; to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
+    const body = await request.json().catch(() => ({})) as { previewOnly?: unknown; quoteRequestConfirmed?: unknown; to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
     const recipient = resolveFinalQuoteRecipient(quote.finalDocument.inputs.email, body.to)
     if (!recipient.matches) {
       return NextResponse.json({ success: false, error: 'The recipient must match the reviewed final document.' }, { status: 400 })
@@ -59,6 +59,13 @@ export async function POST(
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
     const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
+    if (body.previewOnly === true) {
+      const preview = await buildUpdatedQuoteEmail(params.ref, quote.finalDocument.inputs, quote.finalDocument.displayPrice, {
+        to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html,
+        includeConsumablesCatalogue: quote.finalDocument.firmQuoteDraft.includeConsumablesCatalogue,
+      })
+      return NextResponse.json({ success: true, preview }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     if (body.quoteRequestConfirmed === true) {
       await recordQuoteSmsRequest({ quoteRef: params.ref, phone: quote.finalDocument.inputs.phone, source: 'agent_request', actorId: actor.id, allowed: true })
     }

@@ -156,12 +156,13 @@ test('recipient lookup failure is actionable and does not expose database detail
 function emailFixture(options = {}) {
   const payloads = []
   const lookups = []
+  const capabilities = []
   const exports = loadTs('src/lib/email.ts', {
     '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
     './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },
     './siteUrl': { getSiteUrl: () => 'https://example.com' }, './publicRoomScope': scope,
-    './availability': {}, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => 'document-token' },
+    './availability': {}, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
     './quoteEmailRecipients': { getQuoteAgentCc: async (...args) => {
       lookups.push(args)
       if (options.lookupError) throw options.lookupError
@@ -173,7 +174,7 @@ function emailFixture(options = {}) {
       return options.providerResult ?? { data: { id: 'provider-id' } }
     } } } },
   }, { RESEND_API_KEY: 'local-placeholder', FROM_EMAIL: 'quotes@example.com', ADMIN_EMAIL: 'admin@example.com' })
-  return { ...exports, payloads, lookups }
+  return { ...exports, payloads, lookups, capabilities }
 }
 
 test('initial and standard resend quote send one exact client email with agent CC, no separate internal copy', async () => {
@@ -255,7 +256,7 @@ function finalRouteFixture(kind, options = {}) {
   const calls = []
   const { QuoteAgentEmailError } = recipientFixture()
   class EmailProviderRejectedError extends Error {}
-  const finalDocument = { inputs, version: 2 }
+  const finalDocument = { inputs, version: 2, displayPrice: { low: 100, high: 100 }, firmQuoteDraft: {} }
   const quote = { id: 'quote-id', quoteRef: 'SC-TEST', inputs, workflowColumnsAvailable: true, finalDocument, firmQuoteDraft: {} }
   const config = { assignees: [{ id: 'regional', name: 'Sample Agent', active: true }] }
   const exports = loadTs(kind === 'admin'
@@ -278,7 +279,7 @@ function finalRouteFixture(kind, options = {}) {
       if (options.noAgent) throw new QuoteAgentEmailError('Assign an active agent with a valid email address before sending this quote.')
       return ['responsible@example.com']
     } },
-    '@/lib/email': { EmailProviderRejectedError, sendUpdatedQuoteEmail: async (...args) => {
+    '@/lib/email': { EmailProviderRejectedError, buildUpdatedQuoteEmail: async (...args) => { calls.push(['preview', ...args]); return { to: args[3].to, subject: 'Preview', html: '<p>Rendered</p>' } }, sendUpdatedQuoteEmail: async (...args) => {
       calls.push(['send', ...args])
       if (options.rejected) throw new EmailProviderRejectedError('Rejected')
       if (options.uncertain) throw new Error('Timeout')
@@ -293,7 +294,7 @@ function finalRouteFixture(kind, options = {}) {
       recordFinalQuoteSendFailure: async (...args) => { calls.push(['failed', ...args]) },
     },
   })
-  const request = { json: async () => ({ to: inputs.email, quoteRequestConfirmed: options.confirmed, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
+  const request = { json: async () => ({ to: options.recipient ?? inputs.email, previewOnly: options.previewOnly, quoteRequestConfirmed: options.confirmed, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
   return { calls, run: () => exports.POST(request, { params: Promise.resolve({ assigneeId: 'regional', ref: 'SC-TEST' }) }) }
 }
 
@@ -502,3 +503,29 @@ test('quote email returns the accepted provider ID and includes SMS terms for re
     assert.match(payload.html,/unrelated marketing/)
   }
 })
+
+
+test('final quote preview shares the sent renderer without issuing access or sending', async () => {
+ const f=emailFixture()
+ const options={agentCc:['agent@example.com'],subject:'Preview test',message:'Hello client',messageHtml:'<p>Hello <strong>client</strong></p>',includeConsumablesCatalogue:true}
+ const preview=await f.buildUpdatedQuoteEmail('SC-TEST',inputs,{low:140,high:140},options)
+ assert.equal(f.capabilities.length,0);assert.equal(f.payloads.length,0)
+ assert.match(preview.html,/<strong>client<\/strong>/);assert.match(preview.html,/View Consumables Pricing/)
+ await f.sendUpdatedQuoteEmail('SC-TEST',inputs,{low:140,high:140},options)
+ assert.equal(f.capabilities.length,1);assert.equal(f.payloads.length,1)
+ assert.equal(f.payloads[0].html.replaceAll('&access=document-token',''),preview.html)
+ assert.equal(f.payloads[0].subject,preview.subject)
+})
+for (const kind of ['admin','agent']) {
+ test(`${kind} preview does not record consent, claim a send or contact provider`, async () => {
+  const f=finalRouteFixture(kind,{previewOnly:true,confirmed:true});const response=await f.run()
+  assert.equal(response.status,200);assert.equal(response.body.preview.to,inputs.email)
+  assert.deepEqual(f.calls.map(c=>Array.isArray(c)?c[0]:c),['resolve','preview'])
+ })
+ test(`${kind} preview retains authentication and recipient protection`, async () => {
+  for(const options of [{authorized:false},{recipient:'other@example.com'},...(kind==='agent'?[{inRegion:false}]:[])]) {
+   const f=finalRouteFixture(kind,{previewOnly:true,...options});assert.ok((await f.run()).status>=400)
+   assert.ok(!f.calls.some(c=>Array.isArray(c)&&c[0]==='preview'))
+  }
+ })
+}
