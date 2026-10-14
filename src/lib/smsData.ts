@@ -32,10 +32,10 @@ export async function saveSmsSettings(actor:ClientCrmActor,body:Record<string,un
   const next = { auto_enabled: body.auto_enabled===true, delay_minutes:Number(body.delay_minutes),template:String(body.template||''),alert_email:String(body.alert_email||'').trim().toLowerCase(),low_credit_threshold:Number(body.low_credit_threshold),credit_price_cents:Number(body.credit_price_cents),max_parts:Number(body.max_parts),updated_at:new Date().toISOString() }
   try { renderSms(next.template,{first_name:'Client',client_name:'Client',quote_reference:'SC-EXAMPLE'}) } catch(error) {throw new SmsError(error instanceof Error?error.message:'Invalid SMS template.')}
   if(!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(next.alert_email)||next.alert_email.length>254) throw new SmsError('Enter one valid alert email address.')
-  if(!Number.isInteger(next.delay_minutes)||next.delay_minutes<0||next.delay_minutes>120||!Number.isInteger(next.low_credit_threshold)||next.low_credit_threshold<0||!Number.isFinite(next.credit_price_cents)||next.credit_price_cents<0||next.credit_price_cents>100||!Number.isInteger(next.max_parts)||next.max_parts<1||next.max_parts>5) throw new SmsError('Check the delay, credit threshold, price and segment limit.')
+  if(!Number.isInteger(next.delay_minutes)||next.delay_minutes<5||next.delay_minutes>120||!Number.isInteger(next.low_credit_threshold)||next.low_credit_threshold<0||!Number.isFinite(next.credit_price_cents)||next.credit_price_cents<0||next.credit_price_cents>100||!Number.isInteger(next.max_parts)||next.max_parts<1||next.max_parts>5) throw new SmsError('Check the delay, credit threshold, price and segment limit.')
   if(next.auto_enabled) {
     const current=await smsSettings()
-    if(!smsLiveEnabled()||current.health.ready!==true||!current.worker_at||Date.now()-Date.parse(current.worker_at)>5*60_000) throw new SmsError('Enable the server and check the connection and scheduler before activating automatic SMS.',409)
+    if(!smsLiveEnabled()||current.health.ready!==true||!current.worker_at||Date.now()-Date.parse(current.worker_at)>25*60_000) throw new SmsError('Enable the server and check the connection and scheduler before activating automatic SMS.',409)
   }
   const db=getAdminSupabase()
   const {data,error}=await db.rpc('sms_save_settings',{p_previous:String(body.updated_at),p_values:next,p_actor:actor.id})

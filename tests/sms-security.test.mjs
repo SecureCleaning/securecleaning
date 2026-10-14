@@ -207,3 +207,18 @@ test('inbound backlog still blocks dispatch and does not advance recovery checkp
  assert.ok(f.alerts.includes('inbound_backlog_requires_review'))
  assert.equal(f.updates.at(-1)[1].health.ready,false)
 })
+
+test('SMS settings enforce a five-minute minimum without changing other settings',async()=>{
+ const f=dataFixture(),owner={id:'owner',role:'owner'}
+ for(const delay_minutes of [0,1,4,4.5,121]) await assert.rejects(f.mod.saveSmsSettings(owner,{...f.values.sms_settings,delay_minutes}),/Check the delay/)
+ for(const delay_minutes of [5,10,120]) await f.mod.saveSmsSettings(owner,{...f.values.sms_settings,delay_minutes})
+ assert.equal(f.rpcCalls.length,3)
+})
+
+test('SMS activation accepts the idle recovery interval but rejects a stale worker',async()=>{
+ const f=dataFixture({live:true}),owner={id:'owner',role:'owner'}
+ f.values.sms_settings.worker_at=new Date(Date.now()-20*60_000).toISOString()
+ await f.mod.saveSmsSettings(owner,{...f.values.sms_settings,auto_enabled:true})
+ f.values.sms_settings.worker_at=new Date(Date.now()-26*60_000).toISOString()
+ await assert.rejects(f.mod.saveSmsSettings(owner,{...f.values.sms_settings,auto_enabled:true}),/scheduler/)
+})
