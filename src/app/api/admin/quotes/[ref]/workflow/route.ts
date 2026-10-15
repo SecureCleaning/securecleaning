@@ -1,4 +1,4 @@
-import { validWorkflowInput } from '@/lib/securityInput'
+import { getWorkflowInputError, validWorkflowInput } from '@/lib/securityInput'
 import { rejectLargePayload } from '@/lib/abuseProtection'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     const oversized = await rejectLargePayload(request, 512 * 1024)
     if (oversized) return oversized
     const body = await request.json().catch(() => null)
-    if (!validWorkflowInput(body)) return NextResponse.json({ success: false, error: 'Invalid or oversized quote document fields.' }, { status: 400 })
+    if (!validWorkflowInput(body)) return NextResponse.json({ success: false, error: getWorkflowInputError(body) ?? 'Invalid quote document fields.' }, { status: 400 })
     const requestedStatus = body?.firmQuoteDraft?.status
     if (!isEditableFirmQuoteStatus(requestedStatus) && requestedStatus !== 'accepted') {
       return NextResponse.json({ success: false, error: 'Save supports only draft or reviewed workflow states.' }, { status: 400 })

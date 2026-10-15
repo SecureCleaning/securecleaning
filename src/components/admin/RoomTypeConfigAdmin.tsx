@@ -33,6 +33,7 @@ import {
 } from '@/lib/roomTypeConfig'
 import { getAdminHeaders } from '@/lib/useAdminHeaders'
 import AdminPageHeader from './AdminPageHeader'
+import SavedQuoteFields from './SavedQuoteFields'
 
 const INPUT_TYPES: RoomMetricInputType[] = ['integer', 'number', 'boolean']
 
@@ -53,6 +54,8 @@ function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: Q
     monthly: 0,
     quarterly: 0,
     annually: 0,
+    as_needed: 0,
+    alternate_days: 0,
   }
 
   for (const task of taskDefinitions) {
@@ -73,8 +76,10 @@ function getDefaultRoomPricingSummary(roomType: RoomTypeConfig, pricingConfig: Q
     monthly: ' monthly',
     quarterly: ' quarterly',
     annually: ' annually',
+    as_needed: ' as needed (allowance per visit)',
+    alternate_days: ' every second visit',
   }
-  const order: RoomTaskCadence[] = ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually']
+  const order: RoomTaskCadence[] = ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually', 'as_needed', 'alternate_days']
   const parts = order
     .filter((cadence) => totals[cadence] > 0)
     .map((cadence) => `${formatCurrency(totals[cadence])}${labels[cadence]}`)
@@ -384,6 +389,7 @@ export default function RoomTypeConfigAdmin({
         </div>
 
         <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
+          <SavedQuoteFields config={config} addField={addField} updateField={updateField} />
           <section className="rounded-2xl border border-teal-100 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -719,6 +725,7 @@ export default function RoomTypeConfigAdmin({
                           <label className="text-sm">
                             <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Display label</span>
                             <input
+                              maxLength={200}
                               value={field.label}
                               onChange={(event) => updateField(roomType.id, field.id, { label: event.target.value })}
                               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"

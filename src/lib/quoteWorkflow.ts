@@ -213,12 +213,12 @@ function sanitizeCustomMetricFields(value: unknown): RoomMetricFieldConfig[] {
     const inputType = source.inputType === 'boolean' || source.inputType === 'number' ? source.inputType : 'integer'
     return [{
       id,
-      label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 80) : `Custom field ${index + 1}`,
+      label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 200) : `Custom field ${index + 1}`,
       inputType,
       defaultValue: inputType === 'boolean' ? Boolean(source.defaultValue) : safePositiveNumber(source.defaultValue, 0),
       includedUnits: safePositiveNumber(source.includedUnits, 0),
       pricePerUnit: safePositiveNumber(source.pricePerUnit, 0),
-      cadence: ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually'].includes(String(source.cadence))
+      cadence: ['every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually', 'as_needed', 'alternate_days'].includes(String(source.cadence))
         ? source.cadence as RoomTaskCadence
         : 'every_clean',
       helpText: typeof source.helpText === 'string' ? source.helpText.trim().slice(0, 120) : '',

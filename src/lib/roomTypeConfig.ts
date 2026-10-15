@@ -3,7 +3,7 @@ import type { QuotePricingConfig } from '@/lib/pricing'
 import type { CleaningFrequency } from '@/lib/types'
 
 export type RoomMetricInputType = 'integer' | 'number' | 'boolean'
-export type RoomTaskCadence = 'every_clean' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually'
+export type RoomTaskCadence = 'every_clean' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually' | 'as_needed' | 'alternate_days'
 export type GlobalRoomTaskPricingMode = 'area' | 'fixed'
 
 export type GlobalRoomTaskRate = {
@@ -21,6 +21,8 @@ export const ROOM_TASK_CADENCE_OPTIONS: Array<{ value: RoomTaskCadence; label: s
   { value: 'monthly', label: 'Monthly' },
   { value: 'quarterly', label: 'Quarterly' },
   { value: 'annually', label: 'Annually' },
+  { value: 'as_needed', label: 'As needed' },
+  { value: 'alternate_days', label: 'Alternate days' },
 ]
 
 const ROOM_TASK_CADENCE_LABELS = Object.fromEntries(
@@ -44,6 +46,8 @@ const TASK_OCCURRENCES_PER_YEAR: Record<RoomTaskCadence, number> = {
   monthly: 12,
   quarterly: 4,
   annually: 1,
+  as_needed: 0,
+  alternate_days: 0,
 }
 
 export type RoomMetricFieldConfig = {
@@ -181,6 +185,7 @@ export function getEffectiveRoomTaskCadence(
   cadence: RoomTaskCadence,
   frequency: CleaningFrequency
 ): RoomTaskCadence {
+  if (cadence === 'as_needed' || cadence === 'alternate_days') return cadence
   if (cadence === 'every_clean' || frequency === 'once_off') return 'every_clean'
   const visits = VISITS_PER_YEAR[frequency] || 1
   return TASK_OCCURRENCES_PER_YEAR[cadence] >= visits ? 'every_clean' : cadence
@@ -552,6 +557,8 @@ export function withSelectedMoppingRate(config: QuoteRoomTypeConfig, room: RoomT
 }
 
 export function getRoomTaskAmortizationFactor(cadence: RoomTaskCadence, frequency: CleaningFrequency) {
+  if (cadence === 'as_needed') return 1
+  if (cadence === 'alternate_days') return frequency === 'once_off' ? 1 : 0.5
   if (getEffectiveRoomTaskCadence(cadence, frequency) === 'every_clean') return 1
   const visits = VISITS_PER_YEAR[frequency] || 1
   return Math.min(1, TASK_OCCURRENCES_PER_YEAR[cadence] / visits)
@@ -832,7 +839,7 @@ function normalizeField(candidate: unknown, index: number): RoomMetricFieldConfi
 
   return {
     id: typeof source.id === 'string' && source.id.trim() ? source.id.trim().slice(0, 64) : `field_${index + 1}`,
-    label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 100) : `Field ${index + 1}`,
+    label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 200) : `Field ${index + 1}`,
     inputType,
     defaultValue,
     includedUnits: Number.isFinite(Number(source.includedUnits)) ? Math.max(0, Number(source.includedUnits)) : 0,
@@ -863,7 +870,7 @@ function normalizeRoomType(candidate: unknown, index: number): RoomTypeConfig {
 
   const normalized: RoomTypeConfig = {
     id: sourceId || fallback.id,
-    label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 100) : fallback.label,
+    label: typeof source.label === 'string' && source.label.trim() ? source.label.trim().slice(0, 200) : fallback.label,
     defaultLabel:
       typeof source.defaultLabel === 'string' && source.defaultLabel.trim() ? source.defaultLabel.trim().slice(0, 100) : fallback.defaultLabel,
     tracksSize: typeof source.tracksSize === 'boolean' ? source.tracksSize : fallback.tracksSize,

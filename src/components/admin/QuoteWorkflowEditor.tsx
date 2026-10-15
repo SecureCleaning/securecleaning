@@ -1,5 +1,6 @@
 'use client'
 
+import { appendSavedQuoteField } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
@@ -556,14 +557,12 @@ export default function QuoteWorkflowEditor({
   function addSystemMetricField(room: WorkflowRoomItem, fieldId: string) {
     const field = systemMetricFieldOptions.find((candidate) => candidate.id === fieldId)
     if (!field) return
-    const belongsToRoomType = getRoomTypeConfigById(roomTypeConfig, room.type)?.fields.some((candidate) => candidate.id === fieldId)
-    updateRoom(room.id, {
-      excludedMetricFieldIds: (room.excludedMetricFieldIds ?? []).filter((id) => id !== fieldId),
-      customMetricFields: belongsToRoomType || (room.customMetricFields ?? []).some((candidate) => candidate.id === fieldId)
-        ? room.customMetricFields ?? []
-        : [...(room.customMetricFields ?? []), { ...field }],
-      metrics: { ...(room.metrics ?? {}), [fieldId]: field.defaultValue },
-    })
+    if ((room.customMetricFields ?? []).length >= 20 || getWorkflowRoomMetricFields(room, roomTypeConfig).length >= 30) {
+      window.alert('This room has reached its extra-field limit. Add another room to include more fields.')
+      return
+    }
+    const id = `saved_${crypto.randomUUID()}`
+    updateRoom(room.id, appendSavedQuoteField(room, field, id))
   }
 
   function removeMetricField(room: WorkflowRoomItem, fieldId: string) {
@@ -1459,7 +1458,7 @@ export default function QuoteWorkflowEditor({
                             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold"
                           >
                             <option value="">Add saved field…</option>
-                            {systemMetricFieldOptions.filter((field) => !getWorkflowRoomMetricFields(room, roomTypeConfig).some((active) => active.id === field.id)).map((field) => (
+                            {systemMetricFieldOptions.map((field) => (
                               <option key={field.id} value={field.id}>{field.label}</option>
                             ))}
                           </select>
@@ -1476,7 +1475,7 @@ export default function QuoteWorkflowEditor({
                           <div key={field.id} className="rounded-lg bg-gray-50 p-3 text-sm">
                             <div className="mb-2 flex items-center justify-between gap-2">
                               {isCustom ? (
-                                <input value={field.label} onChange={(event) => updateCustomMetricField(room, field.id, { label: event.target.value })} aria-label="Custom field label" className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 font-medium" />
+                                <input maxLength={200} title="Field description (maximum 200 characters)" value={field.label} onChange={(event) => updateCustomMetricField(room, field.id, { label: event.target.value })} aria-label="Custom field label" className="min-w-0 flex-1 rounded-md border border-gray-300 px-2 py-1.5 font-medium" />
                               ) : <span className="font-medium text-gray-700">{field.label}</span>}
                               <button type="button" onClick={() => removeMetricField(room, field.id)} className="text-xs font-semibold text-red-600">Remove</button>
                             </div>

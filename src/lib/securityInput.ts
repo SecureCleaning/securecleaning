@@ -1,10 +1,19 @@
 type Rule = (value: unknown) => boolean
+const children = new WeakMap<Rule, (value: unknown) => Array<[string, unknown, Rule]>>()
 const number = (max: number, min = 0, integer = false): Rule => value => typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max && (!integer || Number.isInteger(value))
 const string = (max = 10000): Rule => value => typeof value === 'string' && value.length <= max
 const boolean: Rule = value => typeof value === 'boolean'
 const choice = (...values: string[]): Rule => value => typeof value === 'string' && values.includes(value)
-const array = (rule: Rule, max: number): Rule => value => Array.isArray(value) && value.length <= max && value.every(rule)
-const object = (rules: Record<string, Rule>): Rule => value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.entries(value).every(([key, item]) => Object.prototype.hasOwnProperty.call(rules, key) && rules[key](item))
+const array = (rule: Rule, max: number): Rule => {
+  const check: Rule = value => Array.isArray(value) && value.length <= max && value.every(rule)
+  children.set(check, value => Array.isArray(value) && value.length <= max ? value.map((item, index) => [String(index + 1), item, rule]) : [])
+  return check
+}
+const object = (rules: Record<string, Rule>): Rule => {
+  const check: Rule = value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.entries(value).every(([key, item]) => Object.prototype.hasOwnProperty.call(rules, key) && rules[key](item))
+  children.set(check, value => value && typeof value === 'object' && !Array.isArray(value) ? Object.entries(value).map(([key, item]) => [Object.prototype.hasOwnProperty.call(rules, key) ? key : 'unsupported field', item, Object.prototype.hasOwnProperty.call(rules, key) ? rules[key] : (() => false)]) : [])
+  return check
+}
 const dictionary = (rule: Rule, max = 100, keyRule: Rule = key => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(key)): Rule => value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length <= max && Object.entries(value).every(([key, item]) => keyRule(key) && !['__proto__', 'constructor', 'prototype'].includes(key) && rule(item))
 const frequency = choice('daily', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly', 'once_off')
 const addOns = object({ bathrooms: number(1000, 0, true), kitchens: number(1000, 0, true), windows: number(10000, 0, true), glassCleaningRequired: boolean, consumables: boolean, highTouchDisinfection: boolean, carpetSteam: boolean })
@@ -16,7 +25,7 @@ export const validQuoteInput = object(inputRules)
 export function validPublicQuoteInput(value: unknown) {
   return validQuoteInput(value) && !!value && typeof value === 'object' && 'floorArea' in value && 'addOns' in value
 }
-const metric = object({ id: string(64), label: string(80), inputType: choice('boolean', 'number', 'integer'), defaultValue: value => boolean(value) || number(1000000)(value), includedUnits: number(1000000), pricePerUnit: number(1000000), cadence: choice('every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually'), helpText: string(120) })
+const metric = object({ id: string(64), label: string(200), inputType: choice('boolean', 'number', 'integer'), defaultValue: value => boolean(value) || number(1000000)(value), includedUnits: number(1000000), pricePerUnit: number(1000000), cadence: choice('every_clean', 'weekly', 'fortnightly', 'monthly', 'quarterly', 'annually', 'as_needed', 'alternate_days'), helpText: string(120) })
 // Configured metric IDs historically include labels such as "Entrance Doors".
 // Keep bounded printable keys; dictionary still rejects prototype-related names.
 const metricKey: Rule = key => typeof key === 'string' && key.trim().length > 0 && key.length <= 128 && !/[\u0000-\u001f\u007f]/.test(key)
@@ -56,4 +65,18 @@ export function assertStoredDocumentBounded(value: unknown, maxBytes: number) {
     if (bytes > maxBytes) throw new Error('Quote document needs administrator review: stored document exceeds supported limits.')
   }
   visit(value, 0)
+}
+
+/** Return only schema paths, never customer values, in validation feedback. */
+export function getWorkflowInputError(value: unknown): string | null {
+  function find(rule: Rule, item: unknown, path: string): string | null {
+    if (rule(item)) return null
+    for (const [key, child, childRule] of children.get(rule)?.(item) ?? []) {
+      const error = find(childRule, child, path ? `${path}.${key}` : key)
+      if (error) return error
+    }
+    return path || 'quote document'
+  }
+  const path = find(validWorkflowInput, value, '')
+  return path ? `Please check ${path}: its value is invalid or exceeds the supported limit. Your changes have not been saved.` : null
 }
