@@ -1,12 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import styles from './ClientFollowUps.module.css'
-import { followUpSummary } from '@/lib/crmFollowUpSummary'
-import type { CrmEmailTemplate, CrmOpportunity } from '@/lib/clientCrmData'
+import { useVisibleRefresh } from '@/lib/useVisibleRefresh'
+import type { CrmFollowUpItem } from '@/lib/clientCrmReads'
 import { followUpGroup, followUpInput, followUpIso } from '@/lib/crmFollowUpTime'
 
-type Workspace = { opportunities: CrmOpportunity[]; templates: CrmEmailTemplate[]; actor: { role: string; availabilityAssigneeId?: string | null } }
+type Workspace = { opportunities: CrmFollowUpItem[]; actor: { role: string; availabilityAssigneeId?: string | null } }
 export default function ClientFollowUps({ refreshKey, compact = false }: { refreshKey?: unknown; compact?: boolean }) {
   const [data, setData] = useState<Workspace | null>(null)
   const [error, setError] = useState('')
@@ -14,28 +14,23 @@ export default function ClientFollowUps({ refreshKey, compact = false }: { refre
   const [editing, setEditing] = useState('')
   const [when, setWhen] = useState('')
   const [now, setNow] = useState(new Date())
-  async function load() {
-    const response = await fetch('/api/admin/client-crm?followUps=1', { cache: 'no-store' })
+  async function load(signal: AbortSignal) {
+    const response = await fetch('/api/admin/client-crm?followUps=1', { cache: 'no-store', signal })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error || 'Unable to load follow-ups.')
+    if (signal.aborted) return
     setData(result)
     setError('')
     setNow(new Date())
   }
-  useEffect(() => {
-    const refresh = () => { void load().catch((e) => setError(e.message)) }
-    refresh()
-    const timer = setInterval(refresh, 60000)
-    window.addEventListener('focus', refresh)
-    return () => { clearInterval(timer); window.removeEventListener('focus', refresh) }
-  }, [refreshKey])
-  async function update(item: CrmOpportunity, value: string | null) {
+  const refresh = useVisibleRefresh(load, 60000, e => setError(e instanceof Error ? e.message : 'Unable to load follow-ups.'), refreshKey, 'crm-followup-updated')
+  async function update(item: CrmFollowUpItem, value: string | null) {
     setBusy(item.id); setError('')
     try {
       const response = await fetch('/api/admin/client-crm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'opportunity.update', id: item.id, nextFollowUpAt: value, expectedNextFollowUpAt: item.nextFollowUpAt }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to update follow-up.')
-      setEditing(''); await load()
+      setEditing(''); await refresh()
       window.dispatchEvent(new Event('crm-followup-updated'))
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to update follow-up.') }
     finally { setBusy('') }
@@ -58,7 +53,7 @@ export default function ClientFollowUps({ refreshKey, compact = false }: { refre
           <span className={`${styles.status} shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${tone}`}>{group}</span>
         <p className={`${styles.date} text-xs text-gray-500`}>{new Date(item.nextFollowUpAt!).toLocaleString('en-AU', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</p>
         <details className={styles.details}>
-          <summary className="cursor-pointer text-sm text-teal-800" title={followUpSummary(item, data?.templates ?? [])}>{followUpSummary(item, data?.templates ?? [])}</summary>
+          <summary className="cursor-pointer text-sm text-teal-800" title={item.summary}>{item.summary}</summary>
           <p className="mt-2 text-xs text-gray-500">Assigned to {item.assignedStaffName || 'Unassigned'}</p>
           <a href={`${base}?opportunity=${encodeURIComponent(item.id)}`} className="mt-2 inline-block text-teal-700 underline">Open client activity</a>
           <div className="mt-3 flex gap-4"><button disabled={!!busy} onClick={() => void update(item, null)} className="font-semibold text-green-700 disabled:opacity-50">Complete</button><button disabled={!!busy} onClick={() => { setEditing(item.id); setWhen(followUpInput(item.nextFollowUpAt)) }} className="font-semibold text-teal-700 disabled:opacity-50">Reschedule</button></div>

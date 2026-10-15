@@ -6,7 +6,7 @@ function database(rows, failAt = -1) {
   const calls = []
   return { calls, from(table) {
     assert.equal(table, 'quotes')
-    return { select() { return this }, order() { return this }, async range(start, end) {
+    return { select() { return this }, returns() { return this }, order() { return this }, async range(start, end) {
       calls.push([start, end])
       return start === failAt ? { data: null, error: { message: 'Unavailable' } } : { data: rows.slice(start, end + 1), error: null }
     } }

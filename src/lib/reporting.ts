@@ -26,13 +26,13 @@ export async function getReportingSnapshot(): Promise<ReportingSnapshot> {
 
   const [quotesRes, bookingsRes, leadsRes, operatorsRes] = await Promise.all([
     db.from('quotes').select('status, follow_up_status'),
-    db.from('bookings').select('status, assigned_operator_id, site_id, inspection_status, inputs'),
+    db.from('bookings').select('status, assigned_operator_id, site_id, inspection_status, inspection_assignee:inputs->>preferredInspectionAssigneeId'),
     db.from('leads').select('follow_up_status'),
     db.from('owner_operators').select('is_active'),
   ])
 
   const quotes = quotesRes.data ?? []
-  const bookings = bookingsRes.data ?? []
+  const bookings = (bookingsRes.data ?? []).map(row => ({ ...row, inputs: { preferredInspectionAssigneeId: row.inspection_assignee } }))
   const leads = leadsRes.data ?? []
   const operators = operatorsRes.data ?? []
 

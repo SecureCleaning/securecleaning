@@ -184,7 +184,32 @@ export default function ClientCrmWorkspace({
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
 
+  const workspaceRead = useRef<Promise<void> | null>(null)
+  const historyRequest = useRef<AbortController | null>(null)
+  useEffect(() => () => { historyRequest.current?.abort() }, [selectedLeadId])
+  async function viewSentEmail(opportunityId: string, emailId: string) {
+    if (historyRequest.current && !historyRequest.current.signal.aborted) return
+    const controller = new AbortController()
+    historyRequest.current = controller
+    setBusy(`history:${emailId}`)
+    try {
+      const response = await fetch(`/api/admin/client-crm?opportunity=${encodeURIComponent(opportunityId)}&emailId=${encodeURIComponent(emailId)}`, { cache: 'no-store', signal: controller.signal })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to load saved email.')
+      if (!controller.signal.aborted) setEmailPreview(result.email)
+    } catch (error) { if (!controller.signal.aborted) setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load saved email.' }) }
+    finally { if (historyRequest.current === controller) { historyRequest.current = null; setBusy('') } }
+  }
+
   async function loadWorkspace(preferredLeadId?: string) {
+    // Serialise event/mutation reloads so an older read cannot win after a save.
+    while (workspaceRead.current) await workspaceRead.current.catch(() => undefined)
+    const pending = readWorkspace(preferredLeadId)
+    workspaceRead.current = pending
+    try { await pending } finally { if (workspaceRead.current === pending) workspaceRead.current = null }
+  }
+
+  async function readWorkspace(preferredLeadId?: string) {
     const response = await fetch(`/api/admin/client-crm?opportunity=${encodeURIComponent(preferredLeadId || selectedLeadId || initialOpportunityId)}`, { cache: 'no-store' })
     const result = await response.json()
     if (!response.ok) throw new Error(result.error || 'Unable to load the Client CRM.')
@@ -196,7 +221,7 @@ export default function ClientCrmWorkspace({
     const nextLeadId = next.opportunities.some((opportunity) => opportunity.id === requestedLeadId)
       ? requestedLeadId
       : next.opportunities[0]?.id || ''
-    setSelectedLeadId(nextLeadId)
+    setSelectedLeadId(current => current && current !== selectedLeadId && !preferredLeadId ? current : nextLeadId)
   }
 
   useEffect(() => {
@@ -269,7 +294,9 @@ export default function ClientCrmWorkspace({
       acceptanceMethod: 'email',
       acceptanceNote: '',
     })
-  }, [data?.actor.id, data?.actor.role, data?.senders, selectedLead])
+    // Preserve unsaved fields when reminder metadata refreshes the same selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLeadId])
 
   async function post(body: Record<string, unknown>) {
     const response = await fetch('/api/admin/client-crm', {
@@ -333,9 +360,15 @@ export default function ClientCrmWorkspace({
   }
 
   useEffect(() => {
-    const refresh = () => { void loadWorkspace() }
+    const refresh = () => { if (document.visibilityState === 'visible') void loadWorkspace().catch(error => setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to refresh CRM.' })) }
     window.addEventListener('crm-followup-updated', refresh)
-    return () => window.removeEventListener('crm-followup-updated', refresh)
+    window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      window.removeEventListener('crm-followup-updated', refresh)
+      window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', refresh)
+    }
     // Refresh the selected record after dashboard reminder actions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedLeadId])
@@ -811,10 +844,10 @@ export default function ClientCrmWorkspace({
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><ClientEmailStatus lead={selectedLead} /><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{item.finalHtml ? <button type="button" onClick={() => setEmailPreview({ subject: item.subject, to: item.toEmail, from: item.senderName, html: item.finalHtml || '', history: true })} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><ClientEmailStatus lead={selectedLead} /><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
-      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => setEmailPreview(null)} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
+      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )
 }

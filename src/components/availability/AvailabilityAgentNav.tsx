@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useVisibleRefresh } from '@/lib/useVisibleRefresh'
 import { useSiteHeaderHeight } from '@/lib/useSiteHeaderHeight'
 import { usePathname } from 'next/navigation'
 import ConfigurableNavigation from '@/components/navigation/ConfigurableNavigation'
@@ -28,36 +29,12 @@ export default function AvailabilityAgentNav({
     productCode: string
   }>>([])
 
-  useEffect(() => {
-    if (!assigneeId) {
-      setSaleAlerts([])
-      return
-    }
-
-    const controller = new AbortController()
-    const loadSaleAlerts = async () => {
-      try {
-        const response = await fetch(`/api/availability-agent/${encodeURIComponent(assigneeId)}/sale-alerts`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        const result = response.ok ? await response.json() : { alerts: [] }
-        setSaleAlerts(Array.isArray(result.alerts) ? result.alerts : [])
-      } catch (error) {
-        if (error instanceof DOMException && error.name === 'AbortError') return
-        setSaleAlerts([])
-      }
-    }
-    void loadSaleAlerts()
-    const interval = window.setInterval(() => void loadSaleAlerts(), 60_000)
-    window.addEventListener('secure-cleaning:sale-alerts-changed', loadSaleAlerts)
-
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener('secure-cleaning:sale-alerts-changed', loadSaleAlerts)
-      controller.abort()
-    }
-  }, [assigneeId])
+  useVisibleRefresh(async signal => {
+    if (!assigneeId) { setSaleAlerts([]); return }
+    const response = await fetch(`/api/availability-agent/${encodeURIComponent(assigneeId)}/sale-alerts`, { cache: 'no-store', signal })
+    const result = response.ok ? await response.json() : { alerts: [] }
+    if (!signal.aborted) setSaleAlerts(Array.isArray(result.alerts) ? result.alerts : [])
+  }, 60_000, () => setSaleAlerts([]), assigneeId, 'secure-cleaning:sale-alerts-changed')
 
   async function dismissSaleAlert(saleId: string) {
     if (!assigneeId) return

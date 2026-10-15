@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
+import { getCrmFollowUps, getCrmSentEmail } from '@/lib/clientCrmReads'
 import { getClientCrmActor } from '@/lib/clientCrmAuth'
 import {
   ClientCrmError,
@@ -23,6 +24,9 @@ export async function GET(request: NextRequest) {
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
   try {
+    if (request.nextUrl.searchParams.get('followUps') === '1') return NextResponse.json({ success: true, ...(await getCrmFollowUps(actor)) })
+    const emailId = request.nextUrl.searchParams.get('emailId')
+    if (emailId) return NextResponse.json({ success: true, email: await getCrmSentEmail(actor, request.nextUrl.searchParams.get('opportunity') || '', emailId) })
     const notesFor = request.nextUrl.searchParams.get('notesFor')
     if (notesFor) {
       return NextResponse.json({

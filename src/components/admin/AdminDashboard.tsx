@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useQuoteListRefresh } from '@/lib/useQuoteListRefresh'
+import { useVisibleRefresh } from '@/lib/useVisibleRefresh'
 import BookingEditor from './BookingEditor'
 import DispatchPanel from './DispatchPanel'
 import CrmFollowUpPanel from './CrmFollowUpPanel'
@@ -216,7 +216,6 @@ const bookingQueues: Array<{ key: BookingQueue; label: string }> = [
 ]
 
 export default function AdminDashboard({ initialData, canDeleteQuotes = false }: Props) {
-  useQuoteListRefresh()
   useEffect(() => setQuotes(initialData.quotes), [initialData.quotes])
   const [activeTab, setActiveTab] = useState<TabKey>('quotes')
   const [quotes, setQuotes] = useState(initialData.quotes)
@@ -399,36 +398,22 @@ export default function AdminDashboard({ initialData, canDeleteQuotes = false }:
 
     setAlerts((current) => current.filter((item) => item.id !== alert.id))
   }
-  async function refreshOverview() {
-    try {
-      const [reportingResponse, alertsResponse] = await Promise.all([
-        fetch('/api/admin/reporting'),
-        fetch('/api/admin/alerts'),
-      ])
-
-      const [reportingResult, alertsResult] = await Promise.all([
-        reportingResponse.json(),
-        alertsResponse.json(),
-      ])
-
-      if (reportingResponse.ok && reportingResult?.success) {
-        setReportingSnapshot(reportingResult.snapshot as ReportingSnapshot)
-      }
-
-      if (alertsResponse.ok && alertsResult?.success) {
-        setAlerts(alertsResult.alerts as AdminAlertRow[])
-      }
-
-      if (!reportingResponse.ok || !reportingResult?.success || !alertsResponse.ok || !alertsResult?.success) {
-        throw new Error('Dashboard refresh failed.')
-      }
-    } catch {
-      setActionState((current) => ({
-        ...current,
-        error: 'The record was saved, but the dashboard counters could not be refreshed. Reload this page to retry.',
-      }))
-    }
-  }
+  const refreshOverview = useVisibleRefresh(async signal => {
+    const tab = activeTab
+    const response = await fetch(`/api/admin/dashboard?tab=${tab}&alerts=1`, { cache: 'no-store', signal })
+    const result = await response.json()
+    if (!response.ok || !result.success) throw new Error('Unable to refresh dashboard.')
+    if (signal.aborted) return
+    setReportingSnapshot(result.reporting)
+    if (result.alerts) setAlerts(result.alerts)
+    if (tab === 'quotes') setQuotes(result.rows)
+    if (tab === 'leads') setLeads(result.rows)
+    if (tab === 'bookings') setBookings(current => result.rows.map((row: BookingRow) => {
+      const existing = current.find(item => item.booking_ref === row.booking_ref)
+      // Keep the open editor's backing record stable; saves update it explicitly.
+      return row.booking_ref === selectedBookingRef && existing ? existing : { ...existing, ...row }
+    }))
+  }, 30_000, () => setActionState(current => ({ ...current, error: 'Dashboard refresh failed. Your edits are preserved; the next refresh will retry.' })), activeTab)
 
   async function runAction(payload: Record<string, string>, successMessage: string) {
     setActionState({ loading: JSON.stringify(payload), message: null, error: null })

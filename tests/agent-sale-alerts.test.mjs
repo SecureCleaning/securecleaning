@@ -137,7 +137,9 @@ test('only the assigned signed-in agent can durably dismiss an inspection-ready 
 test('agent navigation explains, refreshes and dismisses cleared-deposit alerts per sale', () => {
   const navigation = readFileSync(new URL('../src/components/availability/AvailabilityAgentNav.tsx', import.meta.url), 'utf8')
   const inspectionPanel = readFileSync(new URL('../src/components/admin/ContractSaleInspectionPanel.tsx', import.meta.url), 'utf8')
-  assert.match(navigation, /setInterval\(\(\) => void loadSaleAlerts\(\), 60_000\)/)
+  assert.match(navigation, /useVisibleRefresh\(async signal/ )
+  assert.match(navigation, /60_000,.*assigneeId, 'secure-cleaning:sale-alerts-changed'/)
+  assert.doesNotMatch(navigation, /setInterval/)
   assert.match(navigation, /Cleared deposit approved/)
   assert.match(navigation, /role="status" aria-live="polite"/)
   assert.match(navigation, /Sending the client availability request or scheduling the inspection clears the alert automatically/)

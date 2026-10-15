@@ -377,7 +377,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
     ? await db.from('crm_communications')
-      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, final_html_snapshot, final_text_snapshot, status, sent_at, created_at')
+      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
       .in('opportunity_id', opportunityIds)
       .order('created_at', { ascending: false })
     : Promise.resolve({ data: [], error: null }),
@@ -396,7 +396,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis').in('id', intakeIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length > 0
-      ? db.from('quotes').select('id, quote_ref, status, created_at, final_quote_document, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
+      ? db.from('quotes').select('id, quote_ref, status, created_at, document_version:final_quote_document->version, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
       ? db.from('contract_products').select('id, opportunity_id, status').in('opportunity_id', opportunityIds)
@@ -478,7 +478,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       status: String(quote.status ?? ''),
       sequenceNumber: Number(link.sequence_number),
       createdAt: String(quote.created_at ?? ''),
-      hasFinalDocument: Boolean(quote.final_quote_document),
+      hasFinalDocument: quote.document_version != null,
       finalDocumentVersion: typeof quote.final_quote_document_version === 'number' ? quote.final_quote_document_version : null,
       finalQuoteSentAt: typeof quote.final_quote_sent_at === 'string' ? quote.final_quote_sent_at : null,
     }])

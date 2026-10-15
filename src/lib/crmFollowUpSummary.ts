@@ -1,8 +1,8 @@
-import type { CrmEmailTemplate, CrmOpportunity } from '@/lib/clientCrmData'
+import type { CrmEmailTemplate, CrmCommunication, CrmQuoteHistory } from '@/lib/clientCrmData'
 
 // Legacy manual reminders have no explicit source link. Describe the latest
 // recorded sales activity without copying the enquiry or internal notes.
-export function followUpSummary(item: Pick<CrmOpportunity, 'communications' | 'quotes'>, templates: Pick<CrmEmailTemplate, 'id' | 'name'>[]) {
+export function followUpSummary(item: { communications: Pick<CrmCommunication, 'status' | 'sentAt' | 'templateId'>[]; quotes: Pick<CrmQuoteHistory, 'finalQuoteSentAt'>[] }, templates: Pick<CrmEmailTemplate, 'id' | 'name'>[]) {
   const emails = item.communications.filter((email) => email.status === 'sent' && email.sentAt)
     .sort((a, b) => Date.parse(b.sentAt!) - Date.parse(a.sentAt!))
   const quotes = item.quotes.filter((quote) => quote.finalQuoteSentAt)
