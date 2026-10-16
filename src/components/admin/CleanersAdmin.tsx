@@ -1460,7 +1460,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Surname
-                <input required value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                <input value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Email

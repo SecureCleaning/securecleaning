@@ -352,9 +352,6 @@ function assertCleanerPayload(payload: Partial<CleanerPayload>) {
   if (!cleanString(payload.firstName, 80)) {
     throw new Error('First name is required.')
   }
-  if (!cleanString(payload.lastName, 80)) {
-    throw new Error('Surname is required.')
-  }
   const email = cleanString(payload.email, 254)
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error('A valid email is required.')
