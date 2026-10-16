@@ -1,6 +1,6 @@
 'use client'
 
-import { appendSavedQuoteField } from '@/lib/savedQuoteFields'
+import { appendSavedQuoteField, overrideIncludedQuoteField } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
@@ -579,6 +579,17 @@ export default function QuoteWorkflowEditor({
   }
 
   function updateCustomMetricField(room: WorkflowRoomItem, fieldId: string, patch: Partial<RoomMetricFieldConfig>) {
+    const custom = (room.customMetricFields ?? []).some(field => field.id === fieldId)
+    if (!custom) {
+      const field = getWorkflowRoomMetricFields(room, roomTypeConfig).find(candidate => candidate.id === fieldId)
+      if (!field) return
+      if ((room.customMetricFields ?? []).length >= 20 || new Set([...(room.excludedMetricFieldIds ?? []), fieldId]).size > 30) {
+        window.alert('This room has reached its editable extra-field limit. Remove an unused extra or add another room.')
+        return
+      }
+      updateRoom(room.id, overrideIncludedQuoteField(room, field, patch))
+      return
+    }
     updateRoom(room.id, {
       customMetricFields: (room.customMetricFields ?? []).map((field) => field.id === fieldId ? { ...field, ...patch } : field),
     })
@@ -1512,14 +1523,14 @@ export default function QuoteWorkflowEditor({
                                 />
                               </label>
                             )}
-                            {isCustom ? (
+                            {
                               <div className={`mt-2 grid gap-2 ${isQuoteSpecific ? 'grid-cols-2' : 'grid-cols-3'}`}>
                                 <label className="text-xs text-gray-500">Price / unit<input type="number" min="0" step="0.1" value={field.pricePerUnit ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { pricePerUnit: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label>
                                 {!isQuoteSpecific ? <label className="text-xs text-gray-500">Units included in base<input type="number" min="0" step="1" value={field.includedUnits ?? 0} onChange={(event) => updateCustomMetricField(room, field.id, { includedUnits: Math.max(0, Number(event.target.value || 0)) })} className="mt-1 w-full rounded-md border border-gray-300 px-2 py-1.5" /></label> : null}
                                 <label className="text-xs text-gray-500">Frequency<select value={field.cadence ?? 'every_clean'} onChange={(event) => updateCustomMetricField(room, field.id, { cadence: event.target.value as RoomTaskCadence })} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5">{ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                               </div>
-                            ) : null}
-                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() && !isQuoteSpecific ? field.helpText : describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
+                            }
+                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() && !isCustom ? field.helpText : describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
                           </div>
                         )})}
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}

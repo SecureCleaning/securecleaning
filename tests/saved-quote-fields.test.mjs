@@ -56,3 +56,38 @@ test('save parsing and client scope retain long labels and new schedules', async
  assert.match(report,/Alternate days/)
  assert.match(report,/As needed/)
 })
+
+test('included extra override retains quantities and included units without double pricing', async () => {
+ const { overrideIncludedQuoteField } = await import('../src/lib/savedQuoteFields.ts')
+ const { getWorkflowRoomMetricFields, getRoomMetricFieldExtra, parseFirmQuoteDraft } = await import('../src/lib/quoteWorkflow.ts')
+ const { DEFAULT_QUOTE_ROOM_TYPE_CONFIG } = await import('../src/lib/roomTypeConfig.ts')
+ const room={id:'test',type:'reception',quantity:1,size:10,floor:1,metrics:{bins:4},customMetricFields:[],excludedMetricFieldIds:[]}
+ const config={...DEFAULT_QUOTE_ROOM_TYPE_CONFIG,roomTypes:DEFAULT_QUOTE_ROOM_TYPE_CONFIG.roomTypes.map(r=>r.id==='reception'?{...r,fields:[{...field,cadence:'every_clean'}]}:r)}
+ const changed={...room,...overrideIncludedQuoteField(room,{...field,cadence:'every_clean'},{pricePerUnit:2,cadence:'alternate_days'})}
+ const selected=getWorkflowRoomMetricFields(changed,config)
+ assert.equal(selected.length,1)
+ assert.equal(selected[0].id,'bins')
+ assert.equal(selected[0].includedUnits,1)
+ assert.equal(changed.metrics.bins,4)
+ assert.equal(getRoomMetricFieldExtra(changed,selected[0],'weekly'),3)
+ assert.equal(room.excludedMetricFieldIds.length,0)
+ assert.equal(config.roomTypes.find(r=>r.id==='reception').fields[0].pricePerUnit,10)
+ const inputs={frequency:'weekly',floorArea:100,floors:1,premisesType:'office',city:'sydney',addOns:{bathrooms:0,kitchens:0,windows:0}}
+ const parsed=parseFirmQuoteDraft({roomItems:[changed]},inputs,config)
+ assert.equal(getWorkflowRoomMetricFields(parsed.roomItems[0],config).length,1)
+ assert.equal(getWorkflowRoomMetricFields(parsed.roomItems[0],config)[0].cadence,'alternate_days')
+})
+
+test('included override stays visible at the display limit and rejects excess exclusions', async () => {
+ const { overrideIncludedQuoteField } = await import('../src/lib/savedQuoteFields.ts')
+ const { getWorkflowRoomMetricFields } = await import('../src/lib/quoteWorkflow.ts')
+ const fields=Array.from({length:31},(_,i)=>({...field,id:`f${i}`}))
+ const config={roomTypes:[{id:'reception',fields}]}
+ const room={id:'r',type:'reception',quantity:1,metrics:{f0:4},customMetricFields:[],excludedMetricFieldIds:[]}
+ const changed={...room,...overrideIncludedQuoteField(room,fields[0],{pricePerUnit:7})}
+ const visible=getWorkflowRoomMetricFields(changed,config)
+ assert.equal(visible.length,30)
+ assert.equal(visible[0].id,'f0')
+ assert.equal(visible[0].pricePerUnit,7)
+ assert.throws(()=>overrideIncludedQuoteField({...room,excludedMetricFieldIds:Array.from({length:30},(_,i)=>`excluded${i}`)},fields[0],{pricePerUnit:7}),/Excluded-field limit/)
+})

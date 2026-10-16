@@ -200,8 +200,15 @@ function buildDefaultMetrics(roomTypeId: WorkflowRoomType, roomTypeConfig: Quote
 
 export function getWorkflowRoomMetricFields(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig) {
   const excluded = new Set(room.excludedMetricFieldIds ?? [])
-  const systemFields = (getRoomTypeConfigById(roomTypeConfig, room.type)?.fields ?? []).filter((field) => !excluded.has(field.id))
-  return [...systemFields, ...(room.customMetricFields ?? [])].slice(0, 30)
+  const defaults = getRoomTypeConfigById(roomTypeConfig, room.type)?.fields ?? []
+  const custom = room.customMetricFields ?? []
+  const overrides = new Map(custom.map(field => [field.id, field]))
+  const defaultIds = new Set(defaults.map(field => field.id))
+  // Keep overrides in their original position, including at the visible-field limit.
+  const systemFields = defaults.flatMap(field => overrides.has(field.id)
+    ? [overrides.get(field.id)!]
+    : excluded.has(field.id) ? [] : [field])
+  return [...systemFields, ...custom.filter(field => !defaultIds.has(field.id))].slice(0, 30)
 }
 
 function sanitizeCustomMetricFields(value: unknown): RoomMetricFieldConfig[] {
