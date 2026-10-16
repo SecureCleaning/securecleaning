@@ -27,6 +27,7 @@ import { isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 export { getFinalQuoteReadiness, isEditableFirmQuoteStatus, isFirmQuoteStatus } from '@/lib/finalQuoteWorkflow'
 
 export type WorkflowRoomType =
+  | (string & {})
   | 'office'
   | 'boardroom'
   | 'reception'
@@ -403,7 +404,7 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
     .filter((item) => item && typeof item === 'object')
     .map((item, index) => {
       const source = item as Partial<WorkflowRoomItem>
-      const type = typeof source.type === 'string' && source.type in WORKFLOW_ROOM_TYPE_LABELS
+      const type = typeof source.type === 'string' && Boolean(getRoomTypeConfigById(roomTypeConfig, source.type))
         ? (source.type as WorkflowRoomType)
         : 'other'
 

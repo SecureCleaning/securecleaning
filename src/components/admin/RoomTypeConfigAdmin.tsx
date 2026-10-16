@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { revealInvalidFormField } from '@/lib/formValidation'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import ActionToast from '@/components/ActionToast'
 import {
@@ -151,6 +152,11 @@ export default function RoomTypeConfigAdmin({
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const validationError = revealInvalidFormField(event.currentTarget)
+    if (validationError) {
+      setStatus({ type: 'error', message: validationError })
+      return
+    }
     setIsSubmitting(true)
     setStatus({ type: 'idle', message: '' })
 
@@ -388,7 +394,12 @@ export default function RoomTypeConfigAdmin({
           <strong>How pricing works:</strong> shared tasks use the global rates below everywhere they appear. Area tasks use minutes per sqm and the {formatCurrency(pricingConfig.settings.hourlyRate)} hourly rate. Fixed tasks use one amount per room. Extra fixture fields and the quote minimum are applied afterwards. Legacy per-room visit charges and room percentage adjustments are reset to zero.
         </div>
 
-        <form id="room-type-editor-form" onSubmit={handleSave} className="space-y-5">
+        {status.type === 'error' ? (
+          <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {status.message}
+          </div>
+        ) : null}
+        <form id="room-type-editor-form" noValidate onSubmit={handleSave} className="space-y-5">
           <SavedQuoteFields config={config} addField={addField} updateField={updateField} />
           <section className="rounded-2xl border border-teal-100 bg-white p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

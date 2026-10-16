@@ -1172,10 +1172,10 @@ export default function QuoteWorkflowEditor({
                       >Duplicate</button>
                     </div>
                   <details id={`quote-room-${room.id}`}>
-                    <summary className="cursor-pointer list-none px-4 py-3 [&::-webkit-details-marker]:hidden">
+                    <summary className="cursor-pointer list-none border-l-4 border-teal-600 bg-teal-50 px-4 py-4 [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center justify-between gap-4">
                         <div>
-                          <div className="font-semibold" style={{ color: '#1a2744' }}>{room.label || room.type}</div>
+                          <div className="text-xl font-bold text-teal-950">{room.label || room.type}</div>
                           <div className="mt-1 text-sm text-gray-500">
                             {room.type} · Quantity {room.quantity} · {room.size} sqm each
                           </div>
@@ -1277,10 +1277,11 @@ export default function QuoteWorkflowEditor({
                         </button>
                       </div>
                     </div>
+                    <div className="mt-3 grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
                     {internalRoomPrice ? (
-                      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
+                      <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-3">
                         <div>
-                          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Internal room value (labour + room charges)</div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Internal room value</div>
                           <div className="mt-1 text-lg font-bold text-indigo-950">
                             {formatPriceRange(internalRoomPrice.low, internalRoomPrice.high)} per visit
                           </div>
@@ -1290,10 +1291,10 @@ export default function QuoteWorkflowEditor({
                             </div>
                           ) : null}
                         </div>
-                        <div className="text-xs text-indigo-700">Admin calculation only · not shown to clients</div>
+                        <div className="mt-2 text-xs text-indigo-700">Labour + room charges. Internal only.</div>
                       </div>
                     ) : null}
-                    <label className="mt-4 block text-sm">
+                    <label className="block min-w-0 text-sm">
                       <span className="mb-1 block font-medium text-gray-700">Client-facing room description</span>
                       <textarea
                         value={room.description ?? ''}
@@ -1303,6 +1304,7 @@ export default function QuoteWorkflowEditor({
                         className="w-full rounded-xl border border-gray-300 px-3 py-3"
                       />
                     </label>
+                    </div>
                     {typeConfig ? (
                       <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
                         <div className="mb-3">
