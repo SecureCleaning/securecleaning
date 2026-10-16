@@ -7,7 +7,7 @@ import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatCurrency, formatPriceRange } from '@/lib/quoteEngine'
 import { duplicateQuoteRoom, moveQuoteRoom } from '@/lib/quoteRoomEditing'
 import type { QuotePricingConfig } from '@/lib/pricing'
@@ -142,6 +142,28 @@ export default function QuoteWorkflowEditor({
   const roomDrag = useRef<{ roomId: string; startX: number; startY: number; targetId: string | null } | null>(null)
   const [roomDropTarget, setRoomDropTarget] = useState<string | null>(null)
   const [roomEditMessage, setRoomEditMessage] = useState('')
+  const roomSectionRef = useRef<HTMLDivElement>(null)
+  const [floatingRoomControls, setFloatingRoomControls] = useState(false)
+  useEffect(() => {
+    const update = () => {
+      const section = roomSectionRef.current
+      if (!section || !section.getClientRects().length) {
+        setFloatingRoomControls(false)
+        return
+      }
+      const rect = section.getBoundingClientRect()
+      setFloatingRoomControls(rect.top < 100 && rect.bottom > 240)
+    }
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    document.addEventListener('toggle', update, true)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+      document.removeEventListener('toggle', update, true)
+    }
+  }, [])
   const [finalPublished, setFinalPublished] = useState(Boolean(quote.finalDocument))
   const [documentVersion, setDocumentVersion] = useState(quote.finalDocumentVersion ?? quote.finalDocument?.version ?? null)
   const [previewMode, setPreviewMode] = useState(false)
@@ -1068,14 +1090,17 @@ export default function QuoteWorkflowEditor({
               </label>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-gray-200 p-4">
+            <div ref={roomSectionRef} className="mt-6 rounded-2xl border border-gray-200 p-4">
               <div className="mb-4">
                 <div>
                   <h3 className="font-semibold" style={{ color: '#1a2744' }}>Room Types / Areas</h3>
                   <p className="text-sm text-gray-600">Drag rooms into order, use Move up/down, or duplicate a configured room. Save the quote to update the scope. Client sqm is reference-only; working pricing uses the selected room areas and room charges.</p>
                 </div>
               </div>
-              <div className="sticky top-20 z-20 mb-4 flex justify-end rounded-xl border border-gray-200 bg-white/95 p-2 shadow-sm">
+              <div className="mb-4 min-h-28 md:min-h-14">
+              <div className={floatingRoomControls
+                ? "fixed right-4 top-24 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg"
+                : "flex justify-end rounded-xl border border-gray-200 bg-white p-2 shadow-sm"}>
                 <div className="flex flex-wrap justify-end gap-2" role="group" aria-label="Room controls">
                   <button
                     type="button"
@@ -1109,6 +1134,7 @@ export default function QuoteWorkflowEditor({
                 </div>
               </div>
 
+              </div>
               <p role="status" className="mb-3 text-sm text-teal-800">{roomEditMessage}</p>
               <div className="space-y-3">
                 {firmQuoteDraft.roomItems.map((room, roomIndex) => (
