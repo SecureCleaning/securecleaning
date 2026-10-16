@@ -9,6 +9,7 @@ import {
   getMoppingRate,
   withSelectedMoppingRate,
   getRoomScopeTaskCadence,
+  ROOM_TASK_CADENCE_OPTIONS,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
   getRoomScopeTaskGlobalRateCode,
@@ -56,6 +57,7 @@ export type WorkflowRoomItem = {
   customMetricFields?: RoomMetricFieldConfig[]
   excludedMetricFieldIds?: string[]
   scopeTaskSelections?: Record<string, boolean>
+  scopeTaskCadences?: Record<string, RoomTaskCadence>
   moppingRateCode?: string
   moppingEnabled?: boolean
   moppingMinutesPerSqm?: number
@@ -81,9 +83,18 @@ export function selectWorkflowRoomMoppingRate(room: WorkflowRoomItem, config: Qu
 
 export function getWorkflowRoomTypeConfig(room: WorkflowRoomItem, config: QuoteRoomTypeConfig) {
   const type = getRoomTypeConfigById(config, room.type)
-  if (!type || (!room.moppingRateCode && !type.moppingRateCode)) return type
-  // Saved legacy rooms keep standard mopping until explicitly changed or recalculated.
-  return withSelectedMoppingRate(config, type, room.moppingRateCode ?? 'mopping', Boolean(room.moppingEnabled), room.moppingMinutesPerSqm)
+  if (!type) return type
+  const resolved = room.moppingRateCode || type.moppingRateCode
+    ? withSelectedMoppingRate(config, type, room.moppingRateCode ?? 'mopping', Boolean(room.moppingEnabled), room.moppingMinutesPerSqm)
+    : type
+  return {
+    ...resolved,
+    scopeTaskCadences: resolved.scopeTasks.map((_, index) => {
+      const override = room.scopeTaskCadences?.[getRoomScopeTaskId(resolved, index)]
+      return ROOM_TASK_CADENCE_OPTIONS.some(option => option.value === override)
+        ? override! : getRoomScopeTaskCadence(resolved, index)
+    }),
+  }
 }
 
 export function getWorkflowRoomTaskSelections(room: WorkflowRoomItem) {
@@ -446,6 +457,11 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
           ? source.excludedMetricFieldIds.filter((id): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 30)
           : [],
         scopeTaskSelections,
+        scopeTaskCadences: source.scopeTaskCadences && typeof source.scopeTaskCadences === 'object'
+          ? Object.fromEntries(Object.entries(source.scopeTaskCadences).filter(([id, cadence]) =>
+              id.length <= 128 && !['__proto__', 'constructor', 'prototype'].includes(id) &&
+              ROOM_TASK_CADENCE_OPTIONS.some(option => option.value === cadence)).slice(0, 100))
+          : {},
         moppingRateCode: typeof source.moppingRateCode === 'string' && source.moppingRateCode.trim() ? source.moppingRateCode.trim().slice(0, 64) : undefined,
         moppingEnabled: typeof source.moppingEnabled === 'boolean'
           ? source.moppingEnabled

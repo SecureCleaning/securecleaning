@@ -393,7 +393,7 @@ export default function QuoteWorkflowEditor({
     }
   }
 
-  async function handleSave() {
+  async function handleSave(previewAfterSave = true) {
     setSaveState({ saving: true, message: null, error: null })
 
     try {
@@ -444,7 +444,7 @@ export default function QuoteWorkflowEditor({
           : 'Inspection summary and firm quote draft saved.',
         error: null,
       })
-      openPreview()
+      if (previewAfterSave) openPreview()
     } catch (error) {
       setSaveState({
         saving: false,
@@ -535,40 +535,6 @@ export default function QuoteWorkflowEditor({
     }))
   }
 
-  function refreshPricingDefaults() {
-    if (!window.confirm('Refresh this editable quote with the current task and room pricing defaults? Your rooms, quantities, sqm, descriptions and entered room details will be kept. Quote and room price overrides will be cleared so the current defaults can be applied.')) return
-
-    setFirmQuoteDraft((current) => ({
-      ...current,
-      pricingAdjustmentPercent: 0,
-      targetPrice: '',
-      finalPerVisit: '',
-      moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
-      roomItems: current.roomItems.map((room) => {
-        const roomType = getRoomTypeConfigById(roomTypeConfig, room.type)
-        if (!roomType) return { ...room, pricingOverride: false }
-        const selections = getDefaultRoomScopeTaskSelections(roomType)
-        getRoomScopeTaskDefinitions(roomType)
-          .filter((task, index) => isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(roomType, index)))
-          .forEach((task) => { selections[task.id] = Boolean(room.moppingEnabled) })
-        return {
-          ...room,
-          scopeTaskSelections: selections,
-          moppingRateCode: roomType.moppingRateCode,
-          moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, roomType.moppingRateCode, roomType.moppingMinutesPerSqm).minutesPerSqm,
-          pricingOverride: false,
-          pricingAdjustmentPercent: roomType.pricingAdjustmentPercent,
-          fixedPricePerVisit: roomType.fixedPricePerVisit,
-        }
-      }),
-    }))
-    setSaveState({
-      saving: false,
-      message: 'Current pricing defaults loaded. Review the recalculated amount, then save the quote.',
-      error: null,
-    })
-  }
-
   function addBlankMetricField(room: WorkflowRoomItem) {
     const id = `custom_${Date.now().toString(36)}`
     updateRoom(room.id, {
@@ -653,7 +619,7 @@ export default function QuoteWorkflowEditor({
           {canReviseFinal ? (
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={saveState.saving}
               className="rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -1104,11 +1070,11 @@ export default function QuoteWorkflowEditor({
                 <div className="flex flex-wrap justify-end gap-2" role="group" aria-label="Room controls">
                   <button
                     type="button"
-                    onClick={refreshPricingDefaults}
-                    disabled={finalPublished || firmQuoteDraft.status === 'sent' || acceptedEditingLocked}
+                    onClick={() => handleSave(false)}
+                    disabled={saveState.saving || acceptedEditingLocked || (finalPublished && !canReviseFinal)}
                     className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Recalculate with current defaults
+                    {saveState.saving ? 'Saving...' : 'Save'}
                   </button>
                   <button
                     type="button"
@@ -1132,8 +1098,8 @@ export default function QuoteWorkflowEditor({
                     + Kitchen
                   </button>
                 </div>
+                {saveState.error || saveState.message ? <p role={saveState.error ? 'alert' : 'status'} className={`mt-2 text-sm ${saveState.error ? 'text-red-700' : 'text-green-800'}`}>{saveState.error || saveState.message}</p> : null}
               </div>
-
               </div>
               <p role="status" className="mb-3 text-sm text-teal-800">{roomEditMessage}</p>
               <div className="space-y-3">
@@ -1250,6 +1216,7 @@ export default function QuoteWorkflowEditor({
                               metrics: Object.fromEntries((nextTypeConfig?.fields ?? []).map((field) => [field.id, field.defaultValue])),
                               customMetricFields: [],
                               excludedMetricFieldIds: [],
+                              scopeTaskCadences: {},
                               scopeTaskSelections: nextTypeConfig ? getDefaultRoomScopeTaskSelections(nextTypeConfig) : {},
                               moppingRateCode: nextTypeConfig?.moppingRateCode,
                               moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, nextTypeConfig?.moppingRateCode, nextTypeConfig?.moppingMinutesPerSqm).minutesPerSqm,
@@ -1355,10 +1322,11 @@ export default function QuoteWorkflowEditor({
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
-                              <label key={task.id} className={`flex cursor-pointer flex-col items-start justify-between gap-3 rounded-lg border p-3 2xl:flex-row ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <div key={task.id} className={`flex flex-col items-start justify-between gap-3 rounded-lg border p-3 2xl:flex-row ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
                                 <span className="flex min-w-0 items-start gap-3">
                                   <input
                                     type="checkbox"
+                                    aria-label={task.label}
                                     checked={selected}
                                     onChange={(event) => updateRoom(room.id, {
                                       scopeTaskSelections: {
@@ -1371,7 +1339,14 @@ export default function QuoteWorkflowEditor({
                                   />
                                   <span className="min-w-0">
                                     <span className="block text-sm font-medium text-gray-800">{task.label}</span>
-                                    <span className="mt-1 block text-xs text-gray-500">{getRoomTaskCadenceLabel(task.cadence)}</span>
+                                    <select
+                                      aria-label={`${task.label} frequency`}
+                                      value={task.cadence}
+                                      onChange={(event) => updateRoom(room.id, { scopeTaskCadences: { ...room.scopeTaskCadences, [task.id]: event.target.value as RoomTaskCadence } })}
+                                      className="mt-2 block max-w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                                    >
+                                      {ROOM_TASK_CADENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                    </select>
                                   </span>
                                 </span>
                                 <span className="max-w-full shrink-0 text-left text-xs font-semibold text-teal-800 2xl:text-right">
@@ -1381,7 +1356,7 @@ export default function QuoteWorkflowEditor({
                                       : 'Area labour'
                                     : task.price > 0 ? `${formatTaskCurrency(task.price)} when done` : 'Included'}
                                 </span>
-                              </label>
+                              </div>
                             )
                           })}
                         </div>
@@ -1737,7 +1712,7 @@ export default function QuoteWorkflowEditor({
           </button>
           <button
             type="button"
-            onClick={handleSave}
+            onClick={() => handleSave()}
             disabled={saveState.saving || acceptedEditingLocked || (finalPublished && !canReviseFinal)}
             className="rounded-xl bg-green-600 px-6 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
