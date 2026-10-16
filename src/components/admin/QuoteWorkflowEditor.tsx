@@ -488,10 +488,20 @@ export default function QuoteWorkflowEditor({
   }
 
   function addRoom(type: WorkflowRoomType = 'office') {
+    const room = createRoomItem(type, roomTypeConfig)
     setFirmQuoteDraft((current) => ({
       ...current,
-      roomItems: [...current.roomItems, createRoomItem(type, roomTypeConfig)],
+      roomItems: [...current.roomItems, room],
     }))
+    window.requestAnimationFrame(() => {
+      const details = document.getElementById(`quote-room-${room.id}`) as HTMLDetailsElement | null
+      if (!details) return
+      details.open = true
+      details.scrollIntoView({ block: 'start' })
+      const label = details.querySelector<HTMLInputElement>('[data-room-label]')
+      label?.focus({ preventScroll: true })
+      label?.select()
+    })
   }
 
   function removeRoom(roomId: string) {
@@ -1059,12 +1069,14 @@ export default function QuoteWorkflowEditor({
             </div>
 
             <div className="mt-6 rounded-2xl border border-gray-200 p-4">
-              <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="mb-4">
                 <div>
                   <h3 className="font-semibold" style={{ color: '#1a2744' }}>Room Types / Areas</h3>
                   <p className="text-sm text-gray-600">Drag rooms into order, use Move up/down, or duplicate a configured room. Save the quote to update the scope. Client sqm is reference-only; working pricing uses the selected room areas and room charges.</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+              </div>
+              <div className="sticky top-20 z-20 mb-4 flex justify-end rounded-xl border border-gray-200 bg-white/95 p-2 shadow-sm">
+                <div className="flex flex-wrap justify-end gap-2" role="group" aria-label="Room controls">
                   <button
                     type="button"
                     onClick={refreshPricingDefaults}
@@ -1171,7 +1183,7 @@ export default function QuoteWorkflowEditor({
                         className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-40"
                       >Duplicate</button>
                     </div>
-                  <details id={`quote-room-${room.id}`}>
+                  <details id={`quote-room-${room.id}`} className="scroll-mt-64 md:scroll-mt-40">
                     <summary className="cursor-pointer list-none border-l-4 border-teal-600 bg-teal-50 px-4 py-4 [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center justify-between gap-4">
                         <div>
