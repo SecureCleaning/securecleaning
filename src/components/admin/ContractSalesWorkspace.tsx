@@ -1,5 +1,7 @@
 'use client'
 
+import ContractNotes from '@/components/admin/ContractNotes'
+
 import PaymentPlanEditor from '@/components/admin/PaymentPlanEditor'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import ContractSaleInspectionPanel from '@/components/admin/ContractSaleInspectionPanel'
@@ -377,7 +379,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
           </section> : null}
 
           {tab === 'followup' ? <ContractSaleFollowup key={sale.id} sale={sale} /> : null}
-          {tab === 'activity' ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-bold">Activity</h3><div className="mt-4 divide-y divide-gray-100">{sale.activity.map((item) => <div key={item.id} className="py-3 text-sm"><strong>{item.action.replaceAll('.', ' ')}</strong><span className="ml-2 text-gray-500">{new Date(item.createdAt).toLocaleString('en-AU')}</span></div>)}{sale.activity.length === 0 ? <p className="text-sm text-gray-500">No activity recorded.</p> : null}</div></section> : null}
+          {tab === 'activity' ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h3 className="text-lg font-bold">Activity</h3><ContractNotes key={sale.id} kind="sale" recordId={sale.id} /><div className="mt-4 divide-y divide-gray-100">{sale.activity.map((item) => <div key={item.id} className="py-3 text-sm"><strong>{item.action.replaceAll('.', ' ')}</strong><span className="ml-2 text-gray-500">{new Date(item.createdAt).toLocaleString('en-AU')}</span></div>)}{sale.activity.length === 0 ? <p className="text-sm text-gray-500">No activity recorded.</p> : null}</div></section> : null}
 
             {!sale.handoverAt && sale.status !== 'cancelled' ? <section className="sticky bottom-4 rounded-2xl border border-green-200 bg-green-50 p-4 shadow-lg"><div className="flex flex-wrap items-center justify-between gap-3"><div><strong>Operational handover</strong><p className="text-sm text-gray-700">Requires the signed agreement, full tax invoice, confirmed $500 deposit, completed inspection, and either full payment or an active payment plan.</p></div><div className="flex flex-wrap gap-2"><input type="date" value={handoverDate} onChange={(event) => setHandoverDate(event.target.value)} aria-label="Commencement date" className="min-w-0 rounded-lg border border-green-300 px-3 py-2" /><button type="button" onClick={() => window.confirm('Complete the cleaner handover and link this cleaner to the client site?') && void run('handover.complete', { commencedOn: handoverDate }, 'Operational handover completed.')} className="rounded-lg bg-green-700 px-4 py-2 font-semibold text-white">Complete handover</button></div></div></section> : null}
         </>}

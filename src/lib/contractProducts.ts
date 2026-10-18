@@ -195,7 +195,7 @@ function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductAct
 
 const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, annual_value_method, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
 
-async function getAuthorizedProduct(actor: ContractProductActor, productId: string) {
+export async function getAuthorizedProduct(actor: ContractProductActor, productId: string) {
   const db = getAdminSupabase()
   const { data, error } = await db.from('contract_products').select(PRODUCT_SELECT).eq('id', productId).maybeSingle()
   if (error) throw error
