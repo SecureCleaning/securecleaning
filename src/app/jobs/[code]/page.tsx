@@ -1,3 +1,4 @@
+import ProductDescription from '@/components/products/ProductDescription'
 import Link from 'next/link'
 import { cookies } from 'next/headers'
 import { notFound } from 'next/navigation'
@@ -31,7 +32,7 @@ export default async function AvailableJobDetailPage(props: { params: Promise<{ 
     <Link href={`/jobs?state=${job.state}`} className="mb-4 inline-flex text-sm font-semibold text-teal-700">← Back to available jobs</Link>
     <article className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap justify-between gap-3"><span className="font-mono font-bold text-teal-700">{job.productCode}</span><span className="font-semibold text-gray-600">{job.suburb}, {job.state}</span></div>
-      <h1 className="mt-3 text-3xl font-bold text-gray-900">{job.heading}</h1><p className="mt-3 leading-7 text-gray-600">{job.description}</p>
+      <h1 className="mt-3 text-3xl font-bold text-gray-900">{job.heading}</h1><ProductDescription text={job.description} html={job.descriptionHtml} />
       <div className="mt-6 grid gap-4 rounded-xl bg-gray-50 p-4 sm:grid-cols-3"><div><p className="text-xs font-bold uppercase text-gray-500">Annual value</p><p className="mt-1 text-xl font-bold">{money(Math.round(job.annualContractValueExGstCents * 1.1))}</p><p className="text-xs text-gray-500">including GST</p></div><div><p className="text-xs font-bold uppercase text-gray-500">Purchase price</p><p className="mt-1 text-xl font-bold">{money(Math.round(job.purchasePriceExGstCents * 1.1))}</p><p className="text-xs text-gray-500">including GST</p></div><div><p className="text-xs font-bold uppercase text-gray-500">Expected schedule</p><p className="mt-1 font-bold">{job.frequency.replaceAll('_', ' ')}</p><p className="text-xs text-gray-500">{job.annualVisits} visits annually</p></div></div>
       <div className="mt-4 grid gap-3 rounded-xl border border-gray-200 p-4 text-sm sm:grid-cols-3">
         <div><span className="block text-xs font-bold uppercase text-gray-500">Proposed start</span>{formatContractProductStartDate(job.startDate)}</div>

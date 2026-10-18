@@ -1,3 +1,4 @@
+import * as descriptionFormatting from '../src/lib/productDescription.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
@@ -9,7 +10,7 @@ function fixture(overrides={}) {
  const query={select(){return this},eq(){return this},update(value){update=value;return this},async maybeSingle(){return {data:{...row,...update},error:null}}}
  const mocks={'server-only':{},'@/lib/supabase':{getAdminSupabase:()=>({from:()=>query})},'@/lib/contractProductPolicy':{canActorAccessContractProduct:(role,id,assigned)=>role==='owner'||id===assigned,calculateContractProductPricing:(rate,visits)=>({annualValueExGstCents:rate*visits})},'@/lib/contractProductListingDetails':{normalizeContractProductHours:()=>'',isValidContractProductHours:()=>true}}
  const code=ts.transpileModule(readFileSync(new URL('../src/lib/contractProducts.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
- const exports={};vm.runInNewContext(code,{exports,console,require:n=>mocks[n]??{}})
+ const exports={};vm.runInNewContext(code,{exports,console,require:n=>n==='@/lib/productDescription'?descriptionFormatting:mocks[n]??{}})
  const input={productId:'p',expectedUpdatedAt:'v1',heading:'Office',description:'Cleaning',annualVisits:26,timePreference:'after_hours',keyedJob:'keyed'}
  return {save:(values={},actor={id:'owner',role:'owner'})=>exports.updateContractProduct(actor,{...input,...values}),updated:()=>update}
 }

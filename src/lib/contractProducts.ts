@@ -1,3 +1,4 @@
+import { sanitizeProductDescription, productDescriptionText } from '@/lib/productDescription'
 import 'server-only'
 
 import { getAdminSupabase } from '@/lib/supabase'
@@ -43,6 +44,7 @@ export type ContractProduct = {
   status: ContractProductStatus
   heading: string
   description: string
+  descriptionHtml?: string
   state: ContractProductState
   suburb: string
   premisesType: string
@@ -83,7 +85,7 @@ export type ContractProductActivity = {
 }
 
 export type CleanerJobListing = Pick<ContractProduct,
-  'productCode' | 'heading' | 'description' | 'state' | 'suburb' | 'premisesType' | 'startDate' |
+  'productCode' | 'heading' | 'description' | 'descriptionHtml' | 'state' | 'suburb' | 'premisesType' | 'startDate' |
   'frequency' | 'annualVisits' | 'timePreference' | 'estimatedHoursPerVisit' | 'keyedJob' |
   'formalContract' | 'freeInitialClean' | 'annualContractValueExGstCents' |
   'purchasePriceExGstCents' | 'cleanerScopeSnapshot' | 'listedAt'
@@ -141,7 +143,7 @@ async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
   ])
   for (const result of [organisation, contact, site]) if (result.error) throw result.error
   const listingText = normalizedText(
-    `${product.heading ?? ''} ${product.description ?? ''} ${cleanerScopeUserText(product.cleaner_scope_snapshot)}`,
+    `${product.heading ?? ''} ${product.description ?? ''} ${productDescriptionText(String(product.description_html ?? ''))} ${cleanerScopeUserText(product.cleaner_scope_snapshot)}`,
   )
   const sensitiveText = [
     organisation.data?.business_name, organisation.data?.legal_name,
@@ -166,6 +168,7 @@ function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductAct
     status: String(row.status ?? 'draft') as ContractProductStatus,
     heading: String(row.heading ?? ''),
     description: String(row.description ?? ''),
+    descriptionHtml: sanitizeProductDescription(String(row.description_html ?? '')),
     state: String(row.state ?? '') as ContractProductState,
     suburb: String(row.suburb ?? ''),
     premisesType: String(row.premises_type ?? ''),
@@ -193,7 +196,7 @@ function mapProduct(row: ProductRow, quoteRef = '', activity: ContractProductAct
   }
 }
 
-const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, annual_value_method, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
+const PRODUCT_SELECT = 'id, product_code, opportunity_id, source_quote_id, deleted_source_quote_ref, assigned_staff_id, status, heading, description, description_html, state, suburb, premises_type, start_date, frequency, annual_visits, time_preference, estimated_hours_per_visit, keyed_job, formal_contract, free_initial_clean, client_price_per_visit_ex_gst_cents, annual_contract_value_ex_gst_cents, annual_value_method, purchase_price_ex_gst_cents, pricing_method, pricing_note, cleaner_scope_snapshot, version, listed_at, created_at, updated_at'
 
 export async function getAuthorizedProduct(actor: ContractProductActor, productId: string) {
   const db = getAdminSupabase()
@@ -369,7 +372,9 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   }
 
   const heading = clean(input.heading, 200)
-  const description = clean(input.description, 3000)
+  const descriptionHtml = sanitizeProductDescription(clean(input.descriptionHtml, 30000))
+  const description = descriptionHtml ? productDescriptionText(descriptionHtml) : clean(input.description, 3000)
+  if (description.length > 3000) throw new ContractProductError('Keep the description within 3,000 characters.')
   const annualVisits = Math.round(Number(input.annualVisits))
   const startDate = clean(input.startDate, 20)
   const estimatedHours = normalizeContractProductHours(input.estimatedHoursPerVisit)
@@ -405,6 +410,7 @@ export async function updateContractProduct(actor: ContractProductActor, input: 
   const { data, error } = await db.from('contract_products').update({
     heading,
     description,
+    description_html: descriptionHtml || null,
     start_date: startDate || null,
     annual_visits: annualVisits,
     estimated_hours_per_visit: estimatedHours || null,
@@ -520,6 +526,7 @@ export async function getAvailableCleanerJobs(state?: ContractProductState | nul
       productCode: product.productCode,
       heading: product.heading,
       description: product.description,
+      descriptionHtml: product.descriptionHtml,
       state: product.state,
       suburb: product.suburb,
       premisesType: product.premisesType,

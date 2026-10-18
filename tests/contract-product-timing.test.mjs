@@ -1,3 +1,4 @@
+import * as descriptionFormatting from '../src/lib/productDescription.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
@@ -11,7 +12,7 @@ function fixture(overrides={}) {
  const row={id:'p',updated_at:'v1',status:'withdrawn',state:'NSW',assigned_staff_id:'agent',time_preference:'business_hours',client_price_per_visit_ex_gst_cents:8500,cleaner_scope_snapshot:{timePreference:'business_hours',rooms:[{id:'room'}]},...overrides},writes=[]
  const db={from(){let update;const chain=new Proxy({},{get(_,key){if(key==='then')return resolve=>resolve({data:{...row,...update},error:null});return(...args)=>{if(key==='update'){update=args[0];writes.push(update)}return chain}}});return chain}}
  const code=ts.transpileModule(readFileSync(new URL('../src/lib/contractProducts.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText
- const exports={};vm.runInNewContext(code,{exports,console,require(name){if(name==='@/lib/supabase')return{getAdminSupabase:()=>db};if(name==='@/lib/contractProductPolicy')return policy;if(name==='@/lib/contractProductListingDetails')return details;return{}}})
+ const exports={};vm.runInNewContext(code,{exports,console,require(name){if(name==='@/lib/productDescription')return descriptionFormatting;if(name==='@/lib/supabase')return{getAdminSupabase:()=>db};if(name==='@/lib/contractProductPolicy')return policy;if(name==='@/lib/contractProductListingDetails')return details;return{}}})
  return{...exports,writes,row}
 }
 const actor={id:'agent',role:'agent',productState:'NSW'}
@@ -27,4 +28,11 @@ test('invalid timing, inaccessible products and stale or published edits cannot 
  for(const [row,who,body] of [[{},actor,{...input,timePreference:'night-ish'}],[{},actor,{...input,timePreference:''}],[{state:'VIC'},actor,input],[{assigned_staff_id:'other'},actor,input],[{status:'available'},actor,input],[{updated_at:'v2'},actor,input]]) {
  const f=fixture(row);await assert.rejects(f.updateContractProduct(who,body));assert.equal(f.writes.length,0)
  }
+})
+
+test('formatted product saves keep HTML and matching plain text, ignoring supplied text mismatch', async () => {
+ const f=fixture()
+ await f.updateContractProduct(actor,{...input,description:'Different text',descriptionHtml:'<p><strong>Daily</strong></p><ul><li><u>Floors</u></li></ul>'})
+ assert.equal(f.writes[0].description,'Daily\nFloors')
+ assert.equal(f.writes[0].description_html,'<p><strong>Daily</strong></p><ul><li><u>Floors</u></li></ul>')
 })

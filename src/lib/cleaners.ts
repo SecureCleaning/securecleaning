@@ -1,3 +1,4 @@
+import { agentCleanerSearchFilter } from '@/lib/cleanerSearch'
 import { createHash } from 'node:crypto'
 import { validateDocumentContent } from '@/lib/documentContent'
 import { csvCell } from '@/lib/csvCell'
@@ -174,11 +175,11 @@ export type AgentCleanerDetail = {
   documents: CleanerDocument[]
 }
 
-export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'suburb' | 'state' | 'status'>
+export type AgentCleanerSummary = Pick<CleanerRecord, 'id' | 'business_name' | 'first_name' | 'last_name' | 'contact_name' | 'email' | 'phone' | 'alternate_phone' | 'suburb' | 'state' | 'status'>
 export type AgentCleanerRecord = CleanerRecord
 export type AgentCleanerEmailHistory = Pick<CleanerEmail, 'id' | 'subject' | 'status' | 'delivery_outcome' | 'template_name' | 'created_at' | 'sent_at' | 'final_html_snapshot' | 'to_email'>
 
-const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, suburb, state, status'
+const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, suburb, state, status'
 const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, delivery_outcome, template_name, created_at, sent_at, final_html_snapshot, to_email'
 
 const CLEANER_SELECT =
@@ -465,10 +466,7 @@ export async function searchAgentCleanerPage(filters: CleanerFilters & { state: 
   let query = db.from('cleaners').select(AGENT_CLEANER_LIST_SELECT, { count: 'exact' })
     .eq('state', cleanString(filters.state, 8).toUpperCase()).order('updated_at', { ascending: false })
   const search = cleanString(filters.query, 120)
-  if (search) {
-    const escaped = search.replace(/[%_]/g, '\\$&')
-    query = query.or(['business_name', 'first_name', 'last_name', 'contact_name', 'email', 'suburb', 'postcode'].map((field) => `${field}.ilike.%${escaped}%`).join(','))
-  }
+  if (search) query = query.or(agentCleanerSearchFilter(search))
   if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status)
   if (filters.service && filters.service !== 'all') query = query.contains('services', [filters.service])
   if (filters.compliance && filters.compliance !== 'all') query = query.eq('compliance_status', filters.compliance)

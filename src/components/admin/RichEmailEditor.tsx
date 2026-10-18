@@ -20,13 +20,14 @@ export type RichEmailEditorProps = {
   mergeFields?: readonly EmailMergeField[]
 }
 
-type ToolbarAction = 'paragraph' | 'heading1' | 'heading2' | 'bold' | 'italic' | 'bulletList' | 'orderedList' | 'link' | 'undo' | 'redo'
+type ToolbarAction = 'paragraph' | 'heading1' | 'heading2' | 'bold' | 'italic' | 'underline' | 'bulletList' | 'orderedList' | 'link' | 'undo' | 'redo'
 
 type RichEditorCommands = {
   setParagraph: () => boolean
   toggleHeading: (attributes: { level: 1 | 2 }) => boolean
   toggleBold: () => boolean
   toggleItalic: () => boolean
+  toggleUnderline: () => boolean
   toggleBulletList: () => boolean
   toggleOrderedList: () => boolean
   undo: () => boolean
@@ -67,6 +68,7 @@ export default function RichEmailEditor({ value, onChange, resetKey, label = 'Me
     if (action === 'heading2') commands.toggleHeading({ level: 2 })
     if (action === 'bold') commands.toggleBold()
     if (action === 'italic') commands.toggleItalic()
+    if (action === 'underline') commands.toggleUnderline()
     if (action === 'bulletList') commands.toggleBulletList()
     if (action === 'orderedList') commands.toggleOrderedList()
     if (action === 'undo') commands.undo()
@@ -102,6 +104,7 @@ export default function RichEmailEditor({ value, onChange, resetKey, label = 'Me
             <ToolbarButton onClick={() => run('heading2')} title="Small heading">Heading 2</ToolbarButton>
             <ToolbarButton onClick={() => run('bold')} title="Bold"><strong>B</strong></ToolbarButton>
             <ToolbarButton onClick={() => run('italic')} title="Italic"><em>I</em></ToolbarButton>
+            <ToolbarButton onClick={() => run('underline')} title="Underline"><u>U</u></ToolbarButton>
             <ToolbarButton onClick={() => run('bulletList')} title="Bullet list">• List</ToolbarButton>
             <ToolbarButton onClick={() => run('orderedList')} title="Numbered list">1. List</ToolbarButton>
             <ToolbarButton onClick={() => run('link')} title="Add or edit link">Link</ToolbarButton>
