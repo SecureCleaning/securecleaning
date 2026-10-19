@@ -1,0 +1,60 @@
+import { csvCell } from '@/lib/csvCell'
+import { isValidCrmEmail, CRM_CONTACT_BASES, CRM_SOURCE_TYPES } from '@/lib/clientCrmPolicy'
+import { crmPostcodeMatchesRegion } from '@/lib/clientCrmLocation'
+import type { PremisesOption } from '@/lib/premisesCatalog'
+export const LEAD_CSV_COLUMNS = ['business_name', 'first_name', 'last_name', 'email', 'phone', 'address', 'suburb', 'postcode', 'city', 'premises_type', 'premises_type_other', 'source_type', 'contact_basis', 'source_provider', 'source_reference', 'notes'] as const
+export function leadCsv(rows: Record<string, unknown>[]) {
+  return '\uFEFF' + [LEAD_CSV_COLUMNS.map(csvCell).join(','), ...rows.map(row => LEAD_CSV_COLUMNS.map(key => csvCell(row[key])).join(','))].join('\r\n')
+}
+export function parseLeadCsv(text: string, options: PremisesOption[]) {
+  if (text.length > 500_000) throw new Error('CSV must be smaller than 500 KB.')
+  const rows: string[][] = []; let row: string[] = []; let cell = ''; let quoted = false; let closed = false
+  const source = text.replace(/^\uFEFF/, '')
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i]
+    if (quoted) {
+      if (ch === '"' && source[i + 1] === '"') { cell += '"'; i++ }
+      else if (ch === '"') { quoted = false; closed = true }
+      else cell += ch
+    } else if (ch === '"' && !cell && !closed) quoted = true
+    else if (ch === ',' || ch === '\n' || ch === '\r') {
+      row.push(cell); cell = ''; closed = false
+      if (ch !== ',') { if (row.some(value => value.trim())) rows.push(row); row = []; if (ch === '\r' && source[i + 1] === '\n') i++ }
+    } else { if (closed || ch === '"') throw new Error('Malformed CSV quoting. Save the file as CSV and retry.'); cell += ch }
+  }
+  if (quoted) throw new Error('CSV has an unclosed quoted field.')
+  row.push(cell); if (row.some(value => value.trim())) rows.push(row)
+  const headers = rows.shift()?.map(value => value.trim().toLowerCase()) ?? []
+  if (!headers.length || new Set(headers).size !== headers.length || headers.some(value => !(LEAD_CSV_COLUMNS as readonly string[]).includes(value))) throw new Error('Use the downloadable template: CSV headers are missing, duplicated, or unknown.')
+  for (const required of ['first_name', 'email', 'postcode', 'city', 'contact_basis']) if (!headers.includes(required)) throw new Error(`Missing column: ${required}.`)
+  if (!rows.length || rows.length > 200) throw new Error('Import between 1 and 200 leads at a time.')
+  const seen = new Set<string>()
+  return rows.map((values, index) => {
+    const record = Object.fromEntries(headers.map((header, i) => [header, (values[i] ?? '').trim()]))
+    const errors: string[] = []
+    if (values.length !== headers.length) errors.push('Column count does not match the header')
+    if (!record.first_name) errors.push('First name is required')
+    if (!isValidCrmEmail(record.email || '')) errors.push('Valid email is required')
+    record.email = (record.email || '').toLowerCase()
+    record.city = ({ nsw: 'sydney', vic: 'melbourne' } as Record<string, string>)[record.city?.toLowerCase()] || record.city?.toLowerCase()
+    if (!['sydney', 'melbourne'].includes(record.city)) errors.push('City must be sydney/NSW or melbourne/VIC')
+    else if (!/^\d{4}$/.test(record.postcode) || !crmPostcodeMatchesRegion(record.postcode, record.city as 'sydney' | 'melbourne')) errors.push('Postcode must match the service region')
+    record.source_type ||= 'manual'
+    if (!(CRM_SOURCE_TYPES as readonly string[]).includes(record.source_type)) errors.push('Invalid source_type')
+    if (!(CRM_CONTACT_BASES as readonly string[]).includes(record.contact_basis)) errors.push('Invalid contact_basis')
+    if ((['purchased_lead', 'cold_outreach'].includes(record.source_type) || ['purchased_lead', 'inferred_business_interest'].includes(record.contact_basis)) && !record.source_provider) errors.push('Source provider is required')
+    if (record.premises_type) {
+      const option = options.find(option => option.active && (option.code === record.premises_type || option.label.toLowerCase() === record.premises_type.toLowerCase()))
+      if (!option) errors.push('Unknown or inactive premises type')
+      else record.premises_type = option.code
+    }
+    if (record.premises_type === 'other' && !record.premises_type_other) errors.push('Describe the other premises type')
+    const limits: Record<string, number> = { business_name: 200, first_name: 100, last_name: 100, email: 254, phone: 40, address: 300, suburb: 120, premises_type_other: 100, source_provider: 200, source_reference: 200, notes: 5000 }
+    for (const [key, limit] of Object.entries(limits)) if ((record[key] || '').length > limit) errors.push(`${key} exceeds ${limit} characters`)
+    const identity = [record.email, record.address, record.suburb, record.postcode, record.city].join('|').toLowerCase()
+    if (seen.has(identity)) errors.push('Duplicate lead in this CSV')
+    seen.add(identity)
+    const input = Object.fromEntries(Object.entries(record).map(([key, value]) => [key.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()), value]))
+    return { row: index + 2, record, input, errors }
+  })
+}

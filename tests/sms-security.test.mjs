@@ -25,7 +25,7 @@ function dataFixture({allowed=true,live=false}={}) {
  let quote={id:'quote-id',quoteRef:'SC-1',status:'sent',validUntil:'2099-01-01',inputs:{city:'sydney'},firmQuoteDraft:{status:'sent'},finalDocument:{version:1,inputs:{city:'sydney',contactName:'Alex Client',phone:'0412345678'}}}
  const values={sms_settings:settings,quote_send_attempts:[{id:'attempt'}],sms_preferences:{consent:true,opted_out:false}}
  const db={from(table){const chain=new Proxy({},{get(_,name){if(name==='then')return resolve=>resolve({data:values[table],error:null});return()=>chain}});return chain},rpc:async(...args)=>{rpcCalls.push(args);return{data:true,error:null}}}
- const mod=moduleWithMocks('src/lib/smsData.ts',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./clientCrmAuth':{getClientCrmActor:async()=>actor},'./availability':{getAvailabilityConfig:async()=>({})},'./clientCrmQuoteAccess':{canAvailabilityAgentAccessQuote:async()=>allowed},'./quoteWorkflowData':{getQuoteWorkflowByRef:async()=>quote},'./smsPolicy':policy,'./mobileMessage':{...provider,smsLiveEnabled:()=>live}})
+ const mod=moduleWithMocks('src/lib/smsData.ts',{'node:crypto':crypto,'./premisesCatalogServer':{resolveQuoteIndustry:async()=> 'Office'},'./supabase':{getAdminSupabase:()=>db},'./clientCrmAuth':{getClientCrmActor:async()=>actor},'./availability':{getAvailabilityConfig:async()=>({})},'./clientCrmQuoteAccess':{canAvailabilityAgentAccessQuote:async()=>allowed},'./quoteWorkflowData':{getQuoteWorkflowByRef:async()=>quote},'./smsPolicy':policy,'./mobileMessage':{...provider,smsLiveEnabled:()=>live}})
  return {mod,values,rpcCalls,actor,setActor:v=>actor=v,setQuote:v=>quote=v,quote}
 }
 test('SMS server permissions reject signed-out and cross-region access before returning quote data',async()=>{
@@ -75,7 +75,7 @@ function workerFixture({job,providerHistory=[],providerError=null,enabled=true,c
  if(name==='eq'&&args[0]==='status'&&args[1]==='submitted')value={data:pending,error:null}
  return chain
  }}});return chain},rpc:async(name,args)=>{rpc.push([name,args]);return{data:name==='sms_worker_lock'?true:name==='sms_claim'?(job?[job]:[]):name==='sms_dispatch'?[{...job,first_attempt_at:new Date().toISOString(),status:'submitting',attempt_count:1}]:null,error:null}}}
- const mod=moduleWithMocks('src/lib/smsWorker.ts',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,'./smsData':{smsSettings:async()=>settings},'./smsAlerts':{smsAlert:async(code)=>alerts.push(code),deliverSmsAlerts:async()=>alerts.push('delivered_alerts')},'./smsEvents':{processSmsEvent:async(event)=>events.push(event)},'./mobileMessage':{
+ const mod=moduleWithMocks('src/lib/smsWorker.ts',{'node:crypto':crypto,'./premisesCatalogServer':{resolveQuoteIndustry:async()=> 'Office'},'./supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,'./smsData':{smsSettings:async()=>settings},'./smsAlerts':{smsAlert:async(code)=>alerts.push(code),deliverSmsAlerts:async()=>alerts.push('delivered_alerts')},'./smsEvents':{processSmsEvent:async(event)=>events.push(event)},'./mobileMessage':{
  SmsProviderError:provider.SmsProviderError,smsLiveEnabled:()=>enabled,smsCredentialsConfigured:()=>true,providerScope:()=> 'same-scope',checkSmsConnection:async()=>{checks.push('check');if(healthError)throw healthError;return freshHealth},mobileMessageRequest:async(path,method,body,key)=>{requests.push({path,method,body,key});if(path.startsWith('inbound'))return{status:'complete',results:inboundResults,total:inboundTotal};if(path.startsWith('messages?'))return{status:'complete',results:providerHistory};if(providerError)throw providerError;return {status:'complete',results:[{status:'success',message_id:'provider-1',cost:1}]}}
  }})
  return {mod,updates,requests,rpc,checks,events,alerts}
@@ -143,7 +143,7 @@ test('quote-request persistence uses normalized mobile, fixed notice version and
  const calls=[]
  const db={rpc:async(name,args)=>{calls.push({name,args});return{data:true,error:null}}}
  const m=moduleWithMocks('src/lib/quoteSmsRequest.ts',{
-  './supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,
+  './premisesCatalogServer':{resolveQuoteIndustry:async()=> 'Office'},'./supabase':{getAdminSupabase:()=>db},'./smsPolicy':policy,
   './quoteSmsNotice':{QUOTE_SMS_NOTICE_VERSION:'2026-10-06'},
  })
  assert.equal(await m.recordQuoteSmsRequest({quoteRef:'SC-1',phone:'(04) 1234 5678',source:'online_request',actorId:'online_customer',allowed:false}),true)
@@ -221,4 +221,13 @@ test('SMS activation accepts the idle recovery interval but rejects a stale work
  await f.mod.saveSmsSettings(owner,{...f.values.sms_settings,auto_enabled:true})
  f.values.sms_settings.worker_at=new Date(Date.now()-26*60_000).toISOString()
  await assert.rejects(f.mod.saveSmsSettings(owner,{...f.values.sms_settings,auto_enabled:true}),/scheduler/)
+})
+
+test('manual SMS resolves the linked industry field before preview', async () => {
+ process.env.ADMIN_SESSION_SECRET='test-only-secret'
+ const f=dataFixture({live:true})
+ f.values.sms_settings.template = 'Secure Cleaning: <<industry>> quote {{quote_reference}} is ready. Reply STOP to opt out.'
+ const preview = await f.mod.prepareSms(f.actor,{quoteRef:'SC-1'})
+ assert.match(preview.message,/Office/)
+ assert.doesNotMatch(preview.message,/<<industry>>/)
 })

@@ -21,6 +21,7 @@ export function applyContractProductBroadcastTemplateFields(
   const company = value(fields, 'company') || value(fields, 'business_name')
   const email = value(fields, 'email') || value(fields, 'cleaner_email')
   return applyEmailMergeFields(template, {
+    industry: value(fields, 'industry'),
     first_name: value(fields, 'first_name'),
     last_name: value(fields, 'last_name'),
     name,

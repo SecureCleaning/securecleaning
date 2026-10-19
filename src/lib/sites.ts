@@ -1,5 +1,5 @@
 import { getAdminSupabase } from '@/lib/supabase'
-import type { City, PremisesType } from '@/lib/types'
+import type { City } from '@/lib/types'
 
 export interface SiteRecord {
   id: string
@@ -9,7 +9,8 @@ export interface SiteRecord {
   suburb?: string | null
   postcode?: string | null
   city: City
-  premises_type?: PremisesType | null
+  premises_type?: string | null
+  premises_type_other?: string | null
   floor_area?: number | null
   access_notes?: string | null
   alarm_notes?: string | null
@@ -28,7 +29,8 @@ export interface SitePayload {
   suburb?: string | null
   postcode?: string | null
   city: City
-  premisesType?: PremisesType | null
+  premisesType?: string | null
+  premisesTypeOther?: string | null
   floorArea?: number | null
   accessNotes?: string | null
   alarmNotes?: string | null
@@ -42,7 +44,7 @@ export async function getSites() {
   const db = getAdminSupabase()
   const { data, error } = await db
     .from('sites')
-    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
+    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
     .order('created_at', { ascending: false })
     .limit(50)
 
@@ -66,6 +68,7 @@ export async function createSite(payload: SitePayload) {
       postcode: payload.postcode ?? null,
       city: payload.city,
       premises_type: payload.premisesType ?? null,
+      premises_type_other: payload.premisesTypeOther ?? '',
       floor_area: payload.floorArea ?? null,
       access_notes: payload.accessNotes ?? null,
       alarm_notes: payload.alarmNotes ?? null,
@@ -74,7 +77,7 @@ export async function createSite(payload: SitePayload) {
       keyholder_phone: payload.keyholderPhone ?? null,
       is_active: payload.isActive ?? true,
     })
-    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
+    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
     .single()
 
   if (error) throw error
@@ -93,6 +96,7 @@ export async function updateSite(siteId: string, payload: Partial<SitePayload>) 
       postcode: payload.postcode,
       city: payload.city,
       premises_type: payload.premisesType,
+      premises_type_other: payload.premisesTypeOther,
       floor_area: payload.floorArea,
       access_notes: payload.accessNotes,
       alarm_notes: payload.alarmNotes,
@@ -102,7 +106,7 @@ export async function updateSite(siteId: string, payload: Partial<SitePayload>) 
       is_active: payload.isActive,
     })
     .eq('id', siteId)
-    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
+    .select('id, client_id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, floor_area, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone, is_active, created_at, updated_at')
     .single()
 
   if (error) throw error

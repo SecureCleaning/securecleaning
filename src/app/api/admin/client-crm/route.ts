@@ -1,3 +1,6 @@
+import { getPremisesCatalog, savePremisesOption } from '@/lib/premisesCatalogServer'
+import { previewLeadCsv, importLeadCsv, exportLeadCsv } from '@/lib/clientLeadCsvServer'
+import { leadCsv } from '@/lib/clientLeadCsv'
 import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
 import { getCrmFollowUps, getCrmSentEmail } from '@/lib/clientCrmReads'
@@ -19,11 +22,17 @@ import { getContractProductActor } from '@/lib/contractProductAuth'
 import { closeOpportunityWonAndCreateProduct, ContractProductError } from '@/lib/contractProducts'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 300
 
 export async function GET(request: NextRequest) {
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
   try {
+    if (request.nextUrl.searchParams.has('premises')) return NextResponse.json({ success: true, options: await getPremisesCatalog() })
+    if (request.nextUrl.searchParams.has('csv')) {
+      const csv = request.nextUrl.searchParams.get('csv') === 'template' ? leadCsv([]) : await exportLeadCsv(actor)
+      return new NextResponse(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=client-leads.csv', 'Cache-Control': 'no-store' } })
+    }
     if (request.nextUrl.searchParams.get('followUps') === '1') return NextResponse.json({ success: true, ...(await getCrmFollowUps(actor)) })
     const emailId = request.nextUrl.searchParams.get('emailId')
     if (emailId) return NextResponse.json({ success: true, email: await getCrmSentEmail(actor, request.nextUrl.searchParams.get('opportunity') || '', emailId) })
@@ -44,7 +53,7 @@ export async function GET(request: NextRequest) {
   }
 }
 export async function POST(request: NextRequest) {
-  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 512 * 1024)
+  const blocked = rejectCrossOriginMutation(request) ?? await rejectLargePayload(request, 1024 * 1024)
   if (blocked) return blocked
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
@@ -52,6 +61,13 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
+    if (action === 'premises.save') return NextResponse.json({ success: true, result: await savePremisesOption(actor, body) })
+    if (action === 'csv.preview' || action === 'csv.import') {
+      const limited = await rateLimit(request, { key: `client-csv:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      if (typeof body.csv !== 'string') throw new ClientCrmError('Choose a CSV file.')
+      return NextResponse.json({ success: true, result: action === 'csv.preview' ? await previewLeadCsv(actor, body.csv) : await importLeadCsv(actor, body.csv) })
+    }
     if (action === 'opportunity.create') {
       const result = await createManualCrmOpportunity(actor, body)
       return NextResponse.json({ success: true, result }, { status: 201 })

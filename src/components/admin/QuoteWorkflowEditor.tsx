@@ -4,6 +4,7 @@ import { appendSavedQuoteField, overrideIncludedQuoteField } from '@/lib/savedQu
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
+import { INDUSTRY_MERGE_FIELD } from '@/lib/emailMergeFields'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 
@@ -732,7 +733,7 @@ export default function QuoteWorkflowEditor({
               />
             </label>
           </div>
-          <RichEmailEditor value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
+          <RichEmailEditor mergeFields={[INDUSTRY_MERGE_FIELD]} value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
           <label className="mt-3 flex items-start gap-3 text-sm text-gray-700">
             <input type="checkbox" checked={quoteRequestConfirmed} onChange={e => setQuoteRequestConfirmed(e.target.checked)} className="mt-1 h-4 w-4" />
             <span>The client requested this quote and supplied this mobile number for quote contact. I have explained that Secure Cleaning may send an SMS when the quote is emailed, and that they can reply STOP or request email-only contact. Record this quote request as the SMS permission basis. Existing opt-outs remain in force. <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">View terms</a>.</span>

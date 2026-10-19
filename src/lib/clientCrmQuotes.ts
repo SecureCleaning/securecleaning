@@ -90,7 +90,7 @@ export async function createCrmQuoteDraft(actor: ClientCrmActor, input: Record<s
   const [organisationResult, contactResult, siteResult, bookingResult] = await Promise.all([
     db.from('crm_organisations').select('id, business_name').eq('id', opportunity.organisation_id).maybeSingle(),
     db.from('clients').select('id, business_name, contact_name, email, phone').eq('id', opportunity.primary_contact_id).maybeSingle(),
-    db.from('sites').select('id, site_name, address, suburb, postcode, city').eq('id', opportunity.site_id).maybeSingle(),
+    db.from('sites').select('id, site_name, address, suburb, postcode, city, premises_type').eq('id', opportunity.site_id).maybeSingle(),
     db.from('bookings').select('booking_ref, inputs, created_at').eq('opportunity_id', opportunityId).neq('status', 'cancelled').order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ])
   for (const result of [organisationResult, contactResult, siteResult, bookingResult]) {
@@ -135,6 +135,7 @@ export async function createCrmQuoteDraft(actor: ClientCrmActor, input: Record<s
     ? bookingResult.data.inputs as Partial<BookingInputs>
     : null
   const quoteInputs = buildCrmQuoteDraftInputs({
+    sitePremisesType: site.premises_type || '',
     businessName,
     contactName,
     email,

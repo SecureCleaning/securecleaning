@@ -1,4 +1,5 @@
 import 'server-only'
+import { resolveQuoteIndustry } from './premisesCatalogServer'
 import { createHmac, randomUUID } from 'node:crypto'
 import type { NextRequest } from 'next/server'
 import { getAdminSupabase } from './supabase'
@@ -96,6 +97,7 @@ export async function prepareSms(actor:ClientCrmActor,body:Record<string,unknown
   }
   if(!mobile||!zone) throw new SmsError('Confirm an Australian mobile number and client service region.')
   const template=typeof body.message==='string'?body.message:settings.template
+  if (/(?:<<|\{\{)\s*industry\s*(?:>>|\}\})/i.test(template)) fields.industry = ref ? await resolveQuoteIndustry(ref) : 'Office'
   let message:string
   try {message=renderSms(template,fields)} catch(error) {throw new SmsError(error instanceof Error?error.message:'Invalid SMS template.')}
   const segments=smsSegments(message)

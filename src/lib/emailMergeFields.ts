@@ -10,7 +10,10 @@ function field(key: string, label: string, description: string, source = 'Databa
   return { key, token: `<<${key}>>`, label, description, source }
 }
 
+export const INDUSTRY_MERGE_FIELD = field('industry', 'Industry / premises type', 'Linked client site industry; blank when no client site is selected')
+
 export const CLIENT_EMAIL_MERGE_FIELDS = [
+  INDUSTRY_MERGE_FIELD,
   field('first_name', 'First name', "Client contact's first name"),
   field('last_name', 'Last name', "Client contact's surname"),
   field('name', 'Full name', 'Full client contact name'),
@@ -28,6 +31,7 @@ export const CLIENT_EMAIL_MERGE_FIELDS = [
 ] as const satisfies readonly EmailMergeField[]
 
 export const CLEANER_EMAIL_MERGE_FIELDS = [
+  INDUSTRY_MERGE_FIELD,
   field('first_name', 'First name', "Cleaner contact's first name"),
   field('last_name', 'Last name', "Cleaner contact's surname"),
   field('name', 'Full name', 'Full cleaner contact name'),
@@ -55,6 +59,7 @@ export const BROADCAST_EMAIL_MERGE_FIELDS = [
 ] as const satisfies readonly EmailMergeField[]
 
 export const INSPECTION_EMAIL_MERGE_FIELDS = [
+  INDUSTRY_MERGE_FIELD,
   field('client_first_name', 'Client first name', "Client contact's first name", 'Product sale'),
   field('client_name', 'Client full name', 'Client contact name', 'Product sale'),
   field('client_business', 'Client business', 'Client business or organisation', 'Product sale'),
@@ -76,6 +81,7 @@ export const INSPECTION_EMAIL_MERGE_FIELDS = [
 ] as const satisfies readonly EmailMergeField[]
 
 export const CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS = [
+  INDUSTRY_MERGE_FIELD,
   field('cleaner_first_name', 'Cleaner first name', "Cleaner contact's first name", 'Cleaner database'),
   field('cleaner_name', 'Cleaner full name', 'Cleaner contact name', 'Cleaner database'),
   field('cleaner_business', 'Cleaner business', 'Cleaner business name', 'Cleaner database'),
@@ -117,7 +123,7 @@ const ANY_MERGE_FIELD_PATTERN = /\{\{\s*([^{}]{1,80}?)\s*\}\}|<<\s*([^<>]{1,80}?
 export function applyEmailMergeFields(value: string, values: Record<string, string>) {
   return value.replace(MERGE_FIELD_PATTERN, (match, braces: string | undefined, angles: string | undefined, encodedAngles: string | undefined) => {
     const key = String(braces ?? angles ?? encodedAngles ?? '').toLowerCase()
-    return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match
+    return Object.prototype.hasOwnProperty.call(values, key) ? values[key] : key === 'industry' ? '' : match
   })
 }
 

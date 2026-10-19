@@ -19,6 +19,7 @@ const MAX_FLOOR_AREA = 10_000_000
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const STRING_FIELDS = {
+  premisesTypeOther: 100,
   siteName: 200,
   address: 500,
   suburb: 120,
@@ -67,7 +68,8 @@ function validateStringField(
 
 export function validateSitePayload(
   input: unknown,
-  mode: 'create' | 'update'
+  mode: 'create' | 'update',
+  allowedPremises: ReadonlySet<string> = PREMISES_OPTIONS
 ): SitePayloadValidationResult {
   if (!isRecord(input)) {
     return { success: false, error: 'Invalid request body.' }
@@ -105,7 +107,7 @@ export function validateSitePayload(
       payload.premisesType = null
     } else if (
       typeof input.premisesType !== 'string' ||
-      !PREMISES_OPTIONS.has(input.premisesType as PremisesType)
+      !allowedPremises.has(input.premisesType)
     ) {
       return { success: false, error: 'premisesType is invalid.' }
     } else {

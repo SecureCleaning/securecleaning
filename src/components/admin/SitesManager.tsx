@@ -1,13 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
-import type { City, PremisesType } from '@/lib/types'
+import { useEffect, useState } from 'react'
+import type { City } from '@/lib/types'
 import type { SiteRecord } from '@/lib/sites'
+import PremisesTypeField from './PremisesTypeField'
+import type { PremisesOption } from '@/lib/premisesCatalog'
 import ActionToast from '@/components/ActionToast'
 
 const cityOptions: City[] = ['melbourne', 'sydney']
-const premisesOptions: PremisesType[] = ['office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse', 'function_centre', 'sports_facility', 'other']
+
 
 type SiteFormState = {
   siteName: string
@@ -15,7 +17,8 @@ type SiteFormState = {
   suburb: string
   postcode: string
   city: City
-  premisesType: PremisesType
+  premisesType: string
+  premisesTypeOther: string
   floorArea: string
   accessNotes: string
   alarmNotes: string
@@ -32,7 +35,8 @@ function toFormState(site?: SiteRecord): SiteFormState {
     suburb: site?.suburb ?? '',
     postcode: site?.postcode ?? '',
     city: (site?.city ?? 'melbourne') as City,
-    premisesType: (site?.premises_type ?? 'office') as PremisesType,
+    premisesType: site?.premises_type ?? '',
+    premisesTypeOther: site?.premises_type_other ?? '',
     floorArea: site?.floor_area ? String(site.floor_area) : '',
     accessNotes: site?.access_notes ?? '',
     alarmNotes: site?.alarm_notes ?? '',
@@ -50,6 +54,8 @@ export default function SitesManager({
   initialSites: SiteRecord[]
   allowCreate?: boolean
 }) {
+  const [options, setOptions] = useState<PremisesOption[]>([])
+  useEffect(() => { void fetch('/api/admin/client-crm?premises=1').then(async response => { const result = await response.json(); if (!response.ok) throw new Error(result.error); setOptions(result.options) }).catch(() => setError('Unable to load premises choices. Reload before changing the premises type.')) }, [])
   const [sites, setSites] = useState<SiteRecord[]>(initialSites)
   const initialSite = allowCreate ? undefined : initialSites[0]
   const [editingSiteId, setEditingSiteId] = useState<string | null>(initialSite?.id ?? null)
@@ -86,6 +92,7 @@ export default function SitesManager({
         postcode: form.postcode,
         city: form.city,
         premisesType: form.premisesType,
+        premisesTypeOther: form.premisesTypeOther,
         floorArea: form.floorArea ? Number(form.floorArea) : null,
         accessNotes: form.accessNotes,
         alarmNotes: form.alarmNotes,
@@ -207,12 +214,7 @@ export default function SitesManager({
                 {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
               </select>
             </label>
-            <label className="block text-sm font-medium text-gray-700">
-              <span className="mb-1 block">Premises type</span>
-              <select value={form.premisesType} onChange={(e) => setForm({ ...form, premisesType: e.target.value as PremisesType })} className="w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm">
-                {premisesOptions.map((type) => <option key={type} value={type}>{type}</option>)}
-              </select>
-            </label>
+            <PremisesTypeField value={form.premisesType} other={form.premisesTypeOther} options={options} onChange={(premisesType, premisesTypeOther) => setForm({ ...form, premisesType, premisesTypeOther })} />
           </div>
           <label className="block text-sm font-medium text-gray-700">
             <span className="mb-1 block">Floor area (sqm)</span>

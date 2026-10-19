@@ -1,3 +1,4 @@
+import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
 import { getAdminSupabase } from '@/lib/supabase'
 import { getSiteUrl } from '@/lib/siteUrl'
@@ -181,7 +182,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
       .maybeSingle(),
     opportunity.site_id
       ? db.from('sites')
-        .select('id, site_name, address, suburb, postcode, city')
+        .select('id, site_name, address, suburb, postcode, city, premises_type, premises_type_other')
         .eq('id', opportunity.site_id)
         .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -224,6 +225,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   const address = String(site?.address ?? intake.address ?? '')
   const leadSource = String(intake.source_provider ?? 'Secure Cleaning')
   const tokens = {
+    industry: await resolveIndustry(site),
     business_name: businessName,
     company: businessName,
     contact_name: contactName,

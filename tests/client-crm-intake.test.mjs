@@ -38,7 +38,7 @@ test('creation accepts absent business names, defaults NSW, preserves named busi
     let response
     if (path.endsWith('/availability_private_config')) response = { content: JSON.stringify({ assignees, weeklySlots: [] }) }
     else if (path.endsWith('/admin_staff_accounts')) response = []
-    else if (path.endsWith('/rpc/create_client_crm_opportunity')) { writes.push(JSON.parse(options.body)); response = 'created-id' }
+    else if (path.endsWith('/rpc/save_crm_record_with_premises')) { writes.push(JSON.parse(options.body).p_values); response = 'created-id' }
     else throw new Error('Unexpected request: ' + path)
     return new Response(JSON.stringify(response), { status: 200, headers: { 'Content-Type': 'application/json' } })
   }
@@ -74,8 +74,8 @@ test('profile editing sends blank or named businesses and preserves stale-write 
     let result
     if (path.endsWith('/crm_opportunities')) result = { id: 'opportunity', assigned_staff_id: actor.id, primary_contact_id: 'contact', site_id: null }
     else if (path.endsWith('/rpc/find_client_crm_contacts_by_email')) result = []
-    else if (path.endsWith('/rpc/update_client_crm_profile')) {
-      writes.push(JSON.parse(options.body))
+    else if (path.endsWith('/rpc/save_crm_record_with_premises')) {
+      writes.push(JSON.parse(options.body).p_values)
       if (failure) return new Response(JSON.stringify({ code: failure, message: 'fixture failure' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
       result = 'opportunity'
     } else throw new Error('Unexpected request: ' + path)

@@ -1,3 +1,6 @@
+import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
+import { getAdminSupabase } from '@/lib/supabase'
+import { ClientCrmError } from '@/lib/clientCrmData'
 import { NextRequest, NextResponse } from 'next/server'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { rejectCrossOriginMutation, rejectLargePayload } from '@/lib/abuseProtection'
@@ -31,14 +34,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid request body.' }, { status: 400 })
     }
 
-    const validation = validateSitePayload(body, 'create')
+    const validation = validateSitePayload(body, 'create', new Set((await getPremisesCatalog()).filter(option => option.active).map(option => option.code)))
     if (!validation.success) {
       return NextResponse.json({ success: false, error: validation.error }, { status: 400 })
     }
 
+    const selection = await validatePremisesSelection(body as Record<string, unknown>)
+    if (selection.type !== null) validation.payload.premisesTypeOther = selection.other
     const site = await createSite(validation.payload as Parameters<typeof createSite>[0])
     return NextResponse.json({ success: true, site })
   } catch (error) {
+    if (error instanceof ClientCrmError) return NextResponse.json({ success: false, error: error.message }, { status: error.status })
     console.error('[api/admin/sites] Failed to create site:', error)
     return NextResponse.json({ success: false, error: 'Failed to create site.' }, { status: 500 })
   }
@@ -60,14 +66,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Invalid request body.' }, { status: 400 })
     }
 
-    const validation = validateSitePayload(body, 'update')
+    const validation = validateSitePayload(body, 'update', new Set((await getPremisesCatalog()).map(option => option.code)))
     if (!validation.success) {
       return NextResponse.json({ success: false, error: validation.error }, { status: 400 })
     }
 
+    const current = await getAdminSupabase().from('sites').select('premises_type').eq('id', validation.siteId!).single()
+    if (current.error) throw current.error
+    const selection = await validatePremisesSelection(body as Record<string, unknown>, current.data?.premises_type)
+    if (selection.type !== null) validation.payload.premisesTypeOther = selection.other
     const site = await updateSite(validation.siteId!, validation.payload)
     return NextResponse.json({ success: true, site })
   } catch (error) {
+    if (error instanceof ClientCrmError) return NextResponse.json({ success: false, error: error.message }, { status: error.status })
     console.error('[api/admin/sites] Failed to update site:', error)
     return NextResponse.json({ success: false, error: 'Failed to update site.' }, { status: 500 })
   }

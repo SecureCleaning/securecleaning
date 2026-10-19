@@ -1,3 +1,4 @@
+import { resolveQuoteIndustry } from './premisesCatalogServer'
 import 'server-only'
 import { randomUUID } from 'node:crypto'
 import { getAdminSupabase } from './supabase'
@@ -99,6 +100,7 @@ async function work(settingsUpdates:Record<string,unknown>) {
         if(job.first_attempt_at && (job.cancel_requested||job.provider_scope!==providerScope()||Date.now()-Date.parse(job.first_attempt_at)>23*3600_000||job.attempt_count>=3)) {
           await updateJob(job,{status:'review',reason:'unknown_requires_reconciliation',lease_token:null,lease_until:null});await smsAlert('unknown_requires_reconciliation',job.id);continue
         }
+        if (!job.message && job.quote_ref && /(?:<<|\{\{)\s*industry\s*(?:>>|\}\})/i.test(job.template)) job = { ...job, fields: { ...job.fields, industry: await resolveQuoteIndustry(job.quote_ref) } }
         const message=job.message||renderSms(job.template,job.fields)
         if(smsSegments(message).segments>settings.max_parts) {
           await updateJob(job,{status:'skipped',reason:'segment_limit',lease_token:null,lease_until:null});await smsAlert('segment_limit',job.id);continue

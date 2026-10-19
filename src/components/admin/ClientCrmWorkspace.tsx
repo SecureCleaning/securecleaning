@@ -1,5 +1,9 @@
 'use client'
 
+import PremisesTypeField from './PremisesTypeField'
+import CrmPremisesSettings from './CrmPremisesSettings'
+import ClientLeadCsvPanel from './ClientLeadCsvPanel'
+import type { PremisesOption } from '@/lib/premisesCatalog'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -23,6 +27,7 @@ import type { CleaningFrequency, PremisesType, TimePreference } from '@/lib/type
 
 
 type WorkspaceData = {
+  premisesOptions: PremisesOption[]
   opportunities: CrmOpportunity[]
   templates: CrmEmailTemplate[]
   agents: CrmAgentOption[]
@@ -78,7 +83,7 @@ const timeOptions: Array<[TimePreference, string]> = [
 
 function emptyLeadDraft(city: CrmServiceRegion | '' = '') {
   return {
-    businessName: '', firstName: '', lastName: '', email: '', phone: '', address: '', suburb: '', postcode: '',
+    premisesType: '', premisesTypeOther: '', businessName: '', firstName: '', lastName: '', email: '', phone: '', address: '', suburb: '', postcode: '',
     city, sourceType: 'manual', sourceProvider: '', sourceReference: '',
     contactBasis: 'enquiry', sourceExplanation: '', assignedStaffId: '', notes: '',
   }
@@ -170,7 +175,7 @@ export default function ClientCrmWorkspace({
   const [templateEditorKey, setTemplateEditorKey] = useState(0)
   const [emailPreview, setEmailPreview] = useState<ClientEmailPreview | null>(null)
   const [leadEdit, setLeadEdit] = useState({ stage: 'new', notes: '', nextFollowUpAt: '', assignedStaffId: '', contactBasis: '', sourceProvider: '', sourceExplanation: '' })
-  const [profileEdit, setProfileEdit] = useState({ businessName: '', firstName: '', lastName: '', positionTitle: '', email: '', phone: '', siteName: '', address: '', suburb: '', postcode: '' })
+  const [profileEdit, setProfileEdit] = useState({ premisesType: '', premisesTypeOther: '', businessName: '', firstName: '', lastName: '', positionTitle: '', email: '', phone: '', siteName: '', address: '', suburb: '', postcode: '' })
   const [profileEditing, setProfileEditing] = useState(false)
   const [appointmentOpen, setAppointmentOpen] = useState(false)
   const [appointmentDraft, setAppointmentDraft] = useState(emptyAppointmentDraft)
@@ -261,6 +266,7 @@ export default function ClientCrmWorkspace({
       sourceExplanation: selectedLead.sourceExplanation || '',
     })
     setProfileEdit({
+      premisesType: selectedLead.premisesType || '', premisesTypeOther: selectedLead.premisesTypeOther || '',
       businessName: selectedLead.businessName,
       firstName: selectedLead.firstName,
       lastName: selectedLead.lastName,
@@ -651,7 +657,9 @@ export default function ClientCrmWorkspace({
     && selectedLead.city,
   )
   const profileHasUnsavedChanges = Boolean(selectedLead && (
-    profileEdit.businessName !== selectedLead.businessName
+    profileEdit.premisesType !== (selectedLead.premisesType || '')
+    || profileEdit.premisesTypeOther !== (selectedLead.premisesTypeOther || '')
+    || profileEdit.businessName !== selectedLead.businessName
     || profileEdit.firstName !== selectedLead.firstName
     || profileEdit.lastName !== selectedLead.lastName
     || profileEdit.positionTitle !== selectedLead.positionTitle
@@ -674,10 +682,13 @@ export default function ClientCrmWorkspace({
       />
 
       <ActionToast message={status?.message} tone={status?.type} onDismiss={() => setStatus(null)} />
+      <ClientLeadCsvPanel reload={() => loadWorkspace()} />
+      {view === 'templates' && data && data.actor.role !== 'agent' ? <CrmPremisesSettings options={data.premisesOptions} reload={() => loadWorkspace()} /> : null}
       {view === 'new' ? <form onSubmit={createLead} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-900">Create an opportunity</h2>
         <p className="mt-1 text-sm text-gray-600">One opportunity represents one customer/site sales cycle. Agents can create records within their assigned state; postcode coverage suggests the agent for owner or manager entries. An existing active opportunity for the same customer and site is reused by online quotes and cannot be duplicated manually.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <PremisesTypeField value={leadDraft.premisesType} other={leadDraft.premisesTypeOther} options={data?.premisesOptions ?? []} onChange={(premisesType, premisesTypeOther) => setLeadDraft({ ...leadDraft, premisesType, premisesTypeOther })} />
           <label className="text-sm font-medium text-gray-700">Business name (optional)<input value={leadDraft.businessName} onChange={(event) => setLeadDraft({ ...leadDraft, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">First name<input required maxLength={100} autoComplete="given-name" value={leadDraft.firstName} onChange={(event) => setLeadDraft({ ...leadDraft, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Last name (optional)<input maxLength={100} autoComplete="family-name" value={leadDraft.lastName} onChange={(event) => setLeadDraft({ ...leadDraft, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
@@ -719,12 +730,12 @@ export default function ClientCrmWorkspace({
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">Client and site details</h2><p className="mt-1 text-sm text-gray-600">Structured details used across this customer’s CRM records.</p></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span>{!profileEditing ? <button type="button" onClick={() => setProfileEditing(true)} className="rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50">Edit client details</button> : null}</div></div>
             <ClientEmailStatus lead={selectedLead} />
             <fieldset disabled={!profileEditing} className="mt-5 grid gap-5 disabled:opacity-75 xl:grid-cols-3">
-              <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Business</legend><label className="mt-1 block text-sm font-medium text-gray-700">Business name (optional)<input value={profileEdit.businessName} onChange={(event) => setProfileEdit({ ...profileEdit, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><p className="mt-2 text-xs text-gray-500">This name is shared across the organisation’s CRM records.</p></fieldset>
+              <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Business</legend><label className="mt-1 block text-sm font-medium text-gray-700">Business name (optional)<input value={profileEdit.businessName} onChange={(event) => setProfileEdit({ ...profileEdit, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><p className="mt-2 text-xs text-gray-500">This name is shared across the organisation’s CRM records.</p><div className="mt-4"><PremisesTypeField value={profileEdit.premisesType} other={profileEdit.premisesTypeOther} options={data?.premisesOptions ?? []} onChange={(premisesType, premisesTypeOther) => setProfileEdit({ ...profileEdit, premisesType, premisesTypeOther })} /></div></fieldset>
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Primary contact</legend><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700">First name<input value={profileEdit.firstName} onChange={(event) => setProfileEdit({ ...profileEdit, firstName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700">Last name (optional)<input value={profileEdit.lastName} onChange={(event) => setProfileEdit({ ...profileEdit, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Position / title<input value={profileEdit.positionTitle} onChange={(event) => setProfileEdit({ ...profileEdit, positionTitle: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Email<input type="email" value={profileEdit.email} onChange={(event) => setProfileEdit({ ...profileEdit, email: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Phone<input type="tel" value={profileEdit.phone} onChange={(event) => setProfileEdit({ ...profileEdit, phone: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label></div></fieldset>
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">{selectedLead.siteId ? 'Site' : 'Add site details'}</legend>{!selectedLead.siteId ? <p className="mb-3 text-sm text-gray-600">Enter and save any site details currently available. The rest can be added later.</p> : null}<div className="grid gap-3 sm:grid-cols-2"><label className="text-sm font-medium text-gray-700 sm:col-span-2">Site name<input value={profileEdit.siteName} onChange={(event) => setProfileEdit({ ...profileEdit, siteName: event.target.value })} placeholder={selectedLead.businessName} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><label className="text-sm font-medium text-gray-700 sm:col-span-2">Street address<input value={profileEdit.address} onChange={(event) => setProfileEdit({ ...profileEdit, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><div className="sm:col-span-2"><LocalityAutocomplete key={selectedLead.id} city={selectedLead.city ?? undefined} suburb={profileEdit.suburb} postcode={profileEdit.postcode} onChange={(updates) => setProfileEdit({ ...profileEdit, suburb: updates.suburb, postcode: updates.postcode })} /></div><label className="text-sm font-medium text-gray-700 sm:col-span-2">State / service region<span className="mt-1 block rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 font-normal">{selectedLead.state}</span></label></div></fieldset>
             </fieldset>
             <div className="mt-4 flex flex-wrap gap-3">
-              {profileEditing ? <><button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update' || !profileHasUnsavedChanges} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button><button type="button" onClick={() => { setProfileEdit({ businessName: selectedLead.businessName, firstName: selectedLead.firstName, lastName: selectedLead.lastName, positionTitle: selectedLead.positionTitle, email: selectedLead.email, phone: selectedLead.phone, siteName: selectedLead.siteName, address: selectedLead.address, suburb: selectedLead.suburb, postcode: selectedLead.postcode }); setProfileEditing(false) }} disabled={busy === 'profile-update'} className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 disabled:opacity-60">Cancel</button></> : null}
+              {profileEditing ? <><button type="button" onClick={() => void saveProfile()} disabled={busy === 'profile-update' || !profileHasUnsavedChanges} className="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'profile-update' ? 'Saving details...' : 'Save client details'}</button><button type="button" onClick={() => { setProfileEdit({ premisesType: selectedLead.premisesType || '', premisesTypeOther: selectedLead.premisesTypeOther || '', businessName: selectedLead.businessName, firstName: selectedLead.firstName, lastName: selectedLead.lastName, positionTitle: selectedLead.positionTitle, email: selectedLead.email, phone: selectedLead.phone, siteName: selectedLead.siteName, address: selectedLead.address, suburb: selectedLead.suburb, postcode: selectedLead.postcode }); setProfileEditing(false) }} disabled={busy === 'profile-update'} className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 disabled:opacity-60">Cancel</button></> : null}
               <button
                 type="button"
                 onClick={() => setAppointmentOpen((current) => !current)}

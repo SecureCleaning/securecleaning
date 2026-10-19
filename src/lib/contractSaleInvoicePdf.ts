@@ -32,6 +32,7 @@ export type ContractSaleTaxInvoicePdfInput = {
 }
 
 export type ContractSaleInvoiceTemplateTokens = {
+  industry?: string
   invoiceNumber: string
   productCode: string
   saleCode: string
@@ -46,17 +47,17 @@ export type ContractSaleInvoiceTemplateTokens = {
   agentTitle: string
 }
 
-const TEMPLATE_TOKEN_PATTERN = /\{(invoice_number|product_code|sale_code|cleaner_name|cleaner_business|suburb|state|total_inc_gst|deposit_inc_gst|balance_inc_gst|agent_name|agent_title)\}/g
+const TEMPLATE_TOKEN_PATTERN = /\{(invoice_number|product_code|sale_code|cleaner_name|cleaner_business|suburb|state|total_inc_gst|deposit_inc_gst|balance_inc_gst|agent_name|agent_title|industry)\}|<<\s*(industry)\s*>>|&lt;&lt;\s*(industry)\s*&gt;&gt;/gi
 
 const tokenKey: Record<string, keyof ContractSaleInvoiceTemplateTokens> = {
   invoice_number: 'invoiceNumber', product_code: 'productCode', sale_code: 'saleCode',
   cleaner_name: 'cleanerName', cleaner_business: 'cleanerBusiness', suburb: 'suburb', state: 'state',
   total_inc_gst: 'totalIncGst', deposit_inc_gst: 'depositIncGst', balance_inc_gst: 'balanceIncGst',
-  agent_name: 'agentName', agent_title: 'agentTitle',
+  industry: 'industry', agent_name: 'agentName', agent_title: 'agentTitle',
 }
 
 export function renderContractSaleInvoiceTemplateText(template: string, tokens: ContractSaleInvoiceTemplateTokens) {
-  return template.replace(TEMPLATE_TOKEN_PATTERN, (_, name: string) => tokens[tokenKey[name]] ?? '')
+  return template.replace(TEMPLATE_TOKEN_PATTERN, (_, name: string, angle: string, encoded: string) => tokens[tokenKey[(name || angle || encoded).toLowerCase()]] ?? '')
 }
 
 const PAGE_WIDTH = 595

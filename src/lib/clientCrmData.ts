@@ -1,3 +1,4 @@
+import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
 import { getAdminSupabase } from '@/lib/supabase'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { CLIENT_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
@@ -56,6 +57,8 @@ export type CrmOpportunity = {
   lastName: string
   positionTitle: string
   phone: string
+  premisesType?: string
+  premisesTypeOther?: string
   siteName: string
   address: string
   suburb: string
@@ -359,7 +362,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       ? db.from('clients').select('id, business_name, contact_name, first_name, last_name, position_title, email, phone, city, updated_at').in('id', contactIds)
       : Promise.resolve({ data: [], error: null }),
     siteIds.length > 0
-      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, updated_at').in('id', siteIds)
+      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, updated_at').in('id', siteIds)
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
       ? db.from('crm_opportunity_intakes').select('opportunity_id, lead_id, linked_at').in('opportunity_id', opportunityIds).order('linked_at', { ascending: true })
@@ -507,6 +510,8 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       lastName: String(contact?.last_name ?? '').trim() || String(contact?.contact_name ?? '').trim().split(/\s+/).slice(1).join(' '),
       positionTitle: String(contact?.position_title ?? ''),
       phone: String(contact?.phone ?? ''),
+      premisesType: String(site?.premises_type ?? ''),
+      premisesTypeOther: String(site?.premises_type_other ?? ''),
       siteName: String(site?.site_name ?? ''),
       address: String(site?.address ?? ''),
       suburb: String(site?.suburb ?? ''),
@@ -556,7 +561,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
 
   const availabilityConfig = await getAvailabilityConfig()
   const defaultCity = getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
-  return { opportunities, templates, agents, senders, actor, defaultCity }
+  return { opportunities, templates, agents, senders, actor, defaultCity, premisesOptions: await getPremisesCatalog() }
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -592,7 +597,14 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
     }
   }
 
-  const { data, error } = await db.rpc('update_client_crm_profile', {
+  let currentPremisesType: string | null = null
+  if (current.site_id) {
+    const site = await db.from('sites').select('premises_type').eq('id', current.site_id).single()
+    if (site.error) throw site.error
+    currentPremisesType = String(site.data?.premises_type ?? '')
+  }
+  const selection = await validatePremisesSelection(input, currentPremisesType)
+  const { data, error } = await db.rpc('save_crm_record_with_premises', { p_operation: 'update', p_premises_type: selection.type, p_premises_other: selection.other, p_values: {
     p_opportunity_id: opportunityId,
     p_expected_opportunity_updated_at: clean(input.expectedOpportunityUpdatedAt, 100),
     p_expected_organisation_updated_at: clean(input.expectedOrganisationUpdatedAt, 100),
@@ -610,10 +622,11 @@ export async function updateCrmProfile(actor: ClientCrmActor, input: Record<stri
     p_postcode: postcode,
     p_actor_id: actor.id,
     p_actor_role: actor.role,
-  })
+  } })
   if (error?.code === '40001') throw new ClientCrmError('These client details changed while you were editing. Reload and apply your update again.', 409)
   if (error?.code === '23505') throw new ClientCrmError('That email or site already belongs to another CRM record. Reconcile the records before saving.', 409)
   if (error?.code === '42501') throw new ClientCrmError('You do not have access to update this client record.', 403)
+  if (error?.code === '23514') throw new ClientCrmError(error.message)
   if (error) throw error
   return { id: String(data) }
 }
@@ -699,11 +712,12 @@ export async function addCrmOpportunityNote(actor: ClientCrmActor, input: Record
   })
   if (error?.code === 'P0002') throw new ClientCrmError('Opportunity not found.', 404)
   if (error?.code === '42501') throw new ClientCrmError('You do not have access to add a note to this opportunity.', 403)
+  if (error?.code === '23514') throw new ClientCrmError(error.message)
   if (error) throw error
   return { id: String(data) }
 }
 
-export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
+export async function prepareManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
   const businessName = clean(input.businessName, 200)
   const firstName = clean(input.firstName, 100)
   const lastName = clean(input.lastName, 100)
@@ -760,9 +774,9 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
     assignmentMethod = 'postcode_auto'
   }
 
-  const db = getAdminSupabase()
+  const selection = await validatePremisesSelection(input)
   const sourceExplanation = buildContactSourceExplanation({ sourceType, sourceProvider, customExplanation })
-  const { data: opportunityId, error: opportunityError } = await db.rpc('create_client_crm_opportunity', {
+  return { selection, candidates, values: {
     p_business_name: businessName,
     p_contact_name: contactName,
     p_email: email,
@@ -781,14 +795,20 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
     p_notes: notes,
     p_actor_id: actor.id,
     p_actor_role: actor.role,
-  })
+  } }
+}
+
+export async function createManualCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>, importKey?: string) {
+  const prepared = await prepareManualCrmOpportunity(actor, input)
+  const { data: opportunityId, error: opportunityError } = await getAdminSupabase().rpc(
+    'save_crm_record_with_premises', { p_operation: 'create', p_values: prepared.values, p_premises_type: prepared.selection.type, p_premises_other: prepared.selection.other, p_import_key: importKey ?? null })
   if (opportunityError) {
     if (opportunityError.code === '23505') throw new ClientCrmError('An active opportunity already exists for this customer and site. Add future quotes to that opportunity, or close it before starting a new sales cycle.', 409)
     if (opportunityError.code === '42501') throw new ClientCrmError('This contact belongs to another agent. Ask an owner or manager to reconcile it.', 409)
     if (opportunityError.code === '23514') throw new ClientCrmError('The saved contact details differ from this entry. Reconcile the contact before starting another opportunity.', 409)
     throw opportunityError
   }
-  return { id: String(opportunityId), candidates }
+  return { id: String(opportunityId), candidates: prepared.candidates }
 }
 
 export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -986,6 +1006,7 @@ export async function syncOnlineQuoteCrmOpportunity(input: {
     p_assigned_staff_id: assignedStaffId,
     p_assignment_method: assignedStaffId ? 'postcode_auto' : 'unassigned',
   })
+  if (error?.code === '23514') throw new ClientCrmError(error.message)
   if (error) throw error
   return { id: String(data) }
 }
@@ -1027,6 +1048,7 @@ export async function syncBookingCrmOpportunity(input: {
     p_assigned_staff_id: assignedStaffId,
     p_assignment_method: assignedStaffId ? 'booking_assignee' : 'unassigned',
   })
+  if (error?.code === '23514') throw new ClientCrmError(error.message)
   if (error) throw error
   return { id: String(data) }
 }

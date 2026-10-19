@@ -1,3 +1,4 @@
+import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { escapeIcsText, serializeIcs } from '@/lib/ics'
 import { parsePlanInstalments } from '@/lib/commissionPolicy'
 import { parseRichEmailContent, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
@@ -258,7 +259,7 @@ export const DEFAULT_CONTRACT_SALE_CLEANER_PROFILE_TEMPLATE: ContractSaleCleaner
 
 const ALLOWED_INVOICE_TEMPLATE_TOKENS = new Set([
   'invoice_number', 'product_code', 'sale_code', 'cleaner_name', 'cleaner_business', 'suburb', 'state',
-  'total_inc_gst', 'deposit_inc_gst', 'balance_inc_gst', 'agent_name', 'agent_title',
+  'total_inc_gst', 'deposit_inc_gst', 'balance_inc_gst', 'agent_name', 'agent_title', 'industry',
 ])
 
 function clean(value: unknown, max = 500) {
@@ -475,12 +476,12 @@ export async function loadSaleContext(sale: Row) {
   const [client, site] = await Promise.all([
     db.from('clients').select('business_name, contact_name, email, phone').eq('id', opportunity.data.primary_contact_id).maybeSingle(),
     opportunity.data.site_id
-      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').eq('id', opportunity.data.site_id).maybeSingle()
+      ? db.from('sites').select('id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').eq('id', opportunity.data.site_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
   ])
   if (client.error) throw client.error
   if (site.error) throw site.error
-  return { product: product.data, cleaner: cleaner.data, opportunity: opportunity.data, quote: quote.data, staff: staff.data, creatorStaff: creatorStaff.data, client: client.data, site: site.data }
+  return { industry: await resolveIndustry(site.data), product: product.data, cleaner: cleaner.data, opportunity: opportunity.data, quote: quote.data, staff: staff.data, creatorStaff: creatorStaff.data, client: client.data, site: site.data }
 }
 
 export async function getContractSaleWorkspace(actor: ContractProductActor) {
@@ -505,7 +506,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
-    siteIds.length ? db.from('sites').select('id, site_name, address, suburb, postcode, city, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
+    siteIds.length ? db.from('sites').select('id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_invoices').select(INVOICE_SELECT).in('sale_id', saleIds).order('issued_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_invoice_email_deliveries').select('id, invoice_id, sale_id, delivery_kind, recipient_email_snapshot, subject_snapshot, delivery_status, provider_message_id, attachment_names_snapshot, sent_at, created_at').in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
@@ -767,7 +768,7 @@ function invoiceTemplateTokens(invoice: Row, sale: Row, context: Awaited<ReturnT
   const total = Number(invoice.total_inc_gst_cents)
   const deposit = Number(invoice.deposit_required_inc_gst_cents ?? CONTRACT_SALE_DEPOSIT_INC_GST_CENTS)
   return {
-    invoiceNumber: String(invoice.invoice_number), productCode: String(context.product.product_code), saleCode: String(sale.sale_code),
+    industry: context.industry, invoiceNumber: String(invoice.invoice_number), productCode: String(context.product.product_code), saleCode: String(sale.sale_code),
     cleanerName: String(invoice.recipient_name_snapshot), cleanerBusiness: String(invoice.recipient_business_snapshot),
     suburb: String(context.product.suburb), state: String(context.product.state), totalIncGst: money(total),
     depositIncGst: money(deposit), balanceIncGst: money(Math.max(0, total - deposit)),
@@ -929,6 +930,7 @@ async function sendFirstInvoiceCleanerProfileEmail(
   const creatorEmail = creator ? normalizeInvoiceEmail(creator.email) : ''
   const link = createCleanerPortalLink({ mode: 'update', email: recipientEmail, cleanerId: String(context.cleaner.id) })
   const values = {
+    industry: context.industry,
     cleaner_first_name: firstName(context.cleaner.contact_name),
     cleaner_name: String(context.cleaner.contact_name ?? ''),
     cleaner_business: String(context.cleaner.business_name ?? ''),
@@ -1192,6 +1194,7 @@ function inspectionMergeValues(sale: Row, context: Awaited<ReturnType<typeof loa
     }
   }
   return {
+    industry: context.industry,
     client_first_name: firstName(context.client?.contact_name), client_name: String(context.client?.contact_name ?? ''),
     client_business: String(context.client?.business_name ?? ''), cleaner_first_name: firstName(context.cleaner.contact_name),
     cleaner_name: String(context.cleaner.contact_name), cleaner_business: String(context.cleaner.business_name),

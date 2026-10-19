@@ -1,3 +1,5 @@
+import { getPremisesCatalog } from '@/lib/premisesCatalogServer'
+import { premisesLabel } from '@/lib/premisesCatalog'
 import 'server-only'
 import { readEmailPages, acquireEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
 
@@ -19,6 +21,7 @@ import { parseRichEmailContent, richEmailFingerprint, sanitizeRichEmailHtml } fr
 import type { RichEmailContent } from '@/lib/richEmailContent'
 
 type BroadcastProduct = {
+  industry?: string
   id: string
   productCode: string
   heading: string
@@ -153,8 +156,10 @@ async function getBroadcastProducts(actor: ContractProductActor, state: Contract
   if (selected.size > 0 && products.length !== selected.size) {
     throw new ContractProductError('One or more selected products are unavailable or outside your state.', 409)
   }
+  const premisesOptions = await getPremisesCatalog()
   return products.map<BroadcastProduct>((product) => ({
     id: product.id,
+    industry: premisesLabel(product.premisesType, '', premisesOptions),
     productCode: product.productCode,
     heading: product.heading,
     suburb: product.suburb,
@@ -260,6 +265,7 @@ function getBroadcastTemplateValues(input: {
 }): ContractProductBroadcastTemplateValues {
   const state = input.products[0]?.state ?? ''
   return {
+    industry: [...new Set(input.products.map(product => product.industry).filter(Boolean))].join(', '),
     first_name: input.cleaner.firstName,
     last_name: input.cleaner.lastName,
     name: input.cleaner.name,

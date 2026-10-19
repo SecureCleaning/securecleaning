@@ -1,6 +1,6 @@
 /** Pure SMS policy shared by preview, dispatch and tests. No credentials here. */
 export const DEFAULT_SMS_TEMPLATE = "Secure Cleaning: We've emailed your quote. Please check your inbox and junk folder. Can't find it? Reply here and we'll help. Reply STOP to opt out."
-export const SMS_FIELDS = ['first_name', 'client_name', 'quote_reference'] as const
+export const SMS_FIELDS = ['first_name', 'client_name', 'quote_reference', 'industry'] as const
 export const SMS_TERMINAL_QUOTE_STATES = ['accepted', 'withdrawn', 'deleted', 'superseded', 'expired', 'declined', 'cancelled']
 export function normalizeSmsMobile(value: unknown): string | null {
   if (typeof value !== 'string' || !/^[+\d\s().-]+$/.test(value)) return null
@@ -31,7 +31,8 @@ export function nextSmsSendTime(date: Date, timeZone: string): Date {
 }
 export function renderSms(template: string, fields: Record<string, string>): string {
   if (!template.trim() || template.length > 1500) throw new Error('Enter a template of up to 1500 characters.')
-  const rendered = template.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_match, field: string) => {
+  const normalized = template.replace(/<<\s*industry\s*>>/gi, '{{industry}}')
+  const rendered = normalized.replace(/\{\{\s*([a-z_]+)\s*\}\}/g, (_match, field: string) => {
     if (!(SMS_FIELDS as readonly string[]).includes(field)) throw new Error(`Unsupported SMS field: ${field}`)
     return (fields[field] || '').replace(/[\r\n{}]/g, ' ').trim()
   })

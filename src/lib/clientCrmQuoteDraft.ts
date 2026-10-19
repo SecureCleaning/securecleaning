@@ -25,6 +25,7 @@ export function buildCrmQuoteDraftInputs(input: {
   suburb: string
   postcode: string
   city: 'melbourne' | 'sydney'
+  sitePremisesType?: string
   bookingInputs?: Partial<BookingInputs> | null
 }): QuoteInputs {
   const booking = input.bookingInputs ?? {}
@@ -37,7 +38,7 @@ export function buildCrmQuoteDraftInputs(input: {
     suburb: input.suburb,
     postcode: input.postcode,
     city: input.city,
-    premisesType: valueFromList(booking.premisesType, PREMISES_TYPES, 'office'),
+    premisesType: valueFromList(input.sitePremisesType || booking.premisesType, PREMISES_TYPES, input.sitePremisesType ? 'other' : 'office'),
     floorArea: positiveNumber(booking.floorArea, 100),
     floors: 1,
     flooringType: 'mixed',

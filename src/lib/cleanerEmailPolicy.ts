@@ -24,7 +24,7 @@ export function parseCleanerEmailInput(value: unknown): CleanerEmailInput {
   if (!body || body.length > 10000) throw new CleanerEmailError('Enter a message of 1 to 10,000 characters.')
   const templateId = input.templateId || null
   if (templateId !== null && (typeof templateId !== 'string' || !CLEANER_EMAIL_UUID.test(templateId))) throw new CleanerEmailError('Select a valid template.')
-  const supported = new Set(['first_name', 'last_name', 'contact_name', 'business_name', 'city', 'suburb', 'state'])
+  const supported = new Set(['industry', 'first_name', 'last_name', 'contact_name', 'business_name', 'city', 'suburb', 'state'])
   let rich
   try { rich = parseRichEmailContent(input, { maxText: 10000 }) }
   catch { throw new CleanerEmailError('Enter a valid formatted message.') }

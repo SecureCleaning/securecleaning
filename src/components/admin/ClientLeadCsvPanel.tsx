@@ -1,0 +1,19 @@
+'use client'
+import { useState } from 'react'
+import type { parseLeadCsv } from '@/lib/clientLeadCsv'
+import ActionToast from '@/components/ActionToast'
+export default function ClientLeadCsvPanel({ reload }: { reload: () => Promise<void> }) {
+  const [csv, setCsv] = useState(''); const [rows, setRows] = useState<ReturnType<typeof parseLeadCsv>>([])
+  const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [message, setMessage] = useState('')
+  const [results, setResults] = useState<{ row: number; id?: string; error?: string }[]>([])
+  async function run(action: 'csv.preview' | 'csv.import') {
+    setBusy(true); setError(''); setMessage('')
+    try {
+      const response = await fetch('/api/admin/client-crm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, csv }) })
+      const result = await response.json(); if (!response.ok) throw new Error(result.error)
+      if (action === 'csv.preview') setRows(result.result)
+      else { setResults(result.result); setRows([]); await reload(); setMessage(`${result.result.filter((row: { id?: string }) => row.id).length} rows imported or already imported. Check results below for any failures.`) }
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to process CSV.') } finally { setBusy(false) }
+  }
+  return <details className="rounded-2xl border bg-white p-5"><summary className="cursor-pointer font-bold">Import / export client leads</summary><p className="my-3 text-sm text-gray-600">Use the template headers. Required: first_name, email, postcode, city (sydney or melbourne), contact_basis (enquiry, purchased_lead, existing_relationship or inferred_business_interest). Use a premises type code or name; describe Other in premises_type_other. Purchased/cold leads need source_provider. Up to 200 rows per import. Imports do not send messages. Existing records are never overwritten.</p><div className="flex flex-wrap gap-3"><a href="/api/admin/client-crm?csv=template" className="rounded border p-2">Download CSV template</a><a href="/api/admin/client-crm?csv=export" className="rounded border p-2">Export accessible client leads</a><input type="file" accept=".csv,text/csv" disabled={busy} aria-label="Upload lead CSV" onChange={async e => { setRows([]); setResults([]); setCsv(''); const file = e.target.files?.[0]; if (!file) return; if (file.size > 500000) { setError('CSV must be smaller than 500 KB.'); return }; setCsv(await file.text()) }} /><button type="button" disabled={busy || !csv} onClick={() => void run('csv.preview')} className="rounded border p-2 disabled:opacity-50">Validate and preview</button></div>{rows.length ? <div className="mt-4 max-h-80 overflow-auto"><table className="w-full text-left text-sm"><thead><tr><th>Row</th><th>Business / contact</th><th>Premises type</th><th>Validation</th></tr></thead><tbody>{rows.map(row => <tr key={row.row} className="border-t"><td>{row.row}</td><td>{row.record.business_name || row.record.first_name}<br />{row.record.email}</td><td>{row.record.premises_type}</td><td className={row.errors.length ? 'text-red-700' : ''}>{row.errors.join('; ') || 'Ready'}</td></tr>)}</tbody></table></div> : null}{rows.length ? <button type="button" disabled={busy || rows.some(row => row.errors.length > 0)} onClick={() => void run('csv.import')} className="mt-3 rounded bg-teal-700 p-3 text-white disabled:opacity-50">Import {rows.length} leads</button> : null}{results.length ? <ul className="mt-4 max-h-64 overflow-auto text-sm">{results.map(row => <li key={row.row}>Row {row.row}: {row.error || 'Saved'}</li>)}</ul> : null}<ActionToast message={error || message} tone={error ? 'error' : 'success'} onDismiss={() => { setError(''); setMessage('') }} /></details>
+}

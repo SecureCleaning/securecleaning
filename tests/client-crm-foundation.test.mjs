@@ -338,7 +338,7 @@ test('agent views and data queries are constrained by staff assignment', () => {
 
 test('manual opportunity and template creation use atomic service-role transactions', () => {
   const data = source('src/lib/clientCrmData.ts')
-  assert.match(data, /db\.rpc\('create_client_crm_opportunity'/)
+  assert.match(data, /'save_crm_record_with_premises'/)
   assert.match(data, /db\.rpc\('save_client_crm_template'/)
   assert.doesNotMatch(data, /crm_email_template_versions'\)\.insert/)
 })
@@ -476,7 +476,7 @@ test('client CRM presents structured business, contact, and site editing', () =>
   assert.match(workspace, /LocalityAutocomplete[^>]*suburb=\{profileEdit.suburb\}[^>]*postcode=\{profileEdit.postcode\}/)
   assert.match(workspace, /action: 'client-record\.update'/)
   assert.match(route, /action === 'client-record\.update'/)
-  assert.match(data, /db\.rpc\('update_client_crm_profile'/)
+  assert.match(data, /db\.rpc\('save_crm_record_with_premises'/)
   assert.match(workspace, /Edit client details/)
   assert.match(workspace, /disabled=\{!profileEditing\}/)
   assert.match(workspace, /Save client details/)

@@ -271,12 +271,15 @@ export async function buildUpdatedQuoteEmail(
   const priceLabel = formatPriceRange(displayPrice.low, displayPrice.high)
   const roomSummary = summarizePublicRoomScope(sanitizePublicRoomScope(inputs.roomScope))
   const recipient = options?.to?.trim() || inputs.email.trim()
-  const subject = options?.subject?.trim() || `Your updated Secure Cleaning quote — ${quoteRef}`
-  const message = options?.message?.trim() || 'Following our review of your requirements, your updated quote is ready to view online.'
+  const industryToken = /<<industry>>|&lt;&lt;industry&gt;&gt;/gi
+  const hasIndustry = [options?.subject, options?.message, options?.messageHtml].some(value => /<<industry>>|&lt;&lt;industry&gt;&gt;/i.test(value || ''))
+  const industry = hasIndustry ? await (await import('./premisesCatalogServer')).resolveQuoteIndustry(quoteRef) : ''
+  const subject = options?.subject?.trim().replace(industryToken, () => industry) || `Your updated Secure Cleaning quote — ${quoteRef}`
+  const message = options?.message?.trim().replace(industryToken, () => industry) || 'Following our review of your requirements, your updated quote is ready to view online.'
   const automaticGreetingHtml = startsWithGreeting(message)
     ? ''
     : `<p>Hi ${escapeHtml(inputs.contactName)},</p>`
-  const messageHtml = options?.messageHtml ? sanitizeRichEmailHtml(options.messageHtml) : message
+  const messageHtml = options?.messageHtml ? sanitizeRichEmailHtml(options.messageHtml.replace(industryToken, () => escapeHtml(industry))) : message
     .split(/\n\s*\n/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')
