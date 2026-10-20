@@ -2,6 +2,7 @@
 
 import { appendSavedQuoteField, overrideIncludedQuoteField } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import RoomPriceSummary from '@/components/admin/RoomPriceSummary'
 
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
 import { INDUSTRY_MERGE_FIELD } from '@/lib/emailMergeFields'
@@ -1069,6 +1070,13 @@ export default function QuoteWorkflowEditor({
                 ? "fixed right-4 top-24 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg"
                 : "flex justify-end rounded-xl border border-gray-200 bg-white p-2 shadow-sm"}>
                 <div className="flex flex-wrap justify-end gap-2" role="group" aria-label="Room controls">
+                  <RoomPriceSummary
+                    quoteRef={quote.quoteRef}
+                    rooms={firmQuoteDraft.roomItems}
+                    prices={roomPricingBreakdown}
+                    workingLow={preview.adjustedLow}
+                    workingHigh={preview.adjustedHigh}
+                  />
                   <button
                     type="button"
                     onClick={() => handleSave(false)}

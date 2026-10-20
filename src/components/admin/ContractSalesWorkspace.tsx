@@ -286,7 +286,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const balanceComplete = Boolean(fullInvoice?.status === 'paid' || legacyBalance?.status === 'paid' || sale?.paymentPlan?.status === 'active')
 
   return <div>
-    <AdminPageHeader title="Product Sales" description="Confirm the final price, prepare the tax invoice and agreement in either order, send both documents together, then collect the deposit and coordinate the handover." showBack={portal !== 'agent'} />
+    <AdminPageHeader title="Product Sales" description="Confirm the final price, prepare the tax invoice and agreement in either order, send both documents together, then collect the deposit and coordinate the handover." />
     <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
 
     {(data.actor.role === 'owner' || data.actor.role === 'manager') && invoiceTemplateDraft ? <section className="mb-5 rounded-2xl border border-gray-200 bg-white shadow-sm">

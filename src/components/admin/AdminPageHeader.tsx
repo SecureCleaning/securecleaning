@@ -15,7 +15,7 @@ export default function AdminPageHeader({
   description,
   backHref = '/admin',
   backLabel = 'Back to overview',
-  showBack = true,
+  showBack = false,
   actions,
   meta,
 }: AdminPageHeaderProps) {
