@@ -443,12 +443,12 @@ export async function getAuthorizedSale(actor: ContractProductActor, saleId: str
   const { data, error } = await getAdminSupabase().from('contract_product_sales')
     .select(SALE_SELECT).eq('id', saleId).maybeSingle()
   if (error) throw error
-  if (!data || !canManageContractSale(actor.role, actor.id, data.assigned_staff_id)) {
+  if (!data || !['owner', 'manager', 'agent'].includes(actor.role)) {
     throw new ContractProductError('Product sale not found.', 404)
   }
   if (actor.role === 'agent') {
     const { data: product } = await getAdminSupabase().from('contract_products').select('state').eq('id', data.product_id).maybeSingle()
-    if (!product || product.state !== actor.productState) throw new ContractProductError('Product sale not found.', 404)
+    if (!product || !canManageContractSale(actor.role, actor.id, actor.productState, product.state)) throw new ContractProductError('Product sale not found.', 404)
   }
   return data as Row
 }

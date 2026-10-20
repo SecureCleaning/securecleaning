@@ -219,7 +219,7 @@ test('won transition is atomic, evidence-based, idempotent, and cannot be bypass
   assert.match(migration, /CREATE TRIGGER trg_crm_won_product_link BEFORE UPDATE ON crm_opportunities/)
   assert.match(crmData, /Use Close as won so the winning final quote and contract product are created together/)
   assert.match(products, /cleanerScopeSnapshot\.state !== actor\.productState/)
-  assert.match(products, /\.eq\('assigned_staff_id', actor\.id\)\.eq\('state', actor\.productState\)/)
+  assert.match(products, /\.eq\('state', actor\.productState\)/)
   assert.match(migration, /p_actor_role = 'agent' AND source_state IS DISTINCT FROM p_actor_state/)
 })
 

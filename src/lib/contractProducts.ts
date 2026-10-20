@@ -7,6 +7,7 @@ import {
   buildCleanerScopeSnapshot,
   calculateContractProductPricing,
   canActorAccessContractProduct,
+  canAccessStateProduct,
   canTransitionContractProduct,
   isPublishableCleanerScope,
   normalizeContractProductState,
@@ -202,7 +203,7 @@ export async function getAuthorizedProduct(actor: ContractProductActor, productI
   const db = getAdminSupabase()
   const { data, error } = await db.from('contract_products').select(PRODUCT_SELECT).eq('id', productId).maybeSingle()
   if (error) throw error
-  if (!data || !canActorAccessContractProduct(actor.role, actor.id, data.assigned_staff_id)) {
+  if (!data || !canAccessStateProduct(actor.role, actor.id, actor.productState, data.state)) {
     throw new ContractProductError('Contract product not found.', 404)
   }
   if (actor.role === 'agent' && data.state !== actor.productState) {
@@ -302,7 +303,7 @@ export async function closeOpportunityWonAndCreateProduct(actor: ContractProduct
 export async function getContractProducts(actor: ContractProductActor) {
   const db = getAdminSupabase()
   let query = db.from('contract_products').select(PRODUCT_SELECT).order('updated_at', { ascending: false }).limit(200)
-  if (actor.role === 'agent') query = query.eq('assigned_staff_id', actor.id).eq('state', actor.productState)
+  if (actor.role === 'agent') query = query.eq('state', actor.productState)
   const { data, error } = await query
   if (error) throw error
   const rows = (data ?? []) as ProductRow[]

@@ -43,7 +43,7 @@ test('notes enforce ownership and state for reads and writes; retries are idempo
   }
   try {
     for (const kind of ['product', 'sale']) {
-      assigned = 'another-agent'
+      assigned = 'another-agent'; state = 'VIC'
       await assert.rejects(getContractNotes(actor, { ...input, kind }), /not found/)
       await assert.rejects(addContractNote(actor, { ...input, kind }), /not found/)
       assigned = actor.id; state = 'VIC'
@@ -67,6 +67,7 @@ test('notes enforce ownership and state for reads and writes; retries are idempo
     assert.deepEqual(await addContractNote(actor, saleInput), saleNote)
     await assert.rejects(getContractNotes(actor, { ...input, offset: -1 }), /Invalid notes page/)
     assigned = 'other-agent'
+    assert.deepEqual(await getContractNotes(actor, input), [saved])
     for (const role of ['owner', 'manager']) assert.deepEqual(await getContractNotes({ ...actor, role }, input), [saved])
   } finally { globalThis.fetch = original }
 })

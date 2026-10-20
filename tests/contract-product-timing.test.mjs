@@ -25,7 +25,7 @@ test('product save aligns listing and scope timing independently of key access',
  const f=fixture();const legacy={...input};delete legacy.timePreference;await f.updateContractProduct(actor,legacy);assert.equal(f.writes[0].time_preference,'business_hours')
 })
 test('invalid timing, inaccessible products and stale or published edits cannot write',async()=>{
- for(const [row,who,body] of [[{},actor,{...input,timePreference:'night-ish'}],[{},actor,{...input,timePreference:''}],[{state:'VIC'},actor,input],[{assigned_staff_id:'other'},actor,input],[{status:'available'},actor,input],[{updated_at:'v2'},actor,input]]) {
+ for(const [row,who,body] of [[{},actor,{...input,timePreference:'night-ish'}],[{},actor,{...input,timePreference:''}],[{state:'VIC'},actor,input],[{status:'available'},actor,input],[{updated_at:'v2'},actor,input]]) {
  const f=fixture(row);await assert.rejects(f.updateContractProduct(who,body));assert.equal(f.writes.length,0)
  }
 })

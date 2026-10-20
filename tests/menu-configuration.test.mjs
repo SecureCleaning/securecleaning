@@ -172,7 +172,7 @@ test('invoice deep links require matching sale, invoice, staff assignment and st
   const sale={id:'sale-1',assignedStaffId:'agent-1',state:'VIC',invoices:[{id:'invoice-1'}]}
   const actor={id:'agent-1',role:'agent',state:'VIC'}
   assert.equal(invoicePolicy.resolveInvoiceSelection([sale],actor,'sale-1','invoice-1'),sale)
-  for (const [a,s,i] of [[actor,'sale-1','invoice-other'],[actor,'sale-other','invoice-1'],[{...actor,id:'agent-2'},'sale-1','invoice-1'],[{...actor,state:'NSW'},'sale-1','invoice-1']]) assert.throws(()=>invoicePolicy.resolveInvoiceSelection([sale],a,s,i))
+  for (const [a,s,i] of [[actor,'sale-1','invoice-other'],[actor,'sale-other','invoice-1'],[{...actor,state:'NSW'},'sale-1','invoice-1']]) assert.throws(()=>invoicePolicy.resolveInvoiceSelection([sale],a,s,i))
   const href=invoicePolicy.invoiceWorkspaceHref('sale-1','invoice-1','agent-1')
   assert.equal(href,'/availability/sales/agent-1?sale=sale-1&invoice=invoice-1&tab=invoices')
 })
@@ -180,11 +180,11 @@ test('invoice deep links require matching sale, invoice, staff assignment and st
 test('invoice directory filters assignment and region in the database, returns minimal paged fields', async () => {
   const calls=[]
   const row={id:'invoice-1',invoice_number:'SC-1',recipient_business_snapshot:'Example',status:'issued',issued_at:'2026-09-21',due_on:null,total_inc_gst_cents:50000,sale:{id:'sale-1',sale_code:'PS-1',assigned_staff_id:'agent-1',product:{state:'VIC',assigned_staff_id:'agent-1'}},private_note:'must not leak'}
-  const rows=[row,{...row,id:'forbidden',sale:{...row.sale,assigned_staff_id:'agent-2'}}]
+  const rows=[row,{...row,id:'forbidden',sale:{...row.sale,assigned_staff_id:'agent-2',product:{state:'NSW',assigned_staff_id:'agent-2'}}}]
   function table(name){const chain=new Proxy({}, {get(_,method){if(method==='then')return resolve=>resolve({data:name==='contract_sale_invoices'?rows:[{invoice_id:'invoice-1',amount_cents:10000}],error:null});return(...args)=>{calls.push([name,method,...args]);return chain}}});return chain}
-  const mod=moduleWithMocks('src/lib/invoiceDirectory.ts',{'@/lib/supabase':{getAdminSupabase:()=>({from:table})},'@/lib/contractSalePolicy':{canManageContractSale:(role,id,assigned)=>role!=='agent'||id===assigned},'@/lib/invoiceDirectoryPolicy':invoicePolicy})
+  const mod=moduleWithMocks('src/lib/invoiceDirectory.ts',{'@/lib/supabase':{getAdminSupabase:()=>({from:table})},'@/lib/contractSalePolicy':{canManageContractSale:(role,id,state,productState)=>role!=='agent'||Boolean(state)&&state===productState},'@/lib/invoiceDirectoryPolicy':invoicePolicy})
   const result=await mod.getInvoiceDirectory({id:'agent-1',role:'agent',productState:'VIC'},{page:0,status:'all',search:''})
-  for(const [field,value] of [['sale.assigned_staff_id','agent-1'],['sale.product.assigned_staff_id','agent-1'],['sale.product.state','VIC']])assert.ok(calls.some(c=>c[1]==='eq'&&c[2]===field&&c[3]===value))
+  for(const [field,value] of [['sale.product.state','VIC']])assert.ok(calls.some(c=>c[1]==='eq'&&c[2]===field&&c[3]===value))
   assert.ok(calls.some(c=>c[1]==='range'&&c[2]===0&&c[3]===25))
   assert.equal(result.invoices.length,1);assert.equal(result.invoices[0].paidCents,10000)
   assert.ok(!JSON.stringify(result).includes('private_note'))

@@ -22,7 +22,7 @@ export function invoiceWorkspaceHref(saleId: string, invoiceId: string, assignee
 export function resolveInvoiceSelection<T extends { id: string; assignedStaffId: string | null; state: string; invoices: Array<{ id: string }> }>(sales: T[], actor: { id: string; role: string; state: string | null }, saleId: string, invoiceId: string): T {
   const sale = sales.find(item => item.id === saleId)
   if (!sale || !['owner', 'manager', 'agent'].includes(actor.role)
-    || (actor.role === 'agent' && (sale.assignedStaffId !== actor.id || !actor.state || sale.state !== actor.state))
+    || (actor.role === 'agent' && (!actor.id || !actor.state || sale.state !== actor.state))
     || (invoiceId && !sale.invoices.some(invoice => invoice.id === invoiceId))) {
     throw new Error('The requested invoice is not available. Return to Invoices and choose an accessible record.')
   }

@@ -1,3 +1,4 @@
+import { canAccessStateProduct } from '@/lib/contractProductAccess'
 import type { AdminRole } from '@/lib/staffAccounts'
 
 export const CONTRACT_SALE_STATUSES = [
@@ -21,8 +22,8 @@ export function calculateContractSaleBalance(totalIncGstCents: number, confirmed
   return Math.max(0, Math.round(totalIncGstCents) - Math.max(0, Math.round(confirmedDepositCents)))
 }
 
-export function canManageContractSale(role: AdminRole, actorId: string, assignedStaffId: string | null) {
-  return role === 'owner' || role === 'manager' || (role === 'agent' && Boolean(actorId) && actorId === assignedStaffId)
+export function canManageContractSale(role: AdminRole, actorId: string, actorState: string | null, productState: string | null = null) {
+  return canAccessStateProduct(role, actorId, actorState, productState)
 }
 
 export function canApproveContractSalePaymentPlan(role: AdminRole) {

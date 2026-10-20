@@ -103,6 +103,8 @@ export function canManageContractProducts(role: AdminRole) {
   return role === 'owner' || role === 'manager' || role === 'agent'
 }
 
+export { canAccessStateProduct } from '@/lib/contractProductAccess'
+
 export function canActorAccessContractProduct(
   role: AdminRole,
   actorId: string,

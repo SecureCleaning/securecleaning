@@ -96,7 +96,7 @@ test('ledger failures stop preview and resend before any email; void and unautho
       await assert.rejects(resendContractSaleInvoice(actor, {saleId:'sale-1',invoiceId:'invoice-1'}))
       assert.equal(mock.sent.length, 0)
     }
-    for (const options of [{assigned:'another-agent'},{assigned:'agent',state:'VIC'}]) {
+    for (const options of [{assigned:'another-agent',state:'VIC'},{assigned:'agent',state:'VIC'}]) {
       const mock = backend(options); globalThis.fetch = mock.fetch
       await assert.rejects(downloadContractSaleInvoice({...actor,id:'agent',role:'agent',productState:'NSW'}, 'sale-1', 'invoice-1'), /not found/)
       assert.equal(mock.sent.length, 0)
