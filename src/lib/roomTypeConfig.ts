@@ -31,6 +31,7 @@ const ROOM_TASK_CADENCE_LABELS = Object.fromEntries(
 
 const VISITS_PER_YEAR: Record<CleaningFrequency, number> = {
   daily: 260,
+  '7x_week': 364,
   '3x_week': 156,
   '2x_week': 104,
   weekly: 52,

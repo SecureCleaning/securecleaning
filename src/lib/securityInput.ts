@@ -15,7 +15,7 @@ const object = (rules: Record<string, Rule>): Rule => {
   return check
 }
 const dictionary = (rule: Rule, max = 100, keyRule: Rule = key => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(key)): Rule => value => !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length <= max && Object.entries(value).every(([key, item]) => keyRule(key) && !['__proto__', 'constructor', 'prototype'].includes(key) && rule(item))
-const frequency = choice('daily', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly', 'once_off')
+const frequency = choice('daily', '7x_week', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly', 'once_off')
 const addOns = object({ bathrooms: number(1000, 0, true), kitchens: number(1000, 0, true), windows: number(10000, 0, true), glassCleaningRequired: boolean, consumables: boolean, highTouchDisinfection: boolean, carpetSteam: boolean })
 const roomScope = array(object({ id: string(128), type: choice('bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom', 'kitchen', 'meeting_room', 'reception', 'hallway', 'stairs', 'breakout', 'warehouse', 'other'), label: string(200), quantity: number(1000, 1, true), moppingRequired: boolean, isCustom: boolean }), 40)
 const inputRules: Record<string, Rule> = {

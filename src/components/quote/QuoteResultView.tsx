@@ -23,7 +23,7 @@ interface QuoteResultViewProps {
 }
 
 const frequencyLabels: Record<string, string> = {
-  daily: 'Daily',
+  daily: '5 days per week', '7x_week': '7 days per week',
   '3x_week': '3x per Week',
   '2x_week': '2x per Week',
   weekly: 'Weekly',

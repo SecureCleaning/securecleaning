@@ -72,7 +72,7 @@ const FALLBACK_TASKS_BY_ROOM_TYPE: Record<WorkflowRoomType, string[]> = {
 }
 
 const FREQUENCY_LABELS: Record<string, string> = {
-  daily: 'Daily',
+  daily: '5 days per week', '7x_week': '7 days per week',
   '3x_week': '3 times per week',
   '2x_week': '2 times per week',
   weekly: 'Weekly',

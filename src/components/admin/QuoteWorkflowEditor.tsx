@@ -21,6 +21,8 @@ import {
   deriveQuoteInputsFromRooms,
   getFinalQuoteReadiness,
   getRoomAreaAllocationTotal,
+  getRoomAreaAllocations,
+  getRoomTaskContribution,
   getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
   getWorkflowRoomMetricFields,
@@ -61,7 +63,8 @@ type Props = {
 }
 
 const frequencyOptions = [
-  ['daily', 'Daily'],
+  ['daily', '5 days per week'],
+  ['7x_week', '7 days per week'],
   ['3x_week', '3x per week'],
   ['2x_week', '2x per week'],
   ['weekly', 'Weekly'],
@@ -202,6 +205,7 @@ export default function QuoteWorkflowEditor({
     () => getRoomPricingBreakdown(firmQuoteDraft, pricingConfig, roomTypeConfig),
     [firmQuoteDraft, pricingConfig, roomTypeConfig]
   )
+  const roomAreas = useMemo(() => getRoomAreaAllocations(firmQuoteDraft, roomTypeConfig), [firmQuoteDraft, roomTypeConfig])
   const roomTypeOptions = useMemo(
     () => roomTypeConfig.roomTypes.map((roomType) => [roomType.id as WorkflowRoomType, roomType.label] as const),
     [roomTypeConfig]
@@ -1326,7 +1330,9 @@ export default function QuoteWorkflowEditor({
                           <div className="mt-1 text-xs text-gray-500">Tick or untick tasks for this quote. Fixed task charges and scheduled frequency update the working price automatically.</div>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
-                          {getRoomScopeTaskDefinitions(typeConfig).filter((task) => task.id !== `${room.type}-mopping-selected`).map((task, index) => {
+                          {getRoomScopeTaskDefinitions(typeConfig).map((task, index) => {
+                            if (task.id === `${room.type}-mopping-selected`) return null
+                            const contribution = getRoomTaskContribution(room, typeConfig, index, firmQuoteDraft.revisedInputs.frequency, pricingConfig.settings.hourlyRate, roomAreas.get(room.id) ?? 0) * (1 + (firmQuoteDraft.pricingAdjustmentPercent || 0) / 100)
                             const selected = isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index))
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
@@ -1364,6 +1370,8 @@ export default function QuoteWorkflowEditor({
                                       ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity))} for this area · {task.minutesPerSqm} min / sqm</span></>
                                       : 'Area labour'
                                     : task.price > 0 ? `${formatTaskCurrency(task.price)} when done` : 'Included'}
+                                  <span className="mt-1 block font-semibold text-teal-900">{formatTaskCurrency(contribution)} per clean</span>
+                                  <span className="block font-normal text-gray-500">{!selected ? 'Not selected - no contribution.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour; no separate task charge.' : 'Includes quantity and quote adjustment; amortised over the cleaning schedule. Rounded for display.'}</span>
                                 </span>
                               </div>
                             )

@@ -46,6 +46,7 @@ export type ContractProductQuoteSnapshot = {
 
 const ANNUAL_VISITS: Record<string, number> = {
   daily: 260,
+  '7x_week': 364,
   '3x_week': 156,
   '2x_week': 104,
   weekly: 52,

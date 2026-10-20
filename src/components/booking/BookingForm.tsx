@@ -40,7 +40,8 @@ const premisesOptions = [
 ]
 
 const frequencyOptions = [
-  { value: 'daily', label: 'Daily (5x/week)' },
+  { value: 'daily', label: '5 days per week' },
+  { value: '7x_week', label: '7 days per week' },
   { value: '3x_week', label: '3x per Week' },
   { value: '2x_week', label: '2x per Week' },
   { value: 'weekly', label: 'Weekly' },

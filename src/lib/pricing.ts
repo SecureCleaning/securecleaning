@@ -59,6 +59,7 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
     },
     frequency: {
       daily: 1,
+      '7x_week': 1,
       '3x_week': 1,
       '2x_week': 1,
       weekly: 1.05,

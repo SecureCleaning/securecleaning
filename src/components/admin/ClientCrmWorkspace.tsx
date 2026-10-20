@@ -67,7 +67,8 @@ const premisesOptions: Array<[PremisesType, string]> = [
 ]
 
 const frequencyOptions: Array<[CleaningFrequency, string]> = [
-  ['daily', 'Daily (5× weekly)'],
+  ['daily', '5 days per week'],
+  ['7x_week', '7 days per week'],
   ['3x_week', '3× weekly'],
   ['2x_week', '2× weekly'],
   ['weekly', 'Weekly'],

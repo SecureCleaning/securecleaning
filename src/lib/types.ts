@@ -16,6 +16,7 @@ export type PremisesType =
 
 export type CleaningFrequency =
   | 'daily'
+  | '7x_week'
   | '3x_week'
   | '2x_week'
   | 'weekly'

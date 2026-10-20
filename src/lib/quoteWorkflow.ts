@@ -21,6 +21,7 @@ import {
   isMoppingPricedRoomTask,
   isRoomScopeTaskSelected,
   type QuoteRoomTypeConfig,
+  type RoomTypeConfig,
   type RoomMetricFieldConfig,
   type RoomTaskCadence,
 } from '@/lib/roomTypeConfig'
@@ -706,6 +707,26 @@ export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: Q
   }, 0)
 }
 
+/** Per-clean task contribution before any quote-wide percentage adjustment. */
+export function getRoomTaskContribution(
+  room: WorkflowRoomItem,
+  roomType: RoomTypeConfig,
+  taskIndex: number,
+  frequency: CleaningFrequency,
+  hourlyRate: number,
+  allocatedArea: number
+) {
+  if (!isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))) return 0
+  const factor = getRoomTaskAmortizationFactor(getRoomScopeTaskCadence(roomType, taskIndex), frequency)
+  const rate = getRoomScopeTaskEffectiveRate(roomType, taskIndex, hourlyRate)
+  const units = getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
+    ? getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected`
+      ? Math.max(0, room.size) * Math.max(0, room.quantity)
+      : allocatedArea
+    : Math.max(0, room.quantity)
+  return rate * units * factor
+}
+
 export function getRoomScheduledTaskExtraTotal(
   draft: FirmQuoteDraft,
   roomTypeConfig: QuoteRoomTypeConfig,
@@ -716,23 +737,8 @@ export function getRoomScheduledTaskExtraTotal(
   return roundCurrency(draft.roomItems.reduce((total, room) => {
     const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
     if (!roomType) return total
-    const perRoom = roomType.scopeTasks.reduce((taskTotal, task, taskIndex) => {
-      if (!isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))) return taskTotal
-      const cadenceFactor = getRoomTaskAmortizationFactor(
-        getRoomScopeTaskCadence(roomType, taskIndex),
-        frequency
-      )
-      const rate = getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
-        ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, hourlyRate)
-        : getRoomScopeTaskPrice(roomType, taskIndex)
-      if (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area') {
-        const area = getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected`
-          ? Math.max(0, room.size) * Math.max(0, room.quantity)
-          : roomAreas.get(room.id) ?? 0
-        return taskTotal + rate * area * cadenceFactor
-      }
-      return taskTotal + rate * Math.max(0, room.quantity) * cadenceFactor
-    }, 0)
+    const perRoom = roomType.scopeTasks.reduce((taskTotal, _task, taskIndex) =>
+      taskTotal + getRoomTaskContribution(room, roomType, taskIndex, frequency, hourlyRate, roomAreas.get(room.id) ?? 0), 0)
     return total + perRoom
   }, 0))
 }
@@ -841,19 +847,9 @@ export function getRoomPricingBreakdown(
       0
     )
     const roomScheduledTaskExtra = roomType
-      ? roomType.scopeTasks.reduce((sum, task, taskIndex) => {
-          if (!isRoomScopeTaskSelected(roomType, taskIndex, getWorkflowRoomTaskSelections(room))) return sum
-          const cadenceFactor = getRoomTaskAmortizationFactor(
-            getRoomScopeTaskCadence(roomType, taskIndex),
-            draft.revisedInputs.frequency
-          )
-          const rate = getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
-            ? getRoomScopeTaskEffectiveRate(roomType, taskIndex, pricingConfig.settings.hourlyRate)
-            : getRoomScopeTaskPrice(roomType, taskIndex)
-          return sum + (getRoomScopeTaskPricingMode(roomType, taskIndex) === 'area'
-            ? rate * (getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected` ? Math.max(0, room.size) * Math.max(0, room.quantity) : roomArea) * cadenceFactor
-            : rate * Math.max(0, room.quantity) * cadenceFactor)
-        }, 0)
+      ? roomType.scopeTasks.reduce((sum, _task, taskIndex) => sum + getRoomTaskContribution(
+          room, roomType, taskIndex, draft.revisedInputs.frequency, pricingConfig.settings.hourlyRate, roomArea
+        ), 0)
       : 0
     const usesConfiguredMoppingAreaRate = roomType?.scopeTasks.some((task, taskIndex) => (
       isMoppingPricedRoomTask(task, getRoomScopeTaskGlobalRateCode(roomType, taskIndex))

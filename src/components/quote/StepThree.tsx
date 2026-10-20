@@ -11,7 +11,8 @@ interface StepThreeProps {
 }
 
 const frequencyOptions: { value: CleaningFrequency; label: string; subtext: string }[] = [
-  { value: 'daily', label: 'Daily', subtext: '5 days/week' },
+  { value: 'daily', label: '5 days per week', subtext: 'Weekdays' },
+  { value: '7x_week', label: '7 days per week', subtext: 'Every day' },
   { value: '3x_week', label: '3x per Week', subtext: 'Mon/Wed/Fri' },
   { value: '2x_week', label: '2x per Week', subtext: 'Flexible days' },
   { value: 'weekly', label: 'Weekly', subtext: 'Once a week' },
