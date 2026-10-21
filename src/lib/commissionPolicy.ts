@@ -30,3 +30,7 @@ export function commissionShares(totalIncGstCents: number, gstCents: number, pai
   const win = totalRate === BigInt(0) ? 0 : Number((BigInt(combined) * BigInt(winBps) * BigInt(2) + totalRate) / (totalRate * BigInt(2)))
   return { win, sale: combined - win, combined }
 }
+
+export function hasCommissionStatementActivity(row: Record<string, unknown>) {
+  return [row.earned_cents, row.claimed_cents, row.paid_cents].some(value => Number(value) !== 0)
+}

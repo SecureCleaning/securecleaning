@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { commissionCents, commissionShares, parsePlanInstalments } from '../src/lib/commissionPolicy.ts'
+import { commissionCents, commissionShares, hasCommissionStatementActivity, parsePlanInstalments } from '../src/lib/commissionPolicy.ts'
 
 test('commission excludes GST and releases only full payment or active-plan receipts', () => {
   assert.equal(commissionCents(550000,50000,55000,2500,false),0)
@@ -11,6 +11,13 @@ test('commission excludes GST and releases only full payment or active-plan rece
   let accrued=0
   for(let paid=1;paid<=1001;paid++) accrued+=commissionCents(1001,91,paid,2500,true)-commissionCents(1001,91,paid-1,2500,true)
   assert.equal(accrued,commissionCents(1001,91,1001,2500,true))
+})
+
+test('commission statements hide untouched assignments but retain financial history', () => {
+  assert.equal(hasCommissionStatementActivity({ earned_cents: 0, claimed_cents: 0, paid_cents: 0 }), false)
+  assert.equal(hasCommissionStatementActivity({ earned_cents: 1, claimed_cents: 0, paid_cents: 0 }), true)
+  assert.equal(hasCommissionStatementActivity({ earned_cents: 0, claimed_cents: 1, paid_cents: 0 }), true)
+  assert.equal(hasCommissionStatementActivity({ earned_cents: 0, claimed_cents: 0, paid_cents: 1 }), true)
 })
 
 test('custom schedules validate exact cents, calendar dates, order and size', () => {
