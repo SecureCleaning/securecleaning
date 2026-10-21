@@ -29,6 +29,12 @@ import {
   renderContractSaleAgreementEmailHtml,
 } from '@/lib/contractSaleAgreementDocument'
 import {
+  buildClientServiceAgreementContent,
+  CLIENT_SERVICE_AGREEMENT_TEMPLATE_VERSION,
+  parseClientServiceAgreementDetails,
+  type ClientServiceAgreementDetails,
+} from '@/lib/clientServiceAgreementPolicy'
+import {
   CONTRACT_SALE_DEPOSIT_INC_GST_CENTS,
   buildContractSaleAgreement,
   buildMonthlyInstalments,
@@ -94,6 +100,8 @@ export type ContractSale = {
   cleanerBusiness: string
   cleanerEmail: string
   cleanerPhone: string
+  cleanerAbn: string
+  cleanerAddress: string
   cleanerStatus: string
   assignedStaffId: string | null
   status: ContractSaleStatus
@@ -145,6 +153,15 @@ export type ContractSale = {
     type: string
     status: string
     content: string
+    signedAt: string | null
+    signedFileName: string | null
+  }
+  clientServiceAgreement: null | {
+    id: string
+    version: number
+    status: string
+    content: string
+    details: ClientServiceAgreementDetails
     signedAt: string | null
     signedFileName: string | null
   }
@@ -456,7 +473,7 @@ export async function getAuthorizedSale(actor: ContractProductActor, saleId: str
 export async function loadSaleContext(sale: Row) {
   const db = getAdminSupabase()
   const [product, cleaner, opportunity, quote, staff, creatorStaff] = await Promise.all([
-    db.from('contract_products').select('id, product_code, state, suburb, start_date, frequency, time_preference, cleaner_scope_snapshot').eq('id', sale.product_id).single(),
+    db.from('contract_products').select('id, product_code, state, suburb, start_date, frequency, time_preference, estimated_hours_per_visit, formal_contract, client_price_per_visit_ex_gst_cents, cleaner_scope_snapshot').eq('id', sale.product_id).single(),
     db.from('cleaners').select('id, business_name, contact_name, email, phone, address, suburb, postcode, state, abn, status, compliance_status').eq('id', sale.cleaner_id).single(),
     db.from('crm_opportunities').select('primary_contact_id, site_id').eq('id', sale.opportunity_id).single(),
     sale.source_quote_id
@@ -502,8 +519,8 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const opportunityIds = Array.from(new Set(saleRows.map((sale) => String(sale.opportunity_id))))
   const quoteIds = Array.from(new Set(saleRows.flatMap((sale) => sale.source_quote_id ? [String(sale.source_quote_id)] : [])))
   const siteIds = Array.from(new Set(saleRows.map((sale) => String(sale.site_id ?? '')).filter(Boolean)))
-  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
-    cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, state, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
+  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, clientServiceAgreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
+    cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, address, suburb, postcode, state, abn, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
     siteIds.length ? db.from('sites').select('id, site_name, address, suburb, postcode, city, premises_type, premises_type_other, access_notes, alarm_notes, induction_notes, keyholder_name, keyholder_phone').in('id', siteIds) : Promise.resolve({ data: [], error: null }),
@@ -512,12 +529,13 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, calendar_status, calendar_error, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_client_service_agreements').select('id, sale_id, version, status, content_snapshot, details_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payment_plans').select('id, sale_id, version, status, terms_snapshot, opening_paid_cents').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('admin_audit_log').select('id, entity_ref, action, details, created_at').eq('entity_type', 'contract_sale').in('entity_ref', saleIds).order('created_at', { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_site_checklists').select('id, sale_id, status, checklist_data').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_checklist_uploads').select('id, sale_id, checklist_id, file_name, mime_type, uploaded_at').in('sale_id', saleIds).order('uploaded_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
   ])
-  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
+  for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, clientServiceAgreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
   const invoiceIds = (invoicesResult.data ?? []).map((row) => String(row.id))
   const planIds = (plansResult.data ?? []).map((row) => String(row.id))
   const [allocationsResult, instalmentsResult] = await Promise.all([
@@ -547,6 +565,8 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   }
   const agreementsBySale = new Map<string, Row>()
   for (const agreement of (agreementsResult.data ?? []) as Row[]) if (!agreementsBySale.has(String(agreement.sale_id))) agreementsBySale.set(String(agreement.sale_id), agreement)
+  const clientServiceAgreementsBySale = new Map<string, Row>()
+  for (const agreement of (clientServiceAgreementsResult.data ?? []) as Row[]) if (!clientServiceAgreementsBySale.has(String(agreement.sale_id))) clientServiceAgreementsBySale.set(String(agreement.sale_id), agreement)
   const plansBySale = new Map<string, Row>()
   for (const plan of (plansResult.data ?? []) as Row[]) {
     const key = String(plan.sale_id)
@@ -562,6 +582,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     const quote = quotesById.get(String(sale.source_quote_id))
     const site = sale.site_id ? sitesById.get(String(sale.site_id)) : null
     const agreement = agreementsBySale.get(String(sale.id))
+    const clientServiceAgreement = clientServiceAgreementsBySale.get(String(sale.id))
     const plan = plansBySale.get(String(sale.id))
     const productSnapshot = (sale.product_snapshot ?? {}) as Row
     const cleanerSnapshot = (sale.cleaner_snapshot ?? {}) as Row
@@ -571,7 +592,10 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       id: String(sale.id), saleCode: String(sale.sale_code), productId: String(sale.product_id),
       productCode: String(productSnapshot.product_code ?? product?.productCode ?? ''), opportunityId: String(sale.opportunity_id), sourceQuoteRef: String(quote?.quote_ref ?? ''),
       cleanerId: String(sale.cleaner_id), cleanerName: String(cleanerSnapshot.contact_name ?? cleaner?.contact_name ?? ''), cleanerBusiness: String(cleanerSnapshot.business_name ?? cleaner?.business_name ?? ''),
-      cleanerEmail: String(cleanerSnapshot.email ?? cleaner?.email ?? ''), cleanerPhone: String(cleanerSnapshot.phone ?? cleaner?.phone ?? ''), cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
+      cleanerEmail: String(cleanerSnapshot.email ?? cleaner?.email ?? ''), cleanerPhone: String(cleanerSnapshot.phone ?? cleaner?.phone ?? ''),
+      cleanerAbn: String(cleanerSnapshot.abn ?? cleaner?.abn ?? ''),
+      cleanerAddress: [cleanerSnapshot.address ?? cleaner?.address, cleanerSnapshot.suburb ?? cleaner?.suburb, cleanerSnapshot.state ?? cleaner?.state, cleanerSnapshot.postcode ?? cleaner?.postcode].filter(Boolean).join(', '),
+      cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
       status: String(sale.status) as ContractSaleStatus, state: String(productSnapshot.state ?? product?.state ?? ''), suburb: String(productSnapshot.suburb ?? product?.suburb ?? ''),
       siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteName: String(siteSnapshot.site_name ?? site?.site_name ?? ''),
       siteAddress: [siteSnapshot.address ?? site?.address, siteSnapshot.suburb ?? site?.suburb, siteSnapshot.postcode ?? site?.postcode].filter(Boolean).join(', '),
@@ -612,6 +636,12 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
         uploads: (checklistUploadsResult.data ?? []).filter((item) => String(item.sale_id) === String(sale.id)).map((item) => ({ id: String(item.id), fileName: String(item.file_name), mimeType: String(item.mime_type), uploadedAt: String(item.uploaded_at) })),
       } : null })(),
       agreement: agreement ? { id: String(agreement.id), version: Number(agreement.version), type: String(agreement.agreement_type), status: String(agreement.status), content: String(agreement.content_snapshot), signedAt: typeof agreement.signed_at === 'string' ? agreement.signed_at : null, signedFileName: typeof agreement.signed_file_name === 'string' ? agreement.signed_file_name : null } : null,
+      clientServiceAgreement: clientServiceAgreement ? {
+        id: String(clientServiceAgreement.id), version: Number(clientServiceAgreement.version), status: String(clientServiceAgreement.status),
+        content: String(clientServiceAgreement.content_snapshot), details: clientServiceAgreement.details_snapshot as ClientServiceAgreementDetails,
+        signedAt: typeof clientServiceAgreement.signed_at === 'string' ? clientServiceAgreement.signed_at : null,
+        signedFileName: typeof clientServiceAgreement.signed_file_name === 'string' ? clientServiceAgreement.signed_file_name : null,
+      } : null,
       paymentPlan: plan ? { id: String(plan.id), status: String(plan.status), terms: String(plan.terms_snapshot), openingPaidCents: Number(plan.opening_paid_cents ?? 0), instalments: (instalmentsResult.data ?? []).filter((item) => String(item.payment_plan_id) === String(plan.id)).map((item) => ({ sequenceNumber: Number(item.sequence_number), dueOn: String(item.due_on), amountCents: Number(item.amount_cents) })) } : null,
       activity: (activityResult.data ?? []).filter((item) => String(item.entity_ref) === String(sale.id)).map((item) => ({ id: String(item.id), action: String(item.action), details: (item.details ?? {}) as Record<string, unknown>, createdAt: String(item.created_at) })),
     }
@@ -1498,6 +1528,96 @@ export async function createContractSaleAgreement(actor: ContractProductActor, i
   if (error) throw error
   await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.agreement.created', { ...actorAudit(actor), agreementId: data.id })
   return { agreementId: String(data.id) }
+}
+
+export async function createClientServiceAgreement(actor: ContractProductActor, input: Record<string, unknown>) {
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  if (sale.status === 'cancelled') throw new ContractProductError('A client service agreement cannot be created for a cancelled sale.', 409)
+  const context = await loadSaleContext(sale)
+  if (!context.client || !context.site) throw new ContractProductError('Complete the linked client and site records before creating the client service agreement.', 409)
+  if (!context.cleaner.business_name || !context.cleaner.email) throw new ContractProductError('Complete the cleaner business name and email before creating the client service agreement.', 409)
+  const scope = context.product.cleaner_scope_snapshot as Parameters<typeof buildClientServiceAgreementContent>[1]
+  if (!scope || !Array.isArray(scope.rooms) || !scope.rooms.length) throw new ContractProductError('Refresh the product scope before creating the client service agreement.', 409)
+  let details: ClientServiceAgreementDetails
+  try {
+    details = parseClientServiceAgreementDetails(input.details)
+  } catch (error) {
+    throw new ContractProductError(error instanceof Error ? error.message : 'Review the client service agreement details.')
+  }
+  const content = buildClientServiceAgreementContent(details, scope)
+  const db = getAdminSupabase()
+  const { data: latest, error: latestError } = await db.from('contract_sale_client_service_agreements')
+    .select('version').eq('sale_id', sale.id).order('version', { ascending: false }).limit(1).maybeSingle()
+  if (latestError) throw latestError
+  const { data, error } = await db.from('contract_sale_client_service_agreements').insert({
+    sale_id: sale.id,
+    version: Number(latest?.version ?? 0) + 1,
+    content_snapshot: content,
+    details_snapshot: details,
+    scope_snapshot: scope,
+    template_version: CLIENT_SERVICE_AGREEMENT_TEMPLATE_VERSION,
+    client_name_snapshot: details.clientLegalName,
+    client_email_snapshot: details.clientEmail || null,
+    cleaner_name_snapshot: details.serviceProviderLegalName,
+    cleaner_email_snapshot: details.serviceProviderEmail || null,
+    created_by_staff_id: actor.id,
+  }).select('id, version').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.client_service_agreement.created', {
+    ...actorAudit(actor), agreementId: data.id, version: data.version,
+    requestedOnProduct: context.product.formal_contract === true,
+  })
+  return { agreementId: String(data.id), version: Number(data.version) }
+}
+
+export async function downloadClientServiceAgreement(actor: ContractProductActor, saleId: string, agreementId: string, signed = false) {
+  const sale = await getAuthorizedSale(actor, saleId)
+  const { data: agreement, error } = await getAdminSupabase().from('contract_sale_client_service_agreements')
+    .select('id, version, content_snapshot, signed_file_name, signed_storage_path, created_at')
+    .eq('id', agreementId).eq('sale_id', sale.id).maybeSingle()
+  if (error) throw error
+  if (!agreement) throw new ContractProductError('Client service agreement not found.', 404)
+  if (signed) {
+    if (!agreement.signed_storage_path) throw new ContractProductError('Signed client service agreement not found.', 404)
+    const { data, error: downloadError } = await getAdminSupabase().storage.from('contract-sale-agreements').download(agreement.signed_storage_path)
+    if (downloadError) throw downloadError
+    return { blob: data, fileName: agreement.signed_file_name || 'signed-client-service-agreement.pdf' }
+  }
+  const context = await loadSaleContext(sale)
+  const pdf = buildContractSaleAgreementPdf({
+    content: String(agreement.content_snapshot), saleCode: String(sale.sale_code), productCode: String(context.product.product_code),
+    cleanerBusiness: String(context.cleaner.business_name), preparedBy: actor.displayName, preparedOn: String(agreement.created_at),
+    documentTitle: 'Client service agreement', footerLabel: `Agreement ${sale.sale_code} v${agreement.version}`,
+  })
+  return { blob: new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), fileName: `client-service-agreement-${sale.sale_code}-v${agreement.version}.pdf` }
+}
+
+export async function uploadSignedClientServiceAgreement(actor: ContractProductActor, input: { saleId: string; agreementId: string; file: File }) {
+  const sale = await getAuthorizedSale(actor, input.saleId)
+  if (input.file.type !== 'application/pdf' || input.file.size <= 0 || input.file.size > 10 * 1024 * 1024) throw new ContractProductError('Upload a PDF smaller than 10 MB.')
+  const db = getAdminSupabase()
+  const { data: agreement, error: agreementError } = await db.from('contract_sale_client_service_agreements')
+    .select('id, status').eq('id', input.agreementId).eq('sale_id', sale.id).maybeSingle()
+  if (agreementError) throw agreementError
+  if (!agreement || !['draft', 'sent'].includes(agreement.status)) throw new ContractProductError('Only an unsigned draft or sent client service agreement can receive its first signed PDF.', 409)
+  const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120) || 'signed-client-service-agreement.pdf'
+  const fileBuffer = Buffer.from(await input.file.arrayBuffer())
+  if (fileBuffer.subarray(0, 5).toString('ascii') !== '%PDF-') throw new ContractProductError('The selected file is not a valid PDF.')
+  const path = `client-service/${sale.id}/${agreement.id}/${randomUUID()}-${safeName}`
+  const { error: uploadError } = await db.storage.from('contract-sale-agreements').upload(path, fileBuffer, { contentType: 'application/pdf', upsert: false })
+  if (uploadError) throw uploadError
+  const { data: updated, error } = await db.from('contract_sale_client_service_agreements').update({
+    status: 'signed', signed_at: new Date().toISOString(), signed_file_name: safeName, signed_storage_path: path,
+  }).eq('id', agreement.id).in('status', ['draft', 'sent']).select('id').maybeSingle()
+  if (error) throw error
+  if (!updated) {
+    await db.storage.from('contract-sale-agreements').remove([path])
+    throw new ContractProductError('This client service agreement was already signed or changed. Create a new version instead.', 409)
+  }
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.client_service_agreement.signed_uploaded', {
+    ...actorAudit(actor), agreementId: agreement.id, fileName: safeName,
+  })
+  return { agreementId: String(agreement.id), fileName: safeName }
 }
 
 export async function sendContractSaleAgreement(actor: ContractProductActor, input: Record<string, unknown>) {

@@ -5,6 +5,8 @@ export type ContractSaleAgreementPdfInput = {
   cleanerBusiness: string
   preparedBy: string
   preparedOn: string
+  documentTitle?: string
+  footerLabel?: string
 }
 
 type AgreementLine = { kind: 'title' | 'subtitle' | 'heading' | 'detail' | 'paragraph' | 'blank'; text: string }
@@ -33,7 +35,7 @@ function lineKind(text: string, index: number): AgreementLine['kind'] {
   if (!text.trim()) return 'blank'
   if (index === 0) return 'title'
   if (index === 1 && /DRAFT FOR REVIEW/i.test(text)) return 'subtitle'
-  if (/^(PARTIES|SCHEDULE \d+|\d+\. [A-Z][A-Z ,/&-]+|PURCHASER|SECURE CLEANING|IMPORTANT:)/.test(text)) return 'heading'
+  if (/^(PARTIES|BACKGROUND|AGREEMENT DETAILS|SCHEDULE \d+|APPENDIX [A-Z]|SITE-SPECIFIC|EXECUTION|\d+\. [A-Z][A-Z ,/&-]+|PURCHASER|SERVICE PROVIDER|CLIENT|SECURE CLEANING|IMPORTANT:)/.test(text)) return 'heading'
   if (/^[A-Za-z][A-Za-z ]{1,38}:\s/.test(text)) return 'detail'
   return 'paragraph'
 }
@@ -81,11 +83,11 @@ function pageHeader(commands: string[], input: ContractSaleAgreementPdfInput, pa
   }
   commands.push(`${GREEN} rg 0 770 ${PAGE_WIDTH} 72 re f`)
   text('Secure Cleaning', 42, 808, 22, true, '1 1 1')
-  text('Cleaning contract purchase agreement', 42, 788, 10, false, '1 1 1')
+  text(input.documentTitle ?? 'Cleaning contract purchase agreement', 42, 788, 10, false, '1 1 1')
   text(input.saleCode, 454, 806, 10, true, '1 1 1')
   text(`Page ${pageNumber}`, 500, 788, 8, false, '1 1 1')
   commands.push(`0.820 0.840 0.860 RG 1 w 42 62 m 553 62 l S`)
-  text(`Product ${input.productCode} | Prepared by ${input.preparedBy} | ${input.preparedOn}`, 42, 44, 8, false, MUTED)
+  text(`${input.footerLabel ?? `Product ${input.productCode}`} | Prepared by ${input.preparedBy} | ${input.preparedOn}`, 42, 44, 8, false, MUTED)
 }
 
 export function buildContractSaleAgreementPdf(input: ContractSaleAgreementPdfInput) {

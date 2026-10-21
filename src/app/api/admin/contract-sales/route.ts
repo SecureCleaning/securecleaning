@@ -10,6 +10,7 @@ import {
   createCleanerInsideContractSale,
   createContractSale,
   createContractSaleAgreement,
+  createClientServiceAgreement,
   createContractSalePaymentPlan,
   previewContractSaleInspectionConfirmations,
   previewContractSaleInspectionEmail,
@@ -96,6 +97,11 @@ export async function POST(request: NextRequest) {
     }
     if (action === 'inspection.complete') return NextResponse.json({ success: true, result: await completeContractSaleInspection(actor, body) })
     if (action === 'agreement.create') return NextResponse.json({ success: true, result: await createContractSaleAgreement(actor, body) })
+    if (action === 'client-service-agreement.create') {
+      const limited = await rateLimit(request, { key: `client-service-agreement:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({ success: true, result: await createClientServiceAgreement(actor, body) })
+    }
     if (action === 'agreement.send') {
       const limited = await rateLimit(request, { key: `contract-sale-agreement:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
