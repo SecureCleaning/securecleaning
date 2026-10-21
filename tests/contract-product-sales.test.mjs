@@ -218,6 +218,9 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(domain, /The \$500 deposit must be confirmed before booking the inspection/)
   assert.match(domain, /Upload the signed agreement before booking the inspection/)
   assert.match(domain, /idempotency_key: idempotencyKey, sale_id: sale\.id, intended_invoice_id: invoiceId/)
+  assert.match(domain, /export async function rejectContractSalePayment/)
+  assert.match(domain, /Only pending payment evidence can be removed/)
+  assert.match(domain, /contract_sale\.payment\.rejected/)
   assert.doesNotMatch(domain, /invoice\.invoice_type\) === 'deposit' \? 'deposit_due' : 'balance_due'/)
   assert.match(productsDomain, /purchasePrice \* 1\.1\) <= 50_000/)
   assert.match(domain, /Only an unsigned draft or sent agreement can receive its first signed PDF/)
@@ -227,6 +230,7 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(route, /rateLimit/)
   assert.match(route, /getContractProductActor/)
   assert.match(route, /invoice-template\.update/)
+  assert.match(route, /payment\.reject/)
   assert.match(invoiceRoute, /getContractProductActor/)
   assert.match(invoiceRoute, /downloadContractSaleInvoice/)
   assert.match(invoiceRoute, /Cache-Control': 'private, no-store'/)
@@ -240,7 +244,7 @@ test('workbench keeps connected records together and exposes the complete gated 
   const products = source('src/components/admin/ContractProductsWorkspace.tsx')
   const adminNav = source('src/lib/menuConfiguration.ts')
   const agentNav = source('src/lib/menuConfiguration.ts')
-  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Upload signed PDF', 'Record payment', 'Complete handover']) {
+  for (const label of ['Quote', 'Client', 'Product', 'Product sale', 'Prepare full tax invoice', 'Send agreement &amp; tax invoice', 'Upload signed PDF', 'Record payment', 'Remove', 'Complete handover']) {
     assert.match(workspace, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
   const connectedRecordsStart = workspace.indexOf('<nav aria-label="Connected records"')

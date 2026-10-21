@@ -1,5 +1,7 @@
 'use client'
 
+import BroadcastCleanerPicker from '@/components/admin/BroadcastCleanerPicker'
+
 import ContractNotes from '@/components/admin/ContractNotes'
 
 import { useEmailQueueRunner } from '@/lib/useEmailQueueRunner'
@@ -149,6 +151,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastCleanerEmails, setBroadcastCleanerEmails] = useState('')
   const [broadcastSenderId, setBroadcastSenderId] = useState('')
   const [broadcastCleaners, setBroadcastCleaners] = useState<BroadcastCleaner[]>([])
+  const [broadcastEligibility, setBroadcastEligibility] = useState<{ consideredCount: number; excluded: Record<string, number> } | null>(null)
   const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
   const [broadcastPreview, setBroadcastPreview] = useState<BroadcastPreview | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
@@ -180,6 +183,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
 
   const loadBroadcastCleaners = useCallback(async (state: string) => {
     setBroadcastCleanersLoading(true)
+    setBroadcastCleaners([])
+    setBroadcastEligibility(null)
     try {
       const response = await fetch('/api/admin/contract-products', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -188,6 +193,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to load eligible cleaners.')
       setBroadcastCleaners(result.result.cleaners)
+      setBroadcastEligibility({ consideredCount: result.result.consideredCount, excluded: result.result.excluded })
     } catch (error) {
       setBroadcastCleaners([])
       showMessage(error instanceof Error ? error.message : 'Unable to load eligible cleaners.', 'error')
@@ -487,17 +493,15 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
                 <label className="flex items-center gap-2"><input type="radio" name="broadcast-recipient-mode" checked={broadcastRecipientMode === 'multiple'} onChange={() => { setBroadcastRecipientMode('multiple'); setBroadcastCleanerId(''); invalidateBroadcastPreview() }} /> Selected cleaners</label>
               </div>
             </fieldset>
-            {broadcastRecipientMode === 'single' ? <label className="text-sm font-medium sm:col-span-2">Cleaner
-              <select value={broadcastCleanerId} disabled={broadcastCleanersLoading} onChange={(event) => { setBroadcastCleanerId(event.target.value); invalidateBroadcastPreview() }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">
-                <option value="">{broadcastCleanersLoading ? 'Loading eligible cleaners...' : 'Select an approved cleaner'}</option>
-                {broadcastCleaners.map((cleaner) => <option key={cleaner.id} value={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.name} · {cleaner.email}</option>)}
-              </select>
-              <span className="mt-1 block text-xs font-normal text-gray-500">Only approved, non-suppressed cleaners in {broadcastState} are available.</span>
-            </label> : broadcastRecipientMode === 'multiple' ? <label className="text-sm font-medium sm:col-span-2">Cleaner email addresses
+            {broadcastRecipientMode === 'single' ? <BroadcastCleanerPicker key={broadcastState} cleaners={broadcastCleaners} selectedId={broadcastCleanerId} loading={broadcastCleanersLoading} onChange={(id) => { setBroadcastCleanerId(id); invalidateBroadcastPreview() }} /> : broadcastRecipientMode === 'multiple' ? <label className="text-sm font-medium sm:col-span-2">Cleaner email addresses
               <textarea rows={3} maxLength={300000} value={broadcastCleanerEmails} onChange={(event) => { setBroadcastCleanerEmails(event.target.value); invalidateBroadcastPreview() }} placeholder="cleaner.one@example.com.au, cleaner.two@example.com.au" className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5" />
-              <span className="mt-1 block text-xs font-normal text-gray-500">Enter two or more addresses separated by commas, semicolons, or new lines. Every address must match an approved, eligible cleaner in {broadcastState}; no email is sent until the list passes the check below.</span>
+              <span className="mt-1 block text-xs font-normal text-gray-500">Enter two or more addresses separated by commas, semicolons, or new lines. Every address must match an eligible cleaner in {broadcastState}; no email is sent until the list passes the check below.</span>
               {!broadcastCleanersLoading && broadcastCleaners.length > 0 ? <span className="mt-2 block text-xs font-normal text-gray-500">Eligible addresses: {broadcastCleaners.map((cleaner) => cleaner.email).join(', ')}</span> : null}
             </label> : <p className="text-sm text-gray-600 sm:col-span-2">{broadcastCleanersLoading ? 'Checking cleaner eligibility...' : `${broadcastCleaners.length} cleaners are currently eligible in ${broadcastState}. Final eligibility is checked again before sending.`}</p>}
+            <div className="text-xs text-gray-600 sm:col-span-2">
+              <p>Eligibility: leads, pending-approval and approved cleaners in {broadcastState} with a valid email, excluding blocked or unsubscribed recipients. Shared email addresses appear once.</p>
+              {broadcastEligibility && !broadcastCleanersLoading ? <p className="mt-1">{broadcastEligibility.consideredCount} eligible-status records checked: {broadcastCleaners.length} eligible; {broadcastEligibility.excluded.invalidEmail ?? 0} invalid or missing email; {broadcastEligibility.excluded.suppressed ?? 0} blocked or unsubscribed; {broadcastEligibility.excluded.duplicateEmail ?? 0} duplicate email.</p> : null}
+            </div>
           </div>
         </div>
 
@@ -589,7 +593,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
           {broadcastPreview ? <div className="mt-4 space-y-4">
             <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
               <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
-              {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} approved records checked.</p>}
+              {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} eligible-status records checked.</p>}
               <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
               {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">No eligible recipients are selected.</p> : null}
             </div>

@@ -177,7 +177,7 @@ async function getEligibleCleaners(state: ContractProductState) {
   const db = getAdminSupabase()
   const candidates = await readEmailPages((from, to) => db.from('cleaners')
     .select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token')
-    .eq('status', 'approved').eq('state', state).order('id').range(from, to))
+    .in('status', ['lead', 'pending_approval', 'approved']).eq('state', state).order('id').range(from, to))
   const emails = candidates.map((row) => String(row.email ?? '').trim().toLowerCase()).filter(Boolean)
   const [globalSuppressions, cleanerSuppressions] = emails.length ? await Promise.all([
     readEmailPages((from, to) => db.from('crm_email_suppressions').select('email_normalized').eq('blocks_all', true).order('email_normalized').range(from, to)),
@@ -225,7 +225,7 @@ function selectBroadcastRecipients(
     const cleanerId = clean(cleanerIdValue, 80)
     const cleaner = recipients.eligible.find((candidate) => candidate.id === cleanerId)
     if (!cleaner) {
-      throw new ContractProductError('Select an eligible approved cleaner in this state.', 409)
+      throw new ContractProductError('Select an eligible cleaner in this state.', 409)
     }
     return [cleaner]
   }
@@ -234,7 +234,7 @@ function selectBroadcastRecipients(
   const unmatched = emails.filter((email) => !eligibleByEmail.has(email))
   if (unmatched.length > 0) {
     throw new ContractProductError(
-      `These addresses do not match eligible approved cleaners in this state: ${unmatched.slice(0, 5).join(', ')}${unmatched.length > 5 ? ', …' : ''}`,
+      `These addresses do not match eligible cleaners in this state: ${unmatched.slice(0, 5).join(', ')}${unmatched.length > 5 ? ', …' : ''}`,
       409,
     )
   }
@@ -384,7 +384,7 @@ export async function previewContractProductBroadcast(actor: ContractProductActo
   ])
   const selectedRecipients = selectBroadcastRecipients(recipients, recipientMode, input.cleanerId, input.cleanerEmails)
   if (selectedRecipients.length === 0) {
-    throw new ContractProductError('No eligible approved cleaners were found for this state.', 409)
+    throw new ContractProductError('No eligible cleaners were found for this state.', 409)
   }
   const previewCleaner = selectedRecipients[0]
   const templateInput = { cleaner: previewCleaner, products, jobsUrl, sender }
@@ -469,7 +469,7 @@ function buildBroadcastHtml(input: {
         <p>Kind regards,<br><br>${escapeHtml(input.sender.displayName)}<br>${escapeHtml(input.sender.jobTitle)}<br>Secure Cleaning<br>${escapeHtml(input.sender.phone)}<br>${escapeHtml(input.sender.email)}</p>
       </div>
       <div style="border-top:1px solid #e5e7eb;padding:18px 24px;color:#64748b;font-size:12px;">
-        <p>These opportunities were sent because your cleaner profile is approved for work in ${escapeHtml(input.products[0].state)}.</p>
+        <p>These opportunities were sent because your cleaner profile is registered in ${escapeHtml(input.products[0].state)}.</p>
         <p><a href="${escapeHtml(input.unsubscribeUrl)}" style="color:#0f766e;">Unsubscribe from available-job broadcasts</a></p>
         <p>Secure Cleaning | securecleaning.com.au</p>
       </div>
@@ -497,7 +497,7 @@ function buildBroadcastText(input: {
     products,
     `View all available jobs: ${input.jobsUrl}`,
     `Kind regards,\n\n${input.sender.displayName}\n${input.sender.jobTitle}\nSecure Cleaning\n${input.sender.phone}\n${input.sender.email}`,
-    `These opportunities were sent because your cleaner profile is approved for work in ${input.products[0].state}.`,
+    `These opportunities were sent because your cleaner profile is registered in ${input.products[0].state}.`,
     `Unsubscribe from available-job broadcasts: ${input.unsubscribeUrl}`,
     'Secure Cleaning | securecleaning.com.au',
   ].join('\n\n')
@@ -586,7 +586,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
       getEligibleCleaners(state),
     ])
     const selectedRecipients = selectBroadcastRecipients(recipients, recipientMode, targetCleanerId, targetCleanerEmails.join(','))
-    if (selectedRecipients.length === 0) throw new ContractProductError('No eligible approved cleaners were found for this state.', 409)
+    if (selectedRecipients.length === 0) throw new ContractProductError('No eligible cleaners were found for this state.', 409)
     if (selectedRecipients.some((cleaner) => !cleaner.unsubscribeToken)) {
       throw new ContractProductError('One or more cleaner records are missing email preference details.', 409)
     }

@@ -1181,6 +1181,24 @@ export async function confirmContractSalePayment(actor: ContractProductActor, in
   return { saleId: String(sale.id), paymentId }
 }
 
+export async function rejectContractSalePayment(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (!canConfirmContractSalePayment(actor.role)) throw new ContractProductError('An owner or manager must remove pending payment evidence.', 403)
+  const sale = await getAuthorizedSale(actor, clean(input.saleId, 100))
+  const paymentId = clean(input.paymentId, 100)
+  if (!/^[0-9a-f-]{36}$/i.test(paymentId)) throw new ContractProductError('Select a pending payment entry to remove.')
+  const { data, error } = await getAdminSupabase().from('contract_sale_payments').update({
+    status: 'rejected',
+    rejected_by_staff_id: actor.id,
+    rejected_at: new Date().toISOString(),
+    rejection_reason: 'Duplicate payment evidence removed by owner or manager.',
+    updated_at: new Date().toISOString(),
+  }).eq('id', paymentId).eq('sale_id', sale.id).eq('status', 'pending').select('id').maybeSingle()
+  if (error) throw error
+  if (!data) throw new ContractProductError('Only pending payment evidence can be removed.', 409)
+  await writeAuditLogStrict('contract_sale', String(sale.id), 'contract_sale.payment.rejected', { ...actorAudit(actor), paymentId: data.id, reason: 'duplicate_entry' })
+  return { saleId: String(sale.id), paymentId: String(data.id) }
+}
+
 export async function updateContractSaleInspectionTemplate(actor: ContractProductActor, input: Record<string, unknown>) {
   if (!['owner', 'manager'].includes(actor.role)) throw new ContractProductError('Only an owner or manager can edit inspection email defaults.', 403)
   const availability = parseInspectionEmailDraft(input, 'availability')

@@ -20,6 +20,7 @@ import {
   getContractSaleInvoiceEmailPreview,
   issueContractSaleInvoice,
   recordContractSalePayment,
+  rejectContractSalePayment,
   resendContractSaleInvoice,
   scheduleContractSaleInspection,
   sendContractSaleAgreement,
@@ -90,6 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, result: await recordContractSalePayment(actor, body) })
     }
     if (action === 'payment.confirm') return NextResponse.json({ success: true, result: await confirmContractSalePayment(actor, body) })
+    if (action === 'payment.reject') return NextResponse.json({ success: true, result: await rejectContractSalePayment(actor, body) })
     if (action === 'inspection.schedule') {
       const limited = await rateLimit(request, { key: `contract-sale-inspection:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
