@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
+  amendContractSalePrice,
   applyContractSaleInvoiceBankDetails,
   cancelContractSale,
   completeContractSaleHandover,
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
     }
     if (action === 'cleaner.create') return NextResponse.json({ success: true, result: await createCleanerInsideContractSale(actor, body) })
     if (action === 'sale.create') return NextResponse.json({ success: true, result: await createContractSale(actor, body) })
+    if (action === 'sale.amend') return NextResponse.json({ success: true, result: await amendContractSalePrice(actor, body) })
     if (action === 'sale.update') return NextResponse.json({ success: true, result: await updateContractSale(actor, body) })
     if (action === 'invoice-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInvoiceTemplate(actor, body) })
     if (action === 'cleaner-profile-template.update') return NextResponse.json({ success: true, result: await updateContractSaleCleanerProfileTemplate(actor, body) })

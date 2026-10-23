@@ -9,7 +9,7 @@ export function commissionCents(totalIncGstCents: number, gstCents: number, paid
 }
 
 export function parsePlanInstalments(value: unknown, outstandingCents: number) {
-  if (!Array.isArray(value) || value.length < 2 || value.length > 24) throw new Error('Enter between 2 and 24 instalments.')
+  if (!Array.isArray(value) || value.length < 1 || value.length > 24) throw new Error('Enter between 1 and 24 instalments.')
   let previous = ''
   const rows = value.map((entry, index) => {
     const dueOn = typeof entry?.dueOn === 'string' ? entry.dueOn : ''
