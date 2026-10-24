@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
-    if (['followup.history', 'followup.preview', 'followup.send'].includes(action)) {
+    if (['followup.history', 'followup.template', 'followup.preview', 'followup.send'].includes(action)) {
       const limited = await rateLimit(request, { key: `contract-sale-followup:${actor.id}:${action}`, limit: action === 'followup.send' ? 20 : 120, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await contractSaleFollowup(actor, body) })

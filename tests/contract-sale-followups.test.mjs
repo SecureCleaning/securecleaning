@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
+import { handoverDraft, isHandoverTemplate } from '../src/lib/contractSaleHandoverTemplates.ts'
 import { FOLLOWUP_TEMPLATES, followupDraft } from '../src/lib/contractSaleFollowupTemplates.ts'
 import { parseRichEmailContent, richEmailFingerprint } from '../src/lib/richEmailServer.ts'
 import { plainTextToEmailHtml } from '../src/lib/richEmailContent.ts'
@@ -39,10 +40,11 @@ function harness(options = {}) {
   } }
   const modules = {
     'server-only': {},
+    '@/lib/contractSaleHandoverTemplates': { handoverDraft, isHandoverTemplate },
     '@/lib/supabase': { getAdminSupabase: () => db },
     '@/lib/contractSales': {
-      getAuthorizedSale: async () => { authorized++; if (options.denied) throw new ProductError('Not found'); return { status: options.status ?? 'completed' } },
-      loadSaleContext: async () => ({ client: { email: options.clientEmail ?? 'client@example.com' }, cleaner: { email: 'cleaner@example.com' } }),
+      getAuthorizedSale: async () => { authorized++; if (options.denied) throw new ProductError('Not found'); return { status: options.status ?? 'completed', handover_at: options.noHandover ? null : '2026-10-24', commencement_date: '2026-10-24' } },
+      loadSaleContext: async () => ({ product: { frequency: 'weekly' }, site: { address: '1 Example St' }, client: { email: options.clientEmail ?? 'client@example.com' }, cleaner: { email: 'cleaner@example.com' } }),
     },
     '@/lib/contractProducts': { ContractProductError: ProductError },
     '@/lib/contractSalePolicy': { normalizeInvoiceEmail: (value) => typeof value === 'string' && value.includes('@') ? value : null },
@@ -59,8 +61,8 @@ function harness(options = {}) {
 const draft = { saleId: 'sale', audience: 'client', subject: 'Follow up', body: 'Hello', requestId: '11111111-1111-4111-8111-111111111111' }
 
 test('follow-up templates cover both audiences without operational pricing', () => {
-  assert.equal(FOLLOWUP_TEMPLATES.filter((t) => t.audience === 'client').length, 3)
-  assert.equal(FOLLOWUP_TEMPLATES.filter((t) => t.audience === 'cleaner').length, 2)
+  assert.equal(FOLLOWUP_TEMPLATES.filter((t) => t.audience === 'client').length, 4)
+  assert.equal(FOLLOWUP_TEMPLATES.filter((t) => t.audience === 'cleaner').length, 3)
   assert.match(followupDraft('first-clean', 'Alex', '1 Test St').body, /Hi Alex,[\s\S]*1 Test St/)
   assert.throws(() => followupDraft('missing', '', ''))
 })
@@ -131,4 +133,35 @@ test('invalid recipients, audience and subject are rejected before sending', asy
   await assert.rejects(harness({ clientEmail: '' }).run({ ...draft, action: 'followup.preview' }), /valid email/)
   await assert.rejects(harness().run({ ...draft, audience: 'staff', action: 'followup.preview' }), /client or cleaner/)
   await assert.rejects(harness().run({ ...draft, subject: 'Bad\r\nHeader', action: 'followup.preview' }), /line breaks/)
+})
+
+
+test('handover templates merge only contact and service details for each audience', () => {
+  const details = { client: { contact_name: 'Anna Example', business_name: 'Example Client', email: 'client@example.com', phone: '0400000001' }, cleaner: { contact_name: 'Sam Not provided', business_name: 'Example Cleaner', email: 'cleaner@example.com', phone: '0400000002' }, site: { site_name: 'Office', address: '1 Example St' }, product: { frequency: 'weekly', client_price_per_visit_ex_gst_cents: 16000 }, commencedOn: '2026-10-24' }
+  const client = handoverDraft('client', details)
+  assert.match(client.body, /Hi Anna,/)
+  assert.match(client.body, /Example Cleaner/)
+  assert.match(client.body, /cleaner@example.com/)
+  const cleaner = handoverDraft('cleaner', details)
+  assert.match(cleaner.body, /Hi Sam,/)
+  assert.match(cleaner.body, /client@example.com/)
+  assert.match(cleaner.body, /\$160.00 excluding GST/)
+  assert.doesNotMatch(cleaner.body, /6 months|pro-rata|28th|Not provided/)
+  const missing = handoverDraft('client', { ...details, cleaner: {}, product: {}, site: null, commencedOn: null })
+  assert.doesNotMatch(missing.body, /undefined|null|\$0/)
+})
+test('handover template preparation is read-only and requires completed handover and matching audience', async () => {
+  const input = { ...draft, templateId: 'handover-client', action: 'followup.template' }
+  for (const options of [{ status: 'active_payment_plan' }, { noHandover: true }]) await assert.rejects(harness(options).run(input), /Complete the sale and handover/)
+  await assert.rejects(harness().run({ ...input, audience: 'cleaner' }), /matching recipient/)
+  await assert.rejects(harness({ denied: true }).run(input), /Not found/)
+  const h = harness(); const generated = await h.run(input)
+  assert.ok(generated.detailsFingerprint)
+  assert.equal(h.sends(), 0); assert.equal(h.rows.size, 0)
+  await assert.rejects(h.run({ ...input, action: 'followup.preview' }), /details changed/)
+  const composed = { ...draft, templateId: 'handover-client', detailsFingerprint: generated.detailsFingerprint, subject: generated.subject, body: generated.body }
+  const preview = await h.run({ ...composed, action: 'followup.preview' })
+  assert.equal(h.sends(), 0)
+  await h.run({ ...composed, action: 'followup.send', fingerprint: preview.fingerprint })
+  assert.equal(h.sends(), 1)
 })

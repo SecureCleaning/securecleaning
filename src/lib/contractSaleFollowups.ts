@@ -1,4 +1,5 @@
 import 'server-only'
+import { handoverDraft, isHandoverTemplate } from '@/lib/contractSaleHandoverTemplates'
 
 import { getAdminSupabase } from '@/lib/supabase'
 import { getAuthorizedSale, loadSaleContext } from '@/lib/contractSales'
@@ -23,7 +24,17 @@ export async function contractSaleFollowup(actor: ContractProductActor, input: R
   if (inspectionError) throw inspectionError
   if (inspection?.status !== 'completed' || sale.status === 'cancelled') throw new ContractProductError('Complete the inspection on an active sale before sending a follow-up.', 409)
   if (input.audience !== 'client' && input.audience !== 'cleaner') throw new ContractProductError('Select the client or cleaner.')
+  const handover = isHandoverTemplate(input.templateId)
+  if (handover && (sale.status !== 'completed' || !sale.handover_at)) throw new ContractProductError('Complete the sale and handover before preparing this introduction.', 409)
+  if (handover && input.templateId !== `handover-${input.audience}`) throw new ContractProductError('Select the matching recipient template.')
   const context = await loadSaleContext(sale)
+  const merged = handover ? handoverDraft(input.audience, { client: context.client, cleaner: context.cleaner, site: context.site, product: context.product, commencedOn: typeof sale.commencement_date === 'string' ? sale.commencement_date : null }) : null
+  const detailsFingerprint = merged ? richEmailFingerprint({ subject: merged.subject, html: '', text: merged.body, context: JSON.stringify([saleId, input.audience]) }) : null
+  if (input.action === 'followup.template') {
+    if (!merged) throw new ContractProductError('Select a handover template.')
+    return { ...merged, detailsFingerprint }
+  }
+  if (handover && input.detailsFingerprint !== detailsFingerprint) throw new ContractProductError('Contact or service details changed. Select the template again to refresh them.', 409)
   const recipient = normalizeInvoiceEmail(input.audience === 'client' ? context.client?.email : context.cleaner.email)
   const replyTo = normalizeInvoiceEmail(actor.email)
   if (!recipient || !replyTo) throw new ContractProductError('The recipient and your staff account need valid email addresses.', 409)
@@ -33,8 +44,8 @@ export async function contractSaleFollowup(actor: ContractProductActor, input: R
   try { content = parseRichEmailContent(input) } catch { throw new ContractProductError('Enter a valid follow-up message.') }
   const html = `${content.html}${plainTextToEmailHtml(`Kind regards,\n\n${actor.displayName}\n${actor.jobTitle || ''}\nSecure Cleaning\n${actor.phone || ''}\n${replyTo}\nsecurecleaning.com.au`)}`
   const from = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
-  const fingerprint = richEmailFingerprint({ subject, html, text: content.text, context: JSON.stringify([saleId, input.audience, recipient, replyTo, from, actor.id]) })
-  if (input.action === 'followup.preview') return { subject, html, to: recipient, from, fingerprint }
+  const fingerprint = richEmailFingerprint({ subject, html, text: content.text, context: JSON.stringify([saleId, input.audience, recipient, replyTo, from, actor.id, input.templateId ?? '', detailsFingerprint]) })
+  if (input.action === 'followup.preview') return { subject, html, to: recipient, from, replyTo, fingerprint }
   if (input.action !== 'followup.send') throw new ContractProductError('Select a valid follow-up action.')
   if (input.fingerprint !== fingerprint) throw new ContractProductError('The email or contact details changed. Preview it again before sending.', 409)
   if (typeof input.requestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId)) throw new ContractProductError('Preview the message again before sending.')
