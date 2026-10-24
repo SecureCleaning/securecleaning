@@ -17,6 +17,8 @@ import { getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
 import { upsertContractSaleInspectionEvent } from '@/lib/googleCalendar'
 import { applyEmailMergeFields, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields, INSPECTION_EMAIL_MERGE_FIELD_KEYS } from '@/lib/emailMergeFields'
+import { DEFAULT_CONTRACT_SALE_HANDOVER_EMAIL_TEMPLATES, HANDOVER_EMAIL_MERGE_FIELD_KEYS, type ContractSaleHandoverEmailTemplate } from '@/lib/contractSaleHandoverTemplates'
+import type { FollowupAudience } from '@/lib/contractSaleFollowupTemplates'
 import { createCleanerPortalLink } from '@/lib/cleanerPortal'
 import { buildContractSaleChecklistPdf, type ContractSaleChecklistData } from '@/lib/contractSaleChecklistPdf'
 import {
@@ -277,6 +279,27 @@ export const DEFAULT_CONTRACT_SALE_CLEANER_PROFILE_TEMPLATE: ContractSaleCleaner
   updatedAt: null,
 }
 
+function mapHandoverEmailTemplate(audience: FollowupAudience, row: Row | null | undefined): ContractSaleHandoverEmailTemplate {
+  if (!row) return { ...DEFAULT_CONTRACT_SALE_HANDOVER_EMAIL_TEMPLATES[audience] }
+  return {
+    id: `handover-${audience}`, audience,
+    subject: String(row.subject_template), bodyText: String(row.body_text), bodyHtml: String(row.body_html ?? ''),
+    bodyDocument: row.body_document as Record<string, unknown> | null,
+    updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
+  }
+}
+
+export async function loadContractSaleHandoverTemplate(audience: FollowupAudience) {
+  const { data, error } = await getAdminSupabase().from('contract_sale_handover_email_templates').select('*').eq('id', `handover-${audience}`).maybeSingle()
+  if (error) throw error
+  return mapHandoverEmailTemplate(audience, data as Row | null)
+}
+
+async function loadContractSaleHandoverTemplates() {
+  const [client, cleaner] = await Promise.all([loadContractSaleHandoverTemplate('client'), loadContractSaleHandoverTemplate('cleaner')])
+  return { client, cleaner }
+}
+
 const ALLOWED_INVOICE_TEMPLATE_TOKENS = new Set([
   'invoice_number', 'product_code', 'sale_code', 'cleaner_name', 'cleaner_business', 'suburb', 'state',
   'total_inc_gst', 'deposit_inc_gst', 'balance_inc_gst', 'agent_name', 'agent_title', 'industry',
@@ -506,8 +529,8 @@ export async function loadSaleContext(sale: Row) {
 
 export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const db = getAdminSupabase()
-  const [products, invoiceTemplate, inspectionTemplate, cleanerProfileTemplate] = await Promise.all([
-    getContractProducts(actor), loadInvoiceTemplate(), loadInspectionTemplate(), loadCleanerProfileTemplate(),
+  const [products, invoiceTemplate, inspectionTemplate, cleanerProfileTemplate, handoverTemplates] = await Promise.all([
+    getContractProducts(actor), loadInvoiceTemplate(), loadInspectionTemplate(), loadCleanerProfileTemplate(), loadContractSaleHandoverTemplates(),
   ])
   const productIds = products.map((product) => product.id)
   let saleRows: Row[] = []
@@ -661,6 +684,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     invoiceTemplate,
     inspectionTemplate,
     cleanerProfileTemplate,
+    handoverTemplates,
     cleaners: (cleanerOptions ?? []).map((row) => ({ id: String(row.id), businessName: String(row.business_name), contactName: String(row.contact_name), email: String(row.email), state: String(row.state ?? ''), status: String(row.status), complianceStatus: String(row.compliance_status ?? '') })) as ContractSaleCleanerOption[],
     actor: { id: actor.id, role: actor.role, state: actor.productState, displayName: actor.displayName },
   }
@@ -728,6 +752,29 @@ export async function updateContractSaleCleanerProfileTemplate(actor: ContractPr
   if (error) throw error
   await writeAuditLogStrict('contract_sale_cleaner_profile_template', CLEANER_PROFILE_TEMPLATE_ID, 'contract_sale.cleaner_profile_template.updated', actorAudit(actor))
   return { cleanerProfileTemplate: mapCleanerProfileTemplate(data as Row) }
+}
+
+export async function updateContractSaleHandoverEmailTemplate(actor: ContractProductActor, input: Record<string, unknown>) {
+  if (actor.role !== 'owner' && actor.role !== 'manager') {
+    throw new ContractProductError('Only an owner or manager can edit handover email templates.', 403)
+  }
+  const audience = input.audience
+  if (audience !== 'client' && audience !== 'cleaner') throw new ContractProductError('Select the client or cleaner handover template.')
+  const id = `handover-${audience}` as const
+  if (input.id !== undefined && input.id !== id) throw new ContractProductError('Select the matching handover template.')
+  const subject = clean(input.subject, 200)
+  if (subject.length < 3 || /[\r\n]/.test(subject)) throw new ContractProductError('Enter an email subject of 3 to 200 characters without line breaks.')
+  const rich = parseRichEmailContent(input, { text: 'bodyText', html: 'bodyHtml', document: 'bodyDocument', maxText: 10_000 })
+  if (rich.text.length < 10) throw new ContractProductError('Enter at least 10 characters for the handover email.')
+  const unsupported = findUnsupportedEmailMergeFields(HANDOVER_EMAIL_MERGE_FIELD_KEYS, subject, rich.text, rich.html)
+  if (unsupported.length) throw new ContractProductError(`Remove unsupported handover email fields: ${unsupported.join(', ')}.`)
+  const { data, error } = await getAdminSupabase().from('contract_sale_handover_email_templates').upsert({
+    id, audience, subject_template: subject, body_text: rich.text, body_html: rich.html, body_document: rich.document,
+    updated_by_staff_id: actor.id, updated_at: new Date().toISOString(),
+  }, { onConflict: 'id' }).select('*').single()
+  if (error) throw error
+  await writeAuditLogStrict('contract_sale_handover_email_template', id, 'contract_sale.handover_email_template.updated', { ...actorAudit(actor), audience })
+  return { handoverTemplate: mapHandoverEmailTemplate(audience, data as Row) }
 }
 
 export async function applyContractSaleInvoiceBankDetails(actor: ContractProductActor, input: Record<string, unknown>) {

@@ -27,6 +27,7 @@ import {
   sendContractSaleAgreement,
   updateContractSale,
   updateContractSaleCleanerProfileTemplate,
+  updateContractSaleHandoverEmailTemplate,
   updateContractSaleInvoiceTemplate,
   updateContractSaleInspectionTemplate,
 } from '@/lib/contractSales'
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
     if (action === 'sale.update') return NextResponse.json({ success: true, result: await updateContractSale(actor, body) })
     if (action === 'invoice-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInvoiceTemplate(actor, body) })
     if (action === 'cleaner-profile-template.update') return NextResponse.json({ success: true, result: await updateContractSaleCleanerProfileTemplate(actor, body) })
+    if (action === 'handover-template.update') return NextResponse.json({ success: true, result: await updateContractSaleHandoverEmailTemplate(actor, body) })
     if (action === 'inspection-template.update') return NextResponse.json({ success: true, result: await updateContractSaleInspectionTemplate(actor, body) })
     if (action === 'inspection-email.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionEmail(actor, body) })
     if (action === 'inspection-confirmations.preview') return NextResponse.json({ success: true, result: await previewContractSaleInspectionConfirmations(actor, body) })

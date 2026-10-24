@@ -50,7 +50,7 @@ export default function ContractSaleFollowup({ sale }: { sale: ContractSale }) {
       const draft = isHandoverTemplate(id)
         ? await request('followup.template', { templateId: id, audience: target })
         : { ...followupDraft(id, target === 'client' ? sale.clientName : sale.cleanerName, sale.siteAddress), detailsFingerprint: null }
-      setAudience(target); setTemplateId(id); setSubject(draft.subject); setContent(createRichEmailContent({ text: draft.body })); setDetailsFingerprint(draft.detailsFingerprint); setEditorKey(value => value + 1)
+      setAudience(target); setTemplateId(id); setSubject(draft.subject); setContent(createRichEmailContent({ text: draft.body, html: draft.bodyHtml, document: draft.bodyDocument })); setDetailsFingerprint(draft.detailsFingerprint); setEditorKey(value => value + 1)
       requestId.current = crypto.randomUUID()
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to load template.') }
     finally { lock.current = false; setBusy(false) }

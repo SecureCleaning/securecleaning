@@ -2,7 +2,7 @@ import 'server-only'
 import { handoverDraft, isHandoverTemplate } from '@/lib/contractSaleHandoverTemplates'
 
 import { getAdminSupabase } from '@/lib/supabase'
-import { getAuthorizedSale, loadSaleContext } from '@/lib/contractSales'
+import { getAuthorizedSale, loadContractSaleHandoverTemplate, loadSaleContext } from '@/lib/contractSales'
 import type { ContractProductActor } from '@/lib/contractProductAuth'
 import { ContractProductError } from '@/lib/contractProducts'
 import { normalizeInvoiceEmail } from '@/lib/contractSalePolicy'
@@ -27,9 +27,12 @@ export async function contractSaleFollowup(actor: ContractProductActor, input: R
   const handover = isHandoverTemplate(input.templateId)
   if (handover && (sale.status !== 'completed' || !sale.handover_at)) throw new ContractProductError('Complete the sale and handover before preparing this introduction.', 409)
   if (handover && input.templateId !== `handover-${input.audience}`) throw new ContractProductError('Select the matching recipient template.')
-  const context = await loadSaleContext(sale)
-  const merged = handover ? handoverDraft(input.audience, { client: context.client, cleaner: context.cleaner, site: context.site, product: context.product, commencedOn: typeof sale.commencement_date === 'string' ? sale.commencement_date : null }) : null
-  const detailsFingerprint = merged ? richEmailFingerprint({ subject: merged.subject, html: '', text: merged.body, context: JSON.stringify([saleId, input.audience]) }) : null
+  const [context, handoverTemplate] = await Promise.all([
+    loadSaleContext(sale),
+    handover ? loadContractSaleHandoverTemplate(input.audience) : Promise.resolve(null),
+  ])
+  const merged = handover ? handoverDraft(input.audience, { client: context.client, cleaner: context.cleaner, site: context.site, product: context.product, commencedOn: typeof sale.commencement_date === 'string' ? sale.commencement_date : null }, handoverTemplate ?? undefined) : null
+  const detailsFingerprint = merged ? richEmailFingerprint({ subject: merged.subject, html: merged.bodyHtml, text: merged.body, context: JSON.stringify([saleId, input.audience]) }) : null
   if (input.action === 'followup.template') {
     if (!merged) throw new ContractProductError('Select a handover template.')
     return { ...merged, detailsFingerprint }

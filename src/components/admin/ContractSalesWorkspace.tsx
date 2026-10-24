@@ -5,10 +5,12 @@ import ContractNotes from '@/components/admin/ContractNotes'
 import SalePriceAmendment from '@/components/admin/SalePriceAmendment'
 import PaymentPlanEditor from '@/components/admin/PaymentPlanEditor'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
+import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import ContractSaleInspectionPanel from '@/components/admin/ContractSaleInspectionPanel'
 import ActionToast, { type ActionToastTone } from '@/components/ActionToast'
 import { createRichEmailContent } from '@/lib/richEmailContent'
-import { CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS, INDUSTRY_MERGE_FIELD } from '@/lib/emailMergeFields'
+import { appendEmailMergeField, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS, INDUSTRY_MERGE_FIELD } from '@/lib/emailMergeFields'
+import { HANDOVER_EMAIL_MERGE_FIELDS, type ContractSaleHandoverEmailTemplate } from '@/lib/contractSaleHandoverTemplates'
 
 import Link from 'next/link'
 import ContractSaleFollowup from '@/components/admin/ContractSaleFollowup'
@@ -26,6 +28,7 @@ type Data = {
   invoiceTemplate: ContractSaleInvoiceTemplate
   inspectionTemplate: ContractSaleInspectionTemplate
   cleanerProfileTemplate: ContractSaleCleanerProfileTemplate
+  handoverTemplates: Record<'client' | 'cleaner', ContractSaleHandoverEmailTemplate>
   actor: { id: string; role: string; state: string | null; displayName: string }
 }
 
@@ -223,6 +226,9 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
   const [invoiceTemplateDraft, setInvoiceTemplateDraft] = useState<ContractSaleInvoiceTemplate | null>(null)
   const [showCleanerProfileTemplate, setShowCleanerProfileTemplate] = useState(false)
   const [cleanerProfileTemplateDraft, setCleanerProfileTemplateDraft] = useState<ContractSaleCleanerProfileTemplate | null>(null)
+  const [handoverResetKeys, setHandoverResetKeys] = useState({ client: 0, cleaner: 0 })
+  const [showHandoverTemplates, setShowHandoverTemplates] = useState(false)
+  const [handoverTemplateDrafts, setHandoverTemplateDrafts] = useState<Record<'client' | 'cleaner', ContractSaleHandoverEmailTemplate> | null>(null)
   const [clientAgreementDraft, setClientAgreementDraft] = useState<ClientServiceAgreementDetails | null>(null)
 
   const showMessage = useCallback((text: string, tone: FeedbackTone = 'success') => {
@@ -240,6 +246,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     setData(next)
     setInvoiceTemplateDraft(next.invoiceTemplate)
     setCleanerProfileTemplateDraft(next.cleanerProfileTemplate)
+    setHandoverTemplateDrafts(next.handoverTemplates)
     const matchingSale = next.sales.find((sale) => sale.id === (preferredSaleId || selectedSaleRef.current))
       ?? requestedSale
       ?? next.sales.find((sale) => sale.productId === initialProductId)
@@ -355,6 +362,22 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the cleaner details email template.', 'error') }
   }
 
+  async function saveHandoverTemplate(audience: 'client' | 'cleaner') {
+    const template = handoverTemplateDrafts?.[audience]
+    if (!template) return
+    try {
+      setBusy('handover-template.update')
+      const response = await fetch('/api/admin/contract-sales', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'handover-template.update', ...template }) })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to save the handover template.')
+      const saved = result.result.handoverTemplate as ContractSaleHandoverEmailTemplate
+      setData(current => current ? { ...current, handoverTemplates: { ...current.handoverTemplates, [audience]: saved } } : current)
+      setHandoverTemplateDrafts(current => current ? { ...current, [audience]: saved } : current)
+      showMessage(`${audience === 'client' ? 'Client' : 'Cleaner'} handover email template saved.`)
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to save the handover email template.', 'error') }
+    finally { setBusy('') }
+  }
+
   async function previewInvoiceEmail(invoiceId: string, deliveryId: string) {
     if (!sale) return
     setBusy('invoice-email.preview'); setMessage('')
@@ -441,6 +464,27 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
         </div>
         <p className="mt-3 text-xs text-gray-600">Available tokens: {'<<industry>>'}, {'{invoice_number}'}, {'{product_code}'}, {'{sale_code}'}, {'{cleaner_name}'}, {'{cleaner_business}'}, {'{suburb}'}, {'{state}'}, {'{total_inc_gst}'}, {'{deposit_inc_gst}'}, {'{balance_inc_gst}'}, {'{agent_name}'}, {'{agent_title}'}.</p>
         <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void saveInvoiceTemplate()} disabled={Boolean(busy)} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Save invoice template</button><button type="button" onClick={() => setInvoiceTemplateDraft(data.invoiceTemplate)} className="rounded-lg border border-gray-300 px-4 py-2 font-semibold">Discard edits</button></div>
+      </div> : null}
+    </section> : null}
+
+    {(data.actor.role === 'owner' || data.actor.role === 'manager') && handoverTemplateDrafts ? <section className="mb-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
+      <button type="button" onClick={() => setShowHandoverTemplates((current) => !current)} aria-expanded={showHandoverTemplates} className="flex w-full items-center justify-between gap-4 p-5 text-left">
+        <span><strong className="block text-lg">Handover introduction emails</strong><span className="text-sm font-normal text-gray-600">Edit the reusable client and cleaner introductions used after a completed product sale.</span></span>
+        <span className="text-sm font-semibold text-teal-700">{showHandoverTemplates ? 'Close' : 'Edit templates'}</span>
+      </button>
+      {showHandoverTemplates ? <div className="border-t border-gray-200 p-5">
+        <p className="mb-5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">These master templates fill from the selected product sale when an introduction is prepared. The agent can still edit that individual message and must preview it before sending. Saving here changes future drafts only; sent email history remains unchanged.</p>
+        <div className="grid gap-6 xl:grid-cols-2">
+          {(['client', 'cleaner'] as const).map((audience) => {
+            const draft = handoverTemplateDrafts[audience]
+            return <div key={audience} className="rounded-xl border border-gray-200 p-4">
+              <h3 className="font-bold">Email {audience === 'client' ? 'client: introduce cleaner' : 'cleaner: introduce client'}</h3>
+              <label className="mt-4 block text-sm font-medium">Email subject<input maxLength={200} value={draft.subject} onChange={(event) => setHandoverTemplateDrafts({ ...handoverTemplateDrafts, [audience]: { ...draft, subject: event.target.value } })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={HANDOVER_EMAIL_MERGE_FIELDS} onInsert={(token) => setHandoverTemplateDrafts({ ...handoverTemplateDrafts, [audience]: { ...draft, subject: appendEmailMergeField(draft.subject, token) } })} /></span></label>
+              <div className="mt-4"><RichEmailEditor label="Email message" value={createRichEmailContent({ text: draft.bodyText, html: draft.bodyHtml, document: draft.bodyDocument })} resetKey={`handover-${audience}-${draft.updatedAt || 'default'}-${handoverResetKeys[audience]}`} disabled={Boolean(busy)} mergeFields={HANDOVER_EMAIL_MERGE_FIELDS} onChange={(content) => setHandoverTemplateDrafts({ ...handoverTemplateDrafts, [audience]: { ...draft, bodyText: content.text, bodyHtml: content.html, bodyDocument: content.document } })} /></div>
+              <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void saveHandoverTemplate(audience)} disabled={Boolean(busy)} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white disabled:opacity-50">Save {audience} template</button><button type="button" disabled={Boolean(busy)} onClick={() => { setHandoverTemplateDrafts({ ...handoverTemplateDrafts, [audience]: data.handoverTemplates[audience] }); setHandoverResetKeys(current => ({ ...current, [audience]: current[audience] + 1 })) }} className="rounded-lg border border-gray-300 px-4 py-2 font-semibold">Discard edits</button></div>
+            </div>
+          })}
+        </div>
       </div> : null}
     </section> : null}
 

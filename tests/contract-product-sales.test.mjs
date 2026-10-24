@@ -204,6 +204,8 @@ test('server actions recheck assignment, state, invoice amounts, recipient, and 
   assert.match(domain, /Save and finalise the GST-inclusive purchase price before preparing the tax invoice/)
   assert.match(domain, /supplier_abn_snapshot: invoiceTemplate\.supplierAbn/)
   assert.match(domain, /Only an owner or manager can edit the invoice template/)
+  assert.match(domain, /Only an owner or manager can edit handover email templates/)
+  assert.match(domain, /contract_sale_handover_email_templates/)
   assert.match(domain, /contract_sale_invoice_templates/)
   assert.match(domain, /invoice_title_snapshot: invoiceTemplate\.invoiceTitle/)
   assert.match(domain, /renderContractSaleInvoiceTemplateText/)
@@ -278,6 +280,8 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(workspace, /Tax invoice email resent with its PDF attachment\./)
   assert.match(workspace, /<ActionToast message=\{message\} tone=\{messageTone\}/)
   assert.match(workspace, /Save invoice template/)
+  assert.match(workspace, /Handover introduction emails/)
+  assert.match(workspace, /Save \{audience\} template/)
   assert.match(workspace, /Saving the template does not change issued invoices/)
   assert.doesNotMatch(workspace, /\{invoice\.paymentTerms\}/)
   assert.match(workspace, /Current payment terms and bank details are shown in Preview invoice/)
@@ -297,6 +301,18 @@ test('workbench keeps connected records together and exposes the complete gated 
   assert.match(products, />Product sale<\/Link>/)
   assert.match(adminNav, /Product Sales/)
   assert.match(agentNav, /Product sales/)
+})
+
+test('handover email template migration is additive and service-role only', () => {
+  const sql = source('supabase/migrations/20261024010000_editable_handover_email_templates.sql')
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS public\.contract_sale_handover_email_templates/)
+  assert.match(sql, /handover-client/)
+  assert.match(sql, /handover-cleaner/)
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/)
+  assert.match(sql, /REVOKE ALL ON TABLE public\.contract_sale_handover_email_templates FROM PUBLIC, anon, authenticated, service_role/)
+  assert.match(sql, /GRANT SELECT, INSERT, UPDATE ON TABLE public\.contract_sale_handover_email_templates TO service_role/)
+  assert.match(sql, /ON CONFLICT \(id\) DO NOTHING/)
+  assert.match(sql, /BEGIN;[\s\S]+COMMIT;\s*$/)
 })
 
 test('electronic acceptance is explicitly deferred until identity and immutable-version evidence exist', () => {

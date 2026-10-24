@@ -44,6 +44,7 @@ function harness(options = {}) {
     '@/lib/supabase': { getAdminSupabase: () => db },
     '@/lib/contractSales': {
       getAuthorizedSale: async () => { authorized++; if (options.denied) throw new ProductError('Not found'); return { status: options.status ?? 'completed', handover_at: options.noHandover ? null : '2026-10-24', commencement_date: '2026-10-24' } },
+      loadContractSaleHandoverTemplate: async () => undefined,
       loadSaleContext: async () => ({ product: { frequency: 'weekly' }, site: { address: '1 Example St' }, client: { email: options.clientEmail ?? 'client@example.com' }, cleaner: { email: 'cleaner@example.com' } }),
     },
     '@/lib/contractProducts': { ContractProductError: ProductError },
@@ -149,6 +150,11 @@ test('handover templates merge only contact and service details for each audienc
   assert.doesNotMatch(cleaner.body, /6 months|pro-rata|28th|Not provided/)
   const missing = handoverDraft('client', { ...details, cleaner: {}, product: {}, site: null, commencedOn: null })
   assert.doesNotMatch(missing.body, /undefined|null|\$0/)
+  const custom = handoverDraft('client', details, { id: 'handover-client', audience: 'client', subject: 'Welcome <<recipient_first_name>> to <<service_place>>', bodyText: 'Contact <<counterparty_name>> at <<counterparty_email>>.\n\n<<service_details>>', bodyHtml: '<p>Contact &lt;&lt;counterparty_name&gt;&gt;</p><p>&lt;&lt;service_details&gt;&gt;</p>', bodyDocument: { type: 'doc', content: [{ type: 'text', text: '<<counterparty_name>>' }] }, updatedAt: null })
+  assert.equal(custom.bodyDocument, null, 'Merged draft must not reopen unresolved master JSON')
+  assert.equal(custom.subject, 'Welcome Anna to Office')
+  assert.match(custom.body, /Sam.*cleaner@example\.com/s)
+  assert.match(custom.bodyHtml, /Sam.*Address: 1 Example St<br>Frequency: Weekly/s)
 })
 test('handover template preparation is read-only and requires completed handover and matching audience', async () => {
   const input = { ...draft, templateId: 'handover-client', action: 'followup.template' }
