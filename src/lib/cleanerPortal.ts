@@ -1,3 +1,4 @@
+import type { CleanerMachinery } from '@/lib/cleanerMachinery'
 import { escapeHtml } from '@/lib/htmlEscape'
 import { getAdminSupabase } from '@/lib/supabase'
 import { createCleaner, updateCleaner, uploadCleanerDocument, type CleanerAuditActor } from '@/lib/cleaners'
@@ -8,10 +9,11 @@ import { getSiteUrl } from '@/lib/siteUrl'
 import { createCleanerPortalToken, type CleanerPortalClaims } from '@/lib/cleanerPortalAccess'
 import { sanitizeCleanerPortalPayload, type CleanerPortalProfile } from '@/lib/cleanerPortalPolicy'
 
-const PORTAL_SELECT = 'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check'
+const PORTAL_SELECT = 'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, specialist_machinery, services, service_areas, preferred_work, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check'
 
 function toProfile(row: Record<string, unknown>): CleanerPortalProfile {
   return {
+    specialistMachinery: (row.specialist_machinery as CleanerMachinery | null) ?? null,
     businessName: String(row.business_name ?? ''), firstName: String(row.first_name ?? ''), lastName: String(row.last_name ?? ''),
     email: String(row.email ?? ''), phone: String(row.phone ?? ''), alternatePhone: String(row.alternate_phone ?? ''),
     address: String(row.address ?? ''), suburb: String(row.suburb ?? ''), postcode: String(row.postcode ?? ''), city: String(row.city ?? ''),

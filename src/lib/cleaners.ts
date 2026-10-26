@@ -1,3 +1,4 @@
+import { parseCleanerMachinery, type CleanerMachinery } from '@/lib/cleanerMachinery'
 import { agentCleanerSearchFilter } from '@/lib/cleanerSearch'
 import { createHash } from 'node:crypto'
 import { validateDocumentContent } from '@/lib/documentContent'
@@ -36,6 +37,7 @@ export interface CleanerRecord {
   state?: string | null
   abn?: string | null
   status: CleanerStatus
+  specialist_machinery?: CleanerMachinery | null
   services: string[]
   service_areas: string[]
   preferred_work?: string | null
@@ -111,6 +113,7 @@ export interface CleanerDocument {
 }
 
 export interface CleanerPayload {
+  specialistMachinery?: CleanerMachinery | null
   businessName: string
   firstName?: string | null
   lastName?: string | null
@@ -183,7 +186,7 @@ const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, con
 const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, delivery_outcome, template_name, created_at, sent_at, final_html_snapshot, to_email'
 
 const CLEANER_SELECT =
-  'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
+  'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, specialist_machinery, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
 const AGENT_CLEANER_DETAIL_SELECT = CLEANER_SELECT
 
 const COMMENT_SELECT = 'id, cleaner_id, author_name, comment, created_at'
@@ -300,6 +303,7 @@ function toDbPayload(payload: Partial<CleanerPayload>) {
     state: payload.state !== undefined ? nullableString(payload.state, 8)?.toUpperCase() ?? null : undefined,
     abn: payload.abn !== undefined ? nullableString(payload.abn, 40) : undefined,
     status,
+    specialist_machinery: parseCleanerMachinery(payload.specialistMachinery),
     services: payload.services !== undefined ? cleanArray(payload.services) : undefined,
     service_areas: payload.serviceAreas !== undefined ? cleanServiceAreas(payload.serviceAreas) : undefined,
     preferred_work: payload.preferredWork !== undefined ? nullableString(payload.preferredWork, 800) : undefined,

@@ -1,5 +1,8 @@
 'use client'
 
+import CleanerMachineryFields from '@/components/cleaners/CleanerMachineryFields'
+import type { CleanerMachinery } from '@/lib/cleanerMachinery'
+
 import { individualEmailRequestId, completeIndividualEmailRequest } from '@/lib/individualEmailRequest'
 
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
@@ -58,6 +61,7 @@ type CleanerFormState = {
   abn: string
   status: CleanerStatus
   services: string
+  specialistMachinery: CleanerMachinery | null
   serviceAreas: string
   preferredWork: string
   complianceStatus: string
@@ -276,6 +280,7 @@ function toFormState(cleaner?: CleanerRecord | null): CleanerFormState {
     status: cleaner?.status ?? 'lead',
     services: toCsv(cleaner?.services),
     serviceAreas: toCsv(cleaner?.service_areas) || defaultServiceArea(cleaner?.suburb ?? ''),
+    specialistMachinery: cleaner?.specialist_machinery ?? null,
     preferredWork: cleaner?.preferred_work ?? '',
     complianceStatus: cleaner?.compliance_status ?? 'not_checked',
     insuranceExpiry: cleaner?.insurance_expiry ?? '',
@@ -863,6 +868,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
         status: form.status,
         services: fromCsv(form.services),
         serviceAreas: serviceAreas.length > 0 ? serviceAreas : (defaultServiceArea(form.suburb) ? [defaultServiceArea(form.suburb)] : []),
+        specialistMachinery: form.specialistMachinery,
         preferredWork: form.preferredWork,
         complianceStatus: form.complianceStatus,
         insuranceExpiry: form.insuranceExpiry || null,
@@ -1579,6 +1585,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                 </div>
                 <p className="text-xs font-normal text-gray-500">New cleaners default to their suburb plus a 20 km coverage area. Add extra suburbs or regions when the cleaner travels further.</p>
               </div>
+              <CleanerMachineryFields value={form.specialistMachinery} disabled={isSaving} onChange={value => setField('specialistMachinery', value)} />
               <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
                 Preferred work
                 <input value={form.preferredWork} onChange={(event) => setField('preferredWork', event.target.value)} placeholder="Medical, office, after-hours..." className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />

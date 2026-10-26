@@ -1,9 +1,11 @@
+import { parseCleanerMachinery, type CleanerMachinery } from '@/lib/cleanerMachinery'
 import type { CleanerPayload } from '@/lib/cleaners'
 
 export const AUSTRALIAN_STATES = ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'] as const
 export const CLEANER_PORTAL_SERVICES = ['Office cleaning', 'Medical cleaning', 'Childcare cleaning', 'Retail cleaning', 'Gym cleaning', 'Industrial cleaning', 'Warehouse cleaning', 'Event venue cleaning'] as const
 
 export type CleanerPortalProfile = {
+  specialistMachinery: CleanerMachinery | null
   businessName: string
   firstName: string
   lastName: string
@@ -50,6 +52,7 @@ export function sanitizeCleanerPortalPayload(candidate: unknown, registeredEmail
   if (!AUSTRALIAN_STATES.includes(state as typeof AUSTRALIAN_STATES[number])) throw new Error('Select a valid state or territory.')
 
   return {
+    specialistMachinery: parseCleanerMachinery(body.specialistMachinery),
     businessName,
     firstName,
     lastName,

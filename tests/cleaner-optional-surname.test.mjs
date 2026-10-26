@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import ts from 'typescript'
+import * as machinery from '../src/lib/cleanerMachinery.ts'
 import * as serviceAreas from '../src/lib/cleanerServiceAreas.ts'
 
 const source = readFileSync(new URL('../src/lib/cleaners.ts', import.meta.url), 'utf8')
@@ -18,6 +19,7 @@ function harness() {
     '@/lib/supabase': { getAdminSupabase: () => ({ from: () => query }) },
     '@/lib/auditLog': { writeAuditLog: async () => {} },
     '@/lib/cleanerServiceAreas': serviceAreas,
+    '@/lib/cleanerMachinery': machinery,
   }
   const module = { exports: {} }
   new Function('require', 'module', 'exports', compiled)((id) => modules[id] ?? {}, module, module.exports)
@@ -48,4 +50,12 @@ test('still requires business name, first name and valid email on creation', asy
   ]) {
     await assert.rejects(harness().createCleaner({ ...payload, [field]: value }, actor), message)
   }
+})
+
+test('staff saves preserve omitted machinery and persist validated machinery on create and update', async () => {
+ const details={items:['carpet_extractor','other'],other:'Ride-on scrubber',notes:'Owned'}
+ assert.deepEqual((await harness().createCleaner({...payload,specialistMachinery:details},actor)).specialist_machinery,details)
+ assert.deepEqual((await harness().updateCleaner('cleaner-1',{specialistMachinery:details},actor)).specialist_machinery,details)
+ assert.equal((await harness().updateCleaner('cleaner-1',{phone:'0400000000'},actor)).specialist_machinery,undefined)
+ await assert.rejects(harness().updateCleaner('cleaner-1',{specialistMachinery:{...details,items:['invalid']}},actor),/valid specialist/)
 })
