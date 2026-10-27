@@ -4,6 +4,7 @@ import {
   DEFAULT_CONSUMABLE_MARKUP_BPS,
   MAX_CONSUMABLE_PRODUCTS,
   calculateConsumablePriceCents,
+  parseConsumableVariants,
   slugifyConsumable,
   type ConsumableCatalogSettings,
   type ConsumableProduct,
@@ -77,6 +78,7 @@ export function parseConsumableProduct(value: unknown, index = 0): ConsumablePro
   const title = text(source.title, 160)
   const slug = slugifyConsumable(source.slug || title) || `product-${index + 1}`
   return {
+    variants: parseConsumableVariants(source.variants),
     id: text(source.id, 80),
     slug,
     category: text(source.category, 80) || 'Other',
@@ -156,6 +158,10 @@ export async function getPublicConsumablesCatalog(): Promise<PublicConsumablesCa
       packSize: product.packSize,
       imageUrl: product.imageUrl,
       sortOrder: product.sortOrder,
+      variants: product.variants?.map((variant) => ({
+        label: variant.label, packSize: variant.packSize,
+        priceCents: calculateConsumablePriceCents(variant.supplierCostCents, settings.defaultMarkupBps, product.markupOverrideBps, variant.finalPriceOverrideCents),
+      })),
       priceCents: calculateConsumablePriceCents(
         product.supplierCostCents,
         settings.defaultMarkupBps,
@@ -194,6 +200,7 @@ export async function saveConsumableSettings(value: unknown, actorId: string) {
 function productDbPayload(product: ConsumableProduct, updatedAt: string) {
   return {
     ...(product.id ? { id: product.id } : {}),
+    variants: product.variants ?? [],
     slug: product.slug,
     category: product.category,
     supplier_sku: product.supplierSku || null,
@@ -214,6 +221,11 @@ function productDbPayload(product: ConsumableProduct, updatedAt: string) {
 
 export async function saveConsumableProduct(value: unknown, actorId: string) {
   const product = validateConsumableProduct(value)
+  // Older clients omit options; preserve them instead of silently deleting them.
+  if (value && typeof value === 'object' && !('variants' in value)) {
+    const existing = await getConsumablesAdminCatalog()
+    product.variants = existing.products.find((item) => product.id ? item.id === product.id : item.slug === product.slug)?.variants ?? []
+  }
   const updatedAt = new Date().toISOString()
   const { data, error } = await getAdminSupabase().from('consumable_products')
     .upsert(productDbPayload(product, updatedAt), { onConflict: product.id ? 'id' : 'slug' })
@@ -237,6 +249,7 @@ export async function importConsumableProducts(values: unknown, actorId: string)
     return productDbPayload({
       ...product,
       id: matched?.id ?? randomUUID(),
+      variants: values[index]?.variants === undefined ? matched?.variants ?? [] : product.variants,
       category: product.category === 'Other' && matched ? matched.category : product.category,
       imageUrl: product.imageUrl || matched?.imageUrl || '',
       supplierProductUrl: product.supplierProductUrl || matched?.supplierProductUrl || '',

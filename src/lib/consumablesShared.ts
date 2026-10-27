@@ -8,7 +8,16 @@ export type ConsumableCatalogSettings = {
   updatedAt: string | null
 }
 
+export type ConsumableVariant = {
+  label: string
+  supplierSku: string
+  packSize: string
+  supplierCostCents: number
+  finalPriceOverrideCents: number | null
+}
+
 export type ConsumableProduct = {
+  variants?: ConsumableVariant[]
   id: string
   slug: string
   category: string
@@ -30,6 +39,7 @@ export type PublicConsumableProduct = Pick<ConsumableProduct,
   'id' | 'slug' | 'category' | 'title' | 'description' | 'packSize' | 'imageUrl' | 'sortOrder'
 > & {
   priceCents: number
+  variants?: Array<{ label: string; packSize: string; priceCents: number }>
 }
 
 export type ConsumablesAdminCatalog = {
@@ -68,4 +78,26 @@ export function calculateConsumablePriceCents(
   const selectedMarkup = markupOverrideBps ?? defaultMarkupBps
   const markup = Number.isFinite(selectedMarkup) ? Math.min(50_000, Math.max(0, Math.round(selectedMarkup))) : 0
   return Math.round(cost * (10_000 + markup) / 10_000)
+}
+
+export function parseConsumableVariants(value: unknown): ConsumableVariant[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value) || value.length > 30) throw new Error('Use at most 30 product options.')
+  const labels = new Set<string>()
+  return value.map((entry) => {
+    if (!entry || typeof entry !== 'object') throw new Error('Invalid product option.')
+    const label = typeof entry.label === 'string' ? entry.label.trim() : ''
+    const packSize = typeof entry.packSize === 'string' ? entry.packSize.trim() : ''
+    const cost = entry.supplierCostCents
+    const override = entry.finalPriceOverrideCents ?? null
+    if (!label || label.length > 120 || !packSize || packSize.length > 240) throw new Error('Each option needs a name and pack size.')
+    if (labels.has(label.toLowerCase())) throw new Error('Option names must be unique.')
+    labels.add(label.toLowerCase())
+    if (!Number.isSafeInteger(cost) || cost < 0 || cost > 100_000_000 ||
+        (override !== null && (!Number.isSafeInteger(override) || override < 0 || override > 100_000_000))) {
+      throw new Error('Option prices must be valid non-negative amounts.')
+    }
+    return { label, packSize, supplierCostCents: cost, finalPriceOverrideCents: override,
+      supplierSku: typeof entry.supplierSku === 'string' ? entry.supplierSku.trim().slice(0, 120) : '' }
+  })
 }

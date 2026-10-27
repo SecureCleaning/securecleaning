@@ -65,6 +65,7 @@ test('catalogue editing is manager-only and storage/table ACLs exclude browser r
     'src/app/api/admin/consumables/route.ts',
     'src/app/api/admin/consumables/import/route.ts',
     'src/app/api/admin/consumables/image/route.ts',
+    'src/app/api/admin/consumables/supplier/route.ts',
   ]) {
     const source = readFileSync(`${root}/${relative}`, 'utf8')
     assert.match(source, /isAuthorizedAdminRequest\(request, 'manager'\)/)

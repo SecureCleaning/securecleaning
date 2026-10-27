@@ -1,3 +1,4 @@
+import ProductOptions from '@/components/consumables/ProductOptions'
 import type { Metadata } from 'next'
 import { getPublicConsumablesCatalog } from '@/lib/consumables'
 
@@ -9,10 +10,6 @@ export const metadata: Metadata = {
   title: 'Consumables Pricing',
   description: 'Current Secure Cleaning washroom and workplace consumables pricing.',
   robots: { index: false, follow: false, noarchive: true },
-}
-
-function money(cents: number) {
-  return new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' }).format(cents / 100)
 }
 
 function dateLabel(value: string | null) {
@@ -52,10 +49,7 @@ export default async function ConsumablesPage() {
                     <h3 className="text-lg font-bold text-[#1a2744]">{product.title}</h3>
                     <p className="mt-2 text-sm font-semibold text-teal-700">{product.packSize}</p>
                     <p className="mt-3 flex-1 whitespace-pre-line text-sm leading-6 text-gray-600">{product.description}</p>
-                    <div className="mt-5 border-t border-gray-100 pt-4">
-                      <div className="text-2xl font-bold text-green-700">{money(product.priceCents)}</div>
-                      <div className="mt-1 text-xs text-gray-500">Per pack or carton shown · {catalog.pricesExcludeGst ? 'Excludes' : 'Includes'} GST</div>
-                    </div>
+                    <ProductOptions product={product} excludesGst={catalog.pricesExcludeGst} />
                   </div>
                 </article>)}
               </div>

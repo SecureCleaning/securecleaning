@@ -1,3 +1,4 @@
+import { fetchSupplier } from '@/lib/consumablesSupplier'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
@@ -28,7 +29,11 @@ export async function POST(request: NextRequest) {
   if (!identity) return NextResponse.json({ success: false, error: 'Manager access required.' }, { status: 403 })
   try {
     const form = await request.formData()
-    const file = form.get('file')
+    let file = form.get('file')
+    if (!(file instanceof File) && form.get('url')) {
+      const remote = await fetchSupplier(form.get('url'), true)
+      file = new File([new Uint8Array(remote.bytes)], 'supplier-image', { type: remote.type })
+    }
     if (!(file instanceof File)) return NextResponse.json({ success: false, error: 'Choose an image.' }, { status: 400 })
     const imageType = IMAGE_TYPES[file.type]
     if (!imageType) return NextResponse.json({ success: false, error: 'Use a JPG, PNG or WebP image.' }, { status: 400 })

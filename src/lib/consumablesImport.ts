@@ -1,5 +1,5 @@
 import { readXlsxRows } from '@/lib/xlsxSafety'
-import { MAX_CONSUMABLE_PRODUCTS, slugifyConsumable, type ConsumableProduct } from '@/lib/consumablesShared'
+import { MAX_CONSUMABLE_PRODUCTS, parseConsumableVariants, slugifyConsumable, type ConsumableProduct } from '@/lib/consumablesShared'
 
 export type ConsumablesImportPreview = {
   products: ConsumableProduct[]
@@ -20,6 +20,7 @@ const HEADER_ALIASES: Record<string, string[]> = {
   imageUrl: ['image url'],
   supplierProductUrl: ['supplier url', 'supplier product url', 'product url'],
   active: ['active'],
+  variants: ['options json'],
 }
 
 function normalized(value: unknown) {
@@ -124,6 +125,7 @@ function parseStructuredRows(rows: Row[], header: NonNullable<ReturnType<typeof 
     product.imageUrl = String(read('imageUrl') ?? '').trim()
     product.supplierProductUrl = String(read('supplierProductUrl') ?? '').trim()
     product.active = booleanValue(read('active'))
+    if (read('variants') !== null) product.variants = parseConsumableVariants(JSON.parse(String(read('variants') || '[]')))
     return [product]
   })
 }
