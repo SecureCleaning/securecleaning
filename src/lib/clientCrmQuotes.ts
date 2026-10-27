@@ -70,7 +70,7 @@ export async function createCrmQuoteDraft(actor: ClientCrmActor, input: Record<s
 
   const db = getAdminSupabase()
   const { data: opportunity, error: opportunityError } = await db.from('crm_opportunities')
-    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, closed_at')
+    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, closed_at, cleaning_frequency, cleaning_time_preference')
     .eq('id', opportunityId)
     .maybeSingle()
   if (opportunityError) throw opportunityError
@@ -135,6 +135,8 @@ export async function createCrmQuoteDraft(actor: ClientCrmActor, input: Record<s
     ? bookingResult.data.inputs as Partial<BookingInputs>
     : null
   const quoteInputs = buildCrmQuoteDraftInputs({
+    cleaningFrequency: opportunity.cleaning_frequency,
+    cleaningTimePreference: opportunity.cleaning_time_preference,
     sitePremisesType: site.premises_type || '',
     businessName,
     contactName,

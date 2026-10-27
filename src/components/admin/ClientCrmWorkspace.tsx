@@ -1,5 +1,6 @@
 'use client'
 
+import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import PremisesTypeField from './PremisesTypeField'
 import CrmPremisesSettings from './CrmPremisesSettings'
 import ClientLeadCsvPanel from './ClientLeadCsvPanel'
@@ -85,6 +86,7 @@ const timeOptions: Array<[TimePreference, string]> = [
 function emptyLeadDraft(city: CrmServiceRegion | '' = '') {
   return {
     premisesType: '', premisesTypeOther: '', businessName: '', firstName: '', lastName: '', email: '', phone: '', address: '', suburb: '', postcode: '',
+    cleaningFrequency: '', cleaningTimePreference: 'after_hours',
     city, sourceType: 'manual', sourceProvider: '', sourceReference: '',
     contactBasis: 'enquiry', sourceExplanation: '', assignedStaffId: '', notes: '',
   }
@@ -144,15 +146,14 @@ function addDays(dateString: string, days: number) {
   return date.toISOString().slice(0, 10)
 }
 
-function emptyAppointmentDraft(assignedStaffId = '') {
+function emptyAppointmentDraft(assignedStaffId = '', preferences: { frequency?: unknown; timePreference?: unknown } = {}) {
   return {
     preferredDate: addDays(melbourneToday(), 1),
     startTime: '09:00',
     durationMinutes: '60',
     assignedStaffId,
     premisesType: 'office' as PremisesType,
-    frequency: 'weekly' as CleaningFrequency,
-    timePreference: 'business_hours' as TimePreference,
+    ...resolveCrmCleaningPreferences(preferences),
   }
 }
 
@@ -284,6 +285,7 @@ export default function ClientCrmWorkspace({
     setAppointmentOpen(false)
     setAppointmentDraft(emptyAppointmentDraft(
       selectedLead.assignedStaffId || (data?.actor.role === 'agent' ? data.actor.id : ''),
+      { frequency: selectedLead.cleaningFrequency, timePreference: selectedLead.cleaningTimePreference },
     ))
     const defaultSenderId = resolveDefaultCrmSenderId(
       data?.actor.id ?? '',
@@ -693,6 +695,8 @@ export default function ClientCrmWorkspace({
           <label className="text-sm font-medium text-gray-700">Last name (optional)<input maxLength={100} autoComplete="family-name" value={leadDraft.lastName} onChange={(event) => setLeadDraft({ ...leadDraft, lastName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Email<input required type="email" value={leadDraft.email} onChange={(event) => setLeadDraft({ ...leadDraft, email: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Phone<input value={leadDraft.phone} onChange={(event) => setLeadDraft({ ...leadDraft, phone: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <label className="text-sm font-medium text-gray-700">Cleaning frequency (optional)<select value={leadDraft.cleaningFrequency} onChange={(event) => setLeadDraft({ ...leadDraft, cleaningFrequency: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Not specified yet</option>{frequencyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+          <label className="text-sm font-medium text-gray-700">Cleaning time preference<select value={leadDraft.cleaningTimePreference} onChange={(event) => setLeadDraft({ ...leadDraft, cleaningTimePreference: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{timeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="text-sm font-medium text-gray-700 lg:col-span-2">Site address<input value={leadDraft.address} onChange={(event) => setLeadDraft({ ...leadDraft, address: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Service region<select required value={leadDraft.city} disabled={data.actor.role === 'agent'} onChange={(event) => setLeadDraft({ ...leadDraft, city: event.target.value as CrmServiceRegion, suburb: '', postcode: '' })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select service region</option><option value="melbourne">Melbourne / VIC</option><option value="sydney">Sydney / NSW</option></select></label>
           <div className="md:col-span-2 lg:col-span-3"><LocalityAutocomplete key={leadDraft.city} city={leadDraft.city || undefined} suburb={leadDraft.suburb} postcode={leadDraft.postcode} onChange={(updates) => setLeadDraft({ ...leadDraft, suburb: updates.suburb, postcode: updates.postcode })} /></div>
@@ -772,7 +776,7 @@ export default function ClientCrmWorkspace({
               <label className="text-sm font-medium text-gray-700">Duration (minutes)<input type="number" required min="15" max="480" step="15" value={appointmentDraft.durationMinutes} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, durationMinutes: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
               <label className="text-sm font-medium text-gray-700">Inspection agent<select disabled={Boolean(selectedLead.assignedStaffId) || data.actor.role === 'agent'} value={appointmentDraft.assignedStaffId} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="">Select agent</option>{appointmentAgents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select>{selectedLead.assignedStaffId ? <span className="mt-1 block text-xs font-normal text-gray-500">Change the assigned agent in Opportunity workflow if needed.</span> : null}</label>
               <label className="text-sm font-medium text-gray-700">Premises type<select value={appointmentDraft.premisesType} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, premisesType: event.target.value as PremisesType })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{premisesOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-              <label className="text-sm font-medium text-gray-700">Cleaning frequency<select value={appointmentDraft.frequency} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, frequency: event.target.value as CleaningFrequency })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{frequencyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Cleaning frequency<select required value={appointmentDraft.frequency} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, frequency: event.target.value as CleaningFrequency })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Select cleaning frequency</option>{frequencyOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Cleaning time<select value={appointmentDraft.timePreference} onChange={(event) => setAppointmentDraft({ ...appointmentDraft, timePreference: event.target.value as TimePreference })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{timeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             </div>
             {!selectedAppointmentAgent ? <p className="mt-4 text-sm font-medium text-amber-700">Choose an active inspection agent with a linked calendar before booking.</p> : null}

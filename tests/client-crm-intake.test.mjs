@@ -49,8 +49,14 @@ test('creation accepts absent business names, defaults NSW, preserves named busi
       assert.equal(writes.at(-1).p_city, 'sydney')
       assert.equal(writes.at(-1).p_assigned_staff_id, actor.id)
     }
+    await createManualCrmOpportunity(actor, { ...draft, cleaningFrequency: 'fortnightly', cleaningTimePreference: 'weekend' })
+    assert.equal(writes.at(-1).p_cleaning_frequency, 'fortnightly')
+    assert.equal(writes.at(-1).p_cleaning_time_preference, 'weekend')
+    await createManualCrmOpportunity(actor, draft)
+    assert.equal(writes.at(-1).p_cleaning_frequency, null)
+    assert.equal(writes.at(-1).p_cleaning_time_preference, 'after_hours')
     const count = writes.length
-    for (const input of [ { city: 'melbourne', postcode: '3000' }, { city: 'sydney', postcode: '3000' }, { city: 'invalid' }, { firstName: '' } ]) {
+    for (const input of [ { city: 'melbourne', postcode: '3000' }, { city: 'sydney', postcode: '3000' }, { city: 'invalid' }, { firstName: '' }, { cleaningFrequency: 'invalid' }, { cleaningTimePreference: 'invalid' } ]) {
       await assert.rejects(createManualCrmOpportunity(actor, { ...draft, ...input }))
     }
     await assert.rejects(createManualCrmOpportunity({ ...actor, availabilityAssigneeId: null }, draft))

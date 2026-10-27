@@ -1,3 +1,4 @@
+import { crmCleaningFrequency, crmCleaningTime, resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
 import { getAdminSupabase } from '@/lib/supabase'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
@@ -57,6 +58,8 @@ export type CrmOpportunity = {
   lastName: string
   positionTitle: string
   phone: string
+  cleaningFrequency?: string
+  cleaningTimePreference?: string
   premisesType?: string
   premisesTypeOther?: string
   siteName: string
@@ -312,7 +315,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   const db = getAdminSupabase()
   let opportunityQuery = db
     .from('crm_opportunities')
-    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at')
+    .select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at, cleaning_frequency, cleaning_time_preference')
     .order('updated_at', { ascending: false })
     .limit(200)
   if (actor.role === 'agent') opportunityQuery = opportunityQuery.eq('assigned_staff_id', actor.id)
@@ -321,7 +324,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
     if (!followUpsOnly) {
       const result = await opportunityQuery
       if (result.error || !requestedOpportunityId || (result.data ?? []).some((row) => row.id === requestedOpportunityId)) return result
-      let selectedQuery = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at').eq('id', requestedOpportunityId)
+      let selectedQuery = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at, cleaning_frequency, cleaning_time_preference').eq('id', requestedOpportunityId)
       if (actor.role === 'agent') selectedQuery = selectedQuery.eq('assigned_staff_id', actor.id)
       const selected = await selectedQuery.maybeSingle()
       if (selected.error) return { data: null, error: selected.error }
@@ -329,7 +332,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
     }
     const rows: Record<string, unknown>[] = []
     for (let offset = 0; ; offset += 200) {
-      let query = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at').not('next_follow_up_at', 'is', null).not('stage', 'in', '(won,lost,cancelled)').order('next_follow_up_at').order('id').range(offset, offset + 199)
+      let query = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, site_id, assigned_staff_id, stage, cycle_number, notes, next_follow_up_at, created_at, updated_at, cleaning_frequency, cleaning_time_preference').not('next_follow_up_at', 'is', null).not('stage', 'in', '(won,lost,cancelled)').order('next_follow_up_at').order('id').range(offset, offset + 199)
       if (actor.role === 'agent') query = query.eq('assigned_staff_id', actor.id)
       const result = await query
       if (result.error) return result
@@ -399,7 +402,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis').in('id', intakeIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length > 0
-      ? db.from('quotes').select('id, quote_ref, status, created_at, document_version:final_quote_document->version, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
+      ? db.from('quotes').select('id, quote_ref, status, created_at, cleaning_frequency:inputs->>frequency, cleaning_time_preference:inputs->>timePreference, document_version:final_quote_document->version, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
       ? db.from('contract_products').select('id, opportunity_id, status').in('opportunity_id', opportunityIds)
@@ -497,12 +500,19 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
     const intake = primaryIntakeByOpportunity.get(id)
     const assignedStaffId = typeof row.assigned_staff_id === 'string' ? row.assigned_staff_id : null
     const product = productsByOpportunity.get(id)
+    const latestLink = (quoteLinks.data ?? []).find((link) => String(link.opportunity_id) === id)
+    const latestQuote = (quotes.data ?? []).find((quote) => String(quote.id) === String(latestLink?.quote_id))
+    const latestInspection = (scheduledInspections.data ?? []).filter((booking) => String(booking.opportunity_id) === id).at(-1)
+    const recorded = latestQuote ? { frequency: latestQuote.cleaning_frequency, timePreference: latestQuote.cleaning_time_preference } : latestInspection?.inputs ?? {}
+    const cleaning = resolveCrmCleaningPreferences(recorded, { frequency: row.cleaning_frequency, timePreference: row.cleaning_time_preference })
     return {
       id,
       organisationId: typeof row.organisation_id === 'string' ? row.organisation_id : null,
       contactId: contactId || null,
       siteId,
       cycleNumber: Number(row.cycle_number ?? 1),
+      cleaningFrequency: cleaning.frequency,
+      cleaningTimePreference: cleaning.timePreference,
       email: String(contact?.email ?? ''),
       businessName: String(organisation?.business_name ?? contact?.business_name ?? ''),
       contactName: String(contact?.contact_name ?? ''),
@@ -739,6 +749,10 @@ export async function prepareManualCrmOpportunity(actor: ClientCrmActor, input: 
   const sourceReference = clean(input.sourceReference, 200)
   const customExplanation = clean(input.sourceExplanation, 500)
   const notes = clean(input.notes, 5000)
+  const frequency = crmCleaningFrequency(input.cleaningFrequency)
+  const timePreference = crmCleaningTime(input.cleaningTimePreference) ?? 'after_hours'
+  if (input.cleaningFrequency && !frequency) throw new ClientCrmError('Select a valid cleaning frequency.')
+  if (input.cleaningTimePreference && !crmCleaningTime(input.cleaningTimePreference)) throw new ClientCrmError('Select a valid cleaning time preference.')
   const requestedAssigneeId = clean(input.assignedStaffId, 100)
 
   if (!firstName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
@@ -777,6 +791,8 @@ export async function prepareManualCrmOpportunity(actor: ClientCrmActor, input: 
   const selection = await validatePremisesSelection(input)
   const sourceExplanation = buildContactSourceExplanation({ sourceType, sourceProvider, customExplanation })
   return { selection, candidates, values: {
+    p_cleaning_frequency: frequency,
+    p_cleaning_time_preference: timePreference,
     p_business_name: businessName,
     p_contact_name: contactName,
     p_email: email,

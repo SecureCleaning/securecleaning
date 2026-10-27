@@ -25,6 +25,8 @@ export function buildCrmQuoteDraftInputs(input: {
   suburb: string
   postcode: string
   city: 'melbourne' | 'sydney'
+  cleaningFrequency?: string | null
+  cleaningTimePreference?: string | null
   sitePremisesType?: string
   bookingInputs?: Partial<BookingInputs> | null
 }): QuoteInputs {
@@ -42,8 +44,8 @@ export function buildCrmQuoteDraftInputs(input: {
     floorArea: positiveNumber(booking.floorArea, 100),
     floors: 1,
     flooringType: 'mixed',
-    frequency: valueFromList(booking.frequency, CLEANING_FREQUENCIES, 'weekly'),
-    timePreference: valueFromList(booking.timePreference, TIME_PREFERENCES, 'business_hours'),
+    frequency: valueFromList(booking.frequency ?? input.cleaningFrequency, CLEANING_FREQUENCIES, 'weekly'),
+    timePreference: valueFromList(booking.timePreference ?? input.cleaningTimePreference, TIME_PREFERENCES, 'after_hours'),
     isSpringClean: false,
     roomScope: [],
     addOns: {
