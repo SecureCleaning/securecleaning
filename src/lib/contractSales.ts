@@ -158,6 +158,7 @@ export type ContractSale = {
     status: string
     content: string
     signedAt: string | null
+    documentCorrectionPending?: boolean
     signedFileName: string | null
   }
   clientServiceAgreement: null | {
@@ -554,7 +555,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     saleIds.length ? db.from('contract_sale_invoice_email_deliveries').select('id, invoice_id, sale_id, delivery_kind, recipient_email_snapshot, subject_snapshot, delivery_status, provider_message_id, attachment_names_snapshot, sent_at, created_at').in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payments').select(PAYMENT_SELECT).in('sale_id', saleIds).order('created_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_inspections').select('id, sale_id, status, starts_at, duration_minutes, time_zone, location_snapshot, invite_status, calendar_status, calendar_error, notes').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
-    saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    saleIds.length ? db.from('contract_sale_agreements').select('id, sale_id, version, agreement_type, status, content_snapshot, signed_at, signed_file_name, document_correction_pending').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_client_service_agreements').select('id, sale_id, version, status, content_snapshot, details_snapshot, signed_at, signed_file_name').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_payment_plans').select('id, sale_id, version, status, terms_snapshot, opening_paid_cents').in('sale_id', saleIds).order('version', { ascending: false }) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('admin_audit_log').select('id, entity_ref, action, details, created_at').eq('entity_type', 'contract_sale').in('entity_ref', saleIds).order('created_at', { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
@@ -662,7 +663,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
         uploads: (checklistUploadsResult.data ?? []).filter((item) => String(item.sale_id) === String(sale.id)).map((item) => ({ id: String(item.id), fileName: String(item.file_name), mimeType: String(item.mime_type), uploadedAt: String(item.uploaded_at) })),
       } : null })(),
       agreementHistory: (agreementsResult.data ?? []).filter(row => String(row.sale_id) === String(sale.id)).map(row => ({ id: String(row.id), version: Number(row.version), status: String(row.status), signedFileName: typeof row.signed_file_name === 'string' ? row.signed_file_name : null })),
-      agreement: agreement ? { id: String(agreement.id), version: Number(agreement.version), type: String(agreement.agreement_type), status: String(agreement.status), content: String(agreement.content_snapshot), signedAt: typeof agreement.signed_at === 'string' ? agreement.signed_at : null, signedFileName: typeof agreement.signed_file_name === 'string' ? agreement.signed_file_name : null } : null,
+      agreement: agreement ? { documentCorrectionPending: (agreementsResult.data ?? []).some(row => row.sale_id === sale.id && row.status !== 'void' && row.document_correction_pending), id: String(agreement.id), version: Number(agreement.version), type: String(agreement.agreement_type), status: String(agreement.status), content: String(agreement.content_snapshot), signedAt: typeof agreement.signed_at === 'string' ? agreement.signed_at : null, signedFileName: typeof agreement.signed_file_name === 'string' ? agreement.signed_file_name : null } : null,
       clientServiceAgreement: clientServiceAgreement ? {
         id: String(clientServiceAgreement.id), version: Number(clientServiceAgreement.version), status: String(clientServiceAgreement.status),
         content: String(clientServiceAgreement.content_snapshot), details: clientServiceAgreement.details_snapshot as ClientServiceAgreementDetails,
@@ -1882,6 +1883,9 @@ export async function uploadSignedContractSaleAgreement(actor: ContractProductAc
   const db = getAdminSupabase()
   const { data: agreement } = await db.from('contract_sale_agreements').select('id, status').eq('id', input.agreementId).eq('sale_id', sale.id).maybeSingle()
   if (!agreement || !['draft', 'sent'].includes(agreement.status)) throw new ContractProductError('Only an unsigned draft or sent agreement can receive its first signed PDF.', 409)
+  const { data: removal, error: removalError } = await db.from('contract_sale_agreement_document_events').select('id').eq('agreement_id', agreement.id).eq('action', 'remove').limit(1)
+  if (removalError) throw removalError
+  if (removal?.length) throw new ContractProductError('An admin must use Manage signed documents to replace the removed upload.', 409)
   const safeName = input.file.name.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 120) || 'signed-agreement.pdf'
   const path = `${sale.id}/${agreement.id}/${randomUUID()}-${safeName}`
   const fileBuffer = Buffer.from(await input.file.arrayBuffer())
