@@ -42,14 +42,21 @@ export const metadata: Metadata = {
     siteName: 'Secure Cleaning',
     images: [
       {
-        url: '/secure-cleaning-logo-aug26.png',
-        width: 993,
-        height: 662,
-        alt: 'Secure Cleaning',
+        url: '/secure-cleaning-social-card-v2.png',
+        width: 1200,
+        height: 630,
+        alt: 'Secure Cleaning — professional commercial cleaning',
+        type: 'image/png',
       },
     ],
     locale: 'en_AU',
     type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Secure Cleaning — Professional Commercial Cleaning',
+    description: 'Verified Owner-Operators. Flexible frequencies. No lock-in. Melbourne & Sydney.',
+    images: ['/secure-cleaning-social-card-v2.png'],
   },
   robots: {
     index: true,

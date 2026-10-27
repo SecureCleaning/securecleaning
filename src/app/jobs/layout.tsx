@@ -8,10 +8,11 @@ export const metadata: Metadata = {
     description: 'View commercial cleaning opportunities available through Secure Cleaning.',
     images: [
       {
-        url: '/jobs/opengraph-image',
+        url: '/secure-cleaning-jobs-social-card-v2.png',
         width: 1200,
         height: 630,
         alt: 'Secure Cleaning available cleaning contracts',
+        type: 'image/png',
       },
     ],
   },
@@ -19,7 +20,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Available cleaning contracts | Secure Cleaning',
     description: 'View commercial cleaning opportunities available through Secure Cleaning.',
-    images: ['/jobs/opengraph-image'],
+    images: ['/secure-cleaning-jobs-social-card-v2.png'],
   },
   robots: { index: false, follow: false, noarchive: true },
   referrer: 'no-referrer',
