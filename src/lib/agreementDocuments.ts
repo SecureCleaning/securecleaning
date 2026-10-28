@@ -1,3 +1,4 @@
+import { visibleAgreementDocuments } from '@/lib/agreementDocumentVisibility'
 import { randomUUID } from 'crypto'
 import { getAdminSupabase } from '@/lib/supabase'
 import { getAuthorizedSale } from '@/lib/contractSales'
@@ -35,7 +36,7 @@ export async function correctAgreementDocument(actor: ContractProductActor, form
   if (agreement.document_revision !== parsed.revision) throw new ContractProductError('Documents changed. Refresh and review before retrying.', 409)
   let path: string | null = null
   let name: string | null = null
-  if (parsed.action === 'replace' || parsed.action === 'support') {
+  if ((parsed.action === 'replace' && !form.get('targetId')) || parsed.action === 'support') {
     const file = form.get('file')
     if (!(file instanceof File)) throw new ContractProductError('Choose a PDF to upload.')
     if (file.size > 10 * 1024 * 1024) throw new ContractProductError('Upload a PDF smaller than 10 MB.')
@@ -68,4 +69,31 @@ export async function downloadAgreementHistory(actor: ContractProductActor, sale
   const { data: blob, error: downloadError } = await db.storage.from('contract-sale-agreements').download(doc.storage_path)
   if (downloadError) throw downloadError
   return { blob, name: (doc.file_name || 'agreement.pdf').replace(/[^a-zA-Z0-9._-]/g, '-') }
+}
+
+// Agent access is limited to the current signed copy and active supporting documents.
+export async function getVisibleAgreementDocuments(actor: ContractProductActor, saleId: string) {
+  await getAuthorizedSale(actor, saleId)
+  const db = getAdminSupabase()
+  const [agreements, events] = await Promise.all([
+    db.from('contract_sale_agreements').select('id,version,status,signed_at,signed_file_name').eq('sale_id', saleId),
+    db.from('contract_sale_agreement_document_events').select('id,agreement_id,action,target_id,created_at,after_evidence').eq('sale_id', saleId),
+  ])
+  if (agreements.error) throw agreements.error
+  if (events.error) throw events.error
+  return visibleAgreementDocuments(agreements.data ?? [], events.data ?? [])
+}
+
+export async function downloadVisibleSupportingDocument(actor: ContractProductActor, saleId: string, eventId: string) {
+  const visible = await getVisibleAgreementDocuments(actor, saleId)
+  const allowed = visible.supporting.find(row => row.id === eventId)
+  if (!allowed) throw new ContractProductError('Supporting document is no longer available.', 404)
+  const db = getAdminSupabase()
+  const { data, error } = await db.from('contract_sale_agreement_document_events').select('after_evidence').eq('sale_id', saleId).eq('agreement_id', allowed.agreementId).eq('id', eventId).eq('action', 'support').single()
+  if (error || !data) throw new ContractProductError('Document not found.', 404)
+  const doc = evidence(data.after_evidence)
+  if (!doc.storage_path) throw new ContractProductError('Document not found.', 404)
+  const { data: blob, error: downloadError } = await db.storage.from('contract-sale-agreements').download(doc.storage_path)
+  if (downloadError) throw downloadError
+  return { blob, name: allowed.fileName.replace(/[^a-zA-Z0-9._-]/g, '-') }
 }

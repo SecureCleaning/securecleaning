@@ -12,6 +12,7 @@ CREATE TABLE contract_sale_price_amendments(sale_id uuid,transaction_id bigint);
 CREATE TABLE admin_audit_log(entity_type text,entity_ref text,action text,details jsonb);
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;`)
 await db.exec(await fs.readFile('supabase/migrations/20261027232911_contract_sale_agreement_documents.sql','utf8'))
+await db.exec(await fs.readFile('supabase/migrations/20261028223817_reuse_supporting_agreement_document.sql','utf8'))
 await db.exec(`CREATE TRIGGER trg_contract_sale_agreement_snapshot BEFORE UPDATE ON contract_sale_agreements FOR EACH ROW EXECUTE FUNCTION protect_signed_contract_sale_agreement();
 CREATE TRIGGER trg_activate_signed_contract_plan BEFORE INSERT OR UPDATE ON contract_sale_agreements FOR EACH ROW EXECUTE FUNCTION activate_signed_contract_plan();`)
 const owner='00000000-0000-0000-0000-000000000001',sale='00000000-0000-0000-0000-000000000002',ag='00000000-0000-0000-0000-000000000003',plan='00000000-0000-0000-0000-000000000004',agent='00000000-0000-0000-0000-000000000005'
@@ -52,6 +53,16 @@ await db.exec('DROP TRIGGER fail_test_audit ON admin_audit_log')
 await db.exec("UPDATE contract_sale_payment_plans SET status='active'")
 const activePlan=JSON.stringify((await db.query('select * from contract_sale_payment_plans')).rows)
 await change('remove'); await change('replace')
+assert.equal(JSON.stringify((await db.query('select * from contract_sale_payment_plans')).rows),activePlan)
+// Promoting a supporting upload reuses its stored path, not a new upload or caller path.
+const reusable=await change('support',{name:'existing.pdf',path:`${sale}/${ag}/existing.pdf`})
+await change('remove')
+await assert.rejects(change('replace',{target:support}),/already removed/)
+await assert.rejects(change('replace',{target:'00000000-0000-0000-0000-000000000099'}),/missing/)
+await change('replace',{target:reusable,name:'untrusted.pdf',path:`${sale}/${ag}/untrusted.pdf`})
+assert.equal((await row()).signed_storage_path,`${sale}/${ag}/existing.pdf`)
+assert.equal((await row()).signed_file_name,'existing.pdf')
+assert.equal((await row()).document_correction_pending,false)
 assert.equal(JSON.stringify((await db.query('select * from contract_sale_payment_plans')).rows),activePlan)
 console.log('PASS: replacement, supporting/removal, restoration, stale revisions, immutable snapshots/history, admin/anon authorization, atomic audit and unchanged completed payment plan.')
 await db.close()

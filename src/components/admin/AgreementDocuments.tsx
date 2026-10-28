@@ -38,7 +38,7 @@ export default function AgreementDocuments({ saleId, agreementId, onRefresh }: {
   }, [file])
   const removed = new Set(data?.history.filter(row => row.action === 'remove_support').map(row => row.targetId))
   const support = data?.history.filter(row => row.agreementId === selectedAgreementId && row.action === 'support' && !removed.has(row.id)) ?? []
-  const needsFile = action === 'replace' || action === 'support'
+  const needsFile = (action === 'replace' && !target) || action === 'support'
   async function save() {
     if (!data) return
     setBusy(true); setError(''); setMessage('')
@@ -49,7 +49,7 @@ export default function AgreementDocuments({ saleId, agreementId, onRefresh }: {
       const response = await fetch('/api/admin/contract-sales/agreement-documents', { method: 'POST', body: form })
       const body = await response.json()
       if (!response.ok) throw new Error(body.error || 'Unable to save document change.')
-      setFile(null); setReason(''); setReviewed(false)
+      setFile(null); setTarget(''); setReason(''); setReviewed(false)
       setMessage('Document change saved with its history. No email was sent.')
       await load(); await onRefresh()
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to save document change.'); await load().catch(() => {}); setReviewed(false) }
@@ -60,18 +60,21 @@ export default function AgreementDocuments({ saleId, agreementId, onRefresh }: {
     {open && <div className="mt-4 space-y-4">
       <p className="text-sm text-gray-600">Correct the uploaded PDF or add supporting pages. Previous files remain in restricted admin history. This does not change the contract terms.</p>
       {!data ? <p>Loading documents...</p> : <>
-        <label className="block text-sm font-semibold">Agreement version<select value={selectedAgreementId} className="ml-2 rounded border p-2" disabled={busy} onChange={e => { setSelectedAgreementId(e.target.value); setData(null); setFile(null); setReason(''); setReviewed(false) }}>{data.agreements.map(row => <option key={row.id} value={row.id}>Version {row.version} - {row.status}</option>)}</select></label>
+        <label className="block text-sm font-semibold">Agreement version<select value={selectedAgreementId} className="ml-2 rounded border p-2" disabled={busy} onChange={e => { setSelectedAgreementId(e.target.value); setData(null); setFile(null); setTarget(''); setReason(''); setReviewed(false) }}>{data.agreements.map(row => <option key={row.id} value={row.id}>Version {row.version} - {row.status}</option>)}</select></label>
         <p><strong>Current signed PDF:</strong> {data.currentName || 'Signed agreement required'}</p>
         {data.reviewRequired && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-amber-950">Signed agreement required. Upload the correct replacement before further handover approval. Any existing payment plan or completed handover needs admin review; payments and completed handovers have not been reversed.</p>}
-        <label className="block text-sm font-semibold">Document action<select className="mt-1 w-full rounded-lg border p-2" value={action} onChange={e => { setAction(e.target.value as DocumentAction); setReviewed(false); setFile(null); setTarget('') }}>
+        <label className="block text-sm font-semibold">Document action<select className="mt-1 w-full rounded-lg border p-2" value={action} onChange={e => { setAction(e.target.value as DocumentAction); setReviewed(false); setTarget('') }}>
           <option value="replace" disabled={!data.canReplace}>Replace incorrect upload</option>
           <option value="support">Add supporting document</option>
           <option value="remove" disabled={!data.currentName || data.status === 'void'}>Remove incorrect upload</option>
           <option value="remove_support" disabled={!support.length}>Remove supporting document</option>
         </select></label>
+        {action === 'replace' && support.length > 0 && <label className="block text-sm font-semibold">Replacement PDF<select className="mt-1 w-full rounded-lg border p-2" value={target} onChange={e => { setTarget(e.target.value); setReviewed(false) }}><option value="">Choose a new PDF</option>{support.map(row => <option key={row.id} value={row.id}>Use uploaded file: {row.afterName}</option>)}</select></label>}
+        {action === 'support' && <p className="text-sm text-teal-900">This file will be visible to the agent as a supporting document. To make it the signed agreement, choose Replace incorrect upload.</p>}
+        {action === 'replace' && target && <a className={button} href={`/api/admin/contract-sales/agreement-documents?saleId=${saleId}&agreementId=${selectedAgreementId}&eventId=${target}&side=after`}>Review existing PDF (no new upload needed)</a>}
         {action === 'remove_support' && <label className="block">Supporting document<select value={target} onChange={e => { setTarget(e.target.value); setReviewed(false) }} className="ml-2 rounded border p-2"><option value="">Choose document</option>{support.map(row => <option key={row.id} value={row.id}>{row.afterName}</option>)}</select></label>}
-        {needsFile && <label className="block">PDF (maximum 10 MB)<input key={`${action}-${data.revision}`} type="file" accept="application/pdf" className="mt-1 block" onChange={e => { setFile(e.target.files?.[0] ?? null); setReviewed(false) }} /></label>}
-        {preview && <a href={preview} target="_blank" rel="noopener noreferrer" className={button}>Preview selected PDF</a>}
+        {needsFile && <label className="block">PDF (maximum 10 MB){file && <span className="ml-2 text-sm text-teal-800">Selected: {file.name}</span>}<input key={`${selectedAgreementId}-${data.revision}`} type="file" accept="application/pdf" className="mt-1 block" onChange={e => { setFile(e.target.files?.[0] ?? null); setReviewed(false) }} /></label>}
+        {preview && needsFile && <a href={preview} target="_blank" rel="noopener noreferrer" className={button}>Preview selected PDF</a>}
         <label className="block text-sm font-semibold">Reason for this change<textarea maxLength={1000} value={reason} onChange={e => { setReason(e.target.value); setReviewed(false) }} className="mt-1 w-full rounded-lg border p-2" /></label>
         {(action === 'remove' || action === 'replace') && <p className="text-sm text-amber-900">Confirm the file belongs to this sale and the correct cleaner. Removing the signed PDF makes this agreement unsigned. Existing payments and payment schedules remain unchanged.</p>}
         <label className="flex gap-2 text-sm"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I have reviewed the selected document and this correction.</label>
