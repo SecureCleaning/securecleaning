@@ -1,5 +1,6 @@
 'use client'
 
+import { CRM_FOLLOW_UP_TEMPLATE_ID, crmFollowUpSubject } from '@/lib/crmEmailFollowUp'
 import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { crmLeadStageFilterKey, parseCrmLeadStageFilter, CRM_LEAD_STAGE_FILTERS, type CrmLeadStageFilter, CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
 import { crmLeadStage, isCrmLeadOverdue } from '@/lib/crmLeadStages'
@@ -173,6 +174,7 @@ export default function ClientCrmWorkspace({
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
   const [leadDraft, setLeadDraft] = useState(() => emptyLeadDraft())
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
+  const [followUpToId, setFollowUpToId] = useState('')
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null })
   const [emailFollowUp, setEmailFollowUp] = useState({ enabled: false, at: '', note: '' })
   const [composeEditorKey, setComposeEditorKey] = useState(0)
@@ -314,6 +316,7 @@ export default function ClientCrmWorkspace({
       data?.senders.map((sender) => sender.id) ?? [],
     )
     setEmailFollowUp({ enabled: false, at: '', note: '' })
+    setFollowUpToId('')
     setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null })
     setComposeEditorKey((current) => current + 1)
     setEmailPreview(null)
@@ -350,6 +353,20 @@ export default function ClientCrmWorkspace({
     setNotesCursor(typeof result.nextCursor === 'string' && result.nextCursor ? result.nextCursor : null)
   }
 
+  function startEmailFollowUp(emailId: string) {
+    const original = selectedLead?.communications.find((item) => item.id === emailId && item.status === 'sent')
+    if (!original) return
+    const template = data?.templates.find((item) => item.id === CRM_FOLLOW_UP_TEMPLATE_ID && item.status === 'published')
+    setFollowUpToId(original.id)
+    setCompose((current) => ({ ...current, templateId: template?.id || '', subject: crmFollowUpSubject(original.subject),
+      body: template?.body || 'Hi <<first_name>>,\n\nDid you receive my earlier email below? Please let me know if you have any questions or would like to discuss your cleaning requirements.',
+      bodyHtml: template?.bodyHtml || '', bodyDocument: template?.bodyDocument || null }))
+    setEmailFollowUp({ enabled: template?.followUpDays != null, at: businessDayFollowUp(template?.followUpDays ?? 2), note: template?.followUpNote || 'Follow up outreach email' })
+    setComposeEditorKey((current) => current + 1)
+    setEmailPreview(null)
+    document.getElementById('crm-email-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   function chooseTemplate(templateId: string) {
     const template = data?.templates.find((item) => item.id === templateId)
     if (!template || !selectedLead) {
@@ -363,7 +380,7 @@ export default function ClientCrmWorkspace({
     setCompose((current) => ({
       ...current,
       templateId,
-      subject: template.subject,
+      subject: followUpToId ? current.subject : template.subject,
       body: template.body,
       bodyHtml: template.bodyHtml || plainTextToEmailHtml(template.body),
       bodyDocument: template.bodyDocument,
@@ -577,6 +594,7 @@ export default function ClientCrmWorkspace({
     if (!selectedLead) return null
     return {
       opportunityId: selectedLead.id,
+      followUpToId: followUpToId || null,
       senderStaffId: compose.senderStaffId,
       templateId: compose.templateId || null,
       subject: compose.subject,
@@ -618,6 +636,9 @@ export default function ClientCrmWorkspace({
         idempotencyKey: crypto.randomUUID(),
       })
       setEmailPreview(null)
+      setFollowUpToId('')
+      setCompose((current) => ({ ...current, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null }))
+      setComposeEditorKey((current) => current + 1)
       await loadWorkspace(selectedLead.id)
       setStatus({ type: 'success', message: 'Email accepted by the provider and recorded in the opportunity history.' })
     } catch (error) {
@@ -868,8 +889,9 @@ export default function ClientCrmWorkspace({
             <div className="mt-4 divide-y divide-gray-100 border-t border-gray-100">{selectedLead.suppressed ? <article className="py-4"><p className="text-xs font-semibold text-gray-500">Automatic email status note (read-only)</p><ClientEmailStatus lead={selectedLead} /></article> : null}{noteHistory.map((note) => <article key={note.id} className="py-4"><p className="whitespace-pre-wrap text-sm leading-6 text-gray-800">{note.body}</p><p className="mt-2 text-xs font-medium text-gray-500">{note.authorName} · {dateLabel(note.createdAt)}</p></article>)}{noteHistory.length === 0 && !selectedLead.suppressed ? <p className="py-4 text-sm text-gray-500">No internal notes have been added yet.</p> : null}</div>
             {notesCursor ? <button type="button" onClick={() => void loadNotes(selectedLead.id, notesCursor)} className="mt-3 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Load older notes</button> : null}
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+          <section id="crm-email-composer" className="scroll-mt-40 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Email client</h2>
+            {followUpToId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up: {selectedLead.communications.find((item) => item.id === followUpToId)?.subject}</strong><p>The earlier message and its sent date will appear below your message in the preview. Attachments are not resent. Inbox grouping depends on the recipient’s email app.</p><button type="button" onClick={() => void viewSentEmail(selectedLead.id, followUpToId)} className="mr-4 mt-2 font-semibold underline">View earlier email</button><button type="button" onClick={() => { setFollowUpToId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove earlier email</button></div> : null}
             <p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. Sender access, recipient details, contact source, signature, unsubscribe state, and unresolved sends are verified again when you send.</p>
             <ClientEmailStatus lead={selectedLead} />
             {hasUnresolvedEmail ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">A previous email has an unresolved delivery outcome. Reconcile it before sending again.</p> : null}
@@ -911,7 +933,7 @@ export default function ClientCrmWorkspace({
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><ClientEmailStatus lead={selectedLead} /><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p></div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
+          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><ClientEmailStatus lead={selectedLead} /><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}{item.status === 'sent' ? <button type="button" disabled={!!busy || selectedLead.suppressed || hasUnresolvedEmail} onClick={() => startEmailFollowUp(item.id)} className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Follow up</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p>{item.followUpToId ? <p className="mt-1 text-xs text-teal-700">Follow-up to: {selectedLead.communications.find((original) => original.id === item.followUpToId)?.subject || 'Earlier email'}</p> : null}</div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
       <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />

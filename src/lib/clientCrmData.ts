@@ -120,6 +120,7 @@ export type CrmEmailTemplate = {
 }
 
 export type CrmCommunication = {
+  followUpToId: string | null
   id: string
   opportunityId: string
   templateId: string | null
@@ -302,6 +303,7 @@ function mapCommunication(row: Record<string, unknown>): CrmCommunication {
     purpose: row.purpose === 'transactional' ? 'transactional' : 'marketing',
     toEmail: String(row.to_email ?? ''),
     senderName: String(row.sender_name ?? ''),
+    followUpToId: typeof row.follow_up_to_id === 'string' ? row.follow_up_to_id : null,
     subject: String(row.subject_snapshot ?? ''),
     finalHtml: typeof row.final_html_snapshot === 'string' ? row.final_html_snapshot : null,
     finalText: typeof row.final_text_snapshot === 'string' ? row.final_text_snapshot : null,
@@ -383,7 +385,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       : Promise.resolve({ data: [], error: null }),
     opportunityIds.length > 0
     ? await db.from('crm_communications')
-      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at')
+      .select('id, opportunity_id, template_id, template_version, purpose, to_email, sender_name, subject_snapshot, status, sent_at, created_at, follow_up_to_id')
       .in('opportunity_id', opportunityIds)
       .order('created_at', { ascending: false })
     : Promise.resolve({ data: [], error: null }),

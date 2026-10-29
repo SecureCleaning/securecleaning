@@ -1,3 +1,4 @@
+import { buildCrmOriginalEmailQuote } from '@/lib/crmEmailFollowUp'
 import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -96,11 +97,12 @@ function buildClientCrmHtml(parts: {
   signature: string
   sourceExplanation: string
   unsubscribeUrl: string
+  originalHtml?: string
 }) {
   return `
     <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #1f2937; line-height: 1.55;">
       <div style="background: #1a2744; padding: 20px 24px;"><strong style="color: white; font-size: 20px;">Secure Cleaning</strong></div>
-      <div style="padding: 24px;">${parts.bodyHtml}<div style="margin-top: 28px;">${textToHtml(parts.signature)}</div></div>
+      <div style="padding: 24px;">${parts.bodyHtml}<div style="margin-top: 28px;">${textToHtml(parts.signature)}</div>${parts.originalHtml || ''}</div>
       <div style="border-top: 1px solid #e5e7eb; padding: 18px 24px; color: #6b7280; font-size: 12px;">
         <p style="margin: 0 0 10px;">You are receiving this email because ${escapeHtml(parts.sourceExplanation)}.</p>
         <p style="margin: 0 0 10px;"><a href="${escapeHtml(parts.unsubscribeUrl)}" style="color: #0f766e;">Unsubscribe from marketing emails</a></p>
@@ -199,6 +201,21 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     throw new ClientCrmError('The saved intake and contact emails do not match. Review the record before sending.', 409)
   }
 
+  const followUpToId = clean(input.followUpToId, 100)
+  let originalQuote = { html: '', text: '' }
+  if (followUpToId) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(followUpToId)) throw new ClientCrmError('Invalid original email reference.')
+    const original = await db.from('crm_communications')
+      .select('id,opportunity_id,contact_id,to_email,status,sent_at,subject_snapshot,body_snapshot,signature_snapshot,sender_name,from_email')
+      .eq('id', followUpToId).eq('opportunity_id', opportunity.id).maybeSingle()
+    if (original.error) throw original.error
+    try {
+      originalQuote = buildCrmOriginalEmailQuote(original.data, opportunity.id, contact.id, recipient)
+    } catch (error) {
+      throw new ClientCrmError(error instanceof Error ? error.message : 'Original email is unavailable.', 409)
+    }
+  }
+
   const purpose = 'marketing' as const
   let templateVersion: number | null = null
   if (templateId) {
@@ -264,9 +281,9 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     throw new ClientCrmError('The selected sender must use a verified Secure Cleaning work email before sending client outreach.', 409)
   }
   const fromHeader = `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`
-  const finalHtml = buildClientCrmHtml({ bodyHtml: content.html, signature, sourceExplanation, unsubscribeUrl })
-  const finalText = `${content.text}\n\n${signature}\n\n${footer}`
-  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email]) })
+  const finalHtml = buildClientCrmHtml({ bodyHtml: content.html, signature, sourceExplanation, unsubscribeUrl, originalHtml: originalQuote.html })
+  const finalText = `${content.text}\n\n${signature}${originalQuote.text}\n\n${footer}`
+  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId]) })
 
   return {
     db,
@@ -289,6 +306,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     finalHtml,
     finalText,
     previewFingerprint,
+    followUpToId,
   }
 }
 
@@ -379,6 +397,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   if (!communicationId) throw new ClientCrmError('The email could not be claimed for sending.', 409)
 
   const { error: snapshotError } = await db.from('crm_communications').update({
+    follow_up_to_id: prepared.followUpToId || null,
     follow_up_at: followUpAt,
     follow_up_note: followUpNote,
     body_document_snapshot: content.document,
@@ -438,6 +457,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
       actorId: actor.id,
       senderStaffId: sender.id,
       communicationId,
+      followUpToId: prepared.followUpToId || null,
       templateId: templateId || null,
       purpose,
     },
