@@ -3,7 +3,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import type { ClientCrmActor } from '@/lib/clientCrmAuth'
 import { ClientCrmError, createManualCrmOpportunity, prepareManualCrmOpportunity } from '@/lib/clientCrmData'
 import { getPremisesCatalog } from '@/lib/premisesCatalogServer'
-import { LEAD_CSV_COLUMNS, leadCsv, parseLeadCsv } from '@/lib/clientLeadCsv'
+import { LEAD_CSV_COLUMNS, leadCsv, parseLeadCsv, partitionLeadCsvRows } from '@/lib/clientLeadCsv'
 
 export async function previewLeadCsv(actor: ClientCrmActor, text: string) {
   let rows: ReturnType<typeof parseLeadCsv>
@@ -27,11 +27,13 @@ export async function previewLeadCsv(actor: ClientCrmActor, text: string) {
   }
   return rows
 }
-export async function importLeadCsv(actor: ClientCrmActor, text: string) {
+export async function importLeadCsv(actor: ClientCrmActor, text: string, excludedRows: number[] = []) {
   const rows = await previewLeadCsv(actor, text)
-  if (rows.some(row => row.errors.length)) throw new ClientCrmError('Correct all preview errors before importing.')
-  const results: { row: number; id?: string; error?: string }[] = []
-  for (const row of rows) {
+  const selection = partitionLeadCsvRows(rows, excludedRows)
+  if (!selection.included.length) throw new ClientCrmError('Select at least one valid row to import.')
+  if (selection.included.some(row => row.errors.length)) throw new ClientCrmError('Exclude or correct all remaining preview errors before importing.')
+  const results: { row: number; id?: string; error?: string; excluded?: boolean }[] = selection.excluded.map(row => ({ row: row.row, excluded: true }))
+  for (const row of selection.included) {
     const key = createHash('sha256').update(JSON.stringify(LEAD_CSV_COLUMNS.map(key => row.record[key] || ''))).digest('hex')
     try {
       const result = await createManualCrmOpportunity(actor, row.input, key)
@@ -45,7 +47,7 @@ export async function importLeadCsv(actor: ClientCrmActor, text: string) {
       results.push({ row: row.row, error: error.message })
     }
   }
-  return results
+  return results.sort((a, b) => a.row - b.row)
 }
 export async function exportLeadCsv(actor: ClientCrmActor) {
   const db = getAdminSupabase(); const rows: Record<string, unknown>[] = []
@@ -79,3 +81,4 @@ export async function exportLeadCsv(actor: ClientCrmActor) {
   }
   return leadCsv(rows)
 }
+

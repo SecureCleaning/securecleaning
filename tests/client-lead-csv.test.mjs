@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parseLeadCsv, leadCsv } from '../src/lib/clientLeadCsv.ts'
+import { parseLeadCsv, leadCsv, normalizeExcludedLeadCsvRows, partitionLeadCsvRows } from '../src/lib/clientLeadCsv.ts'
 import { parsePremisesSelection, premisesLabel } from '../src/lib/premisesCatalog.ts'
 import { applyEmailMergeFields, CLIENT_EMAIL_MERGE_FIELD_KEYS } from '../src/lib/emailMergeFields.ts'
 const options=[{code:'office',label:'Office',active:true},{code:'other',label:'Other',active:true},{code:'old',label:'Old',active:false}]
@@ -39,3 +39,13 @@ test('website-sourced leads normalize without treating public contact details as
  assert.equal(row.input.firstName,'Manager');assert.equal(row.input.sourceType,'cold_outreach');assert.equal(row.input.contactBasis,'inferred_business_interest')
  assert.equal(row.input.sourceProvider,'Example organisation');assert.equal(row.input.sourceReference,'https://example.com/contact')
 })
+
+test('CSV import exclusions retain valid rows and hold error rows for later review',()=>{
+ const rows=parseLeadCsv(leadCsv([base,{...base,email:'bad-email'}]),options)
+ const excludedRows=normalizeExcludedLeadCsvRows([3,3])
+ const selection=partitionLeadCsvRows(rows,excludedRows)
+ assert.deepEqual(excludedRows,[3]);assert.deepEqual(selection.included.map(row=>row.row),[2]);assert.deepEqual(selection.excluded.map(row=>row.row),[3])
+ assert.deepEqual(selection.included[0].errors,[]);assert.match(selection.excluded[0].errors.join(),/email/)
+ assert.throws(()=>normalizeExcludedLeadCsvRows([1]),/invalid/);assert.throws(()=>normalizeExcludedLeadCsvRows(['3']),/invalid/)
+})
+
