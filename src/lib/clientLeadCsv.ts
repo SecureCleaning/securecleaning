@@ -80,3 +80,20 @@ export function parseLeadCsv(text: string, options: PremisesOption[]) {
     return { row: index + 2, record, input, errors }
   })
 }
+
+export function normalizeExcludedLeadCsvRows(value: unknown) {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.some(row => !Number.isInteger(row) || row < 2 || row > 201)) {
+    throw new Error('Excluded CSV rows are invalid. Preview the file again and retry.')
+  }
+  return [...new Set(value as number[])]
+}
+
+export function partitionLeadCsvRows<T extends { row: number }>(rows: T[], excludedRows: readonly number[]) {
+  const excluded = new Set(excludedRows)
+  return {
+    included: rows.filter(row => !excluded.has(row.row)),
+    excluded: rows.filter(row => excluded.has(row.row)),
+  }
+}
+

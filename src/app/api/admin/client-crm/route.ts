@@ -1,6 +1,6 @@
 import { getPremisesCatalog, savePremisesOption } from '@/lib/premisesCatalogServer'
 import { previewLeadCsv, importLeadCsv, exportLeadCsv } from '@/lib/clientLeadCsvServer'
-import { leadCsv } from '@/lib/clientLeadCsv'
+import { leadCsv, normalizeExcludedLeadCsvRows } from '@/lib/clientLeadCsv'
 import { NextRequest, NextResponse } from 'next/server'
 import { rejectCrossOriginMutation, rejectLargePayload, rateLimit } from '@/lib/abuseProtection'
 import { getCrmFollowUps, getCrmSentEmail } from '@/lib/clientCrmReads'
@@ -66,7 +66,9 @@ export async function POST(request: NextRequest) {
       const limited = await rateLimit(request, { key: `client-csv:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       if (typeof body.csv !== 'string') throw new ClientCrmError('Choose a CSV file.')
-      return NextResponse.json({ success: true, result: action === 'csv.preview' ? await previewLeadCsv(actor, body.csv) : await importLeadCsv(actor, body.csv) })
+      let excludedRows: number[] = []
+      try { excludedRows = normalizeExcludedLeadCsvRows(body.excludedRows) } catch (error) { throw new ClientCrmError((error as Error).message) }
+      return NextResponse.json({ success: true, result: action === 'csv.preview' ? await previewLeadCsv(actor, body.csv) : await importLeadCsv(actor, body.csv, excludedRows) })
     }
     if (action === 'opportunity.create') {
       const result = await createManualCrmOpportunity(actor, body)
@@ -120,3 +122,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unable to complete the Client CRM operation.' }, { status: 500 })
   }
 }
+
