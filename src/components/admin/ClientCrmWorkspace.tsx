@@ -1,6 +1,7 @@
 'use client'
 
 import { CRM_FOLLOW_UP_TEMPLATE_ID, crmFollowUpSubject } from '@/lib/crmEmailFollowUp'
+import { crmActivity, type CrmActivityTab } from '@/lib/crmActivity'
 import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { crmLeadStageFilterKey, parseCrmLeadStageFilter, CRM_LEAD_STAGE_FILTERS, type CrmLeadStageFilter, CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
 import { crmLeadStage, isCrmLeadOverdue } from '@/lib/crmLeadStages'
@@ -187,6 +188,9 @@ export default function ClientCrmWorkspace({
   const [appointmentDraft, setAppointmentDraft] = useState(emptyAppointmentDraft)
   const [noteDraft, setNoteDraft] = useState('')
   const [noteHistory, setNoteHistory] = useState<CrmOpportunity['internalNotes']>([])
+  const [activityTab, setActivityTab] = useState<CrmActivityTab>('all')
+  const [activityLimit, setActivityLimit] = useState(10)
+  const [olderActivityLoading, setOlderActivityLoading] = useState(false)
   const [notesCursor, setNotesCursor] = useState<string | null>(null)
   const activeNotesOpportunityId = useRef('')
   const [wonOpen, setWonOpen] = useState(false)
@@ -266,6 +270,10 @@ export default function ClientCrmWorkspace({
 
   useEffect(() => {
     activeNotesOpportunityId.current = selectedLeadId
+    setNoteHistory([])
+    setNotesCursor(null)
+    setActivityTab('all')
+    setActivityLimit(10)
     if (!selectedLeadId) {
       setNoteHistory([])
       setNotesCursor(null)
@@ -277,6 +285,7 @@ export default function ClientCrmWorkspace({
   }, [selectedLeadId])
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
+  const activityEntries = crmActivity(noteHistory, selectedLead?.communications ?? [], activityTab, notesCursor)
   const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter), [data?.opportunities, search, leadSort, leadStageFilter])
 
   useEffect(() => {
@@ -882,12 +891,30 @@ export default function ClientCrmWorkspace({
             {wonOpen ? <div className="mt-5 rounded-xl border border-green-200 bg-green-50 p-4"><h3 className="font-bold text-green-950">Confirm the accepted contract</h3><p className="mt-1 text-sm text-green-900">This closes the opportunity, marks and locks the winning quote as accepted, and creates one editable draft product from that saved quote.</p><div className="mt-4 grid gap-4 md:grid-cols-2"><label className="text-sm font-medium">Winning saved quote<select value={wonDraft.quoteId} onChange={(event) => setWonDraft({ ...wonDraft, quoteId: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="">Select saved quote</option>{selectedLead.quotes.map((quote) => <option key={quote.id} value={quote.id}>{quote.quoteRef} · {dateLabel(quote.createdAt)}{quote.finalQuoteSentAt ? ' · sent final' : quote.hasFinalDocument ? ' · reviewed final' : ' · saved quote'}</option>)}</select></label><label className="text-sm font-medium">Acceptance date<input type="date" max={melbourneToday()} value={wonDraft.acceptanceDate} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceDate: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label><label className="text-sm font-medium">Acceptance method<select value={wonDraft.acceptanceMethod} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceMethod: event.target.value })} className="mt-1 w-full rounded-lg border border-green-200 bg-white px-3 py-2.5"><option value="email">Email</option><option value="signed_agreement">Signed agreement</option><option value="phone">Phone</option><option value="other">Other</option></select></label><label className="text-sm font-medium">Acceptance evidence or note<input value={wonDraft.acceptanceNote} onChange={(event) => setWonDraft({ ...wonDraft, acceptanceNote: event.target.value })} placeholder="e.g. Accepted by email on 28 August" className="mt-1 w-full rounded-lg border border-green-200 px-3 py-2.5" /></label></div><div className="mt-4 flex gap-3"><button type="button" onClick={() => void closeWon()} disabled={busy === 'close-won' || !wonDraft.quoteId || wonDraft.acceptanceNote.trim().length < 3} className="rounded-lg bg-green-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'close-won' ? 'Creating product...' : 'Confirm win & create draft product'}</button><button type="button" onClick={() => setWonOpen(false)} className="rounded-lg border border-green-300 bg-white px-4 py-2.5 text-sm font-semibold text-green-900">Cancel</button></div>{selectedLead.quotes.length === 0 ? <p className="mt-3 text-sm font-semibold text-amber-800">Save a quote before closing this opportunity as won.</p> : null}</div> : null}
           </section>
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">Internal CRM notes</h2>
+            <h2 className="text-lg font-bold text-gray-900">Notes &amp; activity</h2>
             <p className="mt-1 text-sm text-gray-600">Add separate timestamped notes. These are internal only and never appear in client emails, quotes, or scopes.</p>
             <label className="mt-4 block text-sm font-medium text-gray-700">New note<textarea rows={3} maxLength={4000} value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Record a call, site detail, follow-up, or internal context" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
             <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-gray-500">{noteDraft.length}/4000 characters</span><button type="button" onClick={() => void addNote()} disabled={busy === 'note-add' || !noteDraft.trim()} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'note-add' ? 'Adding note...' : 'Add note'}</button></div>
-            <div className="mt-4 divide-y divide-gray-100 border-t border-gray-100">{selectedLead.suppressed ? <article className="py-4"><p className="text-xs font-semibold text-gray-500">Automatic email status note (read-only)</p><ClientEmailStatus lead={selectedLead} /></article> : null}{noteHistory.map((note) => <article key={note.id} className="py-4"><p className="whitespace-pre-wrap text-sm leading-6 text-gray-800">{note.body}</p><p className="mt-2 text-xs font-medium text-gray-500">{note.authorName} · {dateLabel(note.createdAt)}</p></article>)}{noteHistory.length === 0 && !selectedLead.suppressed ? <p className="py-4 text-sm text-gray-500">No internal notes have been added yet.</p> : null}</div>
-            {notesCursor ? <button type="button" onClick={() => void loadNotes(selectedLead.id, notesCursor)} className="mt-3 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Load older notes</button> : null}
+            <div className="mt-4 flex gap-2" role="tablist" aria-label="Notes and activity">
+              {([['all', 'All activity'], ['notes', 'Notes'], ['emails', 'Emails']] as const).map(([tab, label]) => <button key={tab} id={`crm-activity-${tab}`} type="button" role="tab" aria-selected={activityTab === tab} aria-controls="crm-activity-panel" onClick={() => { setActivityTab(tab); setActivityLimit(10) }} className={`rounded-lg px-3 py-2 text-sm font-semibold ${activityTab === tab ? 'bg-teal-700 text-white' : 'bg-gray-100 text-gray-700'}`}>{label}</button>)}
+            </div>
+            <ClientEmailStatus lead={selectedLead} />
+            <div id="crm-activity-panel" role="tabpanel" aria-labelledby={`crm-activity-${activityTab}`} className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
+              {activityEntries.slice(0, activityLimit).map(entry => {
+                if (entry.kind === 'note') { const note = entry.value; return <article key={`note:${note.id}`} className="py-4"><p className="mb-1 text-xs font-semibold text-gray-500">Internal note</p><p className="whitespace-pre-wrap text-sm leading-6 text-gray-800">{note.body}</p><p className="mt-2 text-xs font-medium text-gray-500">{note.authorName} · {dateLabel(note.createdAt)}</p></article> }
+                const item = entry.value
+                return <div key={`email:${item.id}`} className="py-3"><p className="mb-1 text-xs font-semibold text-teal-700">Email</p><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}{item.status === 'sent' ? <button type="button" disabled={!!busy || selectedLead.suppressed || hasUnresolvedEmail} onClick={() => startEmailFollowUp(item.id)} className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Follow up</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p>{item.followUpToId ? <p className="mt-1 text-xs text-teal-700">Follow-up to: {selectedLead.communications.find((original) => original.id === item.followUpToId)?.subject || 'Earlier email'}</p> : null}</div>
+              })}
+              {activityEntries.length === 0 ? <p className="py-4 text-sm text-gray-500">No {activityTab === 'notes' ? 'internal notes' : activityTab === 'emails' ? 'emails' : 'activity'} to show.</p> : null}
+            </div>
+            {activityEntries.length > activityLimit || (activityTab !== 'emails' && notesCursor) ? <button type="button" disabled={olderActivityLoading} onClick={async () => {
+              setOlderActivityLoading(true)
+              try {
+                if (activityTab !== 'emails' && notesCursor && activityLimit >= activityEntries.length) await loadNotes(selectedLead.id, notesCursor)
+                if (activeNotesOpportunityId.current === selectedLead.id) setActivityLimit(limit => limit + 10)
+              } catch (error) { setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load older activity.' }) }
+              finally { setOlderActivityLoading(false) }
+            }} className="mt-3 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50">{olderActivityLoading ? 'Loading...' : 'Show older activity'}</button> : null}
           </section>
           <section id="crm-email-composer" className="scroll-mt-40 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Email client</h2>
@@ -933,7 +960,7 @@ export default function ClientCrmWorkspace({
               return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
             })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-bold text-gray-900">Activity</h2><ClientEmailStatus lead={selectedLead} /><div className="mt-3 divide-y divide-gray-100">{selectedLead.communications.map((item) => <div key={item.id} className="py-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}{item.status === 'sent' ? <button type="button" disabled={!!busy || selectedLead.suppressed || hasUnresolvedEmail} onClick={() => startEmailFollowUp(item.id)} className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Follow up</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p>{item.followUpToId ? <p className="mt-1 text-xs text-teal-700">Follow-up to: {selectedLead.communications.find((original) => original.id === item.followUpToId)?.subject || 'Earlier email'}</p> : null}</div>)}{selectedLead.communications.length === 0 ? <p className="py-3 text-sm text-gray-500">No client emails have been sent from this opportunity.</p> : null}</div></section>
+
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
       <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />

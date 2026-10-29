@@ -639,7 +639,7 @@ test('client CRM notes are append-only, internal, attributed, and duplicate-safe
   const route = source('src/app/api/admin/client-crm/route.ts')
   const migration = source('supabase/client_crm_profile_notes_migration.sql')
 
-  assert.match(workspace, /Internal CRM notes/)
+  assert.match(workspace, /Notes &amp; activity/)
   assert.match(workspace, /never appear in client emails, quotes, or scopes/)
   assert.match(workspace, /action: 'opportunity-note\.add'/)
   assert.match(route, /client-crm-note:\$\{actor\.id\}/)
@@ -647,7 +647,7 @@ test('client CRM notes are append-only, internal, attributed, and duplicate-safe
   assert.match(data, /db\.rpc\('add_client_crm_note'/)
   assert.match(data, /export async function getCrmOpportunityNotes/)
   assert.match(data, /\.limit\(51\)/)
-  assert.match(workspace, /Load older notes/)
+  assert.match(workspace, /Show older activity/)
   assert.match(migration, /CREATE TABLE IF NOT EXISTS crm_opportunity_notes/)
   assert.match(migration, /author_staff_id UUID REFERENCES admin_staff_accounts/)
   assert.match(migration, /author_name_snapshot TEXT NOT NULL/)
