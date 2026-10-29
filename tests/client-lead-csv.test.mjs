@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { parseLeadCsv, leadCsv, normalizeExcludedLeadCsvRows, partitionLeadCsvRows } from '../src/lib/clientLeadCsv.ts'
 import { parsePremisesSelection, premisesLabel } from '../src/lib/premisesCatalog.ts'
 import { applyEmailMergeFields, CLIENT_EMAIL_MERGE_FIELD_KEYS } from '../src/lib/emailMergeFields.ts'
@@ -47,5 +49,12 @@ test('CSV import exclusions retain valid rows and hold error rows for later revi
  assert.deepEqual(excludedRows,[3]);assert.deepEqual(selection.included.map(row=>row.row),[2]);assert.deepEqual(selection.excluded.map(row=>row.row),[3])
  assert.deepEqual(selection.included[0].errors,[]);assert.match(selection.excluded[0].errors.join(),/email/)
  assert.throws(()=>normalizeExcludedLeadCsvRows([1]),/invalid/);assert.throws(()=>normalizeExcludedLeadCsvRows(['3']),/invalid/)
+})
+
+test('CSV preview and import use independent authenticated rate-limit buckets',()=>{
+ const route=readFileSync(fileURLToPath(new URL('../src/app/api/admin/client-crm/route.ts',import.meta.url)),'utf8')
+ assert.match(route,/client-csv-preview:\$\{actor\.id\}`,[\s\S]{0,40}limit: 60/)
+ assert.match(route,/client-csv-import:\$\{actor\.id\}`,[\s\S]{0,40}limit: 20/)
+ assert.doesNotMatch(route,/key: `client-csv:\$\{actor\.id\}`/)
 })
 
