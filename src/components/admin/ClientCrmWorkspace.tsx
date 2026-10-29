@@ -1,6 +1,7 @@
 'use client'
 
 import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
+import { CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
 import { crmLeadStage, isCrmLeadOverdue } from '@/lib/crmLeadStages'
 import PremisesTypeField from './PremisesTypeField'
 import CrmPremisesSettings from './CrmPremisesSettings'
@@ -191,6 +192,19 @@ export default function ClientCrmWorkspace({
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
+  const [leadSort, setLeadSort] = useState<CrmLeadSort>('updated')
+  useEffect(() => {
+    if (!data?.actor.id) return
+    try { setLeadSort(parseCrmLeadSort(localStorage.getItem(crmLeadSortKey(data.actor.id)))) }
+    catch { setLeadSort('updated') }
+  }, [data?.actor.id])
+  function changeLeadSort(value: string) {
+    const sort = parseCrmLeadSort(value)
+    setLeadSort(sort)
+    if (data?.actor.id) {
+      try { localStorage.setItem(crmLeadSortKey(data.actor.id), sort) } catch { /* Sorting still works when storage is unavailable. */ }
+    }
+  }
 
   const workspaceRead = useRef<Promise<void> | null>(null)
   const historyRequest = useRef<AbortController | null>(null)
@@ -251,11 +265,7 @@ export default function ClientCrmWorkspace({
   }, [selectedLeadId])
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
-  const filteredLeads = useMemo(() => {
-    const query = search.trim().toLowerCase()
-    if (!query) return data?.opportunities ?? []
-    return (data?.opportunities ?? []).filter((lead) => [lead.businessName, lead.contactName, lead.email, lead.postcode, lead.sourceProvider, lead.assignedStaffName].some((value) => value?.toLowerCase().includes(query)))
-  }, [data?.opportunities, search])
+  const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort), [data?.opportunities, search, leadSort])
 
   useEffect(() => {
     if (!selectedLead) return
@@ -728,7 +738,33 @@ export default function ClientCrmWorkspace({
 
       {view === 'pipeline' ? <ClientFollowUps refreshKey={data} /> : null}
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search business, contact, email or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm" /><div className="mt-3 max-h-[70vh] space-y-2 overflow-y-auto">{filteredLeads.map((lead) => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)} className={`block w-full rounded-xl border p-3 text-left ${crmLeadStage(lead.stage).colour} ${lead.id === selectedLeadId ? 'ring-2 ring-teal-600 ring-offset-1' : ''}`}><span className="block font-semibold text-gray-900">{lead.businessName || lead.contactName || lead.email}</span><span className="block text-sm text-gray-600">{lead.contactName}</span><span className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-white/80 px-2 py-1 text-xs font-semibold text-gray-900">{crmLeadStage(lead.stage).label}</span>{isCrmLeadOverdue(lead.stage, lead.nextFollowUpAt) ? <span className="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">Overdue</span> : null}</span><span className="mt-1 block text-xs text-gray-600">{lead.sourceType.replaceAll('_', ' ')}</span><span className="mt-1 block text-xs text-gray-500">{lead.assignedStaffName || 'Unassigned'} - {lead.postcode || 'Site to confirm'} - {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>{lead.suppressed ? <span className="mt-1 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{lead.suppression?.reason === 'unsubscribed' ? 'Unsubscribed' : 'Email suppressed'}</span> : null}</button>)}{filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}</div></section>
+        <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+          <input type="search" aria-label="Search client leads" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Business, contact, email, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Sort
+            <select aria-label="Sort client leads" value={leadSort} onChange={event => changeLeadSort(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+              {Object.entries(CRM_LEAD_SORTS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <details className="mt-2 text-xs text-gray-600">
+            <summary className="cursor-pointer">Stage colour key</summary>
+            <div className="mt-2 flex flex-wrap gap-1" aria-label="Stage colour key">
+              {['new','contacted','inspection','quoting','proposal_sent','won','lost'].map(stage => <span key={stage} className={`rounded border px-2 py-1 text-gray-900 ${crmLeadStage(stage).colour}`}>{crmLeadStage(stage).label}</span>)}
+            </div>
+          </details>
+          <div className="mt-2 max-h-[70vh] space-y-1.5 overflow-y-auto p-1">
+            {filteredLeads.map(lead => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)}
+              title={[`Contact: ${lead.contactName || 'Not specified'}`, `Source: ${lead.sourceType.replaceAll('_', ' ')}`, `Agent: ${lead.assignedStaffName || 'Unassigned'}`, `Email: ${lead.email}`, `Updated: ${dateLabel(lead.updatedAt)}`].join('\n')}
+              className={`block w-full rounded-lg border px-2.5 py-2 text-left ${crmLeadStage(lead.stage).colour} ${lead.id === selectedLeadId ? 'ring-2 ring-teal-600 ring-offset-1' : ''}`}>
+              <span className="line-clamp-2 text-sm font-semibold leading-tight text-gray-900">{lead.businessName || lead.contactName || lead.email}</span>
+              <span className="mt-1 flex flex-wrap items-center gap-1"><span className="rounded bg-white/80 px-1.5 py-0.5 text-xs font-semibold text-gray-900">{crmLeadStage(lead.stage).label}</span>
+                {isCrmLeadOverdue(lead.stage, lead.nextFollowUpAt) ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700">Overdue</span> : null}
+                {lead.suppressed ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700">{lead.suppression?.reason === 'unsubscribed' ? 'Unsubscribed' : 'Email suppressed'}</span> : null}
+              </span>
+              <span className="mt-1 block truncate text-xs text-gray-600">{[lead.suburb, lead.postcode].filter(Boolean).join(' ') || 'Site to confirm'} · {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>
+            </button>)}
+            {filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}
+          </div>
+        </section>
         {selectedLead ? <div className="space-y-5">
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">Client and site details</h2><span className={`mt-2 inline-block rounded-full border px-3 py-1 text-sm font-semibold ${crmLeadStage(selectedLead.stage).colour}`}>{crmLeadStage(selectedLead.stage).label}</span><p className="mt-1 text-sm text-gray-600">Structured details used across this customer’s CRM records.</p></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span>{!profileEditing ? <button type="button" onClick={() => setProfileEditing(true)} className="rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50">Edit client details</button> : null}</div></div>
