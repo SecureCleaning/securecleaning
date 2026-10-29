@@ -24,3 +24,12 @@ test('production Tailwind scan emits every CRM stage background and border',asyn
  const {css}=await postcss([tailwind(config)]).process('@tailwind utilities;', {from:undefined})
  for(const stage of Object.values(CRM_LEAD_STAGES)) for(const name of stage.colour.split(' ')) assert.ok(css.includes(`.${name} {`),`missing generated CSS for ${name}`)
 })
+test('stage filter combines with search and sort and includes legacy stage aliases',()=>{
+ const records=['new','contacted','qualified','inspection','quoting','proposal_sent','won','lost','cancelled'].map((stage,i)=>({...leads[i%2],id:String(i),stage}))
+ assert.equal(filterSortCrmLeads(records,'','updated','all').length,9)
+ for(const stage of ['new','inspection','quoting','proposal_sent','won']) assert.deepEqual(filterSortCrmLeads(records,'','updated',stage).map(l=>l.stage),[stage])
+ assert.deepEqual(new Set(filterSortCrmLeads(records,'','updated','contacted').map(l=>l.stage)),new Set(['contacted','qualified']))
+ assert.deepEqual(new Set(filterSortCrmLeads(records,'','updated','lost').map(l=>l.stage)),new Set(['lost','cancelled']))
+ assert.deepEqual(filterSortCrmLeads(records,'Camden','name','contacted').map(l=>l.stage),['contacted'])
+ assert.equal(filterSortCrmLeads(records,'absent','name','won').length,0)
+})

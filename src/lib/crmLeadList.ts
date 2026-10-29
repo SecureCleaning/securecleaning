@@ -17,9 +17,12 @@ const date = (value: string | null | undefined, missing = 0) => {
   const parsed = value ? Date.parse(value) : NaN
   return Number.isFinite(parsed) ? parsed : missing
 }
-export function filterSortCrmLeads(leads: CrmOpportunity[], search: string, sort: CrmLeadSort) {
+export const CRM_LEAD_STAGE_FILTERS = ['new', 'contacted', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost'] as const
+export type CrmLeadStageFilter = 'all' | typeof CRM_LEAD_STAGE_FILTERS[number]
+export function filterSortCrmLeads(leads: CrmOpportunity[], search: string, sort: CrmLeadSort, stage: CrmLeadStageFilter = 'all') {
   const query = search.trim().toLowerCase()
-  return leads.filter(lead => !query || [lead.businessName, lead.contactName, lead.email, lead.suburb, lead.postcode, lead.sourceProvider, lead.assignedStaffName].some(value => value?.toLowerCase().includes(query)))
+  return leads.filter(lead => stage === 'all' || lead.stage === stage || (stage === 'contacted' && lead.stage === 'qualified') || (stage === 'lost' && lead.stage === 'cancelled'))
+    .filter(lead => !query || [lead.businessName, lead.contactName, lead.email, lead.suburb, lead.postcode, lead.sourceProvider, lead.assignedStaffName].some(value => value?.toLowerCase().includes(query)))
     .sort((a,b) => {
       let order = 0
       if (sort === 'name') order = (a.businessName || a.contactName || a.email).localeCompare(b.businessName || b.contactName || b.email, 'en', { sensitivity: 'base' })

@@ -1,7 +1,7 @@
 'use client'
 
 import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
-import { CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
+import { CRM_LEAD_STAGE_FILTERS, type CrmLeadStageFilter, CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
 import { crmLeadStage, isCrmLeadOverdue } from '@/lib/crmLeadStages'
 import PremisesTypeField from './PremisesTypeField'
 import CrmPremisesSettings from './CrmPremisesSettings'
@@ -192,6 +192,7 @@ export default function ClientCrmWorkspace({
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
+  const [leadStageFilter, setLeadStageFilter] = useState<CrmLeadStageFilter>('all')
   const [leadSort, setLeadSort] = useState<CrmLeadSort>('updated')
   useEffect(() => {
     if (!data?.actor.id) return
@@ -265,7 +266,7 @@ export default function ClientCrmWorkspace({
   }, [selectedLeadId])
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
-  const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort), [data?.opportunities, search, leadSort])
+  const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter), [data?.opportunities, search, leadSort, leadStageFilter])
 
   useEffect(() => {
     if (!selectedLead) return
@@ -740,6 +741,12 @@ export default function ClientCrmWorkspace({
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
         <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
           <input type="search" aria-label="Search client leads" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Business, contact, email, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Stage
+            <select aria-label="Filter leads by stage" value={leadStageFilter} onChange={event => setLeadStageFilter(event.target.value as CrmLeadStageFilter)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+              <option value="all">All stages</option>
+              {CRM_LEAD_STAGE_FILTERS.map(stage => <option key={stage} value={stage}>{crmLeadStage(stage).label}</option>)}
+            </select>
+          </label>
           <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Sort
             <select aria-label="Sort client leads" value={leadSort} onChange={event => changeLeadSort(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
               {Object.entries(CRM_LEAD_SORTS).map(([value,label]) => <option key={value} value={value}>{label}</option>)}
