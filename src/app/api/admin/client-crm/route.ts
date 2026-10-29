@@ -1,3 +1,4 @@
+import { CRM_EMAIL_SEND_LIMIT, CRM_EMAIL_PREVIEW_LIMIT, CRM_EMAIL_WINDOW_MS, crmEmailLimitMessage } from '@/lib/crmEmailRateLimit'
 import { getPremisesCatalog, savePremisesOption } from '@/lib/premisesCatalogServer'
 import { previewLeadCsv, importLeadCsv, exportLeadCsv } from '@/lib/clientLeadCsvServer'
 import { leadCsv, normalizeExcludedLeadCsvRows } from '@/lib/clientLeadCsv'
@@ -107,13 +108,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })
     }
     if (action === 'email.preview') {
-      const limited = await rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 })
-      if (limited) return limited
+      const limited = await rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: CRM_EMAIL_PREVIEW_LIMIT, windowMs: CRM_EMAIL_WINDOW_MS })
+      if (limited) {
+        if (limited.status !== 429) return limited
+        return NextResponse.json({ success: false, error: crmEmailLimitMessage('preview', limited.headers.get('Retry-After')) }, { status: 429, headers: limited.headers })
+      }
       return NextResponse.json({ success: true, result: await previewClientCrmEmail(actor, body) })
     }
     if (action === 'email.send') {
-      const limited = await rateLimit(request, { key: `client-crm-send:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 })
-      if (limited) return limited
+      const limited = await rateLimit(request, { key: `client-crm-send:${actor.id}`, limit: CRM_EMAIL_SEND_LIMIT, windowMs: CRM_EMAIL_WINDOW_MS })
+      if (limited) {
+        if (limited.status !== 429) return limited
+        return NextResponse.json({ success: false, error: crmEmailLimitMessage('send', limited.headers.get('Retry-After')) }, { status: 429, headers: limited.headers })
+      }
       return NextResponse.json({ success: true, result: await sendClientCrmEmail(actor, body) })
     }
     return NextResponse.json({ success: false, error: 'Select a valid Client CRM action.' }, { status: 400 })
