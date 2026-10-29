@@ -19,6 +19,11 @@ const date = (value: string | null | undefined, missing = 0) => {
 }
 export const CRM_LEAD_STAGE_FILTERS = ['new', 'contacted', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost'] as const
 export type CrmLeadStageFilter = 'all' | typeof CRM_LEAD_STAGE_FILTERS[number]
+export function parseCrmLeadStageFilter(value: string | null): CrmLeadStageFilter {
+  return CRM_LEAD_STAGE_FILTERS.some(stage => stage === value) ? value as CrmLeadStageFilter : 'all'
+}
+export function crmLeadStageFilterKey(actorId: string) { return `sc-crm-lead-stage:${actorId}` }
+
 export function filterSortCrmLeads(leads: CrmOpportunity[], search: string, sort: CrmLeadSort, stage: CrmLeadStageFilter = 'all') {
   const query = search.trim().toLowerCase()
   return leads.filter(lead => stage === 'all' || lead.stage === stage || (stage === 'contacted' && lead.stage === 'qualified') || (stage === 'lost' && lead.stage === 'cancelled'))

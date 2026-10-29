@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
-import { filterSortCrmLeads, parseCrmLeadSort, crmLeadSortKey } from '../src/lib/crmLeadList.ts'
+import { parseCrmLeadStageFilter, crmLeadStageFilterKey, CRM_LEAD_STAGE_FILTERS, filterSortCrmLeads, parseCrmLeadSort, crmLeadSortKey } from '../src/lib/crmLeadList.ts'
 import { CRM_LEAD_STAGES } from '../src/lib/crmLeadStages.ts'
 const require=createRequire(import.meta.url)
 const leads=[
@@ -32,4 +32,11 @@ test('stage filter combines with search and sort and includes legacy stage alias
  assert.deepEqual(new Set(filterSortCrmLeads(records,'','updated','lost').map(l=>l.stage)),new Set(['lost','cancelled']))
  assert.deepEqual(filterSortCrmLeads(records,'Camden','name','contacted').map(l=>l.stage),['contacted'])
  assert.equal(filterSortCrmLeads(records,'absent','name','won').length,0)
+})
+
+test('saved stage preferences accept supported stages, default safely and stay separate per person and from sorting',()=>{
+ for(const stage of ['all',...CRM_LEAD_STAGE_FILTERS]) assert.equal(parseCrmLeadStageFilter(stage),stage)
+ for(const value of [null,'','invalid','__proto__','qualified']) assert.equal(parseCrmLeadStageFilter(value),'all')
+ assert.notEqual(crmLeadStageFilterKey('owner'),crmLeadStageFilterKey('agent'))
+ assert.notEqual(crmLeadStageFilterKey('owner'),crmLeadSortKey('owner'))
 })

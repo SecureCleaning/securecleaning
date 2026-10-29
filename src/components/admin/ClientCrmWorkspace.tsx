@@ -1,7 +1,7 @@
 'use client'
 
 import { resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
-import { CRM_LEAD_STAGE_FILTERS, type CrmLeadStageFilter, CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
+import { crmLeadStageFilterKey, parseCrmLeadStageFilter, CRM_LEAD_STAGE_FILTERS, type CrmLeadStageFilter, CRM_LEAD_SORTS, crmLeadSortKey, filterSortCrmLeads, parseCrmLeadSort, type CrmLeadSort } from '@/lib/crmLeadList'
 import { crmLeadStage, isCrmLeadOverdue } from '@/lib/crmLeadStages'
 import PremisesTypeField from './PremisesTypeField'
 import CrmPremisesSettings from './CrmPremisesSettings'
@@ -198,7 +198,16 @@ export default function ClientCrmWorkspace({
     if (!data?.actor.id) return
     try { setLeadSort(parseCrmLeadSort(localStorage.getItem(crmLeadSortKey(data.actor.id)))) }
     catch { setLeadSort('updated') }
+    try { setLeadStageFilter(parseCrmLeadStageFilter(localStorage.getItem(crmLeadStageFilterKey(data.actor.id)))) }
+    catch { setLeadStageFilter('all') }
   }, [data?.actor.id])
+  function changeLeadStageFilter(value: string) {
+    const stage = parseCrmLeadStageFilter(value)
+    setLeadStageFilter(stage)
+    if (data?.actor.id) {
+      try { localStorage.setItem(crmLeadStageFilterKey(data.actor.id), stage) } catch { /* Filtering still works when storage is unavailable. */ }
+    }
+  }
   function changeLeadSort(value: string) {
     const sort = parseCrmLeadSort(value)
     setLeadSort(sort)
@@ -742,7 +751,7 @@ export default function ClientCrmWorkspace({
         <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
           <input type="search" aria-label="Search client leads" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Business, contact, email, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Stage
-            <select aria-label="Filter leads by stage" value={leadStageFilter} onChange={event => setLeadStageFilter(event.target.value as CrmLeadStageFilter)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+            <select aria-label="Filter leads by stage" value={leadStageFilter} onChange={event => changeLeadStageFilter(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
               <option value="all">All stages</option>
               {CRM_LEAD_STAGE_FILTERS.map(stage => <option key={stage} value={stage}>{crmLeadStage(stage).label}</option>)}
             </select>
