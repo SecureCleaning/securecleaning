@@ -63,7 +63,10 @@ export async function POST(request: NextRequest) {
     const action = typeof body.action === 'string' ? body.action : ''
     if (action === 'premises.save') return NextResponse.json({ success: true, result: await savePremisesOption(actor, body) })
     if (action === 'csv.preview' || action === 'csv.import') {
-      const limited = await rateLimit(request, { key: `client-csv:${actor.id}`, limit: 10, windowMs: 60 * 60 * 1000 })
+      const csvRateLimit = action === 'csv.preview'
+        ? { key: `client-csv-preview:${actor.id}`, limit: 60, windowMs: 60 * 60 * 1000 }
+        : { key: `client-csv-import:${actor.id}`, limit: 20, windowMs: 60 * 60 * 1000 }
+      const limited = await rateLimit(request, csvRateLimit)
       if (limited) return limited
       if (typeof body.csv !== 'string') throw new ClientCrmError('Choose a CSV file.')
       let excludedRows: number[] = []
