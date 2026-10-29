@@ -149,6 +149,7 @@ export default function AvailabilityAdmin({
           name: defaultName,
           username: `${slugifyUsername(defaultName) || 'agent'}.${current.assignees.length + 1}`,
           city: 'melbourne',
+          bookingPriority: Math.min(999, Math.max(0, ...current.assignees.filter(a => a.city === 'melbourne').map(a => a.bookingPriority ?? 100)) + 1),
           email: '',
           ownerOperatorId: '',
           calendarId: '',
@@ -205,6 +206,18 @@ export default function AvailabilityAdmin({
             </div>
             <span className="text-xs text-gray-500">Changes apply to new and updated inspection matching.</span>
           </div>
+
+          <section className="rounded-xl border border-teal-200 bg-teal-50 p-5">
+            <h2 className="text-lg font-bold text-gray-900">Melbourne booking allocation</h2>
+            <label className="mt-3 block text-sm font-medium">Allocation mode
+              <select value={config.settings.melbourneBookingMode ?? 'zones'} onChange={(event) => setConfig(current => ({ ...current, settings: { ...current.settings, melbourneBookingMode: event.target.value as 'zones' | 'priority' } }))} className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2">
+                <option value="zones">Existing service-area allocation</option>
+                <option value="priority">Selected service areas - use agent booking priority</option>
+              </select>
+            </label>
+            <p className="mt-2 text-sm text-gray-700">The suburb must match the service areas selected on an agent’s availability window first. When multiple Melbourne agents cover that suburb and are available at the same time, the lowest priority number is offered first; another eligible agent is offered if that agent is booked or blocked out. Each agent still needs their own availability windows and a separate calendar ID. Existing bookings and client assignments are not moved.</p>
+            <p className="mt-2 text-sm text-gray-700">An agent is never offered outside the selected service areas on their availability window. Sydney is unchanged. Calendar entries outside this system must also be blocked out in availability.</p>
+          </section>
 
           <section className="grid gap-4 md:grid-cols-4">
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -305,6 +318,11 @@ export default function AvailabilityAdmin({
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
                       </div>
+                      {assignee.city === 'melbourne' ? <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">Booking priority for {assignee.name}</label>
+                        <input aria-label={`Booking priority for ${assignee.name}`} type="number" min={1} max={999} step={1} value={assignee.bookingPriority ?? 100} onChange={(event) => updateAssignee(assignee.id, { bookingPriority: Number(event.target.value) })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                        <p className="mt-1 text-xs text-gray-500">1 is first choice. Use different numbers for active agents. Applies only where selected areas and available times overlap.</p>
+                      </div> : null}
                       <div className="lg:col-span-2">
                         <label className="mb-1 block text-sm font-medium text-gray-700">Linked owner-operator</label>
                         <select

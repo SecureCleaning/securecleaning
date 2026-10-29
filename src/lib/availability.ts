@@ -1,3 +1,4 @@
+import { usesMelbournePriority, prioritizeAppointmentSuggestions, compareBookingPriority } from './availabilityPriority'
 import { getAdminSupabase } from '@/lib/supabase'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { City } from '@/lib/types'
@@ -49,6 +50,7 @@ export type WeeklyAvailabilitySlot = {
 }
 
 export type AvailabilityAssignee = {
+  bookingPriority?: number
   id: string
   name: string
   username?: string
@@ -75,6 +77,7 @@ export type OneOffAvailabilityBlock = {
 export type AvailabilityConfig = {
   settings: {
     maxSlotsToShow: number
+    melbourneBookingMode?: 'zones' | 'priority'
   }
   zones: ServiceZone[]
   assignees: AvailabilityAssignee[]
@@ -288,6 +291,7 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
   return {
     settings: {
       maxSlotsToShow: Number(source.settings?.maxSlotsToShow ?? fallback.settings.maxSlotsToShow),
+      melbourneBookingMode: source.settings?.melbourneBookingMode === 'priority' ? 'priority' : 'zones',
     },
     zones: Array.isArray(source.zones)
       ? source.zones.map((zone, index) => {
@@ -316,6 +320,7 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
             name: String(assignee?.name ?? `Assignee ${index + 1}`),
             username: typeof assignee?.username === 'string' ? assignee.username : '',
             city: normalizedCity.city,
+            bookingPriority: Number.isInteger(assignee?.bookingPriority) ? assignee.bookingPriority : 100,
             ownerOperatorId: typeof assignee?.ownerOperatorId === 'string' ? assignee.ownerOperatorId : '',
             email: typeof assignee?.email === 'string' ? assignee.email : '',
             calendarId: typeof assignee?.calendarId === 'string' ? assignee.calendarId : '',
@@ -609,7 +614,7 @@ async function getReservedInspections(city: City, startDate: string, daysToShow:
   }
 }
 
-function getAvailabilitySuggestionsForConfig(
+export function getAvailabilitySuggestionsForConfig(
   config: AvailabilityConfig,
   matchingZones: ServiceZone[],
   city: City,
@@ -621,12 +626,13 @@ function getAvailabilitySuggestionsForConfig(
   const assigneeMap = new Map(config.assignees.map((assignee) => [assignee.id, assignee]))
   const targetDay = preferredDate ? getWeekdayForDate(preferredDate) : null
 
-  return config.weeklySlots
+  const priorityMode = usesMelbournePriority(config, city)
+  const suggestions = config.weeklySlots
     .filter((slot) => {
       if (!slot.active || slot.city !== city) return false
       if (!slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId))) return false
       const assignee = assigneeMap.get(slot.assigneeId)
-      if (!assignee || !assignee.active) return false
+      if (!assignee || !assignee.active || assignee.city !== city) return false
       if (targetDay && slot.day !== targetDay) return false
       return true
     })
@@ -645,13 +651,13 @@ function getAvailabilitySuggestionsForConfig(
           day: slot.day,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
-          zoneNames: slot.zoneIds.map((zoneId) => zoneMap.get(zoneId)).filter(Boolean) as string[],
+          zoneNames: priorityMode ? matchingZones.map(zone => zone.name) : slot.zoneIds.map((zoneId) => zoneMap.get(zoneId)).filter(Boolean) as string[],
           assigneeId: slot.assigneeId,
           assigneeName: assignee?.name ?? 'Assigned quoter',
           calendarId: assignee?.calendarId || undefined,
         }))
     })
-    .slice(0, config.settings.maxSlotsToShow)
+  return (priorityMode ? prioritizeAppointmentSuggestions(config, suggestions) : suggestions).slice(0, config.settings.maxSlotsToShow)
 }
 
 function getCalendarStartDate(): Date {
@@ -753,6 +759,7 @@ export async function getAvailabilityAssigneesForLocation(
   const zoneAssignees = config.assignees.filter(
     (assignee) => assignee.active && assignee.city === city && responsibleAssigneeIds.has(assignee.id),
   )
+  if (usesMelbournePriority(config, city)) return zoneAssignees.sort(compareBookingPriority)
 
   // Keep a city quote routable while an admin is still configuring the zone
   // list, or when a new suburb has not been added to a zone yet.

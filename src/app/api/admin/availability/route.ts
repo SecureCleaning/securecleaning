@@ -1,3 +1,4 @@
+import { validateBookingPriorityConfig } from '@/lib/availabilityPriority'
 import { NextRequest, NextResponse } from 'next/server'
 import { toBrowserAvailabilityConfig, getAvailabilityConfig, saveAvailabilityConfig, validateAvailabilityZoneConfig } from '@/lib/availability'
 import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
           accessCodeHash: code ? hashAvailabilityAccessCode(code) : previous?.accessCodeHash }
       }) : [],
     }
+
+    const priorityError = validateBookingPriorityConfig(nextConfig)
+    if (priorityError) return NextResponse.json({ error: priorityError }, { status: 400 })
 
     const db = getAdminSupabase()
     const { data: ownerOperators, error: ownerOperatorsError } = await db

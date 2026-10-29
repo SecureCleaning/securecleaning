@@ -1,3 +1,4 @@
+import { usesMelbournePriority, compareBookingPriority } from '@/lib/availabilityPriority'
 import { crmCleaningFrequency, crmCleaningTime, resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -216,10 +217,14 @@ export async function getCrmAssignmentCandidates(input: {
   ])
   const searchText = [input.address, input.suburb, input.postcode].filter(Boolean).join(' ')
   const matchingZoneIds = new Set(findMatchingZones(searchText, input.city, config).map((zone) => zone.id))
+  const priorityMode = usesMelbournePriority(config, input.city)
   const assigneeIds = new Set(config.weeklySlots
     .filter((slot) => slot.active && slot.city === input.city && slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId)))
     .map((slot) => slot.assigneeId))
+  const eligibleProfiles = config.assignees.filter(a => a.active && a.city === input.city)
   return staff
+    .filter(account => eligibleProfiles.some(a => a.id === account.availabilityAssigneeId))
+    .sort((a, b) => priorityMode ? compareBookingPriority(eligibleProfiles.find(p => p.id === a.availabilityAssigneeId)!, eligibleProfiles.find(p => p.id === b.availabilityAssigneeId)!) : 0)
     .filter((account) => account.active && account.role === 'agent' && account.availabilityAssigneeId && assigneeIds.has(account.availabilityAssigneeId))
     .map((account) => ({
       id: account.id,
