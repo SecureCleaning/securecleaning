@@ -25,6 +25,23 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
   ])
   // Beneficiaries may see the client business label for their sales, but no contact or site details.
   const ids = Array.from(new Set(balances.map(row => String(row.sale_id))))
+  const planBySale = new Map<string, string>()
+  // Read only plans for sales already authorized by the scoped commission balances.
+  // Match commission eligibility: an active/completed plan with a signed agreement.
+  for (let i = 0; i < ids.length; i += 100) {
+    for (let offset = 0; ; offset += 500) {
+      const result = await db.from('contract_sale_payment_plans')
+        .select('id,sale_id,status,contract_sale_agreements!inner(status)')
+        .in('sale_id', ids.slice(i, i + 100)).in('status', ['active', 'completed'])
+        .eq('contract_sale_agreements.status', 'signed').order('id').range(offset, offset + 499)
+      if (result.error) throw result.error
+      for (const plan of result.data ?? []) {
+        if (planBySale.get(plan.sale_id) !== 'active') planBySale.set(plan.sale_id, plan.status)
+      }
+      if (!result.data || result.data.length < 500) break
+    }
+  }
+  for (const balance of balances) balance.payment_plan_status = planBySale.get(String(balance.sale_id)) || ''
   const assignments: Record<string, unknown>[] = []
   for (let i = 0; i < ids.length; i += 100) {
     const { data, error } = await db.from('contract_commission_assignments').select('*').in('sale_id', ids.slice(i, i + 100))

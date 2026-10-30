@@ -50,6 +50,13 @@ test('commission reads limit agents to their own balances and component rates wi
       assert.equal(u.searchParams.get('select'),'id,business_name')
       return json([{id:'client',business_name:'St Andrews Medical'}])
     }
+    if(table==='contract_sale_payment_plans') {
+      assert.equal(u.searchParams.get('sale_id'),'in.(sale)')
+      assert.equal(u.searchParams.get('status'),'in.(active,completed)')
+      assert.equal(u.searchParams.get('contract_sale_agreements.status'),'eq.signed')
+      assert.equal(u.searchParams.get('select'),'id,sale_id,status,contract_sale_agreements!inner(status)')
+      return json([{id:'plan',sale_id:'sale',status:'active',contract_sale_agreements:[{status:'signed'}]}])
+    }
     if(table==='contract_commission_assignments') return json([{sale_id:'sale',win_agent_id:'other',sale_agent_id:'agent',win_bps:2500,sale_bps:2500}])
     assert.equal(u.searchParams.get('agent_id'),'eq.agent')
     if(table==='contract_commission_balances') return json([{sale_id:'sale',agent_id:'agent',earned_cents:12500}])
@@ -60,6 +67,7 @@ test('commission reads limit agents to their own balances and component rates wi
     const result=await getCommissionWorkspace({id:'agent',role:'agent'})
     assert.deepEqual(result.components,[{saleId:'sale',agentId:'agent',component:'Sale',rateBps:2500}])
     assert.equal(result.balances[0].client_business,'St Andrews Medical')
+    assert.equal(result.balances[0].payment_plan_status,'active')
     assert.deepEqual(result.agents,[])
     assert.deepEqual(result.sales,[])
     assert.equal(result.settings,null)
