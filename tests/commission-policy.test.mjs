@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { commissionCents, commissionShares, hasCommissionStatementActivity, parsePlanInstalments } from '../src/lib/commissionPolicy.ts'
+import { commissionCents, commissionShares, matchesCommissionStatementFilter, hasCommissionStatementActivity, parsePlanInstalments } from '../src/lib/commissionPolicy.ts'
 
 test('commission excludes GST and releases only full payment or active-plan receipts', () => {
   assert.equal(commissionCents(550000,50000,55000,2500,false),0)
@@ -53,7 +53,7 @@ test('commission reads limit agents to their own balances and component rates wi
     if(table==='contract_commission_assignments') return json([{sale_id:'sale',win_agent_id:'other',sale_agent_id:'agent',win_bps:2500,sale_bps:2500}])
     assert.equal(u.searchParams.get('agent_id'),'eq.agent')
     if(table==='contract_commission_balances') return json([{sale_id:'sale',agent_id:'agent',earned_cents:12500}])
-    if(['contract_commission_claims','contract_commission_payouts'].includes(table)) return json([])
+    if(['contract_commission_claims','contract_commission_payouts','contract_commission_received_invoices'].includes(table)) return json([])
     throw new Error('Unexpected endpoint')
   }
   try {
@@ -82,4 +82,16 @@ test('both beneficiaries remain monotonic at cent boundaries and always sum to c
   }
   assert.deepEqual(commissionShares(550000,50000,55002,2500,2500,true),{win:12501,sale:12500,combined:25001})
   assert.deepEqual(commissionShares(550000,50000,55003,2500,2500,true),{win:12501,sale:12500,combined:25001})
+})
+
+
+test('statement filters combine agent and settlement state without hiding partial or excess payments', () => {
+  const row = { agent_id: 'a', earned_cents: 10000, paid_cents: 5000 }
+  assert.equal(matchesCommissionStatementFilter(row, 'a', 'unpaid'), true)
+  assert.equal(matchesCommissionStatementFilter(row, 'b', 'unpaid'), false)
+  assert.equal(matchesCommissionStatementFilter(row, '', 'paid'), false)
+  assert.equal(matchesCommissionStatementFilter({ ...row, paid_cents: 10000 }, '', 'paid'), true)
+  assert.equal(matchesCommissionStatementFilter({ ...row, paid_cents: 12000 }, '', 'adjustment'), true)
+  assert.equal(matchesCommissionStatementFilter({ ...row, earned_cents: 0, paid_cents: 0 }, '', 'paid'), false)
+  assert.equal(matchesCommissionStatementFilter(row, '', 'all'), true)
 })

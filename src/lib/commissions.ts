@@ -19,7 +19,8 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
       if (!data || data.length < 500) return rows
     }
   }
-  const [balances, claims, payouts] = await Promise.all([
+  const [receivedInvoices, balances, claims, payouts] = await Promise.all([
+    read('contract_commission_received_invoices', 'id,agent_id,invoice_reference,invoice_date,amount_cents,storage_path,created_at', 'agent_id'),
     read('contract_commission_balances', '*', 'agent_id'), read('contract_commission_claims', '*', 'agent_id'), read('contract_commission_payouts', '*', 'agent_id'),
   ])
   // Beneficiaries may see the client business label for their sales, but no contact or site details.
@@ -66,7 +67,7 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
     sale_code: String(balances.find(balance => balance.sale_id === row.sale_id)?.sale_code ?? row.sale_id),
     can_correct: !claims.some(claim => claim.sale_id === row.sale_id) && !payouts.some(payout => payout.sale_id === row.sale_id),
   })) : []
-  return { revisions, role: actor.role, balances, claims, payouts, components, assignments: assignedSales, settings: settings.data, agents: agents.data, sales: sales.data ?? [] }
+  return { receivedInvoices: receivedInvoices.map(row => ({ id: String(row.id), agent_id: String(row.agent_id), invoice_reference: String(row.invoice_reference), invoice_date: String(row.invoice_date), amount_cents: Number(row.amount_cents), created_at: String(row.created_at), hasAttachment: Boolean(row.storage_path) })), revisions, role: actor.role, balances, claims, payouts, components, assignments: assignedSales, settings: settings.data, agents: agents.data, sales: sales.data ?? [] }
 }
 
 export async function manageCommission(actor: ClientCrmActor, input: Record<string, unknown>) {

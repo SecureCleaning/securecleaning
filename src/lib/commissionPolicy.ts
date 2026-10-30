@@ -34,3 +34,14 @@ export function commissionShares(totalIncGstCents: number, gstCents: number, pai
 export function hasCommissionStatementActivity(row: Record<string, unknown>) {
   return [row.earned_cents, row.claimed_cents, row.paid_cents].some(value => Number(value) !== 0)
 }
+
+/** Paid means fully settled; partial payments remain in the unpaid queue. */
+export function matchesCommissionStatementFilter(row: Record<string, unknown>, agentId: string, status: string) {
+  if (agentId && row.agent_id !== agentId) return false
+  const earned = Number(row.earned_cents || 0)
+  const paid = Number(row.paid_cents || 0)
+  if (status === 'unpaid') return earned > paid
+  if (status === 'paid') return paid > 0 && earned === paid
+  if (status === 'adjustment') return paid > earned
+  return true
+}
