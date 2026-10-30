@@ -1,3 +1,4 @@
+import { getCommissionReviewRows } from '@/lib/commissionReview'
 import { parseAmendedPrice } from '@/lib/saleAmendmentPolicy'
 import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { escapeIcsText, serializeIcs } from '@/lib/ics'
@@ -95,6 +96,7 @@ export type ContractSalePayment = {
 export type ContractSale = {
   id: string
   saleCode: string
+  commissionReviewReason?: string
   productId: string
   productCode: string
   opportunityId: string
@@ -546,7 +548,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
   const opportunityIds = Array.from(new Set(saleRows.map((sale) => String(sale.opportunity_id))))
   const quoteIds = Array.from(new Set(saleRows.flatMap((sale) => sale.source_quote_id ? [String(sale.source_quote_id)] : [])))
   const siteIds = Array.from(new Set(saleRows.map((sale) => String(sale.site_id ?? '')).filter(Boolean)))
-  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, clientServiceAgreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult] = await Promise.all([
+  const [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, clientServiceAgreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult, commissionReview] = await Promise.all([
     cleanerIds.length ? db.from('cleaners').select('id, business_name, contact_name, email, phone, address, suburb, postcode, state, abn, status').in('id', cleanerIds) : Promise.resolve({ data: [], error: null }),
     opportunityIds.length ? db.from('crm_opportunities').select('id, primary_contact_id').in('id', opportunityIds) : Promise.resolve({ data: [], error: null }),
     quoteIds.length ? db.from('quotes').select('id, quote_ref').in('id', quoteIds) : Promise.resolve({ data: [], error: null }),
@@ -561,6 +563,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     saleIds.length ? db.from('admin_audit_log').select('id, entity_ref, action, details, created_at').eq('entity_type', 'contract_sale').in('entity_ref', saleIds).order('created_at', { ascending: false }).limit(500) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_site_checklists').select('id, sale_id, status, checklist_data').in('sale_id', saleIds) : Promise.resolve({ data: [], error: null }),
     saleIds.length ? db.from('contract_sale_checklist_uploads').select('id, sale_id, checklist_id, file_name, mime_type, uploaded_at').in('sale_id', saleIds).order('uploaded_at', { ascending: false }) : Promise.resolve({ data: [], error: null }),
+    getCommissionReviewRows(saleIds),
   ])
   for (const result of [cleanersResult, opportunityResult, quotesResult, sitesResult, invoicesResult, invoiceDeliveriesResult, paymentsResult, inspectionsResult, agreementsResult, clientServiceAgreementsResult, plansResult, activityResult, checklistsResult, checklistUploadsResult]) if (result.error) throw result.error
   const invoiceIds = (invoicesResult.data ?? []).map((row) => String(row.id))
@@ -601,6 +604,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
     if (!current || (['awaiting_acceptance', 'active'].includes(String(plan.status)) && !['awaiting_acceptance', 'active'].includes(String(current.status)))) plansBySale.set(key, plan)
   }
 
+  const commissionReviewById = new Map(commissionReview.map(row => [row.id, row.reason]))
   const sales: ContractSale[] = saleRows.map((sale) => {
     const product = productsById.get(String(sale.product_id))!
     const cleaner = cleanersById.get(String(sale.cleaner_id))
@@ -623,6 +627,7 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       cleanerAbn: String(cleanerSnapshot.abn ?? cleaner?.abn ?? ''),
       cleanerAddress: [cleanerSnapshot.address ?? cleaner?.address, cleanerSnapshot.suburb ?? cleaner?.suburb, cleanerSnapshot.state ?? cleaner?.state, cleanerSnapshot.postcode ?? cleaner?.postcode].filter(Boolean).join(', '),
       cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
+      commissionReviewReason: commissionReviewById.get(String(sale.id)),
       status: String(sale.status) as ContractSaleStatus, state: String(productSnapshot.state ?? product?.state ?? ''), suburb: String(productSnapshot.suburb ?? product?.suburb ?? ''),
       siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteName: String(siteSnapshot.site_name ?? site?.site_name ?? ''),
       siteAddress: [siteSnapshot.address ?? site?.address, siteSnapshot.suburb ?? site?.suburb, siteSnapshot.postcode ?? site?.postcode].filter(Boolean).join(', '),

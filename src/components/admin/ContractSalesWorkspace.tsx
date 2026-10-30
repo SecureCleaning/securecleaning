@@ -518,6 +518,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
       </aside>
 
       <main className="min-w-0 space-y-5">
+        {sale?.commissionReviewReason ? <section role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><h2 className="font-bold">Commission assignment needs review</h2><p>{sale.commissionReviewReason}</p><p>This sale will not appear in commission earnings until an administrator confirms both agents.</p>{data.actor.role === 'owner' ? <Link href={`/admin/commissions?sale=${encodeURIComponent(sale.id)}#assign-commission`} className="mt-2 inline-block font-semibold underline">Review commission assignment</Link> : <p className="mt-2 text-sm">Ask the administrator to review this sale in Commissions.</p>}</section> : null}
         {!sale ? <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
           <h2 className="text-xl font-bold">Start a product sale</h2>
           <p className="mt-1 text-sm text-gray-600">Only approved cleaners can reserve a product and receive the $500 deposit invoice. <Link href={portal === 'agent' ? `/availability/cleaners/${encodeURIComponent(assigneeId)}` : '/admin/cleaners'} className="font-semibold text-teal-700 underline">Open cleaner records</Link> to approve a newly added cleaner.</p>

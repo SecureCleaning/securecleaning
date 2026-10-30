@@ -27,7 +27,7 @@ test('custom schedules validate exact cents, calendar dates, order and size', ()
   assert.throws(()=>parsePlanInstalments(rows,549999))
 })
 
-test('commission reads limit agents to their own balances and component rates without customer records', async () => {
+test('commission reads limit agents to their own balances and component rates with only scoped client business labels', async () => {
   process.env.NEXT_PUBLIC_SUPABASE_URL='https://example.supabase.co'
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='test-anon-key'
   process.env.SUPABASE_SERVICE_ROLE_KEY='test-service-role-key'
@@ -36,6 +36,20 @@ test('commission reads limit agents to their own balances and component rates wi
   const json=value=>new Response(JSON.stringify(value),{headers:{'Content-Type':'application/json'}})
   globalThis.fetch=async url=>{
     const u=new URL(url),table=u.pathname.split('/').pop()
+    if(table==='contract_product_sales') {
+      assert.equal(u.searchParams.get('id'),'in.(sale)')
+      assert.equal(u.searchParams.get('select'),'id,opportunity_id,business_name:client_snapshot->>business_name')
+      return json([{id:'sale',opportunity_id:'opportunity',business_name:null}])
+    }
+    if(table==='crm_opportunities') {
+      assert.equal(u.searchParams.get('id'),'in.(opportunity)')
+      return json([{id:'opportunity',primary_contact_id:'client'}])
+    }
+    if(table==='clients') {
+      assert.equal(u.searchParams.get('id'),'in.(client)')
+      assert.equal(u.searchParams.get('select'),'id,business_name')
+      return json([{id:'client',business_name:'St Andrews Medical'}])
+    }
     if(table==='contract_commission_assignments') return json([{sale_id:'sale',win_agent_id:'other',sale_agent_id:'agent',win_bps:2500,sale_bps:2500}])
     assert.equal(u.searchParams.get('agent_id'),'eq.agent')
     if(table==='contract_commission_balances') return json([{sale_id:'sale',agent_id:'agent',earned_cents:12500}])
@@ -45,6 +59,7 @@ test('commission reads limit agents to their own balances and component rates wi
   try {
     const result=await getCommissionWorkspace({id:'agent',role:'agent'})
     assert.deepEqual(result.components,[{saleId:'sale',agentId:'agent',component:'Sale',rateBps:2500}])
+    assert.equal(result.balances[0].client_business,'St Andrews Medical')
     assert.deepEqual(result.agents,[])
     assert.deepEqual(result.sales,[])
     assert.equal(result.settings,null)
