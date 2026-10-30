@@ -99,6 +99,7 @@ test('a second active Melbourne agent expands the result limit without changing 
   }
 
   const migrated = applyApprovedAvailabilityZoneDesign(config)
-  assert.equal(migrated.settings.maxSlotsToShow, 12)
+  assert.equal(migrated.settings.maxSlotsToShow, 6)
+  assert.equal(migrated.settings.melbourneMaxSlotsToShow, 12)
   assert.deepEqual(migrated.assignees, config.assignees)
 })

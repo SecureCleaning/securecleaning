@@ -77,6 +77,7 @@ export type OneOffAvailabilityBlock = {
 export type AvailabilityConfig = {
   settings: {
     maxSlotsToShow: number
+    melbourneMaxSlotsToShow?: number
     melbourneBookingMode?: 'zones' | 'priority'
   }
   zones: ServiceZone[]
@@ -291,6 +292,7 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
   return {
     settings: {
       maxSlotsToShow: Number(source.settings?.maxSlotsToShow ?? fallback.settings.maxSlotsToShow),
+      melbourneMaxSlotsToShow: Number.isInteger(source.settings?.melbourneMaxSlotsToShow) && Number(source.settings?.melbourneMaxSlotsToShow) >= 1 && Number(source.settings?.melbourneMaxSlotsToShow) <= 100 ? Number(source.settings?.melbourneMaxSlotsToShow) : undefined,
       melbourneBookingMode: source.settings?.melbourneBookingMode === 'priority' ? 'priority' : 'zones',
     },
     zones: Array.isArray(source.zones)
@@ -657,7 +659,7 @@ export function getAvailabilitySuggestionsForConfig(
           calendarId: assignee?.calendarId || undefined,
         }))
     })
-  return (priorityMode ? prioritizeAppointmentSuggestions(config, suggestions) : suggestions).slice(0, config.settings.maxSlotsToShow)
+  return (priorityMode ? prioritizeAppointmentSuggestions(config, suggestions) : suggestions).slice(0, city === 'melbourne' ? config.settings.melbourneMaxSlotsToShow ?? config.settings.maxSlotsToShow : config.settings.maxSlotsToShow)
 }
 
 function getCalendarStartDate(): Date {

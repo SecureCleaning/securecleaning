@@ -58,6 +58,12 @@ test('admin must supply distinct priorities and separate specific calendars',()=
   const config=make();Object.assign(config.assignees[1],patch);assert.ok(validateBookingPriorityConfig(config),JSON.stringify(patch))
  }
 })
+test('internal priority scheduling does not require Google calendar IDs when the integration is disabled',()=>{
+ const config=make();config.assignees.forEach(agent=>{agent.calendarId=''})
+ assert.equal(validateBookingPriorityConfig(config,{requireSeparateCalendars:false}),null)
+ config.assignees[1].bookingPriority=1
+ assert.match(validateBookingPriorityConfig(config,{requireSeparateCalendars:false}),/different booking priority/)
+})
 test('changing ranking does not move existing bookings between agents',()=>{
  const config=make(),booking={inputs:{city:'melbourne',preferredInspectionAssigneeId:'a'}}
  config.assignees[0].bookingPriority=3
@@ -73,4 +79,15 @@ test('suburb coverage precedes priority and does not spill into an unselected ar
  config.weeklySlots[1].zoneIds=['west'];assert.equal(suggestions(config).length,0)
  config.weeklySlots[0].zoneIds=[];assert.equal(suggestions(config).length,0)
  assert.deepEqual(getAssigneeServiceZones(config,'a'),[])
+})
+
+test('Melbourne slot limit override survives normalization without changing Sydney limit',()=>{
+ const config=make();config.settings.maxSlotsToShow=1;config.settings.melbourneMaxSlotsToShow=2
+ config.weeklySlots.forEach(s=>s.endTime='12:00')
+ assert.equal(suggestions(config).length,2)
+ assert.equal(mergeAvailabilityConfig(config).settings.melbourneMaxSlotsToShow,2)
+ const syd=structuredClone(config);syd.assignees.forEach(a=>a.city='sydney');syd.weeklySlots.forEach(s=>s.city='sydney')
+ assert.equal(getAvailabilitySuggestionsForConfig(syd,[{...zone,city:'sydney'}],'sydney','2026-11-02').length,1)
+ config.settings.melbourneMaxSlotsToShow=-2
+ assert.equal(mergeAvailabilityConfig(config).settings.melbourneMaxSlotsToShow,undefined)
 })

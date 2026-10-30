@@ -87,9 +87,9 @@ export function applyApprovedAvailabilityZoneDesign(config: AvailabilityConfig):
     ...config,
     settings: {
       ...config.settings,
-      maxSlotsToShow: activeMelbourneAgentCount > 1
-        ? Math.max(config.settings.maxSlotsToShow, 12)
-        : config.settings.maxSlotsToShow,
+      melbourneMaxSlotsToShow: activeMelbourneAgentCount > 1
+        ? Math.max(config.settings.melbourneMaxSlotsToShow ?? config.settings.maxSlotsToShow, 12)
+        : config.settings.melbourneMaxSlotsToShow,
     },
     zones: APPROVED_SERVICE_ZONES.map((zone) => ({
       ...zone,

@@ -215,7 +215,7 @@ export default function AvailabilityAdmin({
                 <option value="priority">Selected service areas - use agent booking priority</option>
               </select>
             </label>
-            <p className="mt-2 text-sm text-gray-700">The suburb must match the service areas selected on an agent’s availability window first. When multiple Melbourne agents cover that suburb and are available at the same time, the lowest priority number is offered first; another eligible agent is offered if that agent is booked or blocked out. Each agent still needs their own availability windows and a separate calendar ID. Existing bookings and client assignments are not moved.</p>
+            <p className="mt-2 text-sm text-gray-700">The suburb must match the service areas selected on an agent’s availability window first. When multiple Melbourne agents cover that suburb and are available at the same time, the lowest priority number is offered first; another eligible agent is offered if that agent is booked or blocked out. Each agent still needs their own availability windows. When Google Calendar is connected, each active Melbourne agent must also have a separate calendar ID. Existing bookings and client assignments are not moved.</p>
             <p className="mt-2 text-sm text-gray-700">An agent is never offered outside the selected service areas on their availability window. Sydney is unchanged. Calendar entries outside this system must also be blocked out in availability.</p>
           </section>
 

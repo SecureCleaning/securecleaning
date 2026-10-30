@@ -8,15 +8,20 @@ export function compareBookingPriority(a: AvailabilityAssignee, b: AvailabilityA
   return (a.bookingPriority ?? 100) - (b.bookingPriority ?? 100) || a.id.localeCompare(b.id)
 }
 
-export function validateBookingPriorityConfig(config: AvailabilityConfig): string | null {
+export function validateBookingPriorityConfig(
+  config: AvailabilityConfig,
+  options: { requireSeparateCalendars?: boolean } = {},
+): string | null {
   if (config.settings?.melbourneBookingMode != null && !['zones', 'priority'].includes(config.settings.melbourneBookingMode)) return 'Choose a valid Melbourne booking allocation mode.'
   if (!usesMelbournePriority(config, 'melbourne')) return null
+  const requireSeparateCalendars = options.requireSeparateCalendars ?? true
   const priorities = new Set<number>()
   const calendars = new Set<string>()
   for (const agent of config.assignees.filter(a => a.active && a.city === 'melbourne')) {
     if (!Number.isInteger(agent.bookingPriority) || agent.bookingPriority! < 1 || agent.bookingPriority! > 999) return `Set a booking priority from 1 to 999 for ${agent.name}.`
     if (priorities.has(agent.bookingPriority!)) return 'Each active Melbourne agent must have a different booking priority.'
     priorities.add(agent.bookingPriority!)
+    if (!requireSeparateCalendars) continue
     const calendar = agent.calendarId?.trim().toLowerCase()
     if (!calendar || calendar === 'primary') return `Set a specific separate calendar ID for ${agent.name} before enabling booking priority.`
     if (calendars.has(calendar)) return 'Active Melbourne agents must use separate calendars.'

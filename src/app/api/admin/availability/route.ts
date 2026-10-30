@@ -57,7 +57,14 @@ export async function POST(request: NextRequest) {
       }) : [],
     }
 
-    const priorityError = validateBookingPriorityConfig(nextConfig)
+    const googleCalendarConfigured = Boolean(
+      process.env.GOOGLE_CALENDAR_CLIENT_ID
+      && process.env.GOOGLE_CALENDAR_CLIENT_SECRET
+      && process.env.GOOGLE_CALENDAR_REFRESH_TOKEN,
+    )
+    const priorityError = validateBookingPriorityConfig(nextConfig, {
+      requireSeparateCalendars: googleCalendarConfigured,
+    })
     if (priorityError) return NextResponse.json({ error: priorityError }, { status: 400 })
 
     const db = getAdminSupabase()
