@@ -27,9 +27,9 @@ test('approved Sydney and Melbourne coverage has six zones per city and at most 
   const melbourne = postcodeMemberships('melbourne')
 
   assert.equal(sydney.size, 235)
-  assert.equal(melbourne.size, 256)
+  assert.equal(melbourne.size, 304)
   assert.equal([...sydney.values()].reduce((total, zones) => total + zones.length, 0), 343)
-  assert.equal([...melbourne.values()].reduce((total, zones) => total + zones.length, 0), 362)
+  assert.equal([...melbourne.values()].reduce((total, zones) => total + zones.length, 0), 410)
   assert.equal(Math.max(...[...sydney.values()].map((zones) => zones.length)), 2)
   assert.equal(Math.max(...[...melbourne.values()].map((zones) => zones.length)), 2)
 })
@@ -43,6 +43,11 @@ test('representative core, overlap and boundary postcodes match the approved rou
     ['melbourne', '3337', ['melb_v2_west_werribee', 'melb_v2_melton_sunbury_gisborne']],
     ['melbourne', '3145', ['melb_v2_inner_bayside', 'melb_v2_south_southeast']],
     ['melbourne', '3228', ['melb_v2_geelong_torquay']],
+    ['melbourne', '3440', ['melb_v2_melton_sunbury_gisborne']],
+    ['melbourne', '3754', ['melb_v2_north_northeast']],
+    ['melbourne', '3777', ['melb_v2_north_northeast']],
+    ['melbourne', '3810', ['melb_v2_south_southeast']],
+    ['melbourne', '3984', ['melb_v2_south_southeast']],
   ]
 
   for (const [city, postcode, expectedZoneIds] of cases) {
@@ -51,8 +56,25 @@ test('representative core, overlap and boundary postcodes match the approved rou
     assert.deepEqual(result.zones.map((zone) => zone.id), expectedZoneIds)
   }
 
-  for (const [city, postcode] of [['sydney', '2250'], ['melbourne', '3810'], ['melbourne', '3230'], ['melbourne', '3777']]) {
+  for (const [city, postcode] of [['sydney', '2250'], ['melbourne', '3230'], ['melbourne', '3444'], ['melbourne', '3816'], ['melbourne', '3987']]) {
     assert.equal(matchServiceZones({ postcode }, city, APPROVED_SERVICE_ZONES).method, 'none')
+  }
+})
+
+test('every audited Greater Melbourne expansion postcode is assigned to one booking zone', () => {
+  const requiredPostcodes = [
+    '3440', '3441', '3442', '3658',
+    '3750', '3751', '3752', '3753', '3754', '3755', '3756', '3757', '3758', '3759',
+    '3760', '3761', '3762', '3763', '3765', '3766', '3767',
+    '3770', '3775', '3777', '3778',
+    '3781', '3782', '3783', '3785', '3786', '3787', '3788', '3789',
+    '3791', '3792', '3793', '3795', '3796', '3797', '3799',
+    '3810', '3812', '3813', '3814', '3815', '3980', '3981', '3984',
+  ]
+
+  const melbourne = postcodeMemberships('melbourne')
+  for (const postcode of requiredPostcodes) {
+    assert.equal(melbourne.get(postcode)?.length, 1, `${postcode} must have one core booking zone`)
   }
 })
 

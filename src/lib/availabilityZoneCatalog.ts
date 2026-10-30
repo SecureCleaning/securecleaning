@@ -108,8 +108,8 @@ export const APPROVED_SERVICE_ZONES: ServiceZone[] = [
     city: 'melbourne',
     state: 'VIC',
     matchTerms: ['melton', 'bacchus marsh', 'rockbank', 'diggers rest', 'sunbury', 'riddells creek', 'gisborne'],
-    postcodeRanges: [[3335, 3341], [3427, 3438], [3020, 3023], [3025, 3026], [3036, 3049]],
-    notes: 'North-west corridor ending at Gisborne, with controlled Sunshine, Deer Park, airport and Keilor overlap.',
+    postcodeRanges: [[3335, 3341], [3427, 3438], [3440, 3442], [3020, 3023], [3025, 3026], [3036, 3049]],
+    notes: 'North-west corridor through Gisborne, Macedon and Woodend, with controlled Sunshine, Deer Park, airport and Keilor overlap.',
   }),
   createZone({
     id: 'melb_v2_north_northeast',
@@ -117,8 +117,8 @@ export const APPROVED_SERVICE_ZONES: ServiceZone[] = [
     city: 'melbourne',
     state: 'VIC',
     matchTerms: ['brunswick', 'coburg', 'preston', 'reservoir', 'broadmeadows', 'craigieburn', 'epping', 'bundoora', 'greensborough', 'doncaster', 'box hill', 'ringwood', 'croydon', 'glen waverley', 'lilydale'],
-    postcodeRanges: [[3031, 3049], [3055, 3064], [3070, 3120], [3122, 3140], [3146, 3160], [3051, 3054], [3065, 3068], [3121, 3121], [3161, 3170], [3427, 3438]],
-    notes: 'North and east route ending at Craigieburn and Lilydale, with controlled inner, south-east and Sunbury overlap.',
+    postcodeRanges: [[3031, 3049], [3055, 3064], [3070, 3120], [3122, 3140], [3146, 3160], [3658, 3658], [3750, 3763], [3765, 3767], [3770, 3770], [3775, 3775], [3777, 3778], [3781, 3783], [3785, 3789], [3791, 3793], [3795, 3797], [3799, 3799], [3051, 3054], [3065, 3068], [3121, 3121], [3161, 3170], [3427, 3438]],
+    notes: 'North and east route through Mitchell, Whittlesea, the Yarra Valley and Dandenong Ranges, with controlled inner, south-east and Sunbury overlap.',
   }),
   createZone({
     id: 'melb_v2_south_southeast',
@@ -126,8 +126,8 @@ export const APPROVED_SERVICE_ZONES: ServiceZone[] = [
     city: 'melbourne',
     state: 'VIC',
     matchTerms: ['caulfield', 'carnegie', 'oakleigh', 'clayton', 'dandenong', 'springvale', 'keysborough', 'frankston', 'narre warren', 'berwick', 'officer', 'cranbourne', 'mornington'],
-    postcodeRanges: [[3161, 3180], [3189, 3204], [3802, 3809], [3910, 3920], [3926, 3944], [3975, 3978], [3141, 3160], [3181, 3188], [3205, 3207]],
-    notes: 'Frankston home-side route through the south-east and Mornington Peninsula, excluding Pakenham and farther east.',
+    postcodeRanges: [[3161, 3180], [3189, 3204], [3802, 3810], [3812, 3815], [3910, 3920], [3926, 3944], [3975, 3978], [3980, 3981], [3984, 3984], [3141, 3160], [3181, 3188], [3205, 3207]],
+    notes: 'Frankston home-side route through the south-east, Pakenham corridor, Western Port and Mornington Peninsula.',
   }),
   createZone({
     id: 'melb_v2_geelong_torquay',

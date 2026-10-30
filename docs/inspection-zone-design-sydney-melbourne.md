@@ -28,7 +28,7 @@ The CRM state assignment remains separate. An NSW agent may manage an NSW CRM op
 | Region | Current zones | Unique explicit postcodes | Proposed zones | Proposed coverage |
 |---|---:|---:|---:|---:|
 | Greater Sydney | 5 | 47 | 6 | 235 unique / 343 zone memberships |
-| Greater Melbourne and Geelong | 5 | 166 | 6 | 256 unique / 362 zone memberships |
+| Greater Melbourne and Geelong | 5 | 166 | 6 | 304 unique / 410 zone memberships |
 
 Current zones overlap without a defined boundary policy. The revised Sydney design uses intentional overlap buffers that follow major travel corridors from the agent's Bardia base. Melbourne now uses the same controlled-overlap model, with travel corridors suited to a Frankston agent and a future Melton agent.
 
@@ -144,31 +144,31 @@ Overlap buffer: `3003, 3211-3213, 3335-3338`. This adds West Melbourne, the Lara
 
 ### 3. Melton, Sunbury and Gisborne (`melb_v2_melton_sunbury_gisborne`)
 
-Core coverage: Melton/Bacchus Marsh, Rockbank, Diggers Rest, Sunbury, Riddells Creek and Gisborne. Gisborne is the western/north-western automatic-booking limit; Macedon and Woodend are excluded.
+Core coverage: Melton/Bacchus Marsh, Rockbank, Diggers Rest, Sunbury, Riddells Creek, Gisborne, Macedon, Mount Macedon and Woodend.
 
-Core postcode groups: `3335-3341, 3427-3438` using only registered delivery postcodes.
+Core postcode groups: `3335-3341, 3427-3438, 3440-3442` using only registered delivery postcodes.
 
 Overlap buffer: `3020-3023, 3025-3026, 3036-3049`. This follows the Sunshine/Deer Park and airport/Keilor corridors.
 
 ### 4. Melbourne North, North East and Lilydale (`melb_v2_north_northeast`)
 
-Core coverage: Moonee Valley, Brunswick/Coburg, Preston/Reservoir, Broadmeadows, Craigieburn, Epping, Bundoora, Greensborough, Kew/Balwyn, Doncaster, Box Hill, Ringwood, Croydon, Glen Waverley and Lilydale.
+Core coverage: Moonee Valley, Brunswick/Coburg, Preston/Reservoir, Broadmeadows, Craigieburn, Epping, Bundoora, Greensborough, Kew/Balwyn, Doncaster, Box Hill, Ringwood, Croydon, Glen Waverley, Lilydale, Mitchell, Whittlesea, the Yarra Valley and Dandenong Ranges.
 
-Core postcode groups: `3031-3049, 3055-3064, 3070-3120, 3122-3140, 3146-3160` using only registered delivery postcodes.
+Core postcode groups: `3031-3049, 3055-3064, 3070-3120, 3122-3140, 3146-3160, 3658, 3750-3763, 3765-3767, 3770, 3775, 3777-3778, 3781-3783, 3785-3789, 3791-3793, 3795-3797, 3799` using only registered delivery postcodes.
 
 Overlap buffer: `3051-3054, 3065-3068, 3121, 3161-3170, 3427-3438`. This adds the inner-north, Richmond, Oakleigh/Clayton and Sunbury/Gisborne boundaries.
 
-Craigieburn and Lilydale are the automatic-booking limits. Whittlesea, Healesville, Yarra Junction and Warburton are excluded.
+This includes Wallan/Wandong, Whittlesea, Healesville, Yarra Junction, Warburton, Emerald, Gembrook and Monbulk in postcode-first automatic booking.
 
 ### 5. Melbourne South, South East and Mornington Peninsula (`melb_v2_south_southeast`)
 
-Core coverage: Caulfield/Carnegie, Oakleigh/Clayton, Bayside south, Dandenong, Springvale, Keysborough, Frankston, Narre Warren, Berwick/Officer, Cranbourne and the Mornington Peninsula.
+Core coverage: Caulfield/Carnegie, Oakleigh/Clayton, Bayside south, Dandenong, Springvale, Keysborough, Frankston, Narre Warren, Berwick/Officer, Pakenham, Bunyip, Cranbourne, Western Port and the Mornington Peninsula.
 
-Core postcode groups: `3161-3180, 3189-3204, 3802-3809, 3910-3920, 3926-3944, 3975-3978` using only registered delivery postcodes.
+Core postcode groups: `3161-3180, 3189-3204, 3802-3810, 3812-3815, 3910-3920, 3926-3944, 3975-3978, 3980-3981, 3984` using only registered delivery postcodes.
 
 Overlap buffer: `3141-3160, 3181-3188, 3205-3207`. This adds the South Yarra/Malvern, Glen Waverley/Rowville and inner Bayside boundaries.
 
-Pakenham 3810 and locations farther east are excluded. French Island 3921, Tooradin/Koo Wee Rup 3980+ and the Gippsland/South Gippsland postcodes are also excluded from automatic booking.
+This includes Pakenham, Nar Nar Goon, Tynong, Garfield, Bunyip, Tooradin, Koo Wee Rup and Lang Lang. French Island 3921 and Gippsland/South Gippsland postcodes outside the audited metropolitan boundary remain manual.
 
 ### 6. Geelong and Torquay (`melb_v2_geelong_torquay`)
 
@@ -199,5 +199,6 @@ Until the second agent is created, the Frankston agent can select any required w
 2. The twelve `v2` zones were generated from the bundled delivery-postcode register and applied without radius anchors.
 3. Sydney now uses the approved six-window Tuesday/Thursday route. Melbourne retains its five existing time windows with the new Frankston-oriented route assignments.
 4. Assignee profiles, one-off block-outs and calendar settings were preserved.
-5. Public production checks passed for Bardia, Wetherill Park, Frankston, Melton and Torquay. Pakenham correctly remains outside automatic booking.
-6. Source defaults, automated overlap checks and the explicit-assignment calendar safeguard are complete locally. They require an authorised code deployment before they become the production fallback and calendar behaviour.
+5. The 2026 ABS Greater Melbourne suburb/locality boundary audit added 48 previously uncovered delivery postcodes. The Greater Geelong audit confirmed that all 58 official suburb/locality areas already map to the Geelong/Torquay corridor.
+6. Public production checks passed for Bardia, Wetherill Park, Frankston, Melton and Torquay before the Greater Melbourne expansion. Expanded-boundary production checks are required after its release.
+7. Source defaults, automated overlap checks and the explicit-assignment calendar safeguard are complete locally. They require an authorised code deployment before they become the production fallback and calendar behaviour.
