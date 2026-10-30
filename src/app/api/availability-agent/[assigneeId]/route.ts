@@ -17,7 +17,7 @@ class AgentAvailabilityValidationError extends Error {}
 function sanitizeAgentSlots(
   slots: unknown,
   assigneeId: string,
-  fallbackCity: 'melbourne' | 'sydney',
+  fallbackCity: 'melbourne' | 'sydney' | 'brisbane',
   allowedZoneIds: Set<string>
 ): WeeklyAvailabilitySlot[] {
   if (!Array.isArray(slots)) return []
@@ -33,7 +33,7 @@ function sanitizeAgentSlots(
     }
     return {
       id: String(source.id ?? `slot-${assigneeId}-${index + 1}`),
-      city: source.city === 'sydney' ? 'sydney' : fallbackCity,
+      city: source.city === 'brisbane' ? 'brisbane' : source.city === 'sydney' ? 'sydney' : fallbackCity,
       assigneeId,
       label: String(source.label ?? `Slot ${index + 1}`),
       day: (source.day ?? 'monday') as WeeklyAvailabilitySlot['day'],

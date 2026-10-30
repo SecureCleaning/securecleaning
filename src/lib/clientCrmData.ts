@@ -67,7 +67,7 @@ export type CrmOpportunity = {
   address: string
   suburb: string
   postcode: string
-  city: 'melbourne' | 'sydney' | null
+  city: 'melbourne' | 'sydney' | 'brisbane' | null
   state: string
   sourceType: CrmSourceType | string
   sourceProvider: string
@@ -147,8 +147,8 @@ function clean(value: unknown, maxLength = 500) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 }
 
-function cityFromInput(value: unknown): 'melbourne' | 'sydney' | null {
-  return value === 'melbourne' || value === 'sydney' ? value : null
+function cityFromInput(value: unknown): 'melbourne' | 'sydney' | 'brisbane' | null {
+  return value === 'melbourne' || value === 'sydney' || value === 'brisbane' ? value : null
 }
 
 function resolvePublicContactMatch(rows: Array<Record<string, unknown>>, input: {
@@ -178,7 +178,7 @@ export async function resolvePublicSubmissionClient(input: {
   email: string
   phone?: string
   address?: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
 }) {
   const db = getAdminSupabase()
   const email = normalizeCrmEmail(input.email)
@@ -209,7 +209,7 @@ export async function getCrmAssignmentCandidates(input: {
   address?: string
   suburb?: string
   postcode?: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
 }) {
   const [config, staff] = await Promise.all([
     getAvailabilityConfig(),
@@ -534,7 +534,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       suburb: String(site?.suburb ?? ''),
       postcode: String(site?.postcode ?? ''),
       city: cityFromInput(site?.city ?? contact?.city),
-      state: (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : (site?.city ?? contact?.city) === 'melbourne' ? 'VIC' : '',
+      state: (site?.city ?? contact?.city) === 'brisbane' ? 'QLD' : (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : (site?.city ?? contact?.city) === 'melbourne' ? 'VIC' : '',
       sourceType: String(intake?.source ?? 'manual'),
       sourceProvider: String(intake?.source_provider ?? ''),
       sourceExplanation: String(intake?.source_explanation ?? ''),
@@ -1009,7 +1009,7 @@ export async function syncOnlineQuoteCrmOpportunity(input: {
   address?: string
   suburb?: string
   postcode: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
 }) {
   if (!input.clientId) throw new ClientCrmError('A saved contact is required before linking the quote to the CRM.', 409)
   const db = getAdminSupabase()
@@ -1046,7 +1046,7 @@ export async function syncBookingCrmOpportunity(input: {
   address?: string
   suburb?: string
   postcode: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
   availabilityAssigneeId?: string | null
 }) {
   const db = getAdminSupabase()

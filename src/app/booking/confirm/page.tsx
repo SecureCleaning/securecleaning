@@ -53,7 +53,7 @@ function BookingConfirmContent() {
   }
 
   const { bookingRef, inputs } = stored
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
 
   return (
     <div className="min-h-screen bg-gray-50 py-16">

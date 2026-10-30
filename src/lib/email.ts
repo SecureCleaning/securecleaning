@@ -111,7 +111,7 @@ export async function sendQuoteEmail(
   result: QuoteResult,
   displayPrice?: FirmQuoteDisplayPrice
 ): Promise<string | null> {
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const priceRangeFmt = formatPriceRange(displayPrice?.low ?? result.totalLow, displayPrice?.high ?? result.totalHigh)
   const timeLabel =
@@ -264,7 +264,7 @@ export async function buildUpdatedQuoteEmail(
   documentAccessToken = '',
 ) {
   const businessLabel = inputs.businessName?.trim() || 'your premises'
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const finalQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ variant: 'final', ...(documentAccessToken ? { access: documentAccessToken } : {}) }).toString()}`
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ variant: 'final', ...(documentAccessToken ? { access: documentAccessToken } : {}) }).toString()}`
   const consumablesUrl = `${SITE_URL}/consumables`
@@ -349,7 +349,7 @@ export async function sendBookingConfirmationEmail(
   bookingRef: string,
   inputs: BookingInputs
 ): Promise<void> {
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const businessLabel = inputs.businessName?.trim() || 'Your premises'
   const adminBusinessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
   const bookingInvite = buildBookingInviteIcs(bookingRef, inputs)

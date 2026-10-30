@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   const longitude = longitudeText ? Number(longitudeText) : undefined
   const city = searchParams.get('city') as City | null
 
-  if (!city || !['melbourne', 'sydney'].includes(city)) {
+  if (!city || !['melbourne', 'sydney', 'brisbane'].includes(city)) {
     return NextResponse.json({ error: 'City must be melbourne or sydney.' }, { status: 400 })
   }
 

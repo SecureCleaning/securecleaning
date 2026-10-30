@@ -70,6 +70,7 @@ export const DEFAULT_QUOTE_PRICING_CONFIG: QuotePricingConfig = {
     city: {
       melbourne: 1.08,
       sydney: 1.1,
+      brisbane: 1.0,
     },
     timePreference: {
       business_hours: 1,

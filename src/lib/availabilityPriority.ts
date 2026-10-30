@@ -1,7 +1,8 @@
 import type { AvailabilityConfig, AvailabilitySuggestion, AvailabilityAssignee } from './availability'
 
+// Retained export name for existing callers; Queensland always uses area-first priority.
 export function usesMelbournePriority(config: AvailabilityConfig, city: string) {
-  return city === 'melbourne' && config.settings?.melbourneBookingMode === 'priority'
+  return city === 'brisbane' || (city === 'melbourne' && config.settings?.melbourneBookingMode === 'priority')
 }
 
 export function compareBookingPriority(a: AvailabilityAssignee, b: AvailabilityAssignee) {
@@ -13,18 +14,17 @@ export function validateBookingPriorityConfig(
   options: { requireSeparateCalendars?: boolean } = {},
 ): string | null {
   if (config.settings?.melbourneBookingMode != null && !['zones', 'priority'].includes(config.settings.melbourneBookingMode)) return 'Choose a valid Melbourne booking allocation mode.'
-  if (!usesMelbournePriority(config, 'melbourne')) return null
   const requireSeparateCalendars = options.requireSeparateCalendars ?? true
-  const priorities = new Set<number>()
+  const priorities = new Set<string>()
   const calendars = new Set<string>()
-  for (const agent of config.assignees.filter(a => a.active && a.city === 'melbourne')) {
+  for (const agent of config.assignees.filter(a => a.active && usesMelbournePriority(config, a.city))) {
     if (!Number.isInteger(agent.bookingPriority) || agent.bookingPriority! < 1 || agent.bookingPriority! > 999) return `Set a booking priority from 1 to 999 for ${agent.name}.`
-    if (priorities.has(agent.bookingPriority!)) return 'Each active Melbourne agent must have a different booking priority.'
-    priorities.add(agent.bookingPriority!)
+    if (priorities.has(`${agent.city}:${agent.bookingPriority}`)) return 'Each active agent in the same priority region must have a different booking priority.'
+    priorities.add(`${agent.city}:${agent.bookingPriority}`)
     if (!requireSeparateCalendars) continue
     const calendar = agent.calendarId?.trim().toLowerCase()
     if (!calendar || calendar === 'primary') return `Set a specific separate calendar ID for ${agent.name} before enabling booking priority.`
-    if (calendars.has(calendar)) return 'Active Melbourne agents must use separate calendars.'
+    if (calendars.has(calendar) || (agent.city === 'brisbane' && config.assignees.some(other => other.active && other.id !== agent.id && other.calendarId?.trim().toLowerCase() === calendar))) return 'Active priority agents must use separate calendars.'
     calendars.add(calendar)
   }
   return null

@@ -26,6 +26,7 @@ const defaultAddOns: QuoteAddOns = {
 const stateOptions = [
   { value: 'melbourne', label: 'Victoria' },
   { value: 'sydney', label: 'New South Wales' },
+  { value: 'brisbane', label: 'Queensland (Brisbane, Gold Coast, Sunshine Coast)' },
 ]
 
 const premisesOptions = [

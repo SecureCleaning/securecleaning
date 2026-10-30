@@ -23,7 +23,7 @@ function toUtcIcsDate(date: Date): string {
 
 
 export function getCityTimeZone(city: BookingInputs['city']): string {
-  return city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
+  return city === 'brisbane' ? 'Australia/Brisbane' : city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
 }
 
 /** Convert a local calendar date/time in an Australian city into a UTC Date. */
@@ -97,7 +97,7 @@ export function getBookingEventWindow(inputs: BookingInputs): { start: Date; end
 
 export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs): string {
   const { start, end } = getBookingEventWindow(inputs)
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
   const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual'
   const summary = `Secure Cleaning ${staffConfirmed ? 'site inspection' : 'inspection hold'} — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`

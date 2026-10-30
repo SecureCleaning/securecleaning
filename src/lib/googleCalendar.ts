@@ -46,7 +46,7 @@ export async function createBookingFollowUpEvent(
 
   const { start: startDate, end: endDate } = getBookingEventWindow(inputs)
 
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
 
   await calendar.events.insert({

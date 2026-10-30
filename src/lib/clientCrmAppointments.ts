@@ -94,8 +94,8 @@ function appointmentLocation(context: AppointmentContext) {
 
 function appointmentCity(context: AppointmentContext) {
   const city = context.site?.city ?? context.contact.city
-  if (city !== 'melbourne' && city !== 'sydney') {
-    throw new ClientCrmError('The site must have a Melbourne or Sydney service region before booking.', 409)
+  if (city !== 'melbourne' && city !== 'sydney' && city !== 'brisbane') {
+    throw new ClientCrmError('The site must have a supported service region before booking.', 409)
   }
   return city
 }

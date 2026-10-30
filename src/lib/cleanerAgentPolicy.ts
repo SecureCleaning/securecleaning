@@ -1,11 +1,12 @@
 import type { AgentCleanerEmailHistory, CleanerEmail } from '@/lib/cleaners'
 
-export type AustralianAgentState = 'NSW' | 'VIC'
+export type AustralianAgentState = 'NSW' | 'VIC' | 'QLD'
 
 export function getStateForAvailabilityCity(city: string): AustralianAgentState | null {
   switch (city) {
     case 'melbourne': return 'VIC'
     case 'sydney': return 'NSW'
+    case 'brisbane': return 'QLD'
     default: return null
   }
 }

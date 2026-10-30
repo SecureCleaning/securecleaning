@@ -24,7 +24,7 @@ export function buildCrmQuoteDraftInputs(input: {
   address: string
   suburb: string
   postcode: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
   cleaningFrequency?: string | null
   cleaningTimePreference?: string | null
   sitePremisesType?: string

@@ -40,7 +40,7 @@ test('site creation requires a bounded address and valid city', () => {
     success: false,
     error: 'address is required.',
   })
-  assert.deepEqual(validateSitePayload({ address: 'Valid', city: 'brisbane' }, 'create'), {
+  assert.deepEqual(validateSitePayload({ address: 'Valid', city: 'adelaide' }, 'create'), {
     success: false,
     error: 'city is invalid.',
   })

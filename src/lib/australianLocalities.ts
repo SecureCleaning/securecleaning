@@ -1,3 +1,4 @@
+import { queenslandPostcodeRows } from '@/data/queenslandPostcodes20261030'
 import { australianPostcodeRows } from '@/data/australianPostcodes20260527'
 
 export type AustralianLocality = {
@@ -43,11 +44,11 @@ function formatSuburbName(value: string) {
     .replace(/\bMc([a-z])/g, (_, letter: string) => `Mc${letter.toUpperCase()}`)
 }
 
-export const australianLocalities: AustralianLocality[] = australianPostcodeRows.map(
+export const australianLocalities: AustralianLocality[] = [...australianPostcodeRows, ...queenslandPostcodeRows].map(
   ([postcode, suburb, state, latitude, longitude]) => ({
     suburb: formatSuburbName(suburb),
     postcode,
-    city: state === 'VIC' ? 'Melbourne' : 'Sydney',
+    city: state === 'QLD' ? 'Brisbane' : state === 'VIC' ? 'Melbourne' : 'Sydney',
     state,
     ...(latitude === null ? {} : { latitude }),
     ...(longitude === null ? {} : { longitude }),

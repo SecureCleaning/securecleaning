@@ -1,4 +1,4 @@
-export type CrmServiceRegion = 'melbourne' | 'sydney'
+export type CrmServiceRegion = 'melbourne' | 'sydney' | 'brisbane'
 
 type AvailabilityAssigneeRegion = {
   id: string

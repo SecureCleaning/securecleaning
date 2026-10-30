@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
   const query = searchParams.get('query')?.trim() ?? ''
   const city = searchParams.get('city') as City | null
 
-  if (!city || !['melbourne', 'sydney'].includes(city)) {
-    return NextResponse.json({ error: 'City must be melbourne or sydney.' }, { status: 400 })
+  if (!city || !['melbourne', 'sydney', 'brisbane'].includes(city)) {
+    return NextResponse.json({ error: 'Choose a supported service region.' }, { status: 400 })
   }
 
   if (query.length < 3) {

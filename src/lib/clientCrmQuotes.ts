@@ -15,8 +15,8 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-function quoteReference(idempotencyKey: string, city: 'melbourne' | 'sydney') {
-  const timeZone = city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
+function quoteReference(idempotencyKey: string, city: 'melbourne' | 'sydney' | 'brisbane') {
+  const timeZone = city === 'brisbane' ? 'Australia/Brisbane' : city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
   const dateParts = new Intl.DateTimeFormat('en-AU', {
     timeZone,
     year: 'numeric',
@@ -101,7 +101,7 @@ export async function createCrmQuoteDraft(actor: ClientCrmActor, input: Record<s
   const site = siteResult.data
   if (!organisation || !contact || !site) throw new ClientCrmError('The saved client or site record is incomplete.', 409)
 
-  const city = site.city === 'melbourne' || site.city === 'sydney' ? site.city : null
+  const city = site.city === 'melbourne' || site.city === 'sydney' || site.city === 'brisbane' ? site.city : null
   const businessName = String(organisation.business_name ?? contact.business_name ?? site.site_name ?? '').trim()
   const contactName = String(contact.contact_name ?? '').trim()
   const email = String(contact.email ?? '').trim()

@@ -238,7 +238,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   const businessName = String(organisation?.business_name ?? intake.business_name ?? '')
   const city = String(site?.city ?? intake.city ?? '')
   const cityLabel = city ? city.replace(/^\w/, (letter) => letter.toUpperCase()) : ''
-  const state = String(intake.state ?? '').trim() || (city === 'sydney' ? 'NSW' : city === 'melbourne' ? 'VIC' : '')
+  const state = String(intake.state ?? '').trim() || (city === 'brisbane' ? 'QLD' : city === 'sydney' ? 'NSW' : city === 'melbourne' ? 'VIC' : '')
   const address = String(site?.address ?? intake.address ?? '')
   const leadSource = String(intake.source_provider ?? 'Secure Cleaning')
   const tokens = {

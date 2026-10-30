@@ -64,7 +64,7 @@ export default function QuoteResultView({
   isFirmPrice = false,
   includeConsumablesCatalogue = false,
 }: QuoteResultViewProps) {
-  const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const hasEmailIssue = emailSent === false
   const isAgentCreated = customerJourney === 'agent_created'
   const isConfirmedPrice = documentVariant === 'final' || isFirmPrice

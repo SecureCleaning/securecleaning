@@ -47,7 +47,7 @@ async function reviewRecipients(state: string) {
   const [staff, availability] = await Promise.all([listStaffAccounts(), getAvailabilityConfig()])
   const validEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
   const ownerEmails = staff.filter((item) => item.active && item.role === 'owner').map((item) => item.email.trim().toLowerCase()).filter(validEmail)
-  const city = state === 'NSW' ? 'sydney' : state === 'VIC' ? 'melbourne' : null
+  const city = state === 'QLD' ? 'brisbane' : state === 'NSW' ? 'sydney' : state === 'VIC' ? 'melbourne' : null
   const agents = city ? availability.assignees.filter((item) => item.active && item.city === city && validEmail(item.email?.trim().toLowerCase() ?? '')) : []
   if (ownerEmails.length === 0) throw new Error('No active owner is configured to review cleaner registrations.')
   if (agents.length === 0) throw new Error(`No active ${state} agent is configured to review cleaner registrations.`)

@@ -265,7 +265,7 @@ export function validateAvailabilityZoneConfig(candidate: unknown): string | nul
     if (!zoneId || zoneIds.has(zoneId)) return 'Every service zone must have a unique ID.'
     zoneIds.add(zoneId)
     if (!String(source.name ?? '').trim()) return `Zone ${zoneId} must have a name.`
-    if (!['melbourne', 'sydney'].includes(String(source.city ?? ''))) return `Zone ${zoneId} has an invalid city.`
+    if (!['melbourne', 'sydney', 'brisbane'].includes(String(source.city ?? ''))) return `Zone ${zoneId} has an invalid city.`
     if (!Array.isArray(source.matchTerms) || !Array.isArray(source.postcodes)) return `Zone ${zoneId} has invalid coverage lists.`
     if ((source.anchors ?? []).length > 40) return `Zone ${zoneId} has too many radius anchors.`
     for (const [anchorIndex, anchor] of (source.anchors ?? []).entries()) {
@@ -303,7 +303,7 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
           return {
             id: zoneId,
             name: String(zone?.name ?? `Zone ${index + 1}`),
-            city: zone?.city === 'sydney' ? 'sydney' : 'melbourne',
+            city: zone?.city === 'brisbane' ? 'brisbane' : zone?.city === 'sydney' ? 'sydney' : 'melbourne',
             matchTerms: mergeUniqueList(defaultZone?.matchTerms ?? [], sanitizeList(zone?.matchTerms)),
             postcodes: mergeUniqueList(defaultZone?.postcodes ?? [], sanitizeList(zone?.postcodes)),
             excludedMatchTerms: sanitizeList(zone?.excludedMatchTerms),
@@ -338,11 +338,11 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
     weeklySlots: Array.isArray(source.weeklySlots)
       ? source.weeklySlots.map((slot, index) => ({
           id: String(slot?.id ?? `slot-${index + 1}`),
-          city: slot?.city === 'sydney' ? 'sydney' : 'melbourne',
+          city: slot?.city === 'brisbane' ? 'brisbane' : slot?.city === 'sydney' ? 'sydney' : 'melbourne',
           assigneeId:
             typeof slot?.assigneeId === 'string' && slot.assigneeId
               ? slot.assigneeId
-              : (fallback.assignees.find((assignee) => assignee.city === (slot?.city === 'sydney' ? 'sydney' : 'melbourne'))?.id ?? fallback.assignees[0]?.id ?? ''),
+              : (fallback.assignees.find((assignee) => assignee.city === (slot?.city === 'brisbane' ? 'brisbane' : slot?.city === 'sydney' ? 'sydney' : 'melbourne'))?.id ?? fallback.assignees[0]?.id ?? ''),
           label: String(slot?.label ?? `Slot ${index + 1}`),
           day: DAY_ORDER.includes(String(slot?.day) as Weekday)
             ? (String(slot?.day) as Weekday)

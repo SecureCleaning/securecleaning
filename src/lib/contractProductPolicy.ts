@@ -58,6 +58,7 @@ const ANNUAL_VISITS: Record<string, number> = {
 const STATE_BY_CITY: Record<string, ContractProductState> = {
   melbourne: 'VIC',
   sydney: 'NSW',
+  brisbane: 'QLD',
 }
 
 const PREMISES_LABELS: Record<string, string> = {

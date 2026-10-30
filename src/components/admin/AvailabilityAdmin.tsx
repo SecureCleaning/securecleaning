@@ -58,7 +58,7 @@ type OwnerOperatorOption = {
   id: string
   business_name: string
   operator_name: string
-  city: 'melbourne' | 'sydney'
+  city: 'melbourne' | 'sydney' | 'brisbane'
   is_active: boolean
 }
 
@@ -219,6 +219,11 @@ export default function AvailabilityAdmin({
             <p className="mt-2 text-sm text-gray-700">An agent is never offered outside the selected service areas on their availability window. Sydney is unchanged. Calendar entries outside this system must also be blocked out in availability.</p>
           </section>
 
+          <section className="rounded-xl border border-teal-200 bg-teal-50 p-5">
+            <h2 className="text-lg font-bold text-gray-900">Queensland booking allocation</h2>
+            <p className="mt-2 text-sm text-gray-700">Brisbane, Gold Coast and Sunshine Coast use selected service areas first, then booking priority where available times overlap. Create a Queensland agent below, set a unique priority, and add their own availability windows with the areas they cover. Each agent has a separate calendar. Queensland appointments use Brisbane local time throughout the year. No appointment times are offered until an active agent has availability.</p>
+          </section>
+
           <section className="grid gap-4 md:grid-cols-4">
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active agents</div>
@@ -307,7 +312,7 @@ export default function AvailabilityAdmin({
                           className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
                         >
                           <option value="melbourne">Melbourne</option>
-                          <option value="sydney">Sydney</option>
+                          <option value="sydney">Sydney</option><option value="brisbane">Queensland</option>
                         </select>
                       </div>
                       <div>
@@ -318,7 +323,7 @@ export default function AvailabilityAdmin({
                           className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                         />
                       </div>
-                      {assignee.city === 'melbourne' ? <div>
+                      {['melbourne', 'brisbane'].includes(assignee.city) ? <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700">Booking priority for {assignee.name}</label>
                         <input aria-label={`Booking priority for ${assignee.name}`} type="number" min={1} max={999} step={1} value={assignee.bookingPriority ?? 100} onChange={(event) => updateAssignee(assignee.id, { bookingPriority: Number(event.target.value) })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
                         <p className="mt-1 text-xs text-gray-500">1 is first choice. Use different numbers for active agents. Applies only where selected areas and available times overlap.</p>
@@ -510,7 +515,7 @@ export default function AvailabilityAdmin({
                         className="block w-full rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm"
                       >
                         <option value="melbourne">Melbourne</option>
-                        <option value="sydney">Sydney</option>
+                        <option value="sydney">Sydney</option><option value="brisbane">Queensland</option>
                       </select>
                     </div>
                     <div className="flex items-end justify-between gap-3">

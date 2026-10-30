@@ -25,7 +25,7 @@ test('Parramatta search returns the actual NSW suburb and postcode', () => {
 })
 
 test('bundled locality coverage includes every delivery area in the approved NSW and VIC snapshot', () => {
-  assert.equal(australianLocalities.length, 7896)
+  assert.equal(australianLocalities.filter(({ state }) => state !== 'QLD').length, 7896)
   assert.equal(australianLocalities.filter(({ state }) => state === 'NSW').length, 4750)
   assert.equal(australianLocalities.filter(({ state }) => state === 'VIC').length, 3146)
   assert.ok(australianLocalities.every(({ postcode }) => /^\d{4}$/.test(postcode)))
@@ -41,7 +41,7 @@ test('locality matches include coordinates when the source provides them and pre
     latitude: -37.74,
     longitude: 145.03,
   })
-  assert.equal(australianLocalities.filter(({ latitude, longitude }) => latitude === undefined || longitude === undefined).length, 247)
+  assert.equal(australianLocalities.filter(({ state, latitude, longitude }) => state !== 'QLD' && (latitude === undefined || longitude === undefined)).length, 247)
 })
 
 test('postcode search remains bounded to the selected state', () => {

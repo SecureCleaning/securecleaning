@@ -91,12 +91,12 @@ export function applyApprovedAvailabilityZoneDesign(config: AvailabilityConfig):
         ? Math.max(config.settings.melbourneMaxSlotsToShow ?? config.settings.maxSlotsToShow, 12)
         : config.settings.melbourneMaxSlotsToShow,
     },
-    zones: APPROVED_SERVICE_ZONES.map((zone) => ({
+    zones: [...APPROVED_SERVICE_ZONES.filter(zone => zone.city !== 'brisbane').map((zone) => ({
       ...zone,
       matchTerms: [...zone.matchTerms],
       postcodes: [...zone.postcodes],
       anchors: [],
-    })),
+    })), ...config.zones.filter(zone => zone.city === 'brisbane')],
     weeklySlots: [
       ...preservedAndMigratedSlots,
       ...(sydneyAssignee ? buildSydneySlots(sydneyAssignee.id) : []),

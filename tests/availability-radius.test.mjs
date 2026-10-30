@@ -91,7 +91,7 @@ test('Preston maps to the approved north and north-east route', () => {
 })
 
 test('approved default zones use explicit delivery postcodes without broad radius fallbacks', () => {
-  assert.equal(DEFAULT_AVAILABILITY_CONFIG.zones.length, 12)
+  assert.equal(DEFAULT_AVAILABILITY_CONFIG.zones.length, 15)
   assert.ok(DEFAULT_AVAILABILITY_CONFIG.zones.every((zone) => (zone.anchors ?? []).length === 0))
 })
 

@@ -9,7 +9,7 @@ export function normalizeSmsMobile(value: unknown): string | null {
   return /^614\d{8}$/.test(number) ? number : null
 }
 export function smsTimeZone(city: unknown): string | null {
-  return city === 'sydney' ? 'Australia/Sydney' : city === 'melbourne' ? 'Australia/Melbourne' : null
+  return city === 'brisbane' ? 'Australia/Brisbane' : city === 'sydney' ? 'Australia/Sydney' : city === 'melbourne' ? 'Australia/Melbourne' : null
 }
 function localParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-AU', { timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date)

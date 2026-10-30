@@ -54,9 +54,9 @@ export function parseLeadCsv(text: string, options: PremisesOption[]) {
     record.first_name ||= 'Manager'
     if (!isValidCrmEmail(record.email || '')) errors.push('Valid email is required')
     record.email = (record.email || '').toLowerCase()
-    record.city = ({ nsw: 'sydney', vic: 'melbourne' } as Record<string, string>)[record.city?.toLowerCase()] || record.city?.toLowerCase()
-    if (!['sydney', 'melbourne'].includes(record.city)) errors.push('City must be sydney/NSW or melbourne/VIC')
-    else if (!/^\d{4}$/.test(record.postcode) || !crmPostcodeMatchesRegion(record.postcode, record.city as 'sydney' | 'melbourne')) errors.push('Postcode must match the service region')
+    record.city = ({ nsw: 'sydney', vic: 'melbourne', qld: 'brisbane', queensland: 'brisbane' } as Record<string, string>)[record.city?.toLowerCase()] || record.city?.toLowerCase()
+    if (!['sydney', 'melbourne', 'brisbane'].includes(record.city)) errors.push('City must be sydney/NSW, melbourne/VIC or brisbane/QLD')
+    else if (!/^\d{4}$/.test(record.postcode) || !crmPostcodeMatchesRegion(record.postcode, record.city as 'sydney' | 'melbourne' | 'brisbane')) errors.push('Postcode must match the service region')
     record.source_type = normalizeChoice(record.source_type || 'manual', SOURCE_ALIASES)
     record.contact_basis = normalizeChoice(record.contact_basis || '', BASIS_ALIASES)
     if (!(CRM_SOURCE_TYPES as readonly string[]).includes(record.source_type)) errors.push(`Invalid source_type \"${record.source_type}\". Use: Manual entry, Online quote, Purchased lead, Cold outreach or Direct booking.`)

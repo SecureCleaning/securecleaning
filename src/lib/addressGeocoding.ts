@@ -61,7 +61,7 @@ export function preserveTypedStreetNumber(
 }
 
 export async function searchAustralianAddresses(query: string, city: City, limit = 5): Promise<AddressSuggestion[]> {
-  const cityLabel = city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const cityLabel = city === 'brisbane' ? 'Queensland' : city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const url = new URL('https://nominatim.openstreetmap.org/search')
   url.searchParams.set('q', `${query}, ${cityLabel}, Australia`)
   url.searchParams.set('format', 'jsonv2')

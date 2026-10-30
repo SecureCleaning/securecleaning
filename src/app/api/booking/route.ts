@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!['melbourne', 'sydney'].includes(inputs.city)) {
+    if (!['melbourne', 'sydney', 'brisbane'].includes(inputs.city)) {
       return NextResponse.json(
         { success: false, error: 'City must be melbourne or sydney.' },
         { status: 400 }

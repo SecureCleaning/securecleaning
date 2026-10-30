@@ -12,7 +12,7 @@ const LABELS: Record<string, string> = {
   springCleanHigh: 'Spring clean high multiplier', rangeLow: 'Standard range low multiplier', rangeHigh: 'Standard range high multiplier',
   office: 'Office', medical: 'Medical and healthcare', industrial: 'Industrial', childcare: 'Childcare', retail: 'Retail', gym: 'Gym and fitness', warehouse: 'Warehouse', function_centre: 'Function centre', sports_facility: 'Sports facility', other: 'Other',
   daily: '5 days per week', '7x_week': '7 days per week', '3x_week': '3 times per week', '2x_week': '2 times per week', weekly: 'Weekly', fortnightly: 'Fortnightly', monthly: 'Monthly',
-  melbourne: 'Melbourne', sydney: 'Sydney', business_hours: 'Business hours', after_hours: 'After hours', weekend: 'Weekend',
+  melbourne: 'Melbourne', sydney: 'Sydney', brisbane: 'Queensland', business_hours: 'Business hours', after_hours: 'After hours', weekend: 'Weekend',
 }
 
 function readableLabel(key: string) {

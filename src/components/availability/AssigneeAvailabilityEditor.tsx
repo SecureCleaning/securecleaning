@@ -275,7 +275,7 @@ export default function AssigneeAvailabilityEditor({
             assigneeId={assignee.id}
             events={calendarEvents}
             bookingApiPath={`${apiPath}/bookings`}
-            timeZone={assignee.city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'}
+            timeZone={assignee.city === 'brisbane' ? 'Australia/Brisbane' : assignee.city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'}
           />
 
           <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">

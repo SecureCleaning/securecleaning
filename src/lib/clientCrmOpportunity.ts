@@ -22,7 +22,7 @@ export function buildCrmSiteIdentity(input: {
   address?: string | null
   suburb?: string | null
   postcode?: string | null
-  city?: 'melbourne' | 'sydney' | null
+  city?: 'melbourne' | 'sydney' | 'brisbane' | null
 }) {
   const address = normalizeText(input.address ?? '')
   const postcode = (input.postcode ?? '').replace(/[^0-9]/g, '')

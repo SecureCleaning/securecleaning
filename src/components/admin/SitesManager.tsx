@@ -8,7 +8,7 @@ import PremisesTypeField from './PremisesTypeField'
 import type { PremisesOption } from '@/lib/premisesCatalog'
 import ActionToast from '@/components/ActionToast'
 
-const cityOptions: City[] = ['melbourne', 'sydney']
+const cityOptions: City[] = ['melbourne', 'sydney', 'brisbane']
 
 
 type SiteFormState = {

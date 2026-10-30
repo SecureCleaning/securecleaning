@@ -11,7 +11,7 @@ const { normalizeAvailabilityAssigneeCity } = await import('../src/lib/availabil
 test('agent cleaner access maps supported cities to canonical states', () => {
   assert.equal(getStateForAvailabilityCity('melbourne'), 'VIC')
   assert.equal(getStateForAvailabilityCity('sydney'), 'NSW')
-  assert.equal(getStateForAvailabilityCity('brisbane'), null)
+  assert.equal(getStateForAvailabilityCity('brisbane'), 'QLD')
   const source = read('src/lib/cleanerAgentAccess.ts')
   assert.match(source, /isAuthorizedAvailabilityAgentRequest\(request, assigneeId\)/)
   assert.match(source, /if \(!assignee\?\.active\) return null/)
@@ -21,7 +21,7 @@ test('agent cleaner access maps supported cities to canonical states', () => {
 test('availability assignee city normalization disables malformed persisted values', () => {
   assert.deepEqual(normalizeAvailabilityAssigneeCity('sydney', 'melbourne'), { city: 'sydney', supported: true })
   assert.deepEqual(normalizeAvailabilityAssigneeCity(undefined, 'sydney'), { city: 'sydney', supported: true })
-  assert.deepEqual(normalizeAvailabilityAssigneeCity('brisbane', 'melbourne'), { city: 'melbourne', supported: false })
+  assert.deepEqual(normalizeAvailabilityAssigneeCity('adelaide', 'melbourne'), { city: 'melbourne', supported: false })
   assert.match(read('src/lib/availability.ts'), /active: normalizedCity\.supported && Boolean/)
 })
 

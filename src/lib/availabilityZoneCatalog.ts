@@ -1,3 +1,4 @@
+import { QUEENSLAND_SERVICE_ZONES } from './queenslandServiceZones'
 import { australianPostcodeRows } from '@/data/australianPostcodes20260527'
 import type { ServiceZone } from '@/lib/availability'
 
@@ -30,6 +31,7 @@ function createZone({ state, postcodeRanges, ...zone }: ZoneDefinition): Service
 }
 
 export const APPROVED_SERVICE_ZONES: ServiceZone[] = [
+  ...QUEENSLAND_SERVICE_ZONES,
   createZone({
     id: 'syd_v2_northwest_west',
     name: 'Sydney North West and West',

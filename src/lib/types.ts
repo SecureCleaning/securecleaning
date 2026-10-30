@@ -1,6 +1,6 @@
 // ─── Enums / Literals ────────────────────────────────────────────────────────
 
-export type City = 'melbourne' | 'sydney'
+export type City = 'melbourne' | 'sydney' | 'brisbane'
 
 export type PremisesType =
   | 'office'

@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!['melbourne', 'sydney'].includes(inputs.city)) {
+    if (!['melbourne', 'sydney', 'brisbane'].includes(inputs.city)) {
       return NextResponse.json(
         { success: false, error: 'City must be melbourne or sydney.' },
         { status: 400 }
@@ -225,7 +225,7 @@ export async function POST(request: NextRequest) {
         : err instanceof Error ? err.message : 'Unable to send quote email.'
     }
 
-    const cityLabel = inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+    const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
     const selectedRooms = sanitizePublicRoomScope(inputs.roomScope)
     const bathroomSummary = summarizePublicRoomScope(selectedRooms.filter((room) => isBathroomRoomScopeType(room.type)))
     const roomScopeSummary = summarizePublicRoomScope(selectedRooms.filter((room) => !isBathroomRoomScopeType(room.type) && room.type !== 'kitchen'))

@@ -1,7 +1,7 @@
 import type { City, PremisesType } from '@/lib/types'
 import type { SitePayload } from '@/lib/sites'
 
-const CITY_OPTIONS = new Set<City>(['melbourne', 'sydney'])
+const CITY_OPTIONS = new Set<City>(['melbourne', 'sydney', 'brisbane'])
 const PREMISES_OPTIONS = new Set<PremisesType>([
   'office',
   'medical',
