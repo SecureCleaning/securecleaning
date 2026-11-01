@@ -15,6 +15,7 @@ import { appendEmailMergeField, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS, INDUS
 import { HANDOVER_EMAIL_MERGE_FIELDS, type ContractSaleHandoverEmailTemplate } from '@/lib/contractSaleHandoverTemplates'
 
 import Link from 'next/link'
+import ContractSaleScopeEmail from '@/components/admin/ContractSaleScopeEmail'
 import ContractSaleFollowup from '@/components/admin/ContractSaleFollowup'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveInvoiceSelection } from '@/lib/invoiceDirectoryPolicy'
@@ -533,6 +534,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="font-mono text-sm font-semibold text-teal-700">{sale.saleCode}</p><h2 className="text-xl font-bold">{sale.productCode} · {sale.cleanerBusiness}</h2><p className="text-sm text-gray-600">{sale.suburb}, {sale.state} · {money(sale.agreedPurchasePriceIncGstCents)} inc GST</p></div><div className="ml-auto text-right"><span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${statusTone(sale.status)}`}>{sale.status.replaceAll('_', ' ')}</span><div className="mt-3"><span className="block text-xs font-bold uppercase tracking-wide text-gray-500">Client business</span><strong className="block text-base text-gray-900">{sale.clientBusiness || 'Not provided'}</strong>{sale.clientName ? <span className="block text-sm text-gray-700">Contact: {sale.clientName}</span> : null}{sale.clientEmail ? <span className="block text-sm text-gray-600">{sale.clientEmail}</span> : null}</div></div></div>
             <nav aria-label="Connected records" className="mt-5 flex flex-wrap gap-2"><Link href={clientsHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Client</Link>{quoteHref ? <Link href={quoteHref} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Quote</Link> : null}<Link href={`${productsHref}?product=${encodeURIComponent(sale.productId)}`} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold">Product</Link><span className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white">Product sale</span><a href={`/api/admin/contract-products/${encodeURIComponent(sale.productId)}/scope`} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-teal-700 px-3 py-2 text-sm font-semibold text-teal-700">View cleaner scope</a></nav>
+            <ContractSaleScopeEmail key={sale.id} saleId={sale.id} cancelled={sale.status === 'cancelled'} />
           </section>
 
           <section className="grid gap-2 sm:grid-cols-4 xl:grid-cols-9">{[

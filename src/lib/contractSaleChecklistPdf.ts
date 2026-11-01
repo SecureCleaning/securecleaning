@@ -281,3 +281,49 @@ export function buildContractSaleChecklistPdf(input: {
   }
   return pdfFromPages(contents)
 }
+
+// A standalone allowlisted scope: never include the handover checklist or client details.
+export function buildCleanerScopePdf(productCode: string, scope: CleanerScopeSnapshotV1) {
+  const lines: ScopeLine[] = []
+  const add = (value: string, bold = false) => {
+    // Split long words as well as lines; never truncate saved scope text.
+    const width = (text: string) => [...text].reduce((sum, char) => sum + (char === 'W' || char === '@' ? 10 : /[Mm]/.test(char) ? 9 : /[A-Zw]/.test(char) ? 8 : 6), 0)
+    let current = ''
+    for (const word of ascii(value).split(' ')) {
+      if (current && width(`${current} ${word}`) > 510) { lines.push({ text: current, bold }); current = '' }
+      for (const char of word) {
+        if (width(current + char) > 510) { lines.push({ text: current, bold }); current = '' }
+        current += char
+      }
+      current += ' '
+    }
+    if (current.trim()) lines.push({ text: current.trim(), bold })
+  }
+  add(scope.summary)
+  add(`${scope.frequency.replaceAll('_', ' ')} | ${scope.timePreference.replaceAll('_', ' ')} | ${scope.floorArea} sqm | Floors: ${scope.floors}`)
+  for (const option of scope.selectedOptions ?? []) add(option)
+  for (const room of scope.rooms) {
+    lines.push({ text: '' })
+    add(room.label, true)
+    add(`Quantity ${room.quantity} | ${room.size} sqm each | Floor ${room.floor}`)
+    if (room.description) add(room.description)
+    for (const task of room.tasks) add(`- ${typeof task === 'string' ? `${task} - Every clean` : taskText(task)}`)
+    for (const option of room.selectedOptions ?? []) add(`- ${option}`)
+  }
+  const pages: ScopeLine[][] = []
+  while (lines.length) pages.push(lines.splice(0, 48))
+  return pdfFromPages(pages.map((page, index) => {
+    const c = canvas()
+    c.fill(0, 778, PAGE_WIDTH, 64, GREEN)
+    c.text('Secure Cleaning', 32, 809, 19, true, '1 1 1')
+    c.text('CLEANER SCOPE OF WORKS', 300, 809, 12, true, '1 1 1')
+    c.text(`Product ${productCode}`, 32, 789, 9, false, '1 1 1')
+    let y = 750
+    for (const line of page) {
+      c.text(line.text, 36, y, 10, Boolean(line.bold))
+      y -= 14
+    }
+    c.text(`Page ${index + 1} of ${pages.length}`, 480, 32, 8, false, MUTED)
+    return c.output()
+  }))
+}
