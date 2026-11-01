@@ -33,6 +33,7 @@ import {
 } from '@/lib/contractSales'
 import { ContractProductError } from '@/lib/contractProducts'
 
+import { manageCleanerScopeEmailTemplate } from '@/lib/cleanerScopeEmailTemplateServer'
 import { contractSaleScopeEmail } from '@/lib/contractSaleScopeEmail'
 import { contractSaleFollowup } from '@/lib/contractSaleFollowups'
 
@@ -57,10 +58,10 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json() as Record<string, unknown>
     const action = typeof body.action === 'string' ? body.action : ''
-    if (action === 'scope-email.preview' || action === 'scope-email.send') {
+    if (['scope-email.draft', 'scope-email.preview', 'scope-email.send', 'scope-email-template.get', 'scope-email-template.update'].includes(action)) {
       const limited = await rateLimit(request, { key: `contract-sale-scope-email:${actor.id}:${action}`, limit: action === 'scope-email.send' ? 20 : 120, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
-      return NextResponse.json({ success: true, result: await contractSaleScopeEmail(actor, body) }, { headers: { 'Cache-Control': 'private, no-store' } })
+      return NextResponse.json({ success: true, result: await (action.startsWith('scope-email-template.') ? manageCleanerScopeEmailTemplate(actor, body) : contractSaleScopeEmail(actor, body)) }, { headers: { 'Cache-Control': 'private, no-store' } })
     }
     if (['followup.history', 'followup.template', 'followup.preview', 'followup.send'].includes(action)) {
       const limited = await rateLimit(request, { key: `contract-sale-followup:${actor.id}:${action}`, limit: action === 'followup.send' ? 20 : 120, windowMs: 60 * 60 * 1000 })

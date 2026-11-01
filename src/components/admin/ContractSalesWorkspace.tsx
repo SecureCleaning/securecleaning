@@ -15,6 +15,7 @@ import { appendEmailMergeField, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELDS, INDUS
 import { HANDOVER_EMAIL_MERGE_FIELDS, type ContractSaleHandoverEmailTemplate } from '@/lib/contractSaleHandoverTemplates'
 
 import Link from 'next/link'
+import CleanerScopeEmailTemplateEditor from '@/components/admin/CleanerScopeEmailTemplateEditor'
 import ContractSaleScopeEmail from '@/components/admin/ContractSaleScopeEmail'
 import ContractSaleFollowup from '@/components/admin/ContractSaleFollowup'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -445,6 +446,7 @@ export default function ContractSalesWorkspace({ portal = 'admin', assigneeId = 
     <AdminPageHeader title="Product Sales" description="Confirm the final price, prepare the tax invoice and agreement in either order, send both documents together, then collect the deposit and coordinate the handover." />
     <ActionToast message={message} tone={messageTone} onDismiss={() => setMessage('')} />
 
+    {(data.actor.role === 'owner' || data.actor.role === 'manager') ? <CleanerScopeEmailTemplateEditor /> : null}
     {(data.actor.role === 'owner' || data.actor.role === 'manager') && invoiceTemplateDraft ? <section className="mb-5 rounded-2xl border border-gray-200 bg-white shadow-sm">
       <button type="button" onClick={() => setShowInvoiceTemplate((current) => !current)} aria-expanded={showInvoiceTemplate} className="flex w-full items-center justify-between gap-4 p-5 text-left"><span><strong className="block text-lg">Invoice template</strong><span className="text-sm font-normal text-gray-600">Edit the global supplier, email and tax-invoice wording used for future product sales.</span></span><span className="text-sm font-semibold text-teal-700">{showInvoiceTemplate ? 'Close' : 'Edit template'}</span></button>
       {showInvoiceTemplate ? <div className="border-t border-gray-200 p-5">
