@@ -1,3 +1,4 @@
+import { buildCleanerScopePdf } from '@/lib/contractSaleChecklistPdf'
 import { randomBytes } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getContractProductActor } from '@/lib/contractProductAuth'
@@ -14,6 +15,12 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
     const { id } = await context.params
     if (!/^[0-9a-f-]{36}$/i.test(id)) return new NextResponse('Product not found.', { status: 404, headers })
     const { productCode, scope } = await getContractProductCleanerScope(actor, id)
+    if (request.nextUrl.searchParams.get('format') === 'pdf') {
+      const filename = `cleaner-scope-${productCode.replace(/[^a-z0-9-]/gi, '')}.pdf`
+      return new NextResponse(new Uint8Array(buildCleanerScopePdf(productCode, scope)), {
+        headers: { ...headers, 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${filename}"` },
+      })
+    }
     const nonce = randomBytes(18).toString('base64')
     return new NextResponse(renderContractProductScopeDocument(productCode, scope, nonce), {
       headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'` },
