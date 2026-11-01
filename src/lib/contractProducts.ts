@@ -1,3 +1,4 @@
+import { containsSourceIdentity } from '@/lib/contractProductScopePrivacy'
 import { sanitizeProductDescription, productDescriptionText } from '@/lib/productDescription'
 import 'server-only'
 
@@ -105,26 +106,13 @@ function parseMoneyToCents(value: unknown) {
   return Math.round(numeric * 100)
 }
 
-function normalizedText(value: unknown) {
-  return clean(value, 1000).toLowerCase()
-    .replace(/[^a-z0-9@.]+/g, ' ')
-    .replace(/\bstreet\b/g, 'st').replace(/\broad\b/g, 'rd').replace(/\bavenue\b/g, 'ave')
-    .replace(/\bdrive\b/g, 'dr').replace(/\bboulevard\b/g, 'blvd').replace(/\bhighway\b/g, 'hwy')
-    .replace(/\bproprietary limited\b/g, 'pty ltd')
-    .replace(/\s+/g, ' ').trim()
-}
-
-function digits(value: unknown) {
-  return clean(value, 100).replace(/[^0-9]/g, '')
-}
-
 function cleanerScopeUserText(value: unknown) {
   if (!value || typeof value !== 'object') return ''
   const scope = value as Partial<CleanerScopeSnapshotV1>
   const roomText = Array.isArray(scope.rooms)
-    ? scope.rooms.flatMap((room) => [room.label, room.description, ...(room.selectedOptions ?? [])])
+    ? scope.rooms.flatMap((room) => [room.label, room.description, ...(room.tasks ?? []).map((task) => typeof task === 'string' ? task : task.label), ...(room.selectedOptions ?? [])])
     : []
-  return [...roomText, ...(Array.isArray(scope.selectedOptions) ? scope.selectedOptions : [])]
+  return [scope.summary, ...roomText, ...(Array.isArray(scope.selectedOptions) ? scope.selectedOptions : [])]
     .filter((item): item is string => typeof item === 'string')
     .join(' ')
 }
@@ -143,16 +131,15 @@ async function assertCleanerListingExcludesSourcePii(product: ProductRow) {
       : Promise.resolve({ data: null, error: null }),
   ])
   for (const result of [organisation, contact, site]) if (result.error) throw result.error
-  const listingText = normalizedText(
+  const listingText = String(
     `${product.heading ?? ''} ${product.description ?? ''} ${productDescriptionText(String(product.description_html ?? ''))} ${cleanerScopeUserText(product.cleaner_scope_snapshot)}`,
   )
   const sensitiveText = [
     organisation.data?.business_name, organisation.data?.legal_name,
     contact.data?.business_name, contact.data?.contact_name, contact.data?.email,
     site.data?.site_name, site.data?.address, site.data?.postcode,
-  ].map(normalizedText).filter((value) => value.length >= 4)
-  const phone = digits(contact.data?.phone)
-  if (sensitiveText.some((value) => listingText.includes(value)) || (phone.length >= 8 && digits(listingText).includes(phone))) {
+  ]
+  if (containsSourceIdentity(listingText, sensitiveText, contact.data?.phone)) {
     throw new ContractProductError('Remove client identity, exact address, postcode, email, or phone details before publishing.', 409)
   }
 }
@@ -210,6 +197,17 @@ export async function getAuthorizedProduct(actor: ContractProductActor, productI
     throw new ContractProductError('Contract product not found.', 404)
   }
   return data as ProductRow
+}
+
+// Read-only access is independent of reservation/sale editing locks.
+export async function getContractProductCleanerScope(actor: ContractProductActor, productId: string) {
+  const product = await getAuthorizedProduct(actor, productId)
+  const scope = product.cleaner_scope_snapshot
+  if (!isPublishableCleanerScope(scope)) {
+    throw new ContractProductError('This product does not have a valid saved cleaner scope.', 409)
+  }
+  await assertCleanerListingExcludesSourcePii({ ...product, heading: '', description: '', description_html: '' })
+  return { productCode: String(product.product_code), scope }
 }
 
 async function getContractProductQuoteSnapshot(quote: ProductRow): Promise<ContractProductQuoteSnapshot> {
