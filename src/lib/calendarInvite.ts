@@ -99,7 +99,7 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
   const { start, end } = getBookingEventWindow(inputs)
   const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
-  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual'
+  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual' || inputs.inspectionBookingSource === 'partner'
   const summary = `Secure Cleaning ${staffConfirmed ? 'site inspection' : 'inspection hold'} — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
   const description = [
     `Booking reference: ${bookingRef}`,

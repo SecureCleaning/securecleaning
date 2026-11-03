@@ -2,7 +2,7 @@ import { google } from 'googleapis'
 import type { BookingInputs } from './types'
 import { getBookingEventWindow, getCityTimeZone } from './calendarInvite'
 
-function getCalendarClient() {
+export function getCalendarClient() {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET
 
@@ -62,7 +62,7 @@ export async function createBookingFollowUpEvent(
         `City: ${cityLabel}`,
         `Frequency: ${inputs.frequency}`,
         `Time preference: ${inputs.timePreference}`,
-        `${inputs.inspectionBookingSource === 'crm_manual' ? 'Confirmed appointment' : 'Inspection window'}: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
+        `${inputs.inspectionBookingSource === 'crm_manual' || inputs.inspectionBookingSource === 'partner' ? 'Confirmed appointment' : 'Inspection window'}: ${inputs.preferredInspectionSlotLabel || 'Not selected'}`,
         `Assigned quoter: ${inputs.preferredInspectionAssigneeName || 'To be confirmed'}`,
         `Notes: ${inputs.notes || 'None'}`,
       ].join('\n'),

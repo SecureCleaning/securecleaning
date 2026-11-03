@@ -353,7 +353,7 @@ export async function sendBookingConfirmationEmail(
   const businessLabel = inputs.businessName?.trim() || 'Your premises'
   const adminBusinessLabel = inputs.businessName?.trim() || `${inputs.contactName?.trim() || 'Customer'} enquiry`
   const bookingInvite = buildBookingInviteIcs(bookingRef, inputs)
-  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual'
+  const staffConfirmed = inputs.inspectionBookingSource === 'crm_manual' || inputs.inspectionBookingSource === 'partner'
 
   const selectedInspectionWindow = inputs.preferredInspectionSlotLabel
     ? `${inputs.preferredInspectionSlotLabel}`

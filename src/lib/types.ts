@@ -181,7 +181,7 @@ export interface BookingInputs {
   preferredInspectionAssigneeId?: string
   preferredInspectionAssigneeName?: string
   preferredInspectionCalendarId?: string
-  inspectionBookingSource?: 'public' | 'crm_manual'
+  inspectionBookingSource?: 'public' | 'crm_manual' | 'partner'
   inspectionDurationMinutes?: number
   inspectionAvailabilityOverridden?: boolean
   addOns: QuoteAddOns
