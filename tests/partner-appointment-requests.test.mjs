@@ -43,9 +43,18 @@ test('request agent selection checks suburb and company restrictions before prio
  assert.equal(proposals.proposalAgent(c,{...company,assignee_ids:['a']},inputs),null)
  assert.throws(()=>proposals.proposalAgent(c,{...company,cities:[]},inputs))
 })
-const messageMocks={'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}}
+const messageMocks={'./emailFailureAlerts':{reportEmailFailure:async()=>{}},'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}}
 const messages=load('partnerAppointmentMessages',messageMocks)
 const notice={requestId:'11111111-1111-4111-8111-111111111111',bookingRef:'BK-FIXTURE',inputs,proposals:times,agentEmail:'agent@example.invalid',state:'pending'}
+test('calendar preparation failure alerts the owner without sending either appointment notice',async()=>{
+ const failures=[];let sends=0
+ const mod=load('partnerAppointmentMessages',{...messageMocks,'./emailFailureAlerts':{reportEmailFailure:async failure=>failures.push(failure)},'./email':{sendEmailOrThrow:async()=>{sends++}}},{FROM_EMAIL:'invalid\ncalendar'})
+ await assert.rejects(mod.sendPartnerAppointmentNotice(notice),/Invalid calendar mailbox/)
+ assert.equal(sends,0);assert.equal(failures.length,1)
+ assert.equal(failures[0].outcome,'not_sent');assert.equal(failures[0].code,'appointment_notification_preparation_failed')
+ assert.match(failures[0].payload.subject,/BK-FIXTURE/)
+ assert.doesNotMatch(JSON.stringify(failures),/PRIVATE|Internal note/)
+})
 test('pasted sender and admin settings do not prevent appointment notification preparation',()=>{
  for(const sender of ['quotes@example.invalid','Secure Cleaning <quotes@example.invalid>']){
   const configured=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:` ${sender}\r\n`,ADMIN_EMAIL:' info@example.invalid\n'})

@@ -2,6 +2,7 @@ import { escapeHtml } from './htmlEscape'
 import { escapeIcsText, serializeIcs } from './ics'
 import { buildBookingInviteIcs, getCityTimeZone, getDateTimeInTimeZone } from './calendarInvite'
 import { sendEmailOrThrow } from './email'
+import { reportEmailFailure } from './emailFailureAlerts'
 import { getSiteUrl } from './siteUrl'
 import type { BookingInputs } from './types'
 import type { ProposedAppointment } from './partnerAppointmentPolicy'
@@ -43,7 +44,20 @@ export function partnerAppointmentPayloads(input: Notice) {
   return {client,staff}
 }
 export async function sendPartnerAppointmentNotice(input: Notice) {
-  const {client,staff} = partnerAppointmentPayloads(input)
+  let payloads: ReturnType<typeof partnerAppointmentPayloads>
+  try {
+    payloads = partnerAppointmentPayloads(input)
+  } catch (error) {
+    try {
+      await reportEmailFailure({
+        payload: { subject: `Appointment request ${input.state} - ${input.bookingRef}`, to: [input.inputs.email, input.agentEmail] },
+        outcome: 'not_sent', code: 'appointment_notification_preparation_failed',
+        idempotencyKey: `partner-appointment/${input.requestId}/${input.state}/preparation`,
+      })
+    } catch { /* Preserve the preparation error and request's review-required workflow. */ }
+    throw error
+  }
+  const {client,staff} = payloads
   // A persisted delivery claim is acquired by the caller. Uncertain sends are not retried automatically.
   await sendEmailOrThrow(staff)
   await sendEmailOrThrow(client)

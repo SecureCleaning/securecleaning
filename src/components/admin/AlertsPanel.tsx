@@ -24,6 +24,7 @@ const kindLabels: Record<string, string> = {
   new_booking: 'Booking',
   overdue_inspection: 'Inspection',
   unassigned_booking: 'Dispatch',
+  email_failure: 'Email delivery',
 }
 
 export default function AlertsPanel({
@@ -73,6 +74,9 @@ export default function AlertsPanel({
               <div className="text-sm font-semibold leading-snug">{alert.title}</div>
               <div className="mt-1 text-xs leading-relaxed opacity-90">{alert.description}</div>
               <div className="mt-2 flex items-center gap-1.5">
+                {alert.kind === 'email_failure' ? (
+                  <a href="https://resend.com/emails" target="_blank" rel="noopener noreferrer" className="rounded-lg border border-current/25 bg-white/60 px-2.5 py-1.5 text-xs font-semibold hover:bg-white">Review email service</a>
+                ) : <>
                 <button
                   type="button"
                   onClick={() => onOpenAlert(alert)}
@@ -87,6 +91,7 @@ export default function AlertsPanel({
                 >
                   Dismiss
                 </button>
+                </>}
               </div>
             </div>
           ))}

@@ -9,7 +9,7 @@ export { isValidAdminAlertId } from '@/lib/adminAlertId'
 export interface AdminAlert {
   id: string
   entity_ref: string
-  kind: 'new_quote' | 'new_booking' | 'overdue_inspection' | 'unassigned_booking'
+  kind: 'new_quote' | 'new_booking' | 'overdue_inspection' | 'unassigned_booking' | 'email_failure'
   title: string
   description: string
   severity: 'info' | 'warning' | 'critical'
@@ -55,7 +55,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   const db = getAdminSupabase()
   const nowIso = new Date().toISOString()
 
-  const [quotesRes, pendingBookingsRes, overdueBookingsRes, unassignedBookingsRes] = await Promise.all([
+  const [quotesRes, pendingBookingsRes, overdueBookingsRes, unassignedBookingsRes, emailAlertsRes] = await Promise.all([
     db.from('quotes').select('quote_ref, created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings').select('booking_ref, created_at, status').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings')
@@ -73,9 +73,17 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       .neq('status', 'cancelled')
       .order('created_at', { ascending: true })
       .limit(100),
+    db.from('email_failure_alerts').select('id', { count: 'exact', head: true }).in('status', ['pending', 'review']),
   ])
 
   const alertsById = new Map<string, TimedAlert>()
+  if (emailAlertsRes.error || (emailAlertsRes.count ?? 0) > 0) {
+    alertsById.set('email-failure-delivery', {
+      id: 'email-failure-delivery', entity_ref: '', kind: 'email_failure', severity: 'critical', happenedAt: 0,
+      title: emailAlertsRes.error ? 'Owner email alert monitoring unavailable' : 'Owner email alerts awaiting delivery',
+      description: emailAlertsRes.error ? 'Email failure monitoring could not be checked. Ask the administrator to review the notification connection.' : `${emailAlertsRes.count} email failure alert(s) are queued or need delivery review. Check Resend and the owner notification settings. Check original delivery before resending any message.`,
+    })
+  }
 
   for (const quote of quotesRes.data ?? []) {
     const happenedAt = new Date(quote.created_at ?? '').getTime()

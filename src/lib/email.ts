@@ -9,6 +9,7 @@ import type { FirmQuoteDisplayPrice } from './quoteWorkflow'
 import { getAvailabilityAssignee, getAvailabilityConfig } from './availability'
 import { createQuoteCapability, createQuoteBookingHandoffToken } from './quoteBookingAccess'
 import { getQuoteAgentCc } from './quoteEmailRecipients'
+import { reportEmailFailure } from './emailFailureAlerts'
 
 /**
  * Email helper module using Resend.
@@ -65,25 +66,39 @@ function toProviderPayload(payload: Record<string, unknown>) {
 }
 
 export async function sendEmailOrThrow(payload: Record<string, unknown>, options?: { idempotencyKey: string }) {
-  const resend = getResend()
-  if (!resend) {
-    throw new Error('Email service is not configured. Check RESEND_API_KEY.')
-  }
-
-  // Resend 3.x forwards request options to fetch without an idempotencyKey adapter.
-  // Clone its transport headers so authorization is preserved and no key enters email content.
-  const requestHeaders = options ? new Headers(resend.headers) : undefined
-  if (requestHeaders) requestHeaders.set('Idempotency-Key', options!.idempotencyKey)
-  const response = await resend.emails.send(toProviderPayload(payload), requestHeaders ? { headers: requestHeaders } : undefined)
-  if (response?.error) {
-    // Resend uses application_error for network failures and unreadable responses.
-    // The provider may already have accepted the email; callers must reconcile it.
-    if (response.error.name === 'application_error' || response.error.name === 'internal_server_error') {
-      throw new Error('Email delivery outcome is uncertain. Check provider activity before retrying.')
+  let outcome: 'not_sent' | 'provider_rejected' | 'uncertain' = 'not_sent'
+  let code = 'email_service_not_configured'
+  try {
+    const resend = getResend()
+    if (!resend) {
+      throw new Error('Email service is not configured. Check RESEND_API_KEY.')
     }
-    throw new EmailProviderRejectedError(response.error.message || 'Email send failed', response.error.name)
+
+    // Resend 3.x forwards request options to fetch without an idempotencyKey adapter.
+    // Clone its transport headers so authorization is preserved and no key enters email content.
+    const requestHeaders = options ? new Headers(resend.headers) : undefined
+    if (requestHeaders) requestHeaders.set('Idempotency-Key', options!.idempotencyKey)
+    outcome = 'uncertain'
+    code = 'provider_outcome_uncertain'
+    const response = await resend.emails.send(toProviderPayload(payload), requestHeaders ? { headers: requestHeaders } : undefined)
+    if (response?.error) {
+      // Resend uses application_error for network failures and unreadable responses.
+      // The provider may already have accepted the email; callers must reconcile it.
+      if (response.error.name === 'application_error' || response.error.name === 'internal_server_error') {
+        throw new Error('Email delivery outcome is uncertain. Check provider activity before retrying.')
+      }
+      outcome = 'provider_rejected'
+      code = response.error.name || 'provider_rejected'
+      throw new EmailProviderRejectedError(response.error.message || 'Email send failed', response.error.name)
+    }
+    const result = response?.data ?? response
+    if (!result?.id) throw new Error('Email delivery outcome is uncertain. Check provider activity before retrying.')
+    return result
+  } catch (error) {
+    // Failure reporting is isolated so callers still receive their original error classification.
+    try { await reportEmailFailure({ payload, outcome, code, idempotencyKey: options?.idempotencyKey }) } catch { /* Preserve the original error. */ }
+    throw error
   }
-  return response?.data ?? response
 }
 
 export class EmailProviderRejectedError extends Error {
@@ -92,17 +107,7 @@ export class EmailProviderRejectedError extends Error {
 }
 
 export async function sendEmailWithResult(payload: Record<string, unknown>) {
-  const resend = getResend()
-  if (!resend) {
-    throw new Error('Email service is not configured. Check RESEND_API_KEY.')
-  }
-
-  const response = await resend.emails.send(toProviderPayload(payload))
-  if (response?.error) {
-    throw new Error(response.error.message || 'Email send failed')
-  }
-
-  return response?.data ?? response
+  return sendEmailOrThrow(payload)
 }
 
 export async function sendQuoteEmail(

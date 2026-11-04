@@ -5,7 +5,7 @@ import { getReportingSnapshot, type ReportingSnapshot } from '@/lib/reporting'
 export interface AdminAlertItem {
   id: string
   entity_ref: string
-  kind: 'new_quote' | 'new_booking' | 'overdue_inspection' | 'unassigned_booking'
+  kind: 'new_quote' | 'new_booking' | 'overdue_inspection' | 'unassigned_booking' | 'email_failure'
   title: string
   description: string
   severity: 'info' | 'warning' | 'critical'

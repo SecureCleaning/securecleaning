@@ -158,6 +158,7 @@ function emailFixture(options = {}) {
   const lookups = []
   const capabilities = []
   const exports = loadTs('src/lib/email.ts', {
+    './emailFailureAlerts': { reportEmailFailure: async () => {} },
     '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
     './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },
