@@ -6,12 +6,13 @@ const db = new PGlite()
 await db.exec(`
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
 CREATE TYPE city_type AS ENUM('melbourne','sydney','brisbane');
-CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),business_name text, contact_name text, email text, phone text, address text, city city_type, created_at timestamptz DEFAULT now());
+CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),business_name text, contact_name text, email text UNIQUE NOT NULL, phone text, address text, city city_type, created_at timestamptz DEFAULT now());
 CREATE TABLE admin_staff_accounts(id uuid PRIMARY KEY, availability_assignee_id text, active boolean, role text);
 CREATE TYPE booking_status AS ENUM('pending','confirmed','completed','cancelled');
-CREATE TABLE bookings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),booking_ref text UNIQUE,client_id uuid REFERENCES clients(id),inputs jsonb,status booking_status,inspection_status text,inspection_scheduled_for timestamptz,assigned_operator_id uuid,opportunity_id uuid);
+CREATE TABLE bookings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),booking_ref text UNIQUE,client_id uuid NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,inputs jsonb NOT NULL,status booking_status,inspection_status text,inspection_scheduled_for timestamptz,assigned_operator_id uuid,opportunity_id uuid,quote_id uuid,site_id uuid);
 CREATE TABLE contract_sale_inspections(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),status text,scheduled_by_staff_id uuid,starts_at timestamptz,duration_minutes int);
 CREATE TABLE availability_private_config(key text PRIMARY KEY,content text);
+CREATE TABLE crm_reconciliation_issues(record_type text,record_id uuid,issue_code text,details jsonb, UNIQUE(record_type,record_id,issue_code));
 CREATE TABLE admin_audit_log(entity_type text,entity_ref text,action text,details jsonb);
 -- Existing CRM sync is independently tested by the application suite. The stub
 -- models its no-reassignment contract, and can deliberately fail to test rollback.
@@ -97,6 +98,90 @@ await assert.rejects(()=>decide(p2,'declined',null,'a',''),/decline reason/)
 assert.equal((await decide(p2,'declined',null)).created,true)
 assert.equal((await db.query('select status from bookings where id=$1',[pending2.bookingId])).rows[0].status,'cancelled')
 for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>decide(p1),/permission denied/);await db.exec('reset role')}
+// Reproduce the reported rejection against the original deployed function.
+const changedContact={businessName:'Another Business Ltd',contactName:'Different Contact',phone:'0411111111',address:'500 Test Street'}
+const conflictingKey=request()
+await assert.rejects(()=>propose(conflictingKey,changedContact),/Contact reconciliation required/)
+assert.equal((await db.query('select count(*)::int n from partner_booking_requests where id=$1',[conflictingKey])).rows[0].n,0)
+const originalClients=await db.query('select * from clients order by id')
+const originalCrm=await db.query('select * from crm_fixture order by id')
+const originalBookings=await db.query('select * from bookings order by id')
+const contactReviewMigration=await readFile(new URL('../supabase/migrations/20261104003304_partner_request_contact_review.sql',import.meta.url),'utf8')
+assert.equal((await db.query("select is_nullable from information_schema.columns where table_name='bookings' and column_name='client_id'")).rows[0].is_nullable,'NO','fixture starts with production NOT NULL constraint')
+// Reproduce the release-review blocker: the new function alone still fails when
+// production's NOT NULL is retained. Roll back every test change afterwards.
+await db.exec('BEGIN')
+await db.exec(contactReviewMigration)
+await db.exec('ALTER TABLE bookings ALTER COLUMN client_id SET NOT NULL')
+await assert.rejects(()=>propose(conflictingKey,changedContact),{code:'23502'})
+await db.exec('ROLLBACK')
+await db.exec(contactReviewMigration)
+// The same mailbox may request a different business, but cannot claim its CRM record.
+await db.exec('set role service_role')
+const held=await propose(conflictingKey,changedContact)
+assert.equal(held.created,true);assert.equal(held.contactReviewRequired,true)
+assert.equal((await propose(conflictingKey,changedContact)).created,false,'replay cannot create another request or review issue')
+await db.exec('reset role')
+const heldBooking=(await db.query('select * from bookings where id=$1',[held.bookingId])).rows[0]
+assert.equal(heldBooking.client_id,null);assert.equal(heldBooking.opportunity_id,null)
+assert.equal(heldBooking.inspection_scheduled_for,null);assert.equal(heldBooking.inspection_status,'pending')
+assert.equal(heldBooking.inputs.businessName,changedContact.businessName)
+assert.equal(heldBooking.inputs.email,inputs.email)
+assert.deepEqual(heldBooking.inputs.requestedInspectionTimes,proposedTimes)
+assert.deepEqual((await db.query('select * from clients order by id')).rows,originalClients.rows,'existing contact is never changed')
+assert.deepEqual((await db.query('select * from crm_fixture order by id')).rows,originalCrm.rows,'no incorrect CRM link or assignment')
+assert.deepEqual((await db.query('select * from bookings where id<>$1 order by id',[held.bookingId])).rows,originalBookings.rows,'existing bookings are untouched')
+assert.equal((await db.query('select count(*)::int n from crm_reconciliation_issues where record_id=$1',[held.bookingId])).rows[0].n,1)
+assert.equal((await db.query('select contact_review_required from partner_booking_requests where id=$1',[conflictingKey])).rows[0].contact_review_required,true)
+assert.equal((await db.query("select (details->>'contactReviewRequired')::boolean flag from admin_audit_log where entity_ref=$1",[held.bookingRef])).rows[0].flag,true)
+// The nullable exception is restricted to one real, flagged request. It cannot
+// detach ordinary bookings, attach unrelated CRM records or hide staff review.
+await assert.rejects(()=>db.query("insert into bookings(booking_ref,inputs,status) values('NO-CLIENT','{}','pending')"),{code:'23514'})
+await assert.rejects(()=>db.query('update bookings set client_id=NULL where id=$1',[first.bookingId]),/cannot be detached/)
+await assert.rejects(()=>db.query("insert into bookings(booking_ref,inputs,status,partner_request_id) values('WRONG-REQUEST','{}','pending',$1)",[key]),/contact-review appointment request/)
+await assert.rejects(()=>db.query("insert into bookings(booking_ref,inputs,status,partner_request_id) values('REUSED-REQUEST','{}','pending',$1)",[conflictingKey]),/contact-review appointment request/)
+for(const column of ['quote_id','site_id','opportunity_id']) {
+ await assert.rejects(()=>db.query(`update bookings set ${column}=gen_random_uuid() where id=$1`,[held.bookingId]),/contact-review appointment request/)
+}
+await assert.rejects(()=>db.query('update bookings set partner_request_id=NULL where id=$1',[held.bookingId]),/contact-review appointment request/)
+await assert.rejects(()=>db.query('update partner_booking_requests set contact_review_required=false where id=$1',[conflictingKey]),/Resolve the booking client/)
+await assert.rejects(()=>db.query("update partner_booking_requests set request_kind='booking' where id=$1",[conflictingKey]),/Resolve the booking client/)
+await assert.rejects(()=>db.query('update partner_booking_requests set booking_id=NULL where id=$1',[conflictingKey]),/Resolve the booking client/)
+await assert.rejects(()=>db.query('delete from clients where id=$1',[originalClients.rows[0].id]),{code:'23503'})
+// Genuine configuration conflicts and normal confirmed-booking guards still apply.
+await assert.rejects(()=>call(request(),changedContact),/Contact reconciliation required/)
+await db.query("update availability_private_config set content='{}'")
+await assert.rejects(()=>propose(request(),changedContact),/Availability changed/)
+await db.query('update availability_private_config set content=$1',[config])
+// Exact same contact, case/phone normalization and brand-new contacts still auto-link.
+const matched=await propose(request(),{email:inputs.email.toUpperCase(),phone:'+61 400 000 000'})
+assert.equal(matched.contactReviewRequired,false)
+assert.equal((await db.query('select client_id from bookings where id=$1',[matched.bookingId])).rows[0].client_id,originalClients.rows[0].id)
+const newContact=await propose(request(),{...changedContact,email:'new-business@example.invalid'})
+assert.equal(newContact.contactReviewRequired,false)
+assert.ok((await db.query('select opportunity_id from bookings where id=$1',[newContact.bookingId])).rows[0].opportunity_id)
+// Duplicate normalized identities are also held, rather than selecting an arbitrary record.
+await db.query('insert into clients(business_name,contact_name,email,phone,city) values($1,$2,$3,$4,$5)',[inputs.businessName,inputs.contactName,inputs.email.toUpperCase(),inputs.phone,inputs.city])
+const ambiguousKey=request(),ambiguous=await propose(ambiguousKey)
+assert.equal(ambiguous.contactReviewRequired,true)
+await db.query("update partner_booking_requests set email_status='sent' where id=$1",[ambiguousKey])
+assert.equal((await decide(ambiguousKey,'declined',null)).created,true,'an unlinked request can still be declined')
+assert.equal((await db.query('select status from bookings where id=$1',[ambiguous.bookingId])).rows[0].status,'cancelled')
+// Reviewing a held request still confirms a single chosen time without a wrong CRM link.
+await db.query("update partner_booking_requests set email_status='sent' where id=$1",[conflictingKey])
+await db.exec('set role service_role')
+assert.equal((await decide(conflictingKey,'confirmed',1)).created,true)
+assert.equal((await decide(conflictingKey,'confirmed',1)).created,false)
+await db.exec('reset role')
+assert.equal((await db.query('select client_id from bookings where id=$1',[held.bookingId])).rows[0].client_id,null)
+assert.equal((await db.query('select inputs from bookings where id=$1',[held.bookingId])).rows[0].inputs.inspectionBookingSource,'partner','confirmation no longer uses the pending-request source')
+await db.query("update bookings set inspection_scheduled_for=inspection_scheduled_for+interval '1 hour' where id=$1",[held.bookingId])
+await db.query("update bookings set status='cancelled',inspection_status='cancelled' where id=$1",[held.bookingId])
+assert.equal((await db.query('select contact_review_required from partner_booking_requests where id=$1',[conflictingKey])).rows[0].contact_review_required,true,'client review survives appointment approval')
+for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>propose(request(),changedContact),/permission denied/);await db.exec('reset role')}
+assert.equal((await db.query("select not prosecdef as invoker from pg_proc where oid='create_partner_booking(uuid,uuid,uuid,text,jsonb,timestamp with time zone,text)'::regprocedure")).rows[0].invoker,true)
+console.log('PASS: original shared-email failure reproduced; forward migration accepts TBA request, preserves clients/CRM/assignments/bookings, flags review, replays once and confirms safely; exact/new contacts still link; private grants retained.')
+console.log('PASS: production NOT NULL failure reproduced; guarded exception rejects ordinary NULL bookings, detachment, foreign linkage and clearing review; original client FK preserved; held requests can be confirmed, rescheduled, cancelled or declined.')
 console.log('PASS: proposal creation with no reservation, independent simultaneous proposals, pending mutation guard, reviewer ownership, confirmation replay, collision rollback, decline and private function grants.')
 console.log('PASS: atomic creation/replay, collision across entry points, cancellation, revoked/expired access, state/calendar restrictions, CRM failure rollback and private grants/RLS.')
 await db.close()

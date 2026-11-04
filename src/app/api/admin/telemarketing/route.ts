@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     const [companies, users, activity, { config }] = await Promise.all([
       db.from('partner_booking_companies').select('*').order('name'),
       db.from('partner_booking_users').select('id, company_id, username, display_name, active').order('display_name'),
-      db.from('partner_booking_requests').select('id, company_id, user_id, booking_id, created_at, email_status, calendar_status, bookings!partner_booking_requests_booking_id_fkey(booking_ref, inputs, inspection_scheduled_for, opportunity_id)').order('created_at', { ascending: false }).limit(100),
+      db.from('partner_booking_requests').select('id, contact_review_required, company_id, user_id, booking_id, created_at, email_status, calendar_status, bookings!partner_booking_requests_booking_id_fkey(booking_ref, inputs, inspection_scheduled_for, opportunity_id)').order('created_at', { ascending: false }).limit(100),
       loadPartnerConfig(),
     ])
     if (companies.error || users.error || activity.error) throw companies.error || users.error || activity.error

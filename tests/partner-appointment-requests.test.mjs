@@ -11,13 +11,27 @@ import * as html from '../src/lib/htmlEscape.ts'
 process.env.NEXT_PUBLIC_SUPABASE_URL='https://fixture.invalid'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic'
 const proposals=await import('../src/lib/partnerAppointmentPolicy.ts')
-const {mergeAvailabilityConfig}=await import('../src/lib/availability.ts')
+const availability=await import('../src/lib/availability.ts')
+const {mergeAvailabilityConfig}=availability
+const linkage=await import('../src/lib/availabilityLinkage.ts')
 const fixed=new Date('2026-11-04T00:00:00Z')
 const times=[{date:'2026-11-09',startTime:'18:00'},{date:'2026-11-09',startTime:'20:00'}]
 const inputs={businessName:'Fixture <business>',contactName:'Test Contact',email:'client@example.invalid',phone:'0400000000',address:'10 Test Street',city:'melbourne',suburb:'Melbourne',postcode:'3000',premisesType:'office',frequency:'weekly',timePreference:'business_hours',notes:'PRIVATE <script>\nInternal note',preferredInspectionAssigneeId:'a',preferredStartDate:'2026-11-09',preferredInspectionStartTime:'18:00',preferredInspectionEndTime:'18:10'}
 const company={id:'company',name:'Test Partner',active:true,cities:['melbourne'],assignee_ids:['a','b'],expires_at:null}
 const config=()=>mergeAvailabilityConfig({assignees:['a','b'].map((id,i)=>({id,name:`Agent ${id}`,city:'melbourne',active:true,email:`${id}@example.invalid`,bookingPriority:i+1,calendarId:`calendar-${id}`})),zones:[{id:'zone',city:'melbourne',name:'CBD',postcodes:['3000'],matchTerms:['Melbourne']}],weeklySlots:['a','b'].map(id=>({id,assigneeId:id,city:'melbourne',zoneIds:['zone'],day:'monday',startTime:'09:00',endTime:'12:00',active:true})),oneOffBlocks:[]})
 function load(path,mocks){const exports={};const code=ts.transpileModule(readFileSync(new URL(`../src/lib/${path}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,Buffer,console,process:{env:{}},Date:class extends Date{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed.getTime()}},require(name){if(name==='server-only')return{};if(!(name in mocks))throw Error(`Unexpected ${name}`);return mocks[name]}});return exports}
+test('confirmed contact-review bookings appear only on the assigned agent calendar without a CRM link',async()=>{
+ const rows=['a','b'].map(id=>({booking_ref:`BK-${id}`,client_id:null,opportunity_id:null,status:'pending',inputs:{...inputs,preferredInspectionAssigneeId:id}}))
+ const db={from(table){assert.equal(table,'bookings');const q={select(){return q},in(){return q},order(){return q},limit:async()=>({data:rows,error:null})};return q}}
+ const mod=load('availabilityCalendar',{'@/lib/calendarInvite':calendar,'@/lib/supabase':{getAdminSupabase:()=>db},'@/lib/availability':availability,'@/lib/availabilityLinkage':linkage})
+ const c=config(),bookings=await mod.getAgentBookingsForCalendar(c,c.assignees.find(a=>a.id==='a'))
+ assert.equal(bookings.length,1);assert.equal(bookings[0].booking_ref,'BK-a')
+ const events=mod.buildBookingEvents(bookings,new Date('2026-11-09T00:00:00Z'),new Date('2026-11-10T00:00:00Z'))
+ assert.equal(events.length,1);assert.equal(events[0].opportunityId,undefined)
+ assert.match(events[0].description,/Fixture <business>/);assert.match(events[0].location,/10 Test Street/)
+ assert.equal(events[0].startsAt,'2026-11-09T07:00:00.000Z')
+ assert.equal(mod.buildBookingEvents([{...bookings[0],inputs:{...inputs,preferredStartDate:''}}],fixed,new Date('2026-12-01')).length,0,'TBA proposals do not reserve calendar times')
+})
 test('proposals validate one to five distinct weekday times and normalize order',()=>{
  assert.deepEqual(proposals.parseProposedAppointments([...times].reverse(),'melbourne',fixed),times)
  for(const value of [[],Array(6).fill(times[0]),[times[0],times[0]],[{date:'2026-11-07',startTime:'18:00'}],[{date:'2026-11-04',startTime:'18:00'}],[{date:'2026-11-09',startTime:'23:59'}],[{date:'2026-02-30',startTime:'12:00'}]])assert.throws(()=>proposals.parseProposedAppointments(value,'melbourne',fixed))
@@ -77,10 +91,10 @@ test('decline requires a reason, notifies with no confirmed calendar write',asyn
  const r=await f.run({decision:'declined',reason:'Unavailable'});assert.equal(r.calendarStatus,'not_required');assert.equal(f.calls.calendar,0);assert.equal(f.calls.send,1);assert.equal(f.calls.args.p_selected,null)
 })
 function createFixture(options={}){
- const calls={rpc:0,send:0,updates:[]}
- const db={from(table){let update;const q={select(){return q},eq(){return q},update(v){update=v;calls.updates.push(v);return q},async maybeSingle(){return {data:update?{id:'claim'}:options.replay||null,error:null}},async single(){return {data:{booking_ref:'BK-FIXTURE'},error:null}},then(resolve){resolve({error:null})}};return q},async rpc(name,args){calls.rpc++;calls.args=args;return {data:{created:true,bookingRef:'BK-FIXTURE'},error:null}}}
+ const calls={rpc:0,send:0,updates:[],notices:[]}
+ const db={from(table){let update;const q={select(){return q},eq(){return q},update(v){update=v;calls.updates.push(v);return q},async maybeSingle(){return {data:update?{id:'claim'}:options.replay||null,error:null}},async single(){return {data:{booking_ref:'BK-FIXTURE'},error:null}},then(resolve){resolve({error:null})}};return q},async rpc(name,args){calls.rpc++;calls.args=args;return {data:{created:!options.raceReplay,bookingRef:'BK-FIXTURE',contactReviewRequired:options.contactReview===true},error:options.rpcError||null}}}
  const c=config();if(options.noEmail)c.assignees[0].email=''
- const mod=load('partnerAppointmentCreate',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./partnerBookingAvailability':{loadPartnerConfig:async()=>({config:c,content:'exact'})},'./partnerBookingPolicy':policy,'./partnerAppointmentPolicy':{...proposals,parseProposedAppointments:(value,city,now)=>proposals.parseProposedAppointments(value,city,now===null?null:fixed)},'./partnerAppointmentMessages':{sendPartnerAppointmentNotice:async()=>{calls.send++;if(options.sendError)throw Error('Unknown')}}})
+ const mod=load('partnerAppointmentCreate',{'node:crypto':crypto,'./supabase':{getAdminSupabase:()=>db},'./partnerBookingAvailability':{loadPartnerConfig:async()=>({config:c,content:'exact'})},'./partnerBookingPolicy':policy,'./partnerAppointmentPolicy':{...proposals,parseProposedAppointments:(value,city,now)=>proposals.parseProposedAppointments(value,city,now===null?null:fixed)},'./partnerAppointmentMessages':{sendPartnerAppointmentNotice:async notice=>{calls.send++;calls.notices.push(notice);if(options.sendError)throw Error('Unknown')}}})
  return {calls,run:()=>mod.createPartnerAppointmentRequest({id:'caller',session_version:'rev',company},{...inputs,idempotencyKey:notice.requestId,proposedTimes:times,customerConfirmed:true})}
 }
 test('proposal creation stores no scheduled time, claims once and sends TBA notice',async()=>{
@@ -103,3 +117,35 @@ test('review HTTP endpoints deny unauthenticated, viewer and cross-agent access 
 })
 
 test('calendar invitation mailbox fields reject header injection',()=>{assert.throws(()=>messages.proposalCalendar({...notice,agentEmail:'agent@example.invalid\r\nATTENDEE:mailto:other@example.invalid'},0),/Invalid calendar mailbox/)})
+
+
+test('contact-review requests send a TBA receipt and expose the review flag only to staff',async()=>{
+ const f=createFixture({contactReview:true});const result=await f.run()
+ assert.equal(result.pending,true);assert.equal(result.emailStatus,'sent');assert.equal(f.calls.send,1)
+ assert.equal(f.calls.notices[0].contactReviewRequired,true)
+ assert.equal(result.contactReviewRequired,undefined,'partner does not learn about existing client matches')
+ const payloads=messages.partnerAppointmentPayloads({...notice,contactReviewRequired:true})
+ assert.match(payloads.staff.html,/Client details need review/)
+ assert.doesNotMatch(JSON.stringify(payloads.client),/Client details need review|Client CRM|existing client|PRIVATE/)
+ const racing=createFixture({contactReview:true,raceReplay:true});assert.equal((await racing.run()).replay,true);assert.equal(racing.calls.send,0)
+})
+test('request errors separate contact validation from calendar changes without leaking stored data',async()=>{
+ for(const [rpcError,expected] of [
+  [{code:'23514',message:'Contact reconciliation required'},/client details need.*review/],
+  [{code:'23P01',message:'Private config details'},/Calendar settings have changed/],
+  [{code:'23514',message:'Private record details'},/could not be saved/],
+  [{code:'23505',message:'Private record details'},/could not be saved/],
+  [{code:'42501',message:'Private permission details'},/permissions have changed/],
+ ]){const f=createFixture({rpcError});await assert.rejects(()=>f.run(),e=>{assert.match(e.message,expected);assert.doesNotMatch(e.message,/Private/);assert.equal(e.status,rpcError.code==='42501'?403:409);return true});assert.equal(f.calls.send,0);assert.equal(f.calls.updates.length,0)}
+})
+test('contact review remains visible beyond recent decisions and remains agent scoped',async()=>{
+ const calls=[];const flagged={id:'request',booking_id:'booking',decision_status:'confirmed',contact_review_required:true}
+ const db={from(table){const filters=[];const q={select(){return q},eq(...v){filters.push(['eq',...v]);return q},neq(...v){filters.push(['neq',...v]);return q},or(v){filters.push(['or',v]);return q},order(){return q},limit(){return q},in(...v){filters.push(['in',...v]);return q},then(resolve){calls.push({table,filters});resolve({data:table==='bookings'?[{id:'booking',booking_ref:'BK-FIXTURE',inputs,opportunity_id:null}]:filters.some(v=>v[0]==='or')?[flagged]:[],error:null})}};return q}}
+ const mod=load('partnerAppointmentReview',{'./supabase':{getAdminSupabase:()=>db},'./partnerBookingAvailability':{},'./partnerBookingPolicy':policy,'./calendarInvite':calendar,'./partnerAppointmentMessages':{},'./googleCalendar':{}})
+ const result=await mod.listPartnerAppointmentRequests({id:'staff',assigneeId:'a'})
+ assert.equal(result.requests.length,1);assert.equal(result.requests[0].contact_review_required,true)
+ const queries=calls.filter(c=>c.table==='partner_booking_requests')
+ assert.ok(queries.every(c=>c.filters.some(v=>v[1]==='assigned_assignee_id'&&v[2]==='a')))
+ assert.ok(queries.some(c=>c.filters.some(v=>v[0]==='or'&&v[1]==='decision_status.eq.pending,contact_review_required.eq.true')))
+ assert.ok(queries.some(c=>c.filters.some(v=>v[1]==='contact_review_required'&&v[2]===false)))
+})

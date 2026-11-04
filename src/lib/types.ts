@@ -220,7 +220,7 @@ export interface Booking {
   id: string
   bookingRef: string
   quoteId?: string
-  clientId: string
+  clientId: string | null
   inputs: BookingInputs
   status: BookingStatus
   assignedInspectorId?: string

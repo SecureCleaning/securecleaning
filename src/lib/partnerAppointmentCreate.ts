@@ -29,12 +29,18 @@ export async function createPartnerAppointmentRequest(actor: PartnerActor, body:
     preferredStartDate:'',preferredInspectionAssigneeId:agent.id,preferredInspectionAssigneeName:agent.name,inspectionBookingSource:'partner_request',inspectionDurationMinutes:10,requestedInspectionTimes:proposals,
     addOns:{bathrooms:0,kitchens:0,windows:0,consumables:false,highTouchDisinfection:false,carpetSteam:false}}
   const {data:saved,error}=await db.rpc('create_partner_booking',{p_user_id:actor.id,p_session_version:actor.session_version,p_request_id:details.idempotencyKey,p_input_hash:fingerprint,p_inputs:inputs,p_start:null,p_config:source.content})
-  if(error){if(['23P01','23514','23505'].includes(error.code))throw new PartnerError('The request needs a team review or availability has changed. Refresh before trying again.',409);if(error.code==='42501')throw new PartnerError('Your permissions have changed. Sign in again.',403);throw error}
+  if(error){
+    if(error.code==='23P01')throw new PartnerError('Calendar settings have changed. Refresh the appointment search and try again.',409)
+    if(error.code==='23514' && error.message==='Contact reconciliation required')throw new PartnerError('The client details need a Secure Cleaning team review before this request can be saved. Contact Secure Cleaning; changing the proposed times will not resolve this.',409)
+    if(['23514','23505'].includes(error.code))throw new PartnerError('The request could not be saved. Check the details or contact Secure Cleaning for a team review.',409)
+    if(error.code==='42501')throw new PartnerError('Your permissions have changed. Sign in again.',403)
+    throw error
+  }
   let emailStatus='queued',calendarStatus='queued'
   if(saved.created){
     const {data:claim,error:claimError}=await db.from('partner_booking_requests').update({email_status:'sending',calendar_status:'sending'}).eq('id',details.idempotencyKey).eq('email_status','queued').select('id').maybeSingle()
     if(!claimError&&claim){
-      try{await sendPartnerAppointmentNotice({requestId:details.idempotencyKey,bookingRef:saved.bookingRef,inputs,proposals,agentEmail:agent.email!.trim().toLowerCase(),state:'pending'});emailStatus='sent';calendarStatus='sent'}catch{emailStatus='review_required';calendarStatus='review_required'}
+      try{await sendPartnerAppointmentNotice({requestId:details.idempotencyKey,bookingRef:saved.bookingRef,inputs,proposals,agentEmail:agent.email!.trim().toLowerCase(),state:'pending',contactReviewRequired:saved.contactReviewRequired===true});emailStatus='sent';calendarStatus='sent'}catch{emailStatus='review_required';calendarStatus='review_required'}
       const {error:saveError}=await db.from('partner_booking_requests').update({email_status:emailStatus,calendar_status:calendarStatus}).eq('id',details.idempotencyKey)
       if(saveError){emailStatus='review_required';calendarStatus='review_required'}
     }

@@ -9,13 +9,14 @@ import type { BookingInputs } from './types'
 import type { ProposedAppointment } from './partnerAppointmentPolicy'
 
 export type ReviewActor = { id: string; assigneeId?: string }
-const columns = 'id,booking_id,assigned_assignee_id,proposed_times,decision_status,selected_proposal,decision_reason,decided_at,created_at,email_status,calendar_status,decision_email_status,decision_calendar_status'
+const columns = 'contact_review_required,id,booking_id,assigned_assignee_id,proposed_times,decision_status,selected_proposal,decision_reason,decided_at,created_at,email_status,calendar_status,decision_email_status,decision_calendar_status'
 export async function listPartnerAppointmentRequests(actor: ReviewActor) {
   const db = getAdminSupabase()
-  // Pending requests cannot fall off a recent-history limit.
+  // Keep unresolved client checks visible; pending appointments sort first so
+  // older contact reviews cannot displace new requests from the review queue.
   const query = (pending: boolean) => {
     let q = db.from('partner_booking_requests').select(columns).eq('request_kind','request')
-    q = pending ? q.eq('decision_status','pending').order('created_at',{ascending:true}) : q.neq('decision_status','pending').order('decided_at',{ascending:false})
+    q = pending ? q.or('decision_status.eq.pending,contact_review_required.eq.true').order('decision_status',{ascending:false}).order('created_at',{ascending:true}) : q.neq('decision_status','pending').eq('contact_review_required',false).order('decided_at',{ascending:false})
     return actor.assigneeId ? q.eq('assigned_assignee_id',actor.assigneeId) : q
   }
   const [pending,recent] = await Promise.all([query(true).limit(101),query(false).limit(20)])
@@ -75,7 +76,7 @@ export async function reviewPartnerAppointmentRequest(actor: ReviewActor, body: 
     } catch { calendarStatus='review_required' }
   }
   try {
-    await sendPartnerAppointmentNotice({requestId:r.id,bookingRef:b.booking_ref,inputs:result.inputs,proposals,agentEmail:agent.email!.trim().toLowerCase(),state:body.decision as 'confirmed'|'declined',selected:selected as number|null})
+    await sendPartnerAppointmentNotice({requestId:r.id,bookingRef:b.booking_ref,inputs:result.inputs,proposals,agentEmail:agent.email!.trim().toLowerCase(),state:body.decision as 'confirmed'|'declined',selected:selected as number|null,contactReviewRequired:r.contact_review_required===true})
     emailStatus='sent'
   } catch { /* Retain the claim: an uncertain delivery must not be sent twice. */ }
   const {error:saveError}=await db.from('partner_booking_requests').update({decision_email_status:emailStatus,decision_calendar_status:calendarStatus}).eq('id',r.id)
