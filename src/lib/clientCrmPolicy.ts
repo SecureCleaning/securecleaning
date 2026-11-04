@@ -4,7 +4,7 @@ import { applyEmailMergeFields } from '@/lib/emailMergeFields'
 export const CRM_ROLES = ['owner', 'manager', 'agent'] as const
 export const CRM_OPPORTUNITY_STAGES = ['new', 'contacted', 'qualified', 'inspection', 'quoting', 'proposal_sent', 'won', 'lost', 'cancelled'] as const
 export const CRM_CONTACT_BASES = ['enquiry', 'purchased_lead', 'existing_relationship', 'inferred_business_interest'] as const
-export const CRM_SOURCE_TYPES = ['manual', 'online_quote', 'purchased_lead', 'cold_outreach', 'direct_booking'] as const
+export const CRM_SOURCE_TYPES = ['manual', 'online_quote', 'purchased_lead', 'cold_outreach', 'direct_booking', 'telemarketing_partner'] as const
 
 export type CrmRole = (typeof CRM_ROLES)[number]
 export type CrmOpportunityStage = (typeof CRM_OPPORTUNITY_STAGES)[number]
@@ -79,7 +79,7 @@ export function normalizeCrmSourceType(value: unknown): CrmSourceType | null {
 }
 
 export function requiresNamedSourceProvider(sourceType: CrmSourceType, contactBasis: CrmContactBasis) {
-  return sourceType === 'purchased_lead' || contactBasis === 'purchased_lead' || sourceType === 'cold_outreach'
+  return sourceType === 'telemarketing_partner' || sourceType === 'purchased_lead' || contactBasis === 'purchased_lead' || sourceType === 'cold_outreach'
 }
 
 export function buildContactSourceExplanation(input: {
@@ -91,6 +91,7 @@ export function buildContactSourceExplanation(input: {
   if (custom) return custom.slice(0, 500)
 
   const provider = input.sourceProvider?.trim()
+  if (input.sourceType === 'telemarketing_partner' && provider) return `you discussed your cleaning requirements with ${provider}, our telemarketing partner`
   if (input.sourceType === 'online_quote') return 'you requested information or a quote through the Secure Cleaning website'
   if (input.sourceType === 'direct_booking') return 'you requested a site inspection through the Secure Cleaning website'
   if (input.sourceType === 'purchased_lead' && provider) return `we received your contact information from ${provider} in relation to commercial cleaning services`

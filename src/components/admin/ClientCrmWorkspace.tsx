@@ -45,6 +45,7 @@ type Status = { type: 'success' | 'error'; message: string } | null
 
 const sourceOptions = [
   ['manual', 'Manual entry'],
+  ['telemarketing_partner', 'Telemarketing partner'],
   ['purchased_lead', 'Purchased lead'],
   ['cold_outreach', 'Cold outreach'],
 ] as const
@@ -198,6 +199,7 @@ export default function ClientCrmWorkspace({
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState('')
   const [search, setSearch] = useState('')
+  const [leadSourceFilter, setLeadSourceFilter] = useState('all')
   const [leadStageFilter, setLeadStageFilter] = useState<CrmLeadStageFilter>('all')
   const [leadSort, setLeadSort] = useState<CrmLeadSort>('updated')
   useEffect(() => {
@@ -286,7 +288,7 @@ export default function ClientCrmWorkspace({
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
   const activityEntries = crmActivity(noteHistory, selectedLead?.communications ?? [], activityTab, notesCursor)
-  const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter), [data?.opportunities, search, leadSort, leadStageFilter])
+  const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter, leadSourceFilter), [data?.opportunities, search, leadSort, leadStageFilter, leadSourceFilter])
 
   useEffect(() => {
     if (!selectedLead) return
@@ -753,7 +755,7 @@ export default function ClientCrmWorkspace({
           <div className="md:col-span-2 lg:col-span-3"><LocalityAutocomplete key={leadDraft.city} city={leadDraft.city || undefined} suburb={leadDraft.suburb} postcode={leadDraft.postcode} onChange={(updates) => setLeadDraft({ ...leadDraft, suburb: updates.suburb, postcode: updates.postcode })} /></div>
           <label className="text-sm font-medium text-gray-700">Enquiry source<select value={leadDraft.sourceType} onChange={(event) => setLeadDraft({ ...leadDraft, sourceType: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{sourceOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <label className="text-sm font-medium text-gray-700">Contact basis<select value={leadDraft.contactBasis} onChange={(event) => setLeadDraft({ ...leadDraft, contactBasis: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5">{basisOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-          <label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadDraft.sourceProvider} onChange={(event) => setLeadDraft({ ...leadDraft, sourceProvider: event.target.value })} placeholder="Required for purchased/cold leads" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
+          <label className="text-sm font-medium text-gray-700">Provider or public source<input value={leadDraft.sourceProvider} onChange={(event) => setLeadDraft({ ...leadDraft, sourceProvider: event.target.value })} placeholder="Required for purchased/cold/telemarketing leads" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <label className="text-sm font-medium text-gray-700">Provider reference<input value={leadDraft.sourceReference} onChange={(event) => setLeadDraft({ ...leadDraft, sourceReference: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           {canManageShared ? <label className="text-sm font-medium text-gray-700">Assigned regional agent<select value={leadDraft.assignedStaffId} onChange={(event) => setLeadDraft({ ...leadDraft, assignedStaffId: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Automatic from postcode</option>{data.agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label> : null}
           <label className="text-sm font-medium text-gray-700 md:col-span-2 lg:col-span-3">Source explanation override<textarea rows={2} value={leadDraft.sourceExplanation} onChange={(event) => setLeadDraft({ ...leadDraft, sourceExplanation: event.target.value })} placeholder="Leave blank to generate the disclosure from the source fields." className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
@@ -779,11 +781,17 @@ export default function ClientCrmWorkspace({
       {view === 'pipeline' ? <ClientFollowUps refreshKey={data} /> : null}
       {view === 'pipeline' ? <div className="grid gap-5 lg:grid-cols-[minmax(280px,0.8fr)_minmax(0,1.7fr)]">
         <section className="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
-          <input type="search" aria-label="Search client leads" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Business, contact, email, suburb or postcode" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
+          <input type="search" aria-label="Search client leads" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Business, contact, suburb, postcode or provider" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Stage
             <select aria-label="Filter leads by stage" value={leadStageFilter} onChange={event => changeLeadStageFilter(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
               <option value="all">All stages</option>
               {CRM_LEAD_STAGE_FILTERS.map(stage => <option key={stage} value={stage}>{crmLeadStage(stage).label}</option>)}
+            </select>
+          </label>
+          <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Source
+            <select aria-label="Filter leads by source" value={leadSourceFilter} onChange={event => setLeadSourceFilter(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-sm">
+              <option value="all">All sources</option>
+              {[...sourceOptions, ['online_quote', 'Online quote'], ['direct_booking', 'Direct booking']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
           <label className="mt-2 flex items-center gap-2 text-xs text-gray-600">Sort
@@ -799,7 +807,7 @@ export default function ClientCrmWorkspace({
           </details>
           <div className="mt-2 max-h-[70vh] space-y-1.5 overflow-y-auto p-1">
             {filteredLeads.map(lead => <button key={lead.id} type="button" onClick={() => setSelectedLeadId(lead.id)}
-              title={[`Contact: ${lead.contactName || 'Not specified'}`, `Source: ${lead.sourceType.replaceAll('_', ' ')}`, `Agent: ${lead.assignedStaffName || 'Unassigned'}`, `Email: ${lead.email}`, `Updated: ${dateLabel(lead.updatedAt)}`].join('\n')}
+              title={[`Contact: ${lead.contactName || 'Not specified'}`, `Source: ${lead.sourceType.replaceAll('_', ' ')}`, `Telemarketing: ${(lead.telemarketingCompanies ?? []).join(", ") || "None"}`, `Provider: ${lead.sourceProvider || "Not specified"}`, `Agent: ${lead.assignedStaffName || 'Unassigned'}`, `Email: ${lead.email}`, `Updated: ${dateLabel(lead.updatedAt)}`].join('\n')}
               className={`block w-full rounded-lg border px-2.5 py-2 text-left ${crmLeadStage(lead.stage).colour} ${lead.id === selectedLeadId ? 'ring-2 ring-teal-600 ring-offset-1' : ''}`}>
               <span className="line-clamp-2 text-sm font-semibold leading-tight text-gray-900">{lead.businessName || lead.contactName || lead.email}</span>
               <span className="mt-1 flex flex-wrap items-center gap-1"><span className="rounded bg-white/80 px-1.5 py-0.5 text-xs font-semibold text-gray-900">{crmLeadStage(lead.stage).label}</span>
@@ -807,13 +815,14 @@ export default function ClientCrmWorkspace({
                 {lead.suppressed ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-semibold text-red-700">{lead.suppression?.reason === 'unsubscribed' ? 'Unsubscribed' : 'Email suppressed'}</span> : null}
               </span>
               <span className="mt-1 block truncate text-xs text-gray-600">{[lead.suburb, lead.postcode].filter(Boolean).join(' ') || 'Site to confirm'} · {lead.quotes.length} quote{lead.quotes.length === 1 ? '' : 's'}</span>
+              {lead.telemarketingCompanies?.length ? <span className="mt-1 block truncate text-xs text-teal-800">Telemarketing: {lead.telemarketingCompanies.join(', ')}</span> : null}
             </button>)}
             {filteredLeads.length === 0 ? <p className="p-3 text-sm text-gray-500">No matching opportunities.</p> : null}
           </div>
         </section>
         {selectedLead ? <div className="space-y-5">
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">Client and site details</h2><span className={`mt-2 inline-block rounded-full border px-3 py-1 text-sm font-semibold ${crmLeadStage(selectedLead.stage).colour}`}>{crmLeadStage(selectedLead.stage).label}</span><p className="mt-1 text-sm text-gray-600">Structured details used across this customer’s CRM records.</p></div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span>{!profileEditing ? <button type="button" onClick={() => setProfileEditing(true)} className="rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50">Edit client details</button> : null}</div></div>
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-bold text-gray-900">Client and site details</h2><span className={`mt-2 inline-block rounded-full border px-3 py-1 text-sm font-semibold ${crmLeadStage(selectedLead.stage).colour}`}>{crmLeadStage(selectedLead.stage).label}</span><p className="mt-1 text-sm text-gray-600">Structured details used across this customer’s CRM records.</p>{selectedLead.telemarketingCompanies?.length ? <p className="mt-1 text-sm font-medium text-teal-800">Telemarketing partner: {selectedLead.telemarketingCompanies.join(', ')}</p> : null}</div><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-700">{selectedLead.sourceType.replaceAll('_', ' ')}</span>{!profileEditing ? <button type="button" onClick={() => setProfileEditing(true)} className="rounded-lg border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-50">Edit client details</button> : null}</div></div>
             <ClientEmailStatus lead={selectedLead} />
             <fieldset disabled={!profileEditing} className="mt-5 grid gap-5 disabled:opacity-75 xl:grid-cols-3">
               <fieldset className="rounded-xl border border-gray-200 p-4"><legend className="px-1 text-sm font-bold text-gray-900">Business</legend><label className="mt-1 block text-sm font-medium text-gray-700">Business name (optional)<input value={profileEdit.businessName} onChange={(event) => setProfileEdit({ ...profileEdit, businessName: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label><p className="mt-2 text-xs text-gray-500">This name is shared across the organisation’s CRM records.</p><div className="mt-4"><PremisesTypeField value={profileEdit.premisesType} other={profileEdit.premisesTypeOther} options={data?.premisesOptions ?? []} onChange={(premisesType, premisesTypeOther) => setProfileEdit({ ...profileEdit, premisesType, premisesTypeOther })} /></div></fieldset>

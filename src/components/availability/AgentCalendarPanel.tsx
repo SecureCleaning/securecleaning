@@ -99,7 +99,7 @@ export default function AgentCalendarPanel({
   const [editingBooking, setEditingBooking] = useState<AgentCalendarEvent | null>(null)
   const [editDate, setEditDate] = useState('')
   const [editTime, setEditTime] = useState('')
-  const [actionState, setActionState] = useState<{ type: 'idle' | 'saving' | 'error'; message: string }>({ type: 'idle', message: '' })
+  const [actionState, setActionState] = useState<{ type: 'idle' | 'saving' | 'success' | 'warning' | 'error'; message: string }>({ type: 'idle', message: '' })
 
   useEffect(() => {
     setCalendarEvents(events)
@@ -145,6 +145,15 @@ export default function AgentCalendarPanel({
     setActionState({ type: 'idle', message: '' })
   }
 
+  function notificationResultMessage(result: { notifications?: Array<{ status?: string }>; unchanged?: boolean }, action: 'updated' | 'cancelled') {
+    if (result.unchanged) return { type: 'success' as const, message: `Appointment already ${action}. No new emails were sent.` }
+    const statuses = (result.notifications ?? []).map((item) => item.status)
+    if (statuses.length === 2 && statuses.every((status) => status === 'sent')) {
+      return { type: 'success' as const, message: `Appointment ${action}. Confirmation emails were sent to the client and agent.` }
+    }
+    return { type: 'warning' as const, message: `Appointment ${action}, but one or more notification emails need review. Do not repeat the calendar change.` }
+  }
+
   async function saveBooking() {
     if (!editingBooking?.bookingRef || !bookingApiPath || !editDate || !editTime) return
     setActionState({ type: 'saving', message: '' })
@@ -165,7 +174,8 @@ export default function AgentCalendarPanel({
       setCalendarEvents((current) => current.map((event) => (
         event.bookingRef === editingBooking.bookingRef ? { ...event, startsAt, endsAt } : event
       )))
-      closeEdit()
+      setEditingBooking(null)
+      setActionState(notificationResultMessage(result, 'updated'))
     } catch (error) {
       setActionState({ type: 'error', message: error instanceof Error ? error.message : 'Unable to update appointment.' })
     }
@@ -180,7 +190,7 @@ export default function AgentCalendarPanel({
       if (!response.ok || !result.success) throw new Error(result.error || 'Unable to cancel appointment.')
       setCalendarEvents((current) => current.filter((item) => item.bookingRef !== event.bookingRef))
       setSelectedEvent(null)
-      setActionState({ type: 'idle', message: '' })
+      setActionState(notificationResultMessage(result, 'cancelled'))
     } catch (error) {
       setActionState({ type: 'error', message: error instanceof Error ? error.message : 'Unable to cancel appointment.' })
     }
@@ -190,6 +200,8 @@ export default function AgentCalendarPanel({
 
   return (
     <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+      {actionState.type === 'success' ? <p className="mb-4 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800" role="status">{actionState.message}</p> : null}
+      {actionState.type === 'warning' ? <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">{actionState.message}</p> : null}
       {!dashboardDays ? <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>

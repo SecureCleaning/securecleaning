@@ -24,10 +24,10 @@ export function parseCrmLeadStageFilter(value: string | null): CrmLeadStageFilte
 }
 export function crmLeadStageFilterKey(actorId: string) { return `sc-crm-lead-stage:${actorId}` }
 
-export function filterSortCrmLeads(leads: CrmOpportunity[], search: string, sort: CrmLeadSort, stage: CrmLeadStageFilter = 'all') {
+export function filterSortCrmLeads(leads: CrmOpportunity[], search: string, sort: CrmLeadSort, stage: CrmLeadStageFilter = 'all', source = 'all') {
   const query = search.trim().toLowerCase()
-  return leads.filter(lead => stage === 'all' || lead.stage === stage || (stage === 'contacted' && lead.stage === 'qualified') || (stage === 'lost' && lead.stage === 'cancelled'))
-    .filter(lead => !query || [lead.businessName, lead.contactName, lead.email, lead.suburb, lead.postcode, lead.sourceProvider, lead.assignedStaffName].some(value => value?.toLowerCase().includes(query)))
+  return leads.filter(lead => source === 'all' || lead.sourceType === source || (source === 'telemarketing_partner' && !!lead.telemarketingCompanies?.length)).filter(lead => stage === 'all' || lead.stage === stage || (stage === 'contacted' && lead.stage === 'qualified') || (stage === 'lost' && lead.stage === 'cancelled'))
+    .filter(lead => !query || [lead.businessName, lead.contactName, lead.email, lead.suburb, lead.postcode, lead.sourceProvider, ...(lead.telemarketingCompanies ?? []), lead.assignedStaffName].some(value => value?.toLowerCase().includes(query)))
     .sort((a,b) => {
       let order = 0
       if (sort === 'name') order = (a.businessName || a.contactName || a.email).localeCompare(b.businessName || b.contactName || b.email, 'en', { sensitivity: 'base' })

@@ -59,9 +59,9 @@ export function parseLeadCsv(text: string, options: PremisesOption[]) {
     else if (!/^\d{4}$/.test(record.postcode) || !crmPostcodeMatchesRegion(record.postcode, record.city as 'sydney' | 'melbourne' | 'brisbane')) errors.push('Postcode must match the service region')
     record.source_type = normalizeChoice(record.source_type || 'manual', SOURCE_ALIASES)
     record.contact_basis = normalizeChoice(record.contact_basis || '', BASIS_ALIASES)
-    if (!(CRM_SOURCE_TYPES as readonly string[]).includes(record.source_type)) errors.push(`Invalid source_type \"${record.source_type}\". Use: Manual entry, Online quote, Purchased lead, Cold outreach or Direct booking.`)
+    if (!(CRM_SOURCE_TYPES as readonly string[]).includes(record.source_type)) errors.push(`Invalid source_type \"${record.source_type}\". Use: Manual entry, Online quote, Purchased lead, Cold outreach, Direct booking or Telemarketing partner.`)
     if (!(CRM_CONTACT_BASES as readonly string[]).includes(record.contact_basis)) errors.push(`Invalid contact_basis \"${record.contact_basis}\". Use: Client enquiry, Purchased lead provider, Existing business relationship or Relevant published business contact.`)
-    if ((['purchased_lead', 'cold_outreach'].includes(record.source_type) || ['purchased_lead', 'inferred_business_interest'].includes(record.contact_basis)) && !record.source_provider) errors.push('Source provider is required')
+    if ((['purchased_lead', 'cold_outreach', 'telemarketing_partner'].includes(record.source_type) || ['purchased_lead', 'inferred_business_interest'].includes(record.contact_basis)) && !record.source_provider) errors.push('Source provider is required')
     if (record.premises_type) {
       // Respect exact catalog matches (including inactive entries) before aliases.
       const key = choiceKey(record.premises_type)

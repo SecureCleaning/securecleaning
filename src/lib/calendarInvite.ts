@@ -21,6 +21,10 @@ function toUtcIcsDate(date: Date): string {
   ].join('')
 }
 
+function calendarSequence(value: number): number {
+  return Number.isSafeInteger(value) && value >= 0 ? value : 0
+}
+
 
 export function getCityTimeZone(city: BookingInputs['city']): string {
   return city === 'brisbane' ? 'Australia/Brisbane' : city === 'sydney' ? 'Australia/Sydney' : 'Australia/Melbourne'
@@ -95,7 +99,7 @@ export function getBookingEventWindow(inputs: BookingInputs): { start: Date; end
   return { start, end }
 }
 
-export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs): string {
+export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs, revision = 0): string {
   const { start, end } = getBookingEventWindow(inputs)
   const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const timeZone = getCityTimeZone(inputs.city)
@@ -124,6 +128,7 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     'BEGIN:VEVENT',
     `UID:${escapeIcsText(bookingRef.toLowerCase())}@securecleaning.com.au`,
     `DTSTAMP:${toUtcIcsDate(new Date())}`,
+    `SEQUENCE:${calendarSequence(revision)}`,
     `DTSTART:${toUtcIcsDate(start)}`,
     `DTEND:${toUtcIcsDate(end)}`,
     `SUMMARY:${escapeIcsText(summary)}`,
@@ -132,6 +137,33 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     `STATUS:CONFIRMED`,
     `TRANSP:OPAQUE`,
     `X-WR-TIMEZONE:${timeZone || TIME_ZONE}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ])
+}
+
+export function buildBookingCancellationIcs(bookingRef: string, inputs: BookingInputs, revision = 0): string {
+  const { start, end } = getBookingEventWindow(inputs)
+  const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
+  const summary = `Cancelled: Secure Cleaning site inspection — ${inputs.businessName?.trim() || inputs.contactName?.trim() || 'Customer premises'}`
+
+  return serializeIcs([
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Secure Cleaning//Booking Cancellation//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:CANCEL',
+    'BEGIN:VEVENT',
+    `UID:${escapeIcsText(bookingRef.toLowerCase())}@securecleaning.com.au`,
+    `DTSTAMP:${toUtcIcsDate(new Date())}`,
+    `DTSTART:${toUtcIcsDate(start)}`,
+    `DTEND:${toUtcIcsDate(end)}`,
+    `SUMMARY:${escapeIcsText(summary)}`,
+    `DESCRIPTION:${escapeIcsText(`Booking reference: ${bookingRef}\nThis inspection appointment has been cancelled.`)}`,
+    `LOCATION:${escapeIcsText(`${inputs.address}, ${inputs.suburb} ${inputs.postcode}, ${cityLabel}`)}`,
+    'STATUS:CANCELLED',
+    `SEQUENCE:${calendarSequence(revision)}`,
+    'TRANSP:TRANSPARENT',
     'END:VEVENT',
     'END:VCALENDAR',
   ])

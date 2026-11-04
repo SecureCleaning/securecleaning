@@ -17,7 +17,7 @@ let booking, mutations, audits, cleaner
 function json(value) { return new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } }) }
 function fixture() {
   mutations = []; audits = []
-  booking = { booking_ref: 'B1', status: 'confirmed', inspection_status: 'scheduled', inspection_scheduled_for: '2098-01-01T00:00:00Z', assigned_operator_id: null, inputs: { city: 'melbourne', preferredInspectionAssigneeId: agent.id, preferredStartDate: '2098-01-01', preferredInspectionStartTime: '10:00', preferredInspectionEndTime: '10:10', preferredInspectionDay: 'monday', preferredInspectionSlotLabel: 'Monday 10:00', customerNote: 'retain' } }
+  booking = { booking_ref: 'B1', status: 'confirmed', inspection_status: 'scheduled', inspection_scheduled_for: '2098-01-01T00:00:00Z', assigned_operator_id: null, inputs: { city: 'melbourne', businessName: 'Fixture', contactName: 'Client', phone: '0400000000', address: '1 Test Street', suburb: 'Melbourne', postcode: '3000', frequency: 'weekly', timePreference: 'business_hours', preferredInspectionAssigneeId: agent.id, preferredStartDate: '2098-01-01', preferredInspectionStartTime: '10:00', preferredInspectionEndTime: '10:10', preferredInspectionDay: 'monday', preferredInspectionSlotLabel: 'Monday 10:00', customerNote: 'retain' } }
   cleaner = { id: 'c1', email: 'cleaner@example.com', state: 'VIC', status: 'approved', business_name: 'Clean', first_name: 'A', last_name: 'B' }
   globalThis.fetch = async (input, init = {}) => {
     const u = new URL(input)
@@ -61,7 +61,7 @@ test('inspection cancellation clears schedule and preserves booking and assignme
   assert.equal(booking.status, 'confirmed')
   assert.equal(booking.inspection_status, 'cancelled')
   assert.equal(booking.inspection_scheduled_for, null)
-  assert.deepEqual(booking.inputs, { city: 'melbourne', preferredInspectionAssigneeId: agent.id, customerNote: 'retain' })
+  assert.deepEqual(booking.inputs, { city: 'melbourne', businessName: 'Fixture', contactName: 'Client', phone: '0400000000', address: '1 Test Street', suburb: 'Melbourne', postcode: '3000', frequency: 'weekly', timePreference: 'business_hours', preferredInspectionAssigneeId: agent.id, customerNote: 'retain', appointmentNotificationRevision: 1 })
   assert.equal(audits[0].action, 'agent_inspection_cancelled')
 })
 test('authorized agents can reopen completed inspections without manager approval', async () => {

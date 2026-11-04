@@ -71,6 +71,7 @@ export type CrmOpportunity = {
   state: string
   sourceType: CrmSourceType | string
   sourceProvider: string
+  telemarketingCompanies?: string[]
   sourceExplanation: string
   contactBasis: CrmContactBasis | string
   stage: string
@@ -423,9 +424,16 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   const contactsById = new Map((contacts.data ?? []).map((row) => [String(row.id), row]))
   const sitesById = new Map((sites.data ?? []).map((row) => [String(row.id), row]))
   const intakesById = new Map((intakes.data ?? []).map((row) => [String(row.id), row]))
+  const telemarketingByOpportunity = new Map<string, Set<string>>()
   const primaryIntakeByOpportunity = new Map<string, Record<string, unknown>>()
   for (const link of intakeLinks.data ?? []) {
     const opportunityId = String(link.opportunity_id)
+    const linkedIntake = intakesById.get(String(link.lead_id))
+    if (linkedIntake?.source === 'telemarketing_partner') {
+      const companies = telemarketingByOpportunity.get(opportunityId) ?? new Set<string>()
+      companies.add(String(linkedIntake.source_provider || 'Telemarketing partner'))
+      telemarketingByOpportunity.set(opportunityId, companies)
+    }
     if (!primaryIntakeByOpportunity.has(opportunityId)) {
       const intake = intakesById.get(String(link.lead_id))
       if (intake) primaryIntakeByOpportunity.set(opportunityId, intake)
@@ -537,6 +545,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       state: (site?.city ?? contact?.city) === 'brisbane' ? 'QLD' : (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : (site?.city ?? contact?.city) === 'melbourne' ? 'VIC' : '',
       sourceType: String(intake?.source ?? 'manual'),
       sourceProvider: String(intake?.source_provider ?? ''),
+      telemarketingCompanies: [...(telemarketingByOpportunity.get(id) ?? [])],
       sourceExplanation: String(intake?.source_explanation ?? ''),
       contactBasis: String(intake?.contact_basis ?? ''),
       stage: String(row.stage ?? 'new'),

@@ -7,6 +7,8 @@ import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLog } from '@/lib/auditLog'
+import { sendAppointmentChangeNotifications } from '@/lib/bookingAppointmentNotifications'
+import type { BookingInputs } from '@/lib/types'
 
 const INSPECTION_DURATION_MINUTES = 10
 const TRAVEL_RESERVATION_MINUTES = 50
@@ -23,6 +25,11 @@ function endTimeFor(startTime: string) {
   const [hours, minutes] = startTime.split(':').map(Number)
   const total = hours * 60 + minutes + INSPECTION_DURATION_MINUTES
   return `${String(Math.floor(total / 60) % 24).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
+}
+
+function nextNotificationRevision(inputs: Record<string, unknown>) {
+  const current = Number(inputs.appointmentNotificationRevision)
+  return Number.isSafeInteger(current) && current >= 0 ? current + 1 : 1
 }
 
 async function isAuthorized(request: NextRequest, assigneeId: string) {
@@ -79,6 +86,9 @@ export async function PATCH(
     if (Number.isNaN(scheduledFor.getTime()) || scheduledFor.getTime() < Date.now()) {
       return NextResponse.json({ success: false, error: 'Inspection appointments must be scheduled in the future.' }, { status: 400 })
     }
+    if (booking.inspection_scheduled_for && new Date(String(booking.inspection_scheduled_for)).getTime() === scheduledFor.getTime()) {
+      return NextResponse.json({ success: true, booking, notifications: [], unchanged: true })
+    }
 
     const db = getAdminSupabase()
     const { data: reservations, error: reservationError } = await db
@@ -101,6 +111,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'That time is already protected for another appointment or travel. Choose another hourly start.' }, { status: 409 })
     }
 
+    const revision = nextNotificationRevision(booking.inputs)
     const nextInputs = {
       ...booking.inputs,
       preferredStartDate,
@@ -110,20 +121,43 @@ export async function PATCH(
       preferredInspectionSlotLabel: `${new Intl.DateTimeFormat('en-AU', { timeZone: getCityTimeZone(assignee.city), weekday: 'long' }).format(scheduledFor)} ${preferredInspectionStartTime}`,
       preferredInspectionAssigneeId: params.assigneeId,
       preferredInspectionAssigneeName: assignee.name,
+      appointmentNotificationRevision: revision,
     }
     const { data, error } = await db
       .from('bookings')
       .update({ inputs: nextInputs, inspection_status: 'scheduled', inspection_scheduled_for: scheduledFor.toISOString() })
       .eq('booking_ref', params.bookingRef)
+      .eq('inspection_scheduled_for', String(booking.inspection_scheduled_for))
+      .eq('inspection_status', String(booking.inspection_status))
       .select('booking_ref, status, inspection_status, inspection_scheduled_for, inputs')
-      .single()
+      .maybeSingle()
     if (error) throw error
+    if (!data) return NextResponse.json({ success: false, error: 'This appointment changed in another session. Refresh before trying again.' }, { status: 409 })
 
     await writeAuditLog('booking', params.bookingRef, 'agent_booking_rescheduled', {
       assignee_id: params.assigneeId,
       inspection_scheduled_for: scheduledFor.toISOString(),
     })
-    return NextResponse.json({ success: true, booking: data })
+    let notifications
+    try {
+      notifications = await sendAppointmentChangeNotifications({
+        bookingRef: params.bookingRef,
+        inputs: nextInputs as unknown as BookingInputs,
+        change: 'rescheduled',
+        previousScheduledFor: String(booking.inspection_scheduled_for),
+        scheduledFor: scheduledFor.toISOString(),
+        agentEmail: assignee.email,
+        agentName: assignee.name,
+        revision,
+      })
+    } catch (notificationError) {
+      console.error('[api/availability-agent/bookings] Appointment updated but notifications could not be prepared:', notificationError)
+      notifications = [
+        { recipient: 'client', status: 'review_required', providerMessageId: null },
+        { recipient: 'agent', status: 'review_required', providerMessageId: null },
+      ]
+    }
+    return NextResponse.json({ success: true, booking: data, notifications })
   } catch (error) {
     console.error('[api/availability-agent/bookings] Failed to reschedule booking:', error)
     return NextResponse.json({ success: false, error: 'Failed to update inspection appointment.' }, { status: 500 })
@@ -146,21 +180,51 @@ export async function DELETE(
 
     const booking = await getAssignedBooking(config, assignee, params.bookingRef)
     if (!booking) return NextResponse.json({ success: false, error: 'Assigned booking not found.' }, { status: 404 })
+    if (booking.inspection_status === 'cancelled') {
+      return NextResponse.json({ success: true, booking, notifications: [], unchanged: true })
+    }
+    if (!booking.inspection_scheduled_for) {
+      return NextResponse.json({ success: false, error: 'This appointment has no scheduled time to cancel.' }, { status: 409 })
+    }
+    const revision = nextNotificationRevision(booking.inputs)
     const nextInputs = { ...booking.inputs }
     for (const key of ['preferredStartDate', 'preferredInspectionStartTime', 'preferredInspectionEndTime', 'preferredInspectionDay', 'preferredInspectionSlotLabel']) {
       delete nextInputs[key]
     }
+    nextInputs.appointmentNotificationRevision = revision
     const db = getAdminSupabase()
     const { data, error } = await db
       .from('bookings')
       .update({ inspection_status: 'cancelled', inspection_scheduled_for: null, inputs: nextInputs })
       .eq('booking_ref', params.bookingRef)
+      .eq('inspection_scheduled_for', String(booking.inspection_scheduled_for))
+      .eq('inspection_status', String(booking.inspection_status))
       .select('booking_ref, status, inspection_status, inspection_scheduled_for')
-      .single()
+      .maybeSingle()
     if (error) throw error
+    if (!data) return NextResponse.json({ success: false, error: 'This appointment changed in another session. Refresh before trying again.' }, { status: 409 })
 
     await writeAuditLog('booking', params.bookingRef, 'agent_inspection_cancelled', { assignee_id: params.assigneeId })
-    return NextResponse.json({ success: true, booking: data })
+    let notifications
+    try {
+      notifications = await sendAppointmentChangeNotifications({
+        bookingRef: params.bookingRef,
+        inputs: booking.inputs as unknown as BookingInputs,
+        change: 'cancelled',
+        previousScheduledFor: String(booking.inspection_scheduled_for),
+        scheduledFor: null,
+        agentEmail: assignee.email,
+        agentName: assignee.name,
+        revision,
+      })
+    } catch (notificationError) {
+      console.error('[api/availability-agent/bookings] Appointment cancelled but notifications could not be prepared:', notificationError)
+      notifications = [
+        { recipient: 'client', status: 'review_required', providerMessageId: null },
+        { recipient: 'agent', status: 'review_required', providerMessageId: null },
+      ]
+    }
+    return NextResponse.json({ success: true, booking: data, notifications })
   } catch (error) {
     console.error('[api/availability-agent/bookings] Failed to cancel booking:', error)
     return NextResponse.json({ success: false, error: 'Failed to cancel inspection appointment.' }, { status: 500 })
