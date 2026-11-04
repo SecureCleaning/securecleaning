@@ -4,6 +4,7 @@ import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import type { City } from '@/lib/types'
 import { normalizeAvailabilityAssigneeCity } from '@/lib/availabilityNormalization'
 import { APPROVED_SERVICE_ZONES } from '@/lib/availabilityZoneCatalog'
+import { getRequiredPublicHolidayPeriods, publicHolidaysToAvailabilityBlocks } from '@/lib/publicHolidays'
 
 export type Weekday =
   | 'monday'
@@ -669,6 +670,16 @@ function getCalendarStartDate(): Date {
   return start
 }
 
+export function isAvailabilityDateInRange(preferredDate: string | undefined, firstDate: string, lastDate: string) {
+  if (!preferredDate) return true
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)) return false
+  const parsed = new Date(`${preferredDate}T00:00:00Z`)
+  return !Number.isNaN(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === preferredDate
+    && preferredDate >= firstDate
+    && preferredDate <= lastDate
+}
+
 export async function getAvailabilityConfig(): Promise<AvailabilityConfig> {
   try {
     const db = getAdminSupabase()
@@ -792,14 +803,36 @@ export async function getAvailabilityCalendar(
 
   const calendarDate = getCalendarStartDate()
   const firstCalendarDate = formatDateForAvailability(calendarDate)
-  const reservations = await getReservedInspections(city, firstCalendarDate, daysToShow)
-  const suggestions = getAvailabilitySuggestionsForConfig(config, matchingZones, city, preferredDate, reservations)
+  const lastCalendarDateValue = new Date(calendarDate)
+  lastCalendarDateValue.setDate(lastCalendarDateValue.getDate() + Math.max(0, daysToShow - 1))
+  const lastCalendarDate = formatDateForAvailability(lastCalendarDateValue)
+  const preferredDateInRange = isAvailabilityDateInRange(preferredDate, firstCalendarDate, lastCalendarDate)
+  const holidayRangeStart = getDateTimeInTimeZone(firstCalendarDate, '00:00', getCityTimeZone(city))
+  const holidayRangeEnd = new Date(holidayRangeStart)
+  holidayRangeEnd.setUTCDate(holidayRangeEnd.getUTCDate() + daysToShow)
+  const [reservations, publicHolidays] = await Promise.all([
+    getReservedInspections(city, firstCalendarDate, daysToShow),
+    getRequiredPublicHolidayPeriods(city, holidayRangeStart, holidayRangeEnd),
+  ])
+  const cityAssigneeIds = config.assignees
+    .filter((assignee) => assignee.active && assignee.city === city)
+    .map((assignee) => assignee.id)
+  const effectiveConfig = {
+    ...config,
+    oneOffBlocks: [
+      ...config.oneOffBlocks,
+      ...publicHolidaysToAvailabilityBlocks(publicHolidays, cityAssigneeIds),
+    ],
+  }
+  const suggestions = preferredDateInRange
+    ? getAvailabilitySuggestionsForConfig(effectiveConfig, matchingZones, city, preferredDate, reservations)
+    : []
   const availableDates: string[] = []
   const dateCursor = getCalendarStartDate()
 
   for (let index = 0; index < daysToShow; index += 1) {
     const dateString = formatDateForAvailability(dateCursor)
-    if (getAvailabilitySuggestionsForConfig(config, matchingZones, city, dateString, reservations).length > 0) {
+    if (getAvailabilitySuggestionsForConfig(effectiveConfig, matchingZones, city, dateString, reservations).length > 0) {
       availableDates.push(dateString)
     }
     dateCursor.setDate(dateCursor.getDate() + 1)
@@ -807,7 +840,7 @@ export async function getAvailabilityCalendar(
 
   const nextAvailableDate = availableDates[0]
   const nextAvailableSuggestions = nextAvailableDate
-    ? getAvailabilitySuggestionsForConfig(config, matchingZones, city, nextAvailableDate, reservations)
+    ? getAvailabilitySuggestionsForConfig(effectiveConfig, matchingZones, city, nextAvailableDate, reservations)
     : []
 
   return {

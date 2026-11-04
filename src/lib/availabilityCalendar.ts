@@ -11,10 +11,11 @@ import type {
 } from '@/lib/availability'
 import { getAssigneeServiceZones } from '@/lib/availability'
 import { bookingBelongsToAvailabilityAssignee } from '@/lib/availabilityLinkage'
+import { getPublicHolidayPeriods, type PublicHolidayPeriod } from '@/lib/publicHolidays'
 
 export type AgentCalendarEvent = {
   id: string
-  kind: 'booking' | 'sale_inspection' | 'availability' | 'blockout'
+  kind: 'booking' | 'sale_inspection' | 'availability' | 'blockout' | 'public_holiday'
   opportunityId?: string
   saleId?: string
   bookingRef?: string
@@ -24,6 +25,7 @@ export type AgentCalendarEvent = {
   subtitle?: string
   description?: string
   location?: string
+  allDay?: boolean
   details?: Array<{ label: string; value: string }>
 }
 
@@ -161,6 +163,50 @@ function buildBlockEvents(
       endsAt: block.endsAt,
       description: 'Manual block-out added by the agent or admin.',
     }))
+}
+
+export function buildPublicHolidayEvents(holidays: PublicHolidayPeriod[]): AgentCalendarEvent[] {
+  return holidays.map((holiday) => ({
+    id: `public-holiday-${holiday.id}`,
+    kind: 'public_holiday',
+    title: holiday.name,
+    startsAt: holiday.startsAt,
+    endsAt: holiday.endsAt,
+    allDay: holiday.allDay,
+    subtitle: `${holiday.stateCode} public holiday`,
+    description: `Standard inspection availability is blocked for ${holiday.name}.`,
+  }))
+}
+
+export function excludePublicHolidaysFromAvailability(
+  events: AgentCalendarEvent[],
+  holidays: PublicHolidayPeriod[],
+): AgentCalendarEvent[] {
+  return events.flatMap((event) => {
+    if (event.kind !== 'availability') return [event]
+    const originalStart = new Date(event.startsAt).getTime()
+    const originalEnd = new Date(event.endsAt).getTime()
+    let segments = [{ start: originalStart, end: originalEnd }]
+    for (const holiday of holidays) {
+      const holidayStart = new Date(holiday.startsAt).getTime()
+      const holidayEnd = new Date(holiday.endsAt).getTime()
+      segments = segments.flatMap((segment) => {
+        if (holidayEnd <= segment.start || holidayStart >= segment.end) return [segment]
+        return [
+          ...(holidayStart > segment.start ? [{ start: segment.start, end: holidayStart }] : []),
+          ...(holidayEnd < segment.end ? [{ start: holidayEnd, end: segment.end }] : []),
+        ]
+      })
+    }
+    return segments.filter((segment) => segment.end > segment.start).map((segment, index) => ({
+      ...event,
+      id: segment.start === originalStart && segment.end === originalEnd
+        ? event.id
+        : `${event.id}-holiday-segment-${index + 1}`,
+      startsAt: new Date(segment.start).toISOString(),
+      endsAt: new Date(segment.end).toISOString(),
+    }))
+  })
 }
 
 export function buildBookingEvents(
@@ -314,16 +360,24 @@ export async function getAgentCalendarEvents(
   const weeklySlots = config.weeklySlots.filter((slot) => slot.assigneeId === assignee.id && slot.active)
   const oneOffBlocks = config.oneOffBlocks.filter((block) => block.assigneeId === assignee.id && block.active)
   const zones = config.zones.filter((zone) => zone.city === assignee.city)
-  const [bookings, saleInspections] = await Promise.all([
+  const [bookings, saleInspections, publicHolidays] = await Promise.all([
     getAgentBookingsForCalendar(config, assignee),
     getAgentContractSaleInspectionsForCalendar(assignee),
+    getPublicHolidayPeriods(assignee.city, range.start, range.end),
   ])
+  const availabilityEvents = includeAvailability
+    ? excludePublicHolidaysFromAvailability(
+        buildAvailabilityEvents(weeklySlots, zones, assignee.city, range.calendarStart, range.calendarEnd),
+        publicHolidays,
+      )
+    : []
 
   const events = [
     ...buildBookingEvents(bookings, range.start, range.end),
     ...buildContractSaleInspectionEvents(saleInspections, range.start, range.end),
     ...buildBlockEvents(oneOffBlocks, range.start, range.end),
-    ...(includeAvailability ? buildAvailabilityEvents(weeklySlots, zones, assignee.city, range.calendarStart, range.calendarEnd) : []),
+    ...buildPublicHolidayEvents(publicHolidays),
+    ...availabilityEvents,
   ]
 
   return events.sort((a, b) => a.startsAt.localeCompare(b.startsAt))

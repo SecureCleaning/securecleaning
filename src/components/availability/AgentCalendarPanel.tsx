@@ -20,6 +20,10 @@ function formatTimeRange(startsAt: string, endsAt: string, timeZone: string) {
   return `${start.toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })} – ${end.toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}`
 }
 
+function formatEventTimeRange(event: AgentCalendarEvent, timeZone: string) {
+  return event.allDay ? 'All day' : formatTimeRange(event.startsAt, event.endsAt, timeZone)
+}
+
 function eventTone(kind: AgentCalendarEvent['kind']) {
   switch (kind) {
     case 'booking':
@@ -27,6 +31,8 @@ function eventTone(kind: AgentCalendarEvent['kind']) {
       return 'border-blue-200 bg-blue-50 text-blue-950'
     case 'blockout':
       return 'border-red-200 bg-red-50 text-red-950'
+    case 'public_holiday':
+      return 'border-amber-200 bg-amber-50 text-amber-950'
     default:
       return 'border-emerald-200 bg-emerald-50 text-emerald-950'
   }
@@ -39,6 +45,8 @@ function eventLabel(kind: AgentCalendarEvent['kind']) {
       return 'Appointment'
     case 'blockout':
       return 'Blocked'
+    case 'public_holiday':
+      return 'Public holiday'
     default:
       return 'Available'
   }
@@ -246,11 +254,11 @@ export default function AgentCalendarPanel({
                             type="button"
                             key={event.id}
                             onClick={() => setSelectedEvent(event)}
-                            title={`${event.title} · ${formatTimeRange(event.startsAt, event.endsAt, timeZone)}`}
+                            title={`${event.title} · ${formatEventTimeRange(event, timeZone)}`}
                             className={`block w-full rounded-lg border px-2 py-2 text-left text-[11px] transition hover:brightness-95 ${eventTone(event.kind)} ${event.kind === 'availability' ? 'border-dashed opacity-80' : ''}`}
                           >
                             <div className="font-semibold uppercase tracking-wide">{eventLabel(event.kind)}</div>
-                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatTimeRange(event.startsAt, event.endsAt, timeZone) : `${formatTimeRange(event.startsAt, event.endsAt, timeZone)} · ${event.title}`}</div>
+                            <div className="mt-0.5 truncate font-semibold">{event.kind === 'availability' ? formatEventTimeRange(event, timeZone) : `${formatEventTimeRange(event, timeZone)} · ${event.title}`}</div>
                             {event.kind === 'booking' || event.kind === 'sale_inspection' ? <div className="mt-0.5 truncate opacity-80">{event.title}</div> : null}
                           </button>
                         ))
@@ -280,7 +288,7 @@ export default function AgentCalendarPanel({
               <div className="border-b pb-2"><div className="text-xs font-bold text-gray-500">{day.label}</div><div className="text-sm font-bold">{day.dateLabel}</div></div>
               <div className="mt-2 space-y-2">{!dayEvents.length ? <p className="text-xs text-gray-400">No events</p> : null}
                 {dayEvents.map((event) => <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} className={`block w-full rounded-lg border p-2 text-left text-xs ${eventTone(event.kind)}`}>
-                  <div className="font-bold">{new Date(event.startsAt).toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}</div>
+                  <div className="font-bold">{event.allDay ? 'All day' : new Date(event.startsAt).toLocaleTimeString('en-AU', { timeZone, hour: 'numeric', minute: '2-digit' })}</div>
                   <div className="mt-1 font-semibold">{event.title}</div>{event.kind !== 'availability' && event.subtitle ? <div>{event.subtitle}</div> : null}
                 </button>)}
               </div>
@@ -294,9 +302,9 @@ export default function AgentCalendarPanel({
           <div className="max-h-[90vh] overflow-y-auto w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-6 shadow-xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className={`text-xs font-semibold uppercase tracking-wide ${selectedEvent.kind === 'booking' || selectedEvent.kind === 'sale_inspection' ? 'text-blue-700' : selectedEvent.kind === 'blockout' ? 'text-red-700' : 'text-emerald-700'}`}>{eventLabel(selectedEvent.kind)}</div>
+                <div className={`text-xs font-semibold uppercase tracking-wide ${selectedEvent.kind === 'booking' || selectedEvent.kind === 'sale_inspection' ? 'text-blue-700' : selectedEvent.kind === 'blockout' ? 'text-red-700' : selectedEvent.kind === 'public_holiday' ? 'text-amber-700' : 'text-emerald-700'}`}>{eventLabel(selectedEvent.kind)}</div>
                 <h3 id="agent-calendar-event-title" className="mt-1 text-xl font-bold" style={{ color: '#1a2744' }}>{selectedEvent.title}</h3>
-                <p className="mt-1 text-sm font-semibold text-gray-700">{new Date(selectedEvent.startsAt).toLocaleDateString('en-AU', { timeZone, weekday: 'short', day: 'numeric', month: 'short' })} · {formatTimeRange(selectedEvent.startsAt, selectedEvent.endsAt, timeZone)}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-700">{new Date(selectedEvent.startsAt).toLocaleDateString('en-AU', { timeZone, weekday: 'short', day: 'numeric', month: 'short' })} · {formatEventTimeRange(selectedEvent, timeZone)}</p>
               </div>
               <button type="button" onClick={() => setSelectedEvent(null)} className="text-sm font-semibold text-gray-500 hover:text-gray-900">Close</button>
             </div>

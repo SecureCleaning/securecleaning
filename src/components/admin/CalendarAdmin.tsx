@@ -51,18 +51,26 @@ function formatDate(value: Date, options: Intl.DateTimeFormatOptions = {}) {
 }
 
 function formatTimeRange(event: AgentCalendarEvent) {
+  if (event.allDay) return 'All day'
   const start = new Date(event.startsAt)
   const end = new Date(event.endsAt)
   return `${start.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })}–${end.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })}`
 }
 
 function eventKindLabel(kind: AgentCalendarEvent['kind']) {
-  return kind === 'booking' || kind === 'sale_inspection' ? 'Appointment' : kind === 'blockout' ? 'Blocked' : 'Available'
+  return kind === 'booking' || kind === 'sale_inspection'
+    ? 'Appointment'
+    : kind === 'blockout'
+      ? 'Blocked'
+      : kind === 'public_holiday'
+        ? 'Public holiday'
+        : 'Available'
 }
 
 function eventTypeStyle(kind: AgentCalendarEvent['kind']) {
   if (kind === 'booking' || kind === 'sale_inspection') return 'border-blue-300 bg-blue-50 text-blue-950'
   if (kind === 'blockout') return 'border-red-300 bg-red-50 text-red-950'
+  if (kind === 'public_holiday') return 'border-amber-300 bg-amber-50 text-amber-950'
   return 'border-emerald-300 bg-emerald-50 text-emerald-950'
 }
 
@@ -242,8 +250,9 @@ function CalendarEventCard({
           <span>{assignee.name}</span>
           <span className="opacity-70">{eventKindLabel(event.kind)}</span>
         </div>
-        <div className="mt-1 truncate text-sm font-semibold">{event.kind === 'booking' ? `${event.title}` : formatTimeRange(event)}</div>
+        <div className="mt-1 truncate text-sm font-semibold">{event.kind === 'booking' || event.kind === 'public_holiday' ? event.title : formatTimeRange(event)}</div>
         {event.kind === 'booking' ? <div className="mt-1 truncate text-xs opacity-80">{event.location || event.subtitle || 'Click for details'}</div> : null}
+        {event.kind === 'public_holiday' ? <div className="mt-1 truncate text-xs opacity-80">{formatTimeRange(event)}</div> : null}
       </div>
       <div className={`mt-1 text-xs font-semibold ${detailed ? 'sm:mt-0 sm:text-right' : ''}`}>
         {event.kind === 'booking' ? formatTimeRange(event) : null}

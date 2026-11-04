@@ -23,7 +23,7 @@ function load(path,mocks){const exports={};const code=ts.transpileModule(readFil
 test('confirmed contact-review bookings appear only on the assigned agent calendar without a CRM link',async()=>{
  const rows=['a','b'].map(id=>({booking_ref:`BK-${id}`,client_id:null,opportunity_id:null,status:'pending',inputs:{...inputs,preferredInspectionAssigneeId:id}}))
  const db={from(table){assert.equal(table,'bookings');const q={select(){return q},in(){return q},order(){return q},limit:async()=>({data:rows,error:null})};return q}}
- const mod=load('availabilityCalendar',{'@/lib/calendarInvite':calendar,'@/lib/supabase':{getAdminSupabase:()=>db},'@/lib/availability':availability,'@/lib/availabilityLinkage':linkage})
+ const mod=load('availabilityCalendar',{'@/lib/calendarInvite':calendar,'@/lib/supabase':{getAdminSupabase:()=>db},'@/lib/availability':availability,'@/lib/availabilityLinkage':linkage,'@/lib/publicHolidays':{getPublicHolidayPeriods:async()=>[]}})
  const c=config(),bookings=await mod.getAgentBookingsForCalendar(c,c.assignees.find(a=>a.id==='a'))
  assert.equal(bookings.length,1);assert.equal(bookings[0].booking_ref,'BK-a')
  const events=mod.buildBookingEvents(bookings,new Date('2026-11-09T00:00:00Z'),new Date('2026-11-10T00:00:00Z'))

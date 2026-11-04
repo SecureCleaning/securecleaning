@@ -8,6 +8,7 @@ import { addDays, localDate, partnerConfig, partnerLocation, safePartnerSlot, Pa
 import { isPartnerWeekday, partnerCalendarWeek } from './partnerBookingDates'
 import type { City } from './types'
 import { proposalAgent } from './partnerAppointmentPolicy'
+import { getRequiredPublicHolidayPeriods, publicHolidaysToAvailabilityBlocks } from './publicHolidays'
 
 export type PartnerBusy = { assigneeId: string; start: Date; end: Date }
 export async function loadPartnerConfig() {
@@ -77,9 +78,18 @@ export async function partnerAvailability(company: PartnerCompany, input: Record
   const config = partnerConfig(source.config, company, location.city)
   config.settings = { ...config.settings, maxSlotsToShow: 500, melbourneMaxSlotsToShow: 500 }
   const zones = matchServiceZones(location, location.city, config.zones).zones
-  const busy = config.assignees.length && zones.length ? await loadPartnerBusy(config, location.city, today, horizon) : []
+  const holidayRangeStart = getDateTimeInTimeZone(today, '00:00', getCityTimeZone(location.city))
+  const holidayRangeEnd = getDateTimeInTimeZone(addDays(horizon, 1), '00:00', getCityTimeZone(location.city))
+  const [busy, publicHolidays] = config.assignees.length && zones.length
+    ? await Promise.all([
+        loadPartnerBusy(config, location.city, today, horizon),
+        getRequiredPublicHolidayPeriods(location.city, holidayRangeStart, holidayRangeEnd),
+      ])
+    : [[], []]
+  const holidayBlocks = publicHolidaysToAvailabilityBlocks(publicHolidays, config.assignees.map((assignee) => assignee.id))
+  const effectiveConfig = { ...config, oneOffBlocks: [...config.oneOffBlocks, ...holidayBlocks] }
   const now = Date.now()
-  const suggestions = (date: string, includeBusy: boolean) => !isPartnerWeekday(date) || date < firstDate || date > horizon ? [] : getAvailabilitySuggestionsForConfig(includeBusy ? config : { ...config, oneOffBlocks: [] }, zones, location.city, date, includeBusy ? busy : [])
+  const suggestions = (date: string, includeBusy: boolean) => !isPartnerWeekday(date) || date < firstDate || date > horizon ? [] : getAvailabilitySuggestionsForConfig(includeBusy ? effectiveConfig : { ...effectiveConfig, oneOffBlocks: holidayBlocks }, zones, location.city, date, includeBusy ? busy : [])
     .filter(s => getDateTimeInTimeZone(date, s.startTime, getCityTimeZone(location.city)).getTime() > now)
   let next: ReturnType<typeof safePartnerSlot> | null = null
   for (let date = firstDate; date <= horizon; date = addDays(date, 1)) { const first = suggestions(date, true)[0]; if (first) { next = safePartnerSlot(first, date); break } }

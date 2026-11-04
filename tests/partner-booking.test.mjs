@@ -12,6 +12,11 @@ const { mergeAvailabilityConfig, getAvailabilitySuggestionsForConfig, matchServi
 import * as dates from '../src/lib/calendarInvite.ts'
 import * as partnerDates from '../src/lib/partnerBookingDates.ts'
 import * as menus from '../src/lib/menuConfiguration.ts'
+const publicHolidayHelpers = await import('../src/lib/publicHolidays.ts')
+const noPublicHolidays = {
+ getRequiredPublicHolidayPeriods: async()=>[],
+ publicHolidaysToAvailabilityBlocks: publicHolidayHelpers.publicHolidaysToAvailabilityBlocks,
+}
 const company={id:'company',name:'Partner',active:true,cities:['melbourne'],assignee_ids:['a','b'],expires_at:null}
 function config() {return mergeAvailabilityConfig({settings:{melbourneBookingMode:'priority',maxSlotsToShow:10},assignees:[{id:'a',name:'Agent A',city:'melbourne',active:true,bookingPriority:1,calendarId:'secret-a'},{id:'b',name:'Agent B',city:'melbourne',active:true,bookingPriority:2,calendarId:'secret-b'}],zones:[{id:'zone',name:'Area',city:'melbourne',postcodes:['3000'],matchTerms:['Melbourne']}],weeklySlots:['a','b'].map(id=>({id:`slot-${id}`,assigneeId:id,city:'melbourne',zoneIds:['zone'],day:'monday',startTime:'10:00',endTime:'10:00',active:true})),oneOffBlocks:[]})}
 const now = new Date('2026-11-03T00:00:00Z')
@@ -67,7 +72,7 @@ test('partner session rejects revocation, expiry and disabled companies on every
 })
 test('availability reads include quote duration and sale inspection, and fail closed on database errors',async()=>{
  const values={bookings:{data:[{inputs:{preferredInspectionAssigneeId:'a',inspectionDurationMinutes:60},status:'pending',inspection_status:'scheduled',inspection_scheduled_for:'2026-11-09T00:00:00Z'}]},contract_sale_inspections:{data:[{starts_at:'2026-11-09T02:00:00Z',duration_minutes:90,scheduled_by_staff_id:'staff',status:'scheduled'}]},admin_staff_accounts:{data:[{id:'staff',availability_assignee_id:'a'}]}}
- const mod=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{'googleapis':{google:{}},'./googleCalendar':{},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':policy})
+ const mod=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{'googleapis':{google:{}},'./googleCalendar':{},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':policy,'./publicHolidays':noPublicHolidays})
  const busy=await mod.loadPartnerBusy(config(),'melbourne','2026-11-04','2026-11-11')
  assert.equal(busy.length,2);assert.equal(busy[0].end.getTime()-busy[0].start.getTime(),3600000)
  assert.equal(busy[1].end.getTime()-busy[1].start.getTime(),5400000)
@@ -79,7 +84,7 @@ test('Google free/busy fails closed on an inaccessible calendar and returns no p
  let denied=false, received
  const mod=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{
   'googleapis':{google:{calendar:()=>({freebusy:{query:async request=>{received=request;return {data:{calendars:{'secret-a':denied?{errors:[{reason:'notFound'}]}:{busy:[{start:'2026-11-09T00:00:00Z',end:'2026-11-09T01:00:00Z'}]},'secret-b':{busy:[]}}}}}}})}},
-  './googleCalendar':{getCalendarClient:()=>({setCredentials(){}})},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':policy,
+  './googleCalendar':{getCalendarClient:()=>({setCredentials(){}})},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':policy,'./publicHolidays':noPublicHolidays,
  },{process:{env:{GOOGLE_CALENDAR_CLIENT_ID:'synthetic',GOOGLE_CALENDAR_REFRESH_TOKEN:'synthetic'}}})
  const busy=await mod.loadPartnerBusy(config(),'melbourne','2026-11-04','2026-11-11')
  assert.equal(busy.length,1);assert.deepEqual(Object.keys(busy[0]).sort(),['assigneeId','end','start'])
@@ -143,7 +148,7 @@ test('partner availability excludes weekend slots even when agent calendars offe
  const raw=config()
  raw.weeklySlots=['monday','tuesday','wednesday','thursday','friday','saturday','sunday'].map(day=>({...raw.weeklySlots[0],id:`fixture-${day}`,day}))
  const values={availability_private_config:{data:{content:JSON.stringify(raw)}},bookings:{data:[]},contract_sale_inspections:{data:[]},admin_staff_accounts:{data:[]}}
- const mod=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{'googleapis':{google:{}},'./googleCalendar':{},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':{...policy,localDate:()=> '2026-11-06'}},{Date:class extends Date {static now(){return Date.parse('2026-11-06T01:00:00Z')}}})
+ const mod=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{'googleapis':{google:{}},'./googleCalendar':{},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':{...policy,localDate:()=> '2026-11-06'},'./publicHolidays':noPublicHolidays},{Date:class extends Date {static now(){return Date.parse('2026-11-06T01:00:00Z')}}})
  const result=await mod.partnerAvailability(company,{city:'melbourne',suburb:'Melbourne',postcode:'3000',date:'2026-11-09'})
  assert.deepEqual(Array.from(result.public.days,d=>d.date),['2026-11-09','2026-11-10','2026-11-11','2026-11-12','2026-11-13'])
  assert.ok(result.public.days.every(d=>d.slots.length===1))
@@ -157,4 +162,19 @@ test('partner availability excludes weekend slots even when agent calendars offe
  assert.equal(last.public.nextWeek,null)
  assert.equal(last.public.days[4].slots.length,0)
  assert.doesNotMatch(JSON.stringify(result.public),/calendarId|secret-a|assigneeId/)
+})
+
+test('partner advertised slots block public holidays and fail closed when holiday data is unavailable',async()=>{
+ const raw=config()
+ const values={availability_private_config:{data:{content:JSON.stringify(raw)}},bookings:{data:[]},contract_sale_inspections:{data:[]},admin_staff_accounts:{data:[]}}
+ const period={id:'vic-2026-fixture',stateCode:'VIC',name:'Fixture public holiday',startsAt:'2026-11-08T13:00:00.000Z',endsAt:'2026-11-09T13:00:00.000Z',allDay:true,sourceUrl:'https://business.vic.gov.au/example'}
+ const dependencies={
+  'googleapis':{google:{}},'./googleCalendar':{},'./supabase':{getAdminSupabase:()=>dbFixture(values)},'./availability':{mergeAvailabilityConfig,matchServiceZones,getAvailabilitySuggestionsForConfig},'./calendarInvite':dates,'./partnerAppointmentPolicy':proposalPolicy,'./partnerBookingDates':partnerDates,'./partnerBookingPolicy':{...policy,localDate:()=> '2026-11-06'},
+ }
+ const blocked=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{...dependencies,'./publicHolidays':{getRequiredPublicHolidayPeriods:async()=>[period],publicHolidaysToAvailabilityBlocks:publicHolidayHelpers.publicHolidaysToAvailabilityBlocks}},{Date:class extends Date {static now(){return Date.parse('2026-11-06T01:00:00Z')}}})
+ const result=await blocked.partnerAvailability(company,{city:'melbourne',suburb:'Melbourne',postcode:'3000',date:'2026-11-09'})
+ assert.equal(result.public.days[0].date,'2026-11-09');assert.equal(result.public.days[0].slots.length,0)
+ assert.equal(result.public.next.date,'2026-11-16')
+ const failed=moduleWithMocks('src/lib/partnerBookingAvailability.ts',{...dependencies,'./publicHolidays':{getRequiredPublicHolidayPeriods:async()=>{throw new Error('Public holiday availability could not be checked.')},publicHolidaysToAvailabilityBlocks:publicHolidayHelpers.publicHolidaysToAvailabilityBlocks}},{Date:class extends Date {static now(){return Date.parse('2026-11-06T01:00:00Z')}}})
+ await assert.rejects(()=>failed.partnerAvailability(company,{city:'melbourne',suburb:'Melbourne',postcode:'3000',date:'2026-11-09'}),/could not be checked/)
 })

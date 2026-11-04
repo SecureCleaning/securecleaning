@@ -4,6 +4,7 @@ import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availabili
 import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
 import { isValidAvailabilityAgentFeedToken } from '@/lib/availabilityAgentAuth'
 import { rateLimit } from '@/lib/abuseProtection'
+import { getCityTimeZone } from '@/lib/calendarInvite'
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -20,6 +21,17 @@ function toUtcIcsDate(date: Date) {
     pad(date.getUTCSeconds()),
     'Z',
   ].join('')
+}
+
+function toLocalIcsDate(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}${values.month}${values.day}`
 }
 
 
@@ -44,7 +56,8 @@ export async function GET(
   }
 
   const events = (await getAgentCalendarEvents(config, assignee, { daysAhead: 60, includeAvailability: false }))
-    .filter((event) => event.kind === 'booking' || event.kind === 'sale_inspection' || event.kind === 'blockout')
+    .filter((event) => event.kind === 'booking' || event.kind === 'sale_inspection' || event.kind === 'blockout' || event.kind === 'public_holiday')
+  const timeZone = getCityTimeZone(assignee.city)
 
   const body = serializeIcs([
     'BEGIN:VCALENDAR',
@@ -54,15 +67,24 @@ export async function GET(
     'METHOD:PUBLISH',
     ...events.flatMap((event) => {
       const isBlockout = event.kind === 'blockout'
+      const isPublicHoliday = event.kind === 'public_holiday'
+      const dateLines = isPublicHoliday && event.allDay
+        ? [
+            `DTSTART;VALUE=DATE:${toLocalIcsDate(new Date(event.startsAt), timeZone)}`,
+            `DTEND;VALUE=DATE:${toLocalIcsDate(new Date(event.endsAt), timeZone)}`,
+          ]
+        : [
+            `DTSTART:${toUtcIcsDate(new Date(event.startsAt))}`,
+            `DTEND:${toUtcIcsDate(new Date(event.endsAt))}`,
+          ]
       return [
         'BEGIN:VEVENT',
         `UID:${escapeIcsText(`${event.id}@securecleaning.com.au`)}`,
         `DTSTAMP:${toUtcIcsDate(new Date())}`,
-        `DTSTART:${toUtcIcsDate(new Date(event.startsAt))}`,
-        `DTEND:${toUtcIcsDate(new Date(event.endsAt))}`,
+        ...dateLines,
         `SUMMARY:${escapeIcsText(isBlockout ? 'Unavailable' : event.title)}`,
         `DESCRIPTION:${escapeIcsText(isBlockout ? '' : event.description || event.subtitle || '')}`,
-        `LOCATION:${escapeIcsText(isBlockout ? '' : event.location || '')}`,
+        `LOCATION:${escapeIcsText(isBlockout || isPublicHoliday ? '' : event.location || '')}`,
         'TRANSP:OPAQUE',
         'STATUS:CONFIRMED',
         'END:VEVENT',
