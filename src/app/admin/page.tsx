@@ -1,3 +1,4 @@
+import PartnerAppointmentReview from '@/components/partner/PartnerAppointmentReview'
 import AdminDashboard from '@/components/admin/AdminDashboard'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import { getAdminDashboardData } from '@/lib/adminDashboard'
@@ -16,6 +17,7 @@ export default async function AdminHomePage() {
           description="Manage live quoting, booking, content, pricing, and availability settings for the portal."
           showBack={false}
         />
+        {identity && hasAdminRole(identity.role, 'staff') && <PartnerAppointmentReview />}
         <AdminDashboard
           initialData={await getAdminDashboardData()}
           canDeleteQuotes={Boolean(identity && hasAdminRole(identity.role, 'owner'))}

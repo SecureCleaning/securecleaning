@@ -57,8 +57,11 @@ test('agent dashboard revalidates identity and scopes every data source', () => 
 
 test('login and configured agent navigation lead to the dashboard', () => {
   const login = source('src/components/availability/AvailabilityAgentLogin.tsx')
+  const loginPolicy = source('src/lib/staffLoginClient.ts')
   const menus = source('src/lib/menuConfiguration.ts')
-  assert.match(login, /`\/availability\/dashboard\/\$\{result\.assigneeId\}`/)
+  assert.match(login, /getStaffLoginDestination\(result, \{ assigneeId, redirectPath \}\)/)
+  assert.match(loginPolicy, /`\/availability\/dashboard\/\$\{encodeURIComponent\(result\.assigneeId\)\}`/)
+  assert.match(loginPolicy, /if \(result\.role !== 'agent'\) return '\/admin'/)
   assert.match(menus, /id: 'portal', label: 'Dashboard', href: '\/availability\/dashboard\/\{assigneeId\}'/)
 })
 

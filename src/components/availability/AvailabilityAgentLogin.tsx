@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { signInStaff } from '@/lib/staffLoginClient'
+import { getStaffLoginDestination, signInStaff } from '@/lib/staffLoginClient'
 import AvailabilityAgentNav from './AvailabilityAgentNav'
 
 export default function AvailabilityAgentLogin({
@@ -35,10 +35,7 @@ export default function AvailabilityAgentLogin({
 
     try {
       const result = await signInStaff(username, accessCode)
-      if (result.role !== 'agent' || (assigneeId && result.assigneeId !== assigneeId)) {
-        throw new Error('This login is not linked to the selected regional agent.')
-      }
-      window.location.href = redirectPath || `/availability/dashboard/${result.assigneeId}`
+      window.location.href = getStaffLoginDestination(result, { assigneeId, redirectPath })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to unlock your schedule page.')
     } finally {

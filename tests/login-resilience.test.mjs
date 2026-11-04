@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { signInStaff } from '../src/lib/staffLoginClient.ts'
+import { getStaffLoginDestination, signInStaff } from '../src/lib/staffLoginClient.ts'
 import { databaseFetch } from '../src/lib/databaseFetch.ts'
 
 function mockFetch(t, implementation) {
@@ -16,6 +16,26 @@ test('login accepts the existing successful agent response', async t => {
     return Response.json({ success: true, role: 'agent', assigneeId: 'nsw' })
   })
   assert.equal((await signInStaff('agent', 'test-password')).assigneeId, 'nsw')
+})
+
+test('valid staff credentials route each role to its authorised workspace', () => {
+  const owner = { success: true, role: 'owner', assigneeId: null }
+  const agent = { success: true, role: 'agent', assigneeId: 'melb_primary' }
+
+  assert.equal(getStaffLoginDestination(owner), '/admin')
+  assert.equal(getStaffLoginDestination(owner, {
+    assigneeId: 'melb_primary',
+    redirectPath: '/availability/quotes/melb_primary',
+  }), '/admin')
+  assert.equal(getStaffLoginDestination(agent), '/availability/dashboard/melb_primary')
+  assert.equal(getStaffLoginDestination(agent, {
+    assigneeId: 'melb_primary',
+    redirectPath: '/availability/quotes/melb_primary',
+  }), '/availability/quotes/melb_primary')
+  assert.equal(getStaffLoginDestination(agent, {
+    assigneeId: 'nsw_primary',
+    redirectPath: '/availability/quotes/nsw_primary',
+  }), '/availability/dashboard/melb_primary')
 })
 
 for (const [status, body, expected] of [

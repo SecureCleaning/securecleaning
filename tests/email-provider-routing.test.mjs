@@ -76,6 +76,9 @@ test('booking email attachment survives provider Base64 decoding with correct ca
     assert.match(decoded, /DTSTART:20261020T000000Z/)
     assert.match(decoded, /DTEND:20261020T001000Z/)
     assert.equal(sent.length, 2)
+    assert.doesNotMatch(decoded, /TEST ONLY|Notes:/)
+    assert.doesNotMatch(sent[0].html, /TEST ONLY|Internal appointment notes/)
+    assert.match(sent[1].html, /Internal appointment notes:<\/strong><br>TEST ONLY/)
   } finally { globalThis.fetch = saved }
 })
 

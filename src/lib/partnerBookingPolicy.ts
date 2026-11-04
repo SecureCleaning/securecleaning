@@ -1,6 +1,7 @@
 import type { AvailabilityConfig, AvailabilitySuggestion } from './availability'
 import type { City } from './types'
 import { australianLocalities } from './australianLocalities'
+import { isPartnerWeekday } from './partnerBookingDates'
 
 export const PARTNER_REGIONS = { melbourne: 'VIC', sydney: 'NSW', brisbane: 'QLD' } as const
 export type PartnerCompany = {
@@ -43,6 +44,7 @@ export function checkPartnerDate(date: unknown, city: City, now = new Date()) {
   const value = textField(date, 'appointment date', 10)
   const today = localDate(city, now)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value || value < addDays(today, 1) || value > addDays(today, 90)) throw new PartnerError('Choose a date from tomorrow within the next 90 days.')
+  if (!isPartnerWeekday(value)) throw new PartnerError('Appointments are available Monday to Friday only.')
   return value
 }
 export function safePartnerSlot(slot: AvailabilitySuggestion, date: string) {

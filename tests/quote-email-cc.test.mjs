@@ -162,7 +162,7 @@ function emailFixture(options = {}) {
     '@/lib/richEmailServer': richEmail,
     './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },
     './siteUrl': { getSiteUrl: () => 'https://example.com' }, './publicRoomScope': scope,
-    './availability': {}, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
+    './availability': { getAvailabilityConfig: async()=>({}), getAvailabilityAssignee: ()=>({email:'agent@example.com'}) }, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
     './quoteEmailRecipients': { getQuoteAgentCc: async (...args) => {
       lookups.push(args)
       if (options.lookupError) throw options.lookupError
@@ -529,3 +529,16 @@ for (const kind of ['admin','agent']) {
   }
  })
 }
+
+
+test('partner booking notes are escaped and sent only to admin and the selected agent',async()=>{
+ const fixture=emailFixture()
+ await fixture.sendBookingConfirmationEmail('BK-FIXTURE',{...inputs,preferredStartDate:'2026-11-09',inspectionBookingSource:'partner',preferredInspectionAssigneeId:'agent',notes:'Private <script> note\nSecond line'})
+ assert.equal(fixture.payloads.length,2)
+ const [client,staff]=fixture.payloads
+ assert.equal(client.to,inputs.email)
+ assert.doesNotMatch(client.html,/Private|Second line|Internal appointment notes/)
+ assert.deepEqual([...staff.to],['admin@example.com','agent@example.com'])
+ assert.match(staff.html,/Private &lt;script&gt; note<br>Second line/)
+ assert.doesNotMatch(staff.html,/<script>/)
+})

@@ -1,9 +1,19 @@
 const UNAVAILABLE = 'Sign-in is temporarily unavailable. Please try again shortly.'
 const TIMEOUT = 'Sign-in took too long. Please wait a moment and try again.'
 
-type LoginResult = { success: true; role: string; assigneeId: string | null }
+export type StaffLoginResult = { success: true; role: string; assigneeId: string | null }
 
-export async function signInStaff(username: string, password: string, timeoutMs = 20_000): Promise<LoginResult> {
+export function getStaffLoginDestination(
+  result: StaffLoginResult,
+  options: { assigneeId?: string; redirectPath?: string } = {},
+) {
+  if (result.role !== 'agent') return '/admin'
+  if (!result.assigneeId) return '/agent'
+  if (options.assigneeId === result.assigneeId && options.redirectPath) return options.redirectPath
+  return `/availability/dashboard/${encodeURIComponent(result.assigneeId)}`
+}
+
+export async function signInStaff(username: string, password: string, timeoutMs = 20_000): Promise<StaffLoginResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {

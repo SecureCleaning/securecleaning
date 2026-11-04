@@ -109,7 +109,6 @@ export function buildBookingInviteIcs(bookingRef: string, inputs: BookingInputs)
     `Address: ${inputs.address}, ${inputs.suburb} ${inputs.postcode}, ${cityLabel}`,
     `Frequency: ${inputs.frequency.replace(/_/g, ' ')}`,
     `Time preference: ${inputs.timePreference.replace(/_/g, ' ')}`,
-    `Notes: ${inputs.notes?.trim() || 'None provided'}`,
     '',
     staffConfirmed
       ? 'This inspection time was confirmed directly by Secure Cleaning staff.'

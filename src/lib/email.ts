@@ -419,7 +419,7 @@ export async function sendBookingConfirmationEmail(
     `,
   })
 
-  // Admin notification
+  // Internal notes belong only in the staff notification, never the customer ICS.
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: internalRecipients,
@@ -434,6 +434,7 @@ export async function sendBookingConfirmationEmail(
       Cleaning frequency: ${escapeHtml(inputs.frequency)}<br>
       Preferred inspection date: ${escapeHtml(inputs.preferredStartDate)}<br>
       Cleaning time preference: ${escapeHtml(inputs.timePreference)}${selectedInspectionWindow ? `<br>Inspection appointment window: ${escapeHtml(selectedInspectionWindow)}` : ''}${inputs.preferredInspectionAssigneeName ? `<br>Assigned quoter: ${escapeHtml(inputs.preferredInspectionAssigneeName)}` : ''}</p>
+      ${inputs.notes?.trim() ? `<p><strong>Internal appointment notes:</strong><br>${escapeHtml(inputs.notes.trim()).replace(/\r?\n/g, '<br>')}</p>` : ''}
     `,
   })
 }

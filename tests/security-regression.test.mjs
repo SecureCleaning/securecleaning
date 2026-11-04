@@ -120,13 +120,13 @@ test('protected admin and agent API routes retain server-side guards', async () 
   assert.ok(agentRoutes.length > 0)
 
   for (const path of adminRoutes) {
-    assert.match(readFileSync(path, 'utf8'), /isAuthorizedAdminRequest|authorizeCleanerAdminRequest|getClientCrmActor|getContractProductActor/)
+    assert.match(readFileSync(path, 'utf8'), /isAuthorizedAdminRequest|authorizeCleanerAdminRequest|getClientCrmActor|getContractProductActor|partnerRequestReviewHttp/)
   }
 
   for (const path of agentRoutes) {
     assert.match(
       readFileSync(path, 'utf8'),
-      /isAuthorizedAdminRequest|isAuthorizedAvailabilityAgentRequest|isValidAvailabilityAgentFeedToken|getCleanerAgentContext/,
+      /isAuthorizedAdminRequest|isAuthorizedAvailabilityAgentRequest|isValidAvailabilityAgentFeedToken|getCleanerAgentContext|partnerRequestReviewHttp/,
     )
   }
 })

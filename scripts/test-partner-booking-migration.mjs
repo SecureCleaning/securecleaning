@@ -8,7 +8,8 @@ CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
 CREATE TYPE city_type AS ENUM('melbourne','sydney','brisbane');
 CREATE TABLE clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),business_name text, contact_name text, email text, phone text, address text, city city_type, created_at timestamptz DEFAULT now());
 CREATE TABLE admin_staff_accounts(id uuid PRIMARY KEY, availability_assignee_id text, active boolean, role text);
-CREATE TABLE bookings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),booking_ref text UNIQUE,client_id uuid REFERENCES clients(id),inputs jsonb,status text,inspection_status text,inspection_scheduled_for timestamptz,assigned_operator_id uuid,opportunity_id uuid);
+CREATE TYPE booking_status AS ENUM('pending','confirmed','completed','cancelled');
+CREATE TABLE bookings(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),booking_ref text UNIQUE,client_id uuid REFERENCES clients(id),inputs jsonb,status booking_status,inspection_status text,inspection_scheduled_for timestamptz,assigned_operator_id uuid,opportunity_id uuid);
 CREATE TABLE contract_sale_inspections(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),status text,scheduled_by_staff_id uuid,starts_at timestamptz,duration_minutes int);
 CREATE TABLE availability_private_config(key text PRIMARY KEY,content text);
 CREATE TABLE admin_audit_log(entity_type text,entity_ref text,action text,details jsonb);
@@ -24,6 +25,7 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 `)
 const migration = await readFile(new URL('../supabase/migrations/20261103101314_partner_booking_portal.sql',import.meta.url),'utf8')
 await db.exec(migration)
+await db.exec(await readFile(new URL('../supabase/migrations/20261103234059_partner_appointment_proposals.sql',import.meta.url),'utf8'))
 const uid='11111111-1111-4111-8111-111111111111',cid='22222222-2222-4222-8222-222222222222',rev='33333333-3333-4333-8333-333333333333',staff='44444444-4444-4444-8444-444444444444'
 const config=JSON.stringify({assignees:[{id:'a',city:'melbourne',active:true}]})
 await db.query('insert into availability_private_config values($1,$2)',['availability.config',config])
@@ -70,5 +72,31 @@ for (const role of ['anon','authenticated']) {
  await db.exec('reset role')
 }
 assert.equal((await db.query("select bool_and(relrowsecurity) ok from pg_class where relname in ('partner_booking_companies','partner_booking_users','partner_booking_sessions','partner_booking_requests')")).rows[0].ok,true)
+await db.query('update availability_private_config set content=$1',[config])
+const proposedDay=new Date(Date.now()+14*86400000);while([0,6].includes(proposedDay.getUTCDay()))proposedDay.setUTCDate(proposedDay.getUTCDate()+1)
+const proposedTimes=[{date:proposedDay.toISOString().slice(0,10),startTime:'18:00'},{date:proposedDay.toISOString().slice(0,10),startTime:'20:00'}]
+const proposedInputs={...inputs,inspectionBookingSource:'partner_request',requestedInspectionTimes:proposedTimes,preferredStartDate:''}
+const propose=async(id,overrides={})=>(await db.query('select create_partner_booking($1,$2,$3,$4,$5,NULL,$6) result',[uid,rev,id,'proposal-hash',JSON.stringify({...proposedInputs,...overrides}),config])).rows[0].result
+const decide=async(id,decision='confirmed',selected=0,assignee='a',reason='Fixture reason')=>(await db.query('select decide_partner_appointment_request($1,$2,$3,$4,$5,$6,$7) result',[id,assignee,'fixture-staff',decision,selected,reason,config])).rows[0].result
+const p1=request(),p2=request(),pending1=await propose(p1),pending2=await propose(p2)
+assert.equal((await propose(p1)).created,false)
+assert.equal((await db.query('select inspection_scheduled_for from bookings where id=$1',[pending1.bookingId])).rows[0].inspection_scheduled_for,null)
+await assert.rejects(()=>decide(p1),/still being processed/)
+await db.query("update partner_booking_requests set email_status='sent' where id in ($1,$2)",[p1,p2])
+await assert.rejects(()=>db.query("update bookings set inspection_scheduled_for=now()+interval '3 days' where id=$1",[pending1.bookingId]),/Review the pending/)
+await assert.rejects(()=>db.query("update bookings set inputs=inputs || '{\"notes\":\"changed\"}' where id=$1",[pending1.bookingId]),/Review the pending/)
+await assert.rejects(()=>decide(p1,'confirmed',0,'other'),/not found/)
+await assert.rejects(()=>decide(p1,'confirmed',9),/Invalid proposed/)
+assert.equal((await decide(p1)).created,true)
+assert.equal((await decide(p1)).created,false)
+await assert.rejects(()=>decide(p1,'confirmed',1),/already reviewed/)
+assert.equal((await db.query('select inputs from bookings where id=$1',[pending1.bookingId])).rows[0].inputs.preferredInspectionStartTime,'18:00')
+await assert.rejects(()=>decide(p2),/no longer available/)
+assert.equal((await db.query('select decision_status from partner_booking_requests where id=$1',[p2])).rows[0].decision_status,'pending','collision rolls back the decision and delivery claim')
+await assert.rejects(()=>decide(p2,'declined',null,'a',''),/decline reason/)
+assert.equal((await decide(p2,'declined',null)).created,true)
+assert.equal((await db.query('select status from bookings where id=$1',[pending2.bookingId])).rows[0].status,'cancelled')
+for(const role of ['anon','authenticated']){await db.exec(`set role ${role}`);await assert.rejects(()=>decide(p1),/permission denied/);await db.exec('reset role')}
+console.log('PASS: proposal creation with no reservation, independent simultaneous proposals, pending mutation guard, reviewer ownership, confirmation replay, collision rollback, decline and private function grants.')
 console.log('PASS: atomic creation/replay, collision across entry points, cancellation, revoked/expired access, state/calendar restrictions, CRM failure rollback and private grants/RLS.')
 await db.close()

@@ -4,8 +4,10 @@ import { getCalendarClient } from './googleCalendar'
 import { getAdminSupabase } from './supabase'
 import { mergeAvailabilityConfig, matchServiceZones, getAvailabilitySuggestionsForConfig, type AvailabilityConfig } from './availability'
 import { getCityTimeZone, getDateTimeInTimeZone } from './calendarInvite'
-import { addDays, checkPartnerDate, localDate, partnerConfig, partnerLocation, safePartnerSlot, PartnerError, type PartnerCompany } from './partnerBookingPolicy'
+import { addDays, localDate, partnerConfig, partnerLocation, safePartnerSlot, PartnerError, type PartnerCompany } from './partnerBookingPolicy'
+import { isPartnerWeekday, partnerCalendarWeek } from './partnerBookingDates'
 import type { City } from './types'
+import { proposalAgent } from './partnerAppointmentPolicy'
 
 export type PartnerBusy = { assigneeId: string; start: Date; end: Date }
 export async function loadPartnerConfig() {
@@ -67,25 +69,28 @@ export async function loadPartnerBusy(config: AvailabilityConfig, city: City, fr
 export async function partnerAvailability(company: PartnerCompany, input: Record<string, unknown>) {
   const location = partnerLocation(input), today = localDate(location.city)
   const firstDate = addDays(today, 1)
-  const anchor = input.date ? checkPartnerDate(input.date, location.city) : firstDate
+  const anchor = typeof input.date === 'string' && input.date ? input.date : firstDate
+  const horizon = addDays(today, 90)
+  let week: ReturnType<typeof partnerCalendarWeek>
+  try { week = partnerCalendarWeek(anchor, firstDate, horizon) } catch { throw new PartnerError('Choose a week within the next 90 days.') }
   const source = await loadPartnerConfig()
   const config = partnerConfig(source.config, company, location.city)
   config.settings = { ...config.settings, maxSlotsToShow: 500, melbourneMaxSlotsToShow: 500 }
   const zones = matchServiceZones(location, location.city, config.zones).zones
-  const horizon = addDays(today, 90)
   const busy = config.assignees.length && zones.length ? await loadPartnerBusy(config, location.city, today, horizon) : []
   const now = Date.now()
-  const suggestions = (date: string, includeBusy: boolean) => getAvailabilitySuggestionsForConfig(includeBusy ? config : { ...config, oneOffBlocks: [] }, zones, location.city, date, includeBusy ? busy : [])
+  const suggestions = (date: string, includeBusy: boolean) => !isPartnerWeekday(date) || date < firstDate || date > horizon ? [] : getAvailabilitySuggestionsForConfig(includeBusy ? config : { ...config, oneOffBlocks: [] }, zones, location.city, date, includeBusy ? busy : [])
     .filter(s => getDateTimeInTimeZone(date, s.startTime, getCityTimeZone(location.city)).getTime() > now)
-  const days = Array.from({ length: 7 }, (_, n) => addDays(anchor, n)).filter(date => date <= horizon).map(date => {
+  let next: ReturnType<typeof safePartnerSlot> | null = null
+  for (let date = firstDate; date <= horizon; date = addDays(date, 1)) { const first = suggestions(date, true)[0]; if (first) { next = safePartnerSlot(first, date); break } }
+  if (!input.date && next) week = partnerCalendarWeek(next.date, firstDate, horizon)
+  const days = week.dates.map(date => {
     const available = suggestions(date, true)
     const availableTimes = new Set(available.map(s => s.startTime))
     // Generic unavailable slots; never expose why a time or area is blocked.
     const unavailable = [...new Map(suggestions(date, false).filter(s => !availableTimes.has(s.startTime)).map(s => [s.startTime, { startTime: s.startTime, endTime: s.endTime }])).values()]
     return { date, slots: available.map(s => safePartnerSlot(s, date)), unavailable }
   })
-  let next: ReturnType<typeof safePartnerSlot> | null = null
-  for (let date = firstDate; date <= horizon; date = addDays(date, 1)) { const first = suggestions(date, true)[0]; if (first) { next = safePartnerSlot(first, date); break } }
-  return { public: { days, next, minDate: firstDate, maxDate: horizon, timeZone: getCityTimeZone(location.city), calendars: config.assignees.map(a => ({ name: a.name })), zoneMatched: zones.length > 0 },
+  return { public: { days, next, requestAgent: proposalAgent(source.config, company, input)?.name ?? null, weekStart: week.weekStart, previousWeek: week.previousWeek, nextWeek: week.nextWeek, minDate: firstDate, maxDate: horizon, timeZone: getCityTimeZone(location.city), calendars: config.assignees.map(a => ({ name: a.name })), zoneMatched: zones.length > 0 },
     config, content: source.content, location, suggestions: suggestions(anchor, true) }
 }
