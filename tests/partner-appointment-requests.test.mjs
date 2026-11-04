@@ -19,7 +19,7 @@ const times=[{date:'2026-11-09',startTime:'18:00'},{date:'2026-11-09',startTime:
 const inputs={businessName:'Fixture <business>',contactName:'Test Contact',email:'client@example.invalid',phone:'0400000000',address:'10 Test Street',city:'melbourne',suburb:'Melbourne',postcode:'3000',premisesType:'office',frequency:'weekly',timePreference:'business_hours',notes:'PRIVATE <script>\nInternal note',preferredInspectionAssigneeId:'a',preferredStartDate:'2026-11-09',preferredInspectionStartTime:'18:00',preferredInspectionEndTime:'18:10'}
 const company={id:'company',name:'Test Partner',active:true,cities:['melbourne'],assignee_ids:['a','b'],expires_at:null}
 const config=()=>mergeAvailabilityConfig({assignees:['a','b'].map((id,i)=>({id,name:`Agent ${id}`,city:'melbourne',active:true,email:`${id}@example.invalid`,bookingPriority:i+1,calendarId:`calendar-${id}`})),zones:[{id:'zone',city:'melbourne',name:'CBD',postcodes:['3000'],matchTerms:['Melbourne']}],weeklySlots:['a','b'].map(id=>({id,assigneeId:id,city:'melbourne',zoneIds:['zone'],day:'monday',startTime:'09:00',endTime:'12:00',active:true})),oneOffBlocks:[]})
-function load(path,mocks){const exports={};const code=ts.transpileModule(readFileSync(new URL(`../src/lib/${path}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,Buffer,console,process:{env:{}},Date:class extends Date{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed.getTime()}},require(name){if(name==='server-only')return{};if(!(name in mocks))throw Error(`Unexpected ${name}`);return mocks[name]}});return exports}
+function load(path,mocks,env={}){const exports={};const code=ts.transpileModule(readFileSync(new URL(`../src/lib/${path}.ts`,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;vm.runInNewContext(code,{exports,Buffer,console,process:{env},Date:class extends Date{constructor(...args){super(...(args.length?args:[fixed]))}static now(){return fixed.getTime()}},require(name){if(name==='server-only')return{};if(!(name in mocks))throw Error(`Unexpected ${name}`);return mocks[name]}});return exports}
 test('confirmed contact-review bookings appear only on the assigned agent calendar without a CRM link',async()=>{
  const rows=['a','b'].map(id=>({booking_ref:`BK-${id}`,client_id:null,opportunity_id:null,status:'pending',inputs:{...inputs,preferredInspectionAssigneeId:id}}))
  const db={from(table){assert.equal(table,'bookings');const q={select(){return q},in(){return q},order(){return q},limit:async()=>({data:rows,error:null})};return q}}
@@ -43,8 +43,32 @@ test('request agent selection checks suburb and company restrictions before prio
  assert.equal(proposals.proposalAgent(c,{...company,assignee_ids:['a']},inputs),null)
  assert.throws(()=>proposals.proposalAgent(c,{...company,cities:[]},inputs))
 })
-const messages=load('partnerAppointmentMessages',{'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}})
+const messageMocks={'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}}
+const messages=load('partnerAppointmentMessages',messageMocks)
 const notice={requestId:'11111111-1111-4111-8111-111111111111',bookingRef:'BK-FIXTURE',inputs,proposals:times,agentEmail:'agent@example.invalid',state:'pending'}
+test('pasted sender and admin settings do not prevent appointment notification preparation',()=>{
+ for(const sender of ['quotes@example.invalid','Secure Cleaning <quotes@example.invalid>']){
+  const configured=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:` ${sender}\r\n`,ADMIN_EMAIL:' info@example.invalid\n'})
+  for(const state of ['pending','confirmed','declined']){
+   const result=configured.partnerAppointmentPayloads({...notice,state,selected:state==='confirmed'?0:null})
+   assert.equal(result.client.from,sender);assert.equal(result.staff.from,sender)
+   assert.equal(result.client.replyTo,'info@example.invalid');assert.equal(result.staff.replyTo,'info@example.invalid')
+   assert.deepEqual(Array.from(result.staff.to),['info@example.invalid','agent@example.invalid'])
+   for(const attachment of result.staff.attachments){
+    const content=Buffer.from(attachment.content,'base64').toString()
+    assert.match(content,/ORGANIZER:mailto:quotes@example.invalid\r\n/)
+   }
+   assert.doesNotMatch(JSON.stringify(result.client),/PRIVATE|Internal note/)
+  }
+ }
+ const empty=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:' \n',ADMIN_EMAIL:' \r\n'})
+ assert.equal(empty.partnerAppointmentPayloads(notice).client.from,'quotes@securecleaning.com.au')
+ assert.equal(empty.partnerAppointmentPayloads(notice).client.replyTo,'info@securecleaning.com.au')
+ for(const sender of ['quotes@example.invalid\r\nATTENDEE:mailto:other@example.invalid','Secure\nCleaning <quotes@example.invalid>']){
+  const invalid=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:sender})
+  assert.throws(()=>invalid.partnerAppointmentPayloads(notice),/Invalid calendar mailbox/)
+ }
+})
 test('initial customer message is TBA without invite or notes; agent has tentative transparent options and notes',()=>{
  const result=messages.partnerAppointmentPayloads(notice)
  assert.match(result.client.html,/TBA and no time is confirmed/);assert.equal(result.client.attachments,undefined);assert.doesNotMatch(JSON.stringify(result.client),/PRIVATE|Internal note/)

@@ -5,6 +5,7 @@ import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
 import { isValidAvailabilityAgentFeedToken } from '@/lib/availabilityAgentAuth'
 import { rateLimit } from '@/lib/abuseProtection'
 import { getCityTimeZone } from '@/lib/calendarInvite'
+import { getAvailabilityCalendarFeedKey } from '@/lib/availabilityCalendarCredentials'
 
 function pad(value: number) {
   return String(value).padStart(2, '0')
@@ -46,12 +47,13 @@ export async function GET(
   const config = await getAvailabilityConfig()
   const assignee = getAvailabilityAssignee(config, assigneeId)
 
-  if (!assignee?.active || !assignee.accessCodeHash) {
+  const feedKey = getAvailabilityCalendarFeedKey(assignee)
+  if (!assignee || !feedKey) {
     return NextResponse.json({ error: 'Agent not found.' }, { status: 404 })
   }
 
   const token = request.nextUrl.searchParams.get('token')
-  if (!isValidAvailabilityAgentFeedToken(token, assigneeId, assignee.accessCodeHash)) {
+  if (!isValidAvailabilityAgentFeedToken(token, assigneeId, feedKey)) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
 

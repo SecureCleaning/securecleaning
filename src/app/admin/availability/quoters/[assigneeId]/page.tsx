@@ -7,6 +7,7 @@ import { getAgentCalendarEvents } from '@/lib/availabilityCalendar'
 import { createAvailabilityAgentFeedToken } from '@/lib/availabilityAgentAuth'
 import { withAdminPage } from '@/lib/adminPage'
 import { getSiteUrl } from '@/lib/siteUrl'
+import { getAvailabilityCalendarFeedKey } from '@/lib/availabilityCalendarCredentials'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,8 +33,9 @@ export default async function AdminAvailabilityQuoterPage({
       )
     }
 
-    const feedToken = assignee.accessCodeHash
-      ? createAvailabilityAgentFeedToken(assignee.id, assignee.accessCodeHash)
+    const feedKey = getAvailabilityCalendarFeedKey(assignee)
+    const feedToken = feedKey
+      ? createAvailabilityAgentFeedToken(assignee.id, feedKey)
       : null
     const calendarFeedUrl = feedToken
       ? `${getSiteUrl()}/api/availability-agent/${assignee.id}/feed?token=${encodeURIComponent(feedToken)}`

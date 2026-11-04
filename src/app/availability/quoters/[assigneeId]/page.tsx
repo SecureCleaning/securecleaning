@@ -8,6 +8,7 @@ import {
   hasAvailabilityAgentSession,
 } from '@/lib/availabilityAgentAuth'
 import { getSiteUrl } from '@/lib/siteUrl'
+import { getAvailabilityCalendarFeedKey } from '@/lib/availabilityCalendarCredentials'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,35 +33,22 @@ export default async function AvailabilityQuoterPage({
   }
 
   const authenticated = await hasAvailabilityAgentSession(assigneeId)
-  if (!assignee.accessCodeHash && !authenticated) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="text-center max-w-md bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-          <h1 className="text-2xl font-bold mb-3" style={{ color: '#1a2744' }}>
-            Access not configured yet
-          </h1>
-          <p className="text-gray-600">
-            This agent page exists, but the admin team still needs to set a password before it can be used.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   if (!authenticated) {
     return (
       <AvailabilityAgentLogin
         assigneeId={assigneeId}
         assigneeName={assignee.name}
         defaultUsername={assignee.username ?? ''}
-        lockUsername={Boolean(assignee.username)}
+        lockUsername={false}
+        redirectPath={`/availability/quoters/${encodeURIComponent(assigneeId)}`}
       />
     )
   }
 
   const initialCalendarEvents = await getAgentCalendarEvents(config, assignee)
-  const feedToken = assignee.accessCodeHash
-    ? createAvailabilityAgentFeedToken(assignee.id, assignee.accessCodeHash)
+  const feedKey = getAvailabilityCalendarFeedKey(assignee)
+  const feedToken = feedKey
+    ? createAvailabilityAgentFeedToken(assignee.id, feedKey)
     : null
   const calendarFeedUrl = feedToken
     ? `${getSiteUrl()}/api/availability-agent/${assignee.id}/feed?token=${encodeURIComponent(feedToken)}`

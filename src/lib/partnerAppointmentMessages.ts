@@ -12,9 +12,9 @@ export function proposalCalendar(input: Notice, index: number) {
   const proposal = input.proposals[index], start = getDateTimeInTimeZone(proposal.date, proposal.startTime, getCityTimeZone(input.inputs.city))
   const cancelled = input.state === 'declined' || (input.state === 'confirmed' && input.selected !== index)
   const pending = input.state === 'pending'
-  const sender = process.env.FROM_EMAIL || 'quotes@securecleaning.com.au'
+  const sender = process.env.FROM_EMAIL?.trim() || 'quotes@securecleaning.com.au'
   const organizer = sender.match(/<([^<>]+)>/)?.[1] || sender
-  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(organizer) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(input.agentEmail)) throw new Error('Invalid calendar mailbox')
+  if (/[\r\n]/.test(sender) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(organizer) || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(input.agentEmail)) throw new Error('Invalid calendar mailbox')
   const reviewUrl = `${getSiteUrl()}/availability/dashboard/${encodeURIComponent(input.inputs.preferredInspectionAssigneeId || '')}#appointment-requests`
   return serializeIcs(['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Secure Cleaning//Appointment requests//EN',`METHOD:${cancelled ? 'CANCEL' : 'REQUEST'}`,'BEGIN:VEVENT',
     `UID:partner-${input.requestId}-${index}@securecleaning.com.au`,`DTSTAMP:${utc(new Date())}`,`SEQUENCE:${pending ? 0 : 1}`,
@@ -27,7 +27,7 @@ export function proposalCalendar(input: Notice, index: number) {
     'END:VEVENT','END:VCALENDAR'])
 }
 export function partnerAppointmentPayloads(input: Notice) {
-  const from = process.env.FROM_EMAIL || 'quotes@securecleaning.com.au', admin = process.env.ADMIN_EMAIL || 'info@securecleaning.com.au'
+  const from = process.env.FROM_EMAIL?.trim() || 'quotes@securecleaning.com.au', admin = process.env.ADMIN_EMAIL?.trim() || 'info@securecleaning.com.au'
   const title = input.state === 'pending' ? 'Appointment request received - TBA' : input.state === 'confirmed' ? 'Site inspection confirmed' : 'Appointment time still to be arranged'
   const proposed = input.proposals.map(p=>`<li>${escapeHtml(p.date)} at ${escapeHtml(p.startTime)}</li>`).join('')
   const selected = input.selected == null ? null : input.proposals[input.selected]

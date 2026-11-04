@@ -16,6 +16,7 @@ import { getContractProducts, ContractProductError } from '@/lib/contractProduct
 import { createCleanerForState, type CleanerPayload } from '@/lib/cleaners'
 import { getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAvailabilityAssignee, getAvailabilityConfig } from '@/lib/availability'
+import { getAvailabilityCalendarFeedKey } from '@/lib/availabilityCalendarCredentials'
 import { upsertContractSaleInspectionEvent } from '@/lib/googleCalendar'
 import { applyEmailMergeFields, CLEANER_PROFILE_UPDATE_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields, INSPECTION_EMAIL_MERGE_FIELD_KEYS } from '@/lib/emailMergeFields'
 import { DEFAULT_CONTRACT_SALE_HANDOVER_EMAIL_TEMPLATES, HANDOVER_EMAIL_MERGE_FIELD_KEYS, type ContractSaleHandoverEmailTemplate } from '@/lib/contractSaleHandoverTemplates'
@@ -1533,7 +1534,7 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
     summary: `Secure Cleaning site inspection - ${context.site?.site_name || context.client?.business_name || sale.sale_code}`,
     description, location,
   }) : { status: 'failed' as const, reason: 'No writable Google Calendar ID is configured for the sending staff member' }
-  const publishesToPrivateFeed = Boolean(senderAssignee?.active && senderAssignee.accessCodeHash)
+  const publishesToPrivateFeed = Boolean(getAvailabilityCalendarFeedKey(senderAssignee))
   const calendarStatus = calendar.status === 'failed'
     ? (publishesToPrivateFeed ? 'subscription_feed' : 'email_fallback')
     : calendar.status

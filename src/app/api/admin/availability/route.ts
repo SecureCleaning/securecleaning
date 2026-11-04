@@ -1,7 +1,7 @@
 import { validateBookingPriorityConfig } from '@/lib/availabilityPriority'
 import { NextRequest, NextResponse } from 'next/server'
 import { toBrowserAvailabilityConfig, getAvailabilityConfig, saveAvailabilityConfig, validateAvailabilityZoneConfig } from '@/lib/availability'
-import { hashAvailabilityAccessCode } from '@/lib/availabilityAccessCode'
+import { prepareAvailabilityCalendarCredentials } from '@/lib/availabilityCalendarCredentials'
 import { isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { getAdminSupabase } from '@/lib/supabase'
 import { validateOwnerOperatorLinks } from '@/lib/availabilityLinkage'
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         const code = typeof draftAccessCodes?.[assignee.id] === 'string' ? draftAccessCodes[assignee.id].trim() : ''
         return { ...assignee, calendarId: assignee.calendarId?.trim() || previous?.calendarId,
           calendarSubscriptionUrl: assignee.calendarSubscriptionUrl?.trim() || previous?.calendarSubscriptionUrl,
-          accessCodeHash: code ? hashAvailabilityAccessCode(code) : previous?.accessCodeHash }
+          ...prepareAvailabilityCalendarCredentials(previous, code) }
       }) : [],
     }
 

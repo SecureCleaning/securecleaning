@@ -62,6 +62,7 @@ export type AvailabilityAssignee = {
   calendarViewUrl?: string
   calendarSubscriptionUrl?: string
   accessCodeHash?: string
+  calendarFeedKey?: string
   active: boolean
   notes?: string
 }
@@ -331,6 +332,7 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
             calendarSubscriptionUrl:
               typeof assignee?.calendarSubscriptionUrl === 'string' ? assignee.calendarSubscriptionUrl : '',
             accessCodeHash: typeof assignee?.accessCodeHash === 'string' ? assignee.accessCodeHash : '',
+            calendarFeedKey: typeof assignee?.calendarFeedKey === 'string' ? assignee.calendarFeedKey : '',
             active: normalizedCity.supported && Boolean(assignee?.active ?? true),
             notes: typeof assignee?.notes === 'string' ? assignee.notes : '',
           }
@@ -855,7 +857,7 @@ export async function getAvailabilityCalendar(
 }
 
 export function toBrowserAssignee(assignee: AvailabilityAssignee): AvailabilityAssignee {
-  const { accessCodeHash, calendarId, calendarSubscriptionUrl, ...safe } = assignee
+  const { accessCodeHash, calendarFeedKey, calendarId, calendarSubscriptionUrl, ...safe } = assignee
   return safe
 }
 
