@@ -6,6 +6,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://fixture.invalid'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'synthetic-anon'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'synthetic-service'
 process.env.RESEND_API_KEY = 're_synthetic'
+const { savedQuoteDocument } = await import('./fixtures/crm-follow-up-quote.mjs')
 const { buildCrmOriginalEmailQuote, crmFollowUpSubject } = await import('../src/lib/crmEmailFollowUp.ts')
 const { previewClientCrmEmail, sendClientCrmEmail } = await import('../src/lib/clientCrmEmail.ts')
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12,'0')}`
@@ -13,8 +14,8 @@ const actor = { id: id(1), role: 'agent' }
 const original = { id:id(2), opportunity_id:id(3), contact_id:id(4), to_email:'client@example.test', status:'sent', sent_at:'2026-10-20T01:00:00Z', subject_snapshot:'Original subject', body_snapshot:'Original message <script>alert(1)</script>', signature_snapshot:'Original signature', sender_name:'Original Sender', from_email:'agent@securecleaning.com.au' }
 const input = { opportunityId:id(3), followUpToId:id(2), subject:'Re: Original subject', body:'Hi <<first_name>>, did you receive this?' }
 function fixture(options={}) {
-  const calls=[], sends=[], snapshots=[]
-  return { calls,sends,snapshots,fetch:async (url,init={})=>{
+  const calls=[], sends=[], snapshots=[], finalizations=[]
+  return { calls,sends,snapshots,finalizations,fetch:async (url,init={})=>{
     const parsed=new URL(String(url)), table=parsed.pathname.split('/').pop(), method=init.method || 'GET'
     calls.push(table)
     const body=init.body?JSON.parse(init.body):null
@@ -27,11 +28,14 @@ function fixture(options={}) {
     else if(table==='leads') data={email:'client@example.test',contact_basis:'enquiry',source_explanation:'you requested information'}
     else if(table==='clients') data={id:id(4),email:'client@example.test',first_name:'Test',unsubscribe_token:'fixture-token'}
     else if(table==='crm_organisations') data={id:id(5),business_name:'Example Business'}
+    else if(table==='quote_send_attempts') data={id:id(20),quote_ref:'SC-TEST',recipient:'client@example.test',document_version:2,document_snapshot:savedQuoteDocument(),finalized_at:'2026-10-20T01:00:00Z',actor:{name:'Original Sender'},email_snapshot:{subject:'Quote SC-TEST',from:'Original Sender <agent@securecleaning.com.au>',html:'<p>Hi Test,</p><p>Here is every paragraph of your original quote.</p><p>Our agreed price is $345 per visit.</p><p>Final paragraph and signature.</p>'},...options.quote}
+    else if(table==='quotes') data={id:id(21)}
+    else if(table==='crm_opportunity_quotes') data=options.unlinked?null:{quote_id:id(21)}
     else if(table==='crm_communications' && method==='PATCH') { snapshots.push(body); data=null }
     else if(table==='crm_communications') data=parsed.searchParams.get('id')==='eq.'+id(2)?{...original,...options.original}:null
     else if(table==='crm_email_suppressions') data=options.suppressed?{reason:'unsubscribed'}:null
     else if(table==='claim_client_crm_communication') data=id(8)
-    else if(table==='finalize_client_crm_communication') data=null
+    else if(table==='finalize_client_crm_communication') { finalizations.push(body); data=null }
     else throw new Error('Unexpected fixture request '+table)
     return new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json'}})
   }}
@@ -70,4 +74,61 @@ test('authorization, original recipient/status, suppression and preview changes 
       assert.equal(backend.sends.length,0)
     }
   } finally {globalThis.fetch=saved}
+})
+
+test('archived quote wording is complete; attachment is opt-in, exact-version PDF, fingerprinted and audited',async()=>{
+  const saved=globalThis.fetch, backend=fixture();globalThis.fetch=backend.fetch
+  const request={...input,followUpToId:null,followUpQuoteSendId:id(20)}
+  try {
+    const without=await previewClientCrmEmail(actor,request)
+    assert.match(without.text,/every paragraph/);assert.match(without.text,/Final paragraph and signature/)
+    assert.deepEqual(without.attachments,[]);assert.deepEqual(without.warnings,[])
+    await sendClientCrmEmail(actor,{...request,previewFingerprint:without.previewFingerprint,idempotencyKey:id(30)})
+    assert.equal(backend.sends[0].attachments,undefined)
+    const withAttachment={...request,quoteAttachmentSendId:id(20)}
+    await assert.rejects(sendClientCrmEmail(actor,{...withAttachment,previewFingerprint:without.previewFingerprint,idempotencyKey:id(31)}),/Preview this exact email/)
+    const preview=await previewClientCrmEmail(actor,withAttachment)
+    assert.notEqual(preview.previewFingerprint,without.previewFingerprint)
+    assert.equal(preview.attachments[0].filename,'quote-SC-TEST-v2.pdf')
+    assert.match(preview.attachments[0].url,/format=pdf/)
+    await sendClientCrmEmail(actor,{...withAttachment,previewFingerprint:preview.previewFingerprint,idempotencyKey:id(32)})
+    const attachment=backend.sends[1].attachments[0], pdf=Buffer.from(attachment.content,'base64').toString('latin1')
+    assert.equal(attachment.content_type,'application/pdf');assert.match(pdf,/^%PDF-/)
+    for(const text of ['SC-TEST','345','Main office'.toUpperCase(),'Equipment and materials','External windows']) assert.ok(pdf.includes(text),text)
+    assert.doesNotMatch(pdf,/PRIVATE-COST|PRIVATE-STAFF-NOTE|\$600/)
+    assert.equal(backend.sends[1].html,preview.html)
+    assert.equal(backend.finalizations[1].p_audit_details.quoteAttachment.version,2)
+    assert.match(backend.finalizations[1].p_audit_details.quoteAttachment.sha256,/^[a-f0-9]{64}$/)
+    assert.match(backend.snapshots.at(-1).final_text_snapshot,/quote-SC-TEST-v2.pdf/)
+  } finally {globalThis.fetch=saved}
+})
+test('older quote emails explicitly disclose missing wording and omit empty sender brackets',async()=>{
+  const saved=globalThis.fetch, backend=fixture({quote:{email_snapshot:null}});globalThis.fetch=backend.fetch
+  try {
+    const preview=await previewClientCrmEmail(actor,{...input,followUpToId:null,followUpQuoteSendId:id(20),quoteAttachmentSendId:id(20)})
+    assert.match(preview.warnings[0],/wording.*unavailable/)
+    assert.match(preview.text,/Earlier quote reference/);assert.doesNotMatch(preview.text,/<>/)
+    assert.equal(preview.attachments.length,1);assert.equal(backend.sends.length,0)
+  } finally {globalThis.fetch=saved}
+})
+test('quote attachments reject wrong recipient, wrong version, unlinked quote and unauthorized actor',async()=>{
+  const saved=globalThis.fetch
+  try {
+    for(const options of [{quote:{recipient:'other@example.test'}},{quote:{document_version:3}},{quote:{document_snapshot:null}},{unlinked:true},{denied:true}]) {
+      const backend=fixture(options);globalThis.fetch=backend.fetch
+      await assert.rejects(previewClientCrmEmail(actor,{...input,quoteAttachmentSendId:id(20)}))
+      assert.equal(backend.sends.length,0)
+    }
+    const backend=fixture();globalThis.fetch=backend.fetch
+    await assert.rejects(previewClientCrmEmail(actor,{...input,followUpToId:null,followUpQuoteSendId:id(20),quoteAttachmentSendId:id(22)}),/same sent quote version/)
+    const request={...input,quoteAttachmentSendId:id(20)}
+    const preview=await previewClientCrmEmail(actor,request)
+    globalThis.fetch=fixture({quote:{document_snapshot:{...savedQuoteDocument(),firmQuoteDraft:{...savedQuoteDocument().firmQuoteDraft,finalPerVisit:'999'}}}}).fetch
+    await assert.rejects(sendClientCrmEmail(actor,{...request,previewFingerprint:preview.previewFingerprint,idempotencyKey:id(33)}),/Preview this exact email/)
+  } finally {globalThis.fetch=saved}
+})
+test('a follow-up of a follow-up retains its saved message chain without the old unsubscribe URL',()=>{
+  const result=buildCrmOriginalEmailQuote({...original,final_text_snapshot:'Second message\n\nEarlier email: First message\n\nOld footer https://example.test/unsubscribe?secret',footer_snapshot:'Old footer https://example.test/unsubscribe?secret'},id(3),id(4),'client@example.test')
+  assert.match(result.text,/Second message/);assert.match(result.text,/First message/)
+  assert.doesNotMatch(result.text,/unsubscribe|secret/)
 })

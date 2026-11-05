@@ -11,7 +11,7 @@ export async function getCrmFollowUps(actor: ClientCrmActor) {
   const opportunities: CrmFollowUpItem[] = []
   // Hydrate in bounded batches, without loading unrelated CRM entities or email bodies.
   for (let offset = 0; ; offset += 200) {
-    let request = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, assigned_staff_id, stage, next_follow_up_at')
+    let request = db.from('crm_opportunities').select('id, organisation_id, primary_contact_id, assigned_staff_id, stage, next_follow_up_at, follow_up_source, follow_up_source_id')
       .not('next_follow_up_at', 'is', null).not('stage', 'in', '(won,lost,cancelled)')
       .order('next_follow_up_at').order('id').range(offset, offset + 199)
     if (actor.role === 'agent') request = request.eq('assigned_staff_id', actor.id)
@@ -27,7 +27,7 @@ export async function getCrmFollowUps(actor: ClientCrmActor) {
       read('crm_organisations', 'id,business_name', 'id', rows.map(r => r.organisation_id).filter(Boolean)),
       read('clients', 'id,business_name,contact_name', 'id', rows.map(r => r.primary_contact_id).filter(Boolean)),
       read('admin_staff_accounts', 'id,display_name', 'id', rows.map(r => r.assigned_staff_id).filter(Boolean)),
-      db.from('crm_communications').select('opportunity_id,template_id,sent_at').in('opportunity_id', ids).eq('status','sent').not('sent_at','is',null).order('sent_at',{ascending:false}),
+      db.from('crm_communications').select('id,opportunity_id,template_id,sent_at').in('opportunity_id', ids).eq('status','sent').not('sent_at','is',null).order('sent_at',{ascending:false}),
       read('crm_opportunity_quotes','opportunity_id,quote_id','opportunity_id',ids),
       db.from('crm_email_templates').select('id,name,visibility,created_by_staff_id').neq('status','archived'),
     ])
@@ -39,10 +39,10 @@ export async function getCrmFollowUps(actor: ClientCrmActor) {
     const orgMap=byId(organisations.data ?? []), contactMap=byId(contacts.data ?? []), agentMap=byId(agents.data ?? []), quoteMap=byId(quotes.data ?? [])
     for (const row of rows) {
       const contact=contactMap.get(row.primary_contact_id), org=orgMap.get(row.organisation_id)
-      const email=(emails.data ?? []).find(e=>e.opportunity_id===row.id)
+      const email=(emails.data ?? []).find(e=>e.opportunity_id===row.id && (row.follow_up_source!=='email' || e.id===row.follow_up_source_id))
       const sentQuotes=(links.data ?? []).filter(l=>l.opportunity_id===row.id).map(l=>quoteMap.get(String(l.quote_id))?.final_quote_sent_at).filter(Boolean).map(String).sort().reverse()
       const template=(templates.data ?? []).find(t=>t.id===email?.template_id && (t.visibility==='shared'||t.created_by_staff_id===actor.id))
-      const summary=followUpSummary({ communications: email ? [{ status: 'sent', sentAt: email.sent_at, templateId: email.template_id }] : [], quotes: sentQuotes.map(finalQuoteSentAt => ({ finalQuoteSentAt })) }, template ? [{ id: template.id, name: template.name }] : [])
+      const summary=followUpSummary({ followUpSource: row.follow_up_source, followUpSourceId: row.follow_up_source_id, communications: email ? [{ id: email.id, status: 'sent', sentAt: email.sent_at, templateId: email.template_id }] : [], quotes: sentQuotes.map(finalQuoteSentAt => ({ finalQuoteSentAt })) }, template ? [{ id: template.id, name: template.name }] : [])
       opportunities.push({id:row.id,businessName:String(org?.business_name ?? contact?.business_name ?? ''),contactName:String(contact?.contact_name ?? ''),stage:row.stage,nextFollowUpAt:row.next_follow_up_at,assignedStaffName:String(agentMap.get(row.assigned_staff_id)?.display_name ?? '')||null,summary})
     }
     if (rows.length<200) break

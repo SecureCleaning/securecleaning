@@ -1,4 +1,6 @@
 import { getCrmQuoteSend } from '@/lib/crmQuoteActivity'
+import { buildCrmQuoteAttachment } from '@/lib/crmQuoteAttachment'
+import { getCrmQuoteEmailText } from '@/lib/crmEmailArchiveText'
 import { buildCrmOriginalEmailQuote } from '@/lib/crmEmailFollowUp'
 import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
@@ -204,12 +206,16 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
 
   const followUpQuoteSendId = clean(input.followUpQuoteSendId, 100)
   const followUpToId = clean(input.followUpToId, 100)
+  const quoteAttachmentSendId = clean(input.quoteAttachmentSendId, 100)
+  const warnings: string[] = []
+  let attachment: ReturnType<typeof buildCrmQuoteAttachment> | null = null
   if (followUpQuoteSendId && followUpToId) throw new ClientCrmError('Choose one earlier message to follow up.')
+  if (followUpQuoteSendId && quoteAttachmentSendId && followUpQuoteSendId !== quoteAttachmentSendId) throw new ClientCrmError('Attach the same sent quote version that you are following up.', 409)
   let originalQuote = { html: '', text: '' }
   if (followUpToId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(followUpToId)) throw new ClientCrmError('Invalid original email reference.')
     const original = await db.from('crm_communications')
-      .select('id,opportunity_id,contact_id,to_email,status,sent_at,subject_snapshot,body_snapshot,signature_snapshot,sender_name,from_email')
+      .select('id,opportunity_id,contact_id,to_email,status,sent_at,subject_snapshot,body_snapshot,signature_snapshot,sender_name,from_email,final_text_snapshot,footer_snapshot')
       .eq('id', followUpToId).eq('opportunity_id', opportunity.id).maybeSingle()
     if (original.error) throw original.error
     try {
@@ -222,13 +228,20 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   if (followUpQuoteSendId) {
     const original = await getCrmQuoteSend(actor, opportunity.id, followUpQuoteSendId)
     if (original.contactId !== contact.id || normalizeCrmEmail(original.recipient) !== recipient) throw new ClientCrmError('The quote recipient has changed. Compose a new email instead.', 409)
-    // Do not invent old email content or replay capability links from archived HTML.
+    const archivedEmail = await getCrmQuoteEmailText(original)
+    const archivedBody = archivedEmail?.text || ''
+    if (!archivedBody) warnings.push('The full wording of this older quote email is unavailable from saved history and the email provider. Only its reference and sent details can be included. You can still attach the saved quote if available.')
     originalQuote = buildCrmOriginalEmailQuote({ opportunity_id: opportunity.id, contact_id: contact.id, to_email: recipient,
       status: 'sent', sent_at: original.finalized_at || original.provider_accepted_at,
-      subject_snapshot: original.email_snapshot?.subject || `Quote ${original.quote_ref}`,
-      body_snapshot: `Quote reference: ${original.quote_ref}. Sent version: ${original.document_version}.`,
-      signature_snapshot: '', sender_name: original.actor?.name || 'Secure Cleaning', from_email: '',
+      subject_snapshot: archivedEmail?.subject || `Quote ${original.quote_ref}`,
+      body_snapshot: archivedBody || `Quote reference: ${original.quote_ref}. Sent version: ${original.document_version}.`,
+      signature_snapshot: '', sender_name: archivedEmail?.from || original.actor?.name || 'Secure Cleaning', from_email: '', referenceOnly: !archivedBody,
     }, opportunity.id, contact.id, recipient)
+    if (quoteAttachmentSendId) attachment = buildCrmQuoteAttachment(original)
+  } else if (quoteAttachmentSendId) {
+    const quote = await getCrmQuoteSend(actor, opportunity.id, quoteAttachmentSendId)
+    if (quote.contactId !== contact.id || normalizeCrmEmail(quote.recipient) !== recipient) throw new ClientCrmError('The quote recipient has changed. Review the quote before attaching it.', 409)
+    attachment = buildCrmQuoteAttachment(quote)
   }
   const purpose = 'marketing' as const
   let templateVersion: number | null = null
@@ -295,9 +308,10 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     throw new ClientCrmError('The selected sender must use a verified Secure Cleaning work email before sending client outreach.', 409)
   }
   const fromHeader = `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`
-  const finalHtml = buildClientCrmHtml({ bodyHtml: content.html, signature, sourceExplanation, unsubscribeUrl, originalHtml: originalQuote.html })
-  const finalText = `${content.text}\n\n${signature}${originalQuote.text}\n\n${footer}`
-  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId, followUpQuoteSendId]) })
+  const attachmentNote = attachment ? `Attached quote: ${attachment.quoteRef}, sent version ${attachment.version} (${attachment.filename}).` : ''
+  const finalHtml = buildClientCrmHtml({ bodyHtml: content.html + (attachmentNote ? textToHtml(attachmentNote) : ''), signature, sourceExplanation, unsubscribeUrl, originalHtml: originalQuote.html })
+  const finalText = `${content.text}${attachmentNote ? `\n\n${attachmentNote}` : ''}\n\n${signature}${originalQuote.text}\n\n${footer}`
+  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId, followUpQuoteSendId, quoteAttachmentSendId, attachment?.sha256]) })
 
   return {
     db,
@@ -322,6 +336,8 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     previewFingerprint,
     followUpToId,
     followUpQuoteSendId,
+    attachment,
+    warnings,
   }
 }
 
@@ -335,6 +351,8 @@ export async function previewClientCrmEmail(actor: ClientCrmActor, input: Record
     html: prepared.finalHtml,
     text: prepared.finalText,
     previewFingerprint: prepared.previewFingerprint,
+    warnings: prepared.warnings,
+    attachments: prepared.attachment ? [{ filename: prepared.attachment.filename, url: `/api/admin/client-crm?${new URLSearchParams({ opportunity: prepared.opportunity.id, quoteSendId: prepared.attachment.sendId, format: 'pdf' })}` }] : [],
   }
 }
 
@@ -438,6 +456,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
       replyTo: sender.email,
       subject,
       html: finalHtml,
+      ...(prepared.attachment ? { attachments: [{ filename: prepared.attachment.filename, content: prepared.attachment.content.toString('base64'), content_type: prepared.attachment.contentType }] } : {}),
       headers: {
         'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -474,6 +493,8 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
       senderStaffId: sender.id,
       communicationId,
       followUpToId: prepared.followUpToId || null,
+      followUpQuoteSendId: prepared.followUpQuoteSendId || null,
+      quoteAttachment: prepared.attachment ? { sendId: prepared.attachment.sendId, quoteRef: prepared.attachment.quoteRef, version: prepared.attachment.version, filename: prepared.attachment.filename, sha256: prepared.attachment.sha256 } : null,
       templateId: templateId || null,
       purpose,
     },

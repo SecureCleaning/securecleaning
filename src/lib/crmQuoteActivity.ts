@@ -12,7 +12,7 @@ export async function getCrmQuoteSend(actor: ClientCrmActor, opportunityId: stri
   const opportunity = await db.from('crm_opportunities').select('id,primary_contact_id,assigned_staff_id').eq('id', opportunityId).maybeSingle()
   if (opportunity.error) throw opportunity.error
   if (!opportunity.data || !actorCanAccessOpportunity(actor, opportunity.data.assigned_staff_id)) throw new ClientCrmError('Opportunity not found.', 404)
-  const send = await db.from('quote_send_attempts').select('id,quote_ref,recipient,document_version,document_snapshot,email_snapshot,finalized_at,provider_accepted_at,actor').eq('id', sendId).eq('status', 'finalized').maybeSingle()
+  const send = await db.from('quote_send_attempts').select('id,quote_ref,recipient,document_version,document_snapshot,email_snapshot,finalized_at,provider_accepted_at,provider_message_id,actor').eq('id', sendId).eq('status', 'finalized').maybeSingle()
   if (send.error) throw send.error
   if (!send.data) throw new ClientCrmError('Sent quote not found.', 404)
   const quote = await db.from('quotes').select('id').eq('quote_ref', send.data.quote_ref).maybeSingle()

@@ -112,6 +112,8 @@ type ClientEmailPreview = {
   cc?: string
   html: string
   previewFingerprint?: string
+  attachments?: { filename: string; url: string }[]
+  warnings?: string[]
   history?: boolean
 }
 
@@ -177,6 +179,7 @@ export default function ClientCrmWorkspace({
   const [leadDraft, setLeadDraft] = useState(() => emptyLeadDraft())
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
   const [followUpQuoteSendId, setFollowUpQuoteSendId] = useState('')
+  const [quoteAttachmentSendId, setQuoteAttachmentSendId] = useState('')
   const [quoteArchive, setQuoteArchive] = useState<{subject:string;html:string;from?:string;to?:string;cc?:string;document:boolean} | null>(null)
   const [followUpToId, setFollowUpToId] = useState('')
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null })
@@ -289,6 +292,7 @@ export default function ClientCrmWorkspace({
   }, [selectedLeadId])
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
+  const attachableQuotes = (selectedLead?.quoteSends ?? []).filter(send => send.hasDocument && send.recipient.trim().toLowerCase() === selectedLead?.email.trim().toLowerCase() && (!followUpQuoteSendId || send.id === followUpQuoteSendId))
   const activityEntries = crmActivity(noteHistory, selectedLead?.communications ?? [], activityTab, notesCursor, selectedLead?.quotes ?? [], selectedLead?.quoteSends ?? [])
   const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter, leadSourceFilter), [data?.opportunities, search, leadSort, leadStageFilter, leadSourceFilter])
 
@@ -330,6 +334,7 @@ export default function ClientCrmWorkspace({
     )
     setEmailFollowUp({ enabled: false, at: '', note: '' })
     setFollowUpToId('')
+    setQuoteAttachmentSendId('')
     setFollowUpQuoteSendId('')
     setQuoteArchive(null)
     setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null })
@@ -373,6 +378,7 @@ export default function ClientCrmWorkspace({
     if (!original) return
     const template = data?.templates.find((item) => item.id === CRM_FOLLOW_UP_TEMPLATE_ID && item.status === 'published')
     setFollowUpQuoteSendId('')
+    setQuoteAttachmentSendId('')
     setFollowUpToId(original.id)
     setCompose((current) => ({ ...current, templateId: template?.id || '', subject: crmFollowUpSubject(original.subject),
       body: template?.body || 'Hi <<first_name>>,\n\nDid you receive my earlier email below? Please let me know if you have any questions or would like to discuss your cleaning requirements.',
@@ -403,6 +409,7 @@ export default function ClientCrmWorkspace({
     if (!original) return
     setFollowUpToId('')
     setFollowUpQuoteSendId(sendId)
+    setQuoteAttachmentSendId('')
     setCompose(current => ({ ...current, templateId: '', subject: crmFollowUpSubject(original.subject),
       body: 'Hi <<first_name>>,\n\nI am following up on our cleaning quote. Have you had a chance to review it? Please let me know if you have any questions or would like to discuss the next steps.', bodyHtml: '', bodyDocument: null }))
     setEmailFollowUp({ enabled: true, at: businessDayFollowUp(2), note: `Follow up quote ${original.quoteRef}` })
@@ -483,6 +490,7 @@ export default function ClientCrmWorkspace({
         id: selectedLead.id,
         ...workflowFields,
         nextFollowUpAt: followUpIso(leadEdit.nextFollowUpAt),
+        expectedNextFollowUpAt: selectedLead.nextFollowUpAt,
         ...(data?.actor.role === 'owner' || data?.actor.role === 'manager' ? { assignedStaffId } : {}),
       })
       workflowSaved = true
@@ -647,6 +655,7 @@ export default function ClientCrmWorkspace({
       opportunityId: selectedLead.id,
       followUpToId: followUpToId || null,
       followUpQuoteSendId: followUpQuoteSendId || null,
+      quoteAttachmentSendId: quoteAttachmentSendId || null,
       senderStaffId: compose.senderStaffId,
       templateId: compose.templateId || null,
       subject: compose.subject,
@@ -689,8 +698,9 @@ export default function ClientCrmWorkspace({
       })
       setEmailPreview(null)
       setFollowUpToId('')
-    setFollowUpQuoteSendId('')
-    setQuoteArchive(null)
+      setFollowUpQuoteSendId('')
+      setQuoteAttachmentSendId('')
+      setQuoteArchive(null)
       setCompose((current) => ({ ...current, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null }))
       setComposeEditorKey((current) => current + 1)
       await loadWorkspace(selectedLead.id)
@@ -920,6 +930,7 @@ export default function ClientCrmWorkspace({
           <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Opportunity workflow</h2><p className="text-xs text-gray-500">Sales cycle {selectedLead.cycleNumber} · retained for opportunity history</p>
             <p className="mt-2 text-sm font-semibold text-teal-800">Saved follow-up: {dateLabel(selectedLead.nextFollowUpAt)}. Times use your device timezone.</p>
+            <p className="mt-2 text-sm text-gray-600">Booking or moving an inspection resets the reminder to 9 am two business days after the visit. Sending a quote resets it to two business days after sending, or after an upcoming inspection if later. These defaults use the site&apos;s local time. You can change the date below.</p>
             <label className="mt-3 block text-sm">Internal workflow / follow-up note<textarea value={leadEdit.notes} onChange={(event) => setLeadEdit({ ...leadEdit, notes: event.target.value })} className="mt-1 w-full rounded-lg border p-2" /></label>
             <p className="mt-1 text-sm text-gray-600">Stages advance automatically after sent outreach, a booked inspection, and quote preparation or sending. Record calls or visits by selecting Contacted and saving. Closed opportunities stay closed.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -972,8 +983,13 @@ export default function ClientCrmWorkspace({
           </section>
           <section id="crm-email-composer" className="scroll-mt-40 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Email client</h2>
-            {followUpQuoteSendId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up quote: {selectedLead.quoteSends?.find(send => send.id === followUpQuoteSendId)?.quoteRef}</strong><p>The sent quote reference, version and date will be included in the preview. This sends a follow-up message, not a replacement quote.</p><button type="button" onClick={() => { setFollowUpQuoteSendId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove quote reference</button></div> : null}
-            {followUpToId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up: {selectedLead.communications.find((item) => item.id === followUpToId)?.subject}</strong><p>The earlier message and its sent date will appear below your message in the preview. Attachments are not resent. Inbox grouping depends on the recipient’s email app.</p><button type="button" onClick={() => void viewSentEmail(selectedLead.id, followUpToId)} className="mr-4 mt-2 font-semibold underline">View earlier email</button><button type="button" onClick={() => { setFollowUpToId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove earlier email</button></div> : null}
+            {followUpQuoteSendId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up quote: {selectedLead.quoteSends?.find(send => send.id === followUpQuoteSendId)?.quoteRef}</strong><p>The saved earlier email text and sent details will be included where available. Older emails without saved wording include their quote reference and date only.</p><button type="button" onClick={() => { setFollowUpQuoteSendId(''); setQuoteAttachmentSendId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove quote reference</button></div> : null}
+            {followUpToId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up: {selectedLead.communications.find((item) => item.id === followUpToId)?.subject}</strong><p>The earlier message and its sent date will appear below your message in the preview. Use the option below to attach a saved quote again. Inbox grouping depends on the recipient’s email app.</p><button type="button" onClick={() => void viewSentEmail(selectedLead.id, followUpToId)} className="mr-4 mt-2 font-semibold underline">View earlier email</button><button type="button" onClick={() => { setFollowUpToId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove earlier email</button></div> : null}
+            {(attachableQuotes.length > 0 || followUpQuoteSendId) ? <div className="mt-3 rounded-lg border border-gray-200 p-3 text-sm">
+              <label className="flex items-center gap-2 font-semibold"><input type="checkbox" checked={Boolean(quoteAttachmentSendId)} disabled={!attachableQuotes.length} onChange={event => { setQuoteAttachmentSendId(event.target.checked ? attachableQuotes[0]?.id || '' : ''); setEmailPreview(null) }} />Attach quote again (PDF)</label>
+              {attachableQuotes.length ? <p className="mt-1 text-gray-600">Includes the saved sent version, with its price and scope of works. Review the PDF in the email preview before sending.</p> : <p className="mt-1 text-amber-800">The saved document for this sent version is unavailable or its recipient no longer matches this client.</p>}
+              {quoteAttachmentSendId ? <label className="mt-2 block">Quote to attach<select className="mt-1 w-full rounded-lg border border-gray-300 p-2" value={quoteAttachmentSendId} onChange={event => { setQuoteAttachmentSendId(event.target.value); setEmailPreview(null) }}>{attachableQuotes.map(send => <option key={send.id} value={send.id}>{send.quoteRef} - version {send.version} - {dateLabel(send.at)}</option>)}</select></label> : null}
+            </div> : null}
             <p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. Sender access, recipient details, contact source, signature, unsubscribe state, and unresolved sends are verified again when you send.</p>
             <ClientEmailStatus lead={selectedLead} />
             {hasUnresolvedEmail ? <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">A previous email has an unresolved delivery outcome. Reconcile it before sending again.</p> : null}
@@ -1010,7 +1026,7 @@ export default function ClientCrmWorkspace({
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
       <EmailPreviewModal open={Boolean(quoteArchive)} title={quoteArchive?.document ? 'Sent quote archive' : 'Sent quote email'} description={quoteArchive?.document ? 'Read-only client-facing content from the saved sent version.' : 'The email content archived at sending time.'} subject={quoteArchive?.subject ?? ''} html={quoteArchive?.html ?? ''} from={quoteArchive?.from} to={quoteArchive?.to} cc={quoteArchive?.cc} onClose={() => setQuoteArchive(null)} />
-      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
+      <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} attachments={emailPreview?.attachments} warnings={emailPreview?.warnings} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )
 }
