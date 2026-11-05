@@ -1,3 +1,4 @@
+import { getCrmQuoteSend } from '@/lib/crmQuoteActivity'
 import { buildCrmOriginalEmailQuote } from '@/lib/crmEmailFollowUp'
 import { resolveIndustry } from '@/lib/premisesCatalogServer'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
@@ -201,7 +202,9 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     throw new ClientCrmError('The saved intake and contact emails do not match. Review the record before sending.', 409)
   }
 
+  const followUpQuoteSendId = clean(input.followUpQuoteSendId, 100)
   const followUpToId = clean(input.followUpToId, 100)
+  if (followUpQuoteSendId && followUpToId) throw new ClientCrmError('Choose one earlier message to follow up.')
   let originalQuote = { html: '', text: '' }
   if (followUpToId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(followUpToId)) throw new ClientCrmError('Invalid original email reference.')
@@ -216,6 +219,17 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     }
   }
 
+  if (followUpQuoteSendId) {
+    const original = await getCrmQuoteSend(actor, opportunity.id, followUpQuoteSendId)
+    if (original.contactId !== contact.id || normalizeCrmEmail(original.recipient) !== recipient) throw new ClientCrmError('The quote recipient has changed. Compose a new email instead.', 409)
+    // Do not invent old email content or replay capability links from archived HTML.
+    originalQuote = buildCrmOriginalEmailQuote({ opportunity_id: opportunity.id, contact_id: contact.id, to_email: recipient,
+      status: 'sent', sent_at: original.finalized_at || original.provider_accepted_at,
+      subject_snapshot: original.email_snapshot?.subject || `Quote ${original.quote_ref}`,
+      body_snapshot: `Quote reference: ${original.quote_ref}. Sent version: ${original.document_version}.`,
+      signature_snapshot: '', sender_name: original.actor?.name || 'Secure Cleaning', from_email: '',
+    }, opportunity.id, contact.id, recipient)
+  }
   const purpose = 'marketing' as const
   let templateVersion: number | null = null
   if (templateId) {
@@ -283,7 +297,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   const fromHeader = `${safeHeaderName(sender.displayName)} - Secure Cleaning <${fromAddress}>`
   const finalHtml = buildClientCrmHtml({ bodyHtml: content.html, signature, sourceExplanation, unsubscribeUrl, originalHtml: originalQuote.html })
   const finalText = `${content.text}\n\n${signature}${originalQuote.text}\n\n${footer}`
-  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId]) })
+  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId, followUpQuoteSendId]) })
 
   return {
     db,
@@ -307,6 +321,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     finalText,
     previewFingerprint,
     followUpToId,
+    followUpQuoteSendId,
   }
 }
 
@@ -398,6 +413,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
 
   const { error: snapshotError } = await db.from('crm_communications').update({
     follow_up_to_id: prepared.followUpToId || null,
+    follow_up_quote_send_id: prepared.followUpQuoteSendId || null,
     follow_up_at: followUpAt,
     follow_up_note: followUpNote,
     body_document_snapshot: content.document,

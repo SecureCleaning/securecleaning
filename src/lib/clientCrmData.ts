@@ -27,6 +27,10 @@ import {
 export type CrmAgentOption = Pick<StaffAccount, 'id' | 'displayName' | 'email' | 'jobTitle' | 'phone' | 'availabilityAssigneeId' | 'active'>
 export type CrmSenderOption = Pick<StaffAccount, 'id' | 'displayName' | 'email' | 'jobTitle' | 'phone' | 'role' | 'availabilityAssigneeId' | 'active'>
 
+export type CrmQuoteSend = {
+  id: string; quoteRef: string; version: number; at: string; subject: string
+  senderName: string; recipient: string; hasEmail: boolean; hasDocument: boolean
+}
 export type CrmQuoteHistory = {
   id: string
   quoteRef: string
@@ -90,6 +94,7 @@ export type CrmOpportunity = {
   productId: string | null
   productStatus: string | null
   scheduledInspections: CrmInspectionSummary[]
+  quoteSends?: CrmQuoteSend[]
   quotes: CrmQuoteHistory[]
   communications: CrmCommunication[]
   internalNotes: CrmInternalNote[]
@@ -420,6 +425,11 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   if (quotes.error) throw quotes.error
   if (products.error) throw products.error
 
+  const quoteRefs = (quotes.data ?? []).map(quote => String(quote.quote_ref))
+  const sends = quoteRefs.length ? await db.from('quote_send_attempts')
+    .select('id,quote_ref,document_version,finalized_at,provider_accepted_at,actor,recipient,email_subject:email_snapshot->>subject,snapshot_version:document_snapshot->>version')
+    .in('quote_ref', quoteRefs).eq('status', 'finalized') : { data: [], error: null }
+  if (sends.error) throw sends.error
   const organisationsById = new Map((organisations.data ?? []).map((row) => [String(row.id), row]))
   const contactsById = new Map((contacts.data ?? []).map((row) => [String(row.id), row]))
   const sitesById = new Map((sites.data ?? []).map((row) => [String(row.id), row]))
@@ -564,6 +574,12 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       productId: product?.id ? String(product.id) : null,
       productStatus: product?.status ? String(product.status) : null,
       scheduledInspections: inspectionsByOpportunity.get(id) ?? [],
+      quoteSends: (sends.data ?? []).filter(send => (quotesByOpportunity.get(id) ?? []).some(quote => quote.quoteRef === send.quote_ref)).map(send => ({
+        id: String(send.id), quoteRef: String(send.quote_ref), version: Number(send.document_version),
+        at: String(send.finalized_at || send.provider_accepted_at), subject: String(send.email_subject || `Quote sent: ${send.quote_ref}`),
+        senderName: String(send.actor?.name || 'Secure Cleaning'), recipient: String(send.recipient),
+        hasEmail: Boolean(send.email_subject), hasDocument: Boolean(send.snapshot_version),
+      })),
       quotes: [...(quotesByOpportunity.get(id) ?? [])].sort((left, right) => (
         right.sequenceNumber - left.sequenceNumber
         || right.createdAt.localeCompare(left.createdAt)

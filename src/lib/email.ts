@@ -258,6 +258,7 @@ export async function buildUpdatedQuoteEmail(
   inputs: QuoteInputs,
   displayPrice: FirmQuoteDisplayPrice,
   options?: {
+    archiveBeforeSend?: (payload: { from: string; to: string; subject: string; html: string; cc?: string[]; replyTo: string }) => Promise<void>
     // Server-resolved before claiming a final send, so lookup failures remain retryable.
     agentCc?: string[]
     to?: string
@@ -345,7 +346,9 @@ export async function sendUpdatedQuoteEmail(
   options?: Parameters<typeof buildUpdatedQuoteEmail>[3],
 ) {
   const token = await createQuoteCapability(quoteRef, 'document', 'final')
-  return sendEmailOrThrow(await buildUpdatedQuoteEmail(quoteRef, inputs, displayPrice, options, token))
+  const payload = await buildUpdatedQuoteEmail(quoteRef, inputs, displayPrice, options, token)
+  await options?.archiveBeforeSend?.(payload)
+  return sendEmailOrThrow(payload)
 }
 
 // ─── Booking Email ────────────────────────────────────────────────────────────

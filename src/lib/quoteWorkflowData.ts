@@ -375,3 +375,11 @@ export function getFirmQuotePreview(record: Pick<QuoteWorkflowRecord, 'firmQuote
   roomTypeConfig?: QuoteRoomTypeConfig): FirmQuotePreview {
   return buildFirmQuotePreview(record.firmQuoteDraft, pricingConfig, roomTypeConfig)
 }
+
+export async function archiveFinalQuoteEmail(attemptId: string, payload: Record<string, unknown>) {
+  const { data, error } = await getAdminSupabase().from('quote_send_attempts')
+    .update({ email_snapshot: payload }).eq('id', attemptId).eq('status', 'claimed')
+    .is('email_snapshot', null).select('id').maybeSingle()
+  if (error) throw error
+  if (!data) throw new QuoteWorkflowConflictError('Unable to archive this quote email before sending.')
+}

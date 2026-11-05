@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAdminSessionIdentityFromRequest, isAuthorizedAdminRequest } from '@/lib/adminAuth'
 import { EmailProviderRejectedError, buildUpdatedQuoteEmail, sendUpdatedQuoteEmail } from '@/lib/email'
 import {
-  completeFinalQuoteSend, createFinalQuoteSendAttempt,
+  archiveFinalQuoteEmail, completeFinalQuoteSend, createFinalQuoteSendAttempt,
   getPublicQuoteWorkflowByRef, getQuoteWorkflowByRef, recordFinalQuoteProviderAccepted, recordFinalQuoteSendFailure,
 } from '@/lib/quoteWorkflowData'
 import { getFinalQuoteReadiness } from '@/lib/quoteWorkflow'
@@ -62,8 +62,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     }
     const finalQuote = await getPublicQuoteWorkflowByRef(params.ref, 'final')
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
-    providerCallStarted = true
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
+      archiveBeforeSend: async payload => { await archiveFinalQuoteEmail(attemptId!, payload); providerCallStarted = true },
       to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true

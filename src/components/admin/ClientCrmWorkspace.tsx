@@ -176,6 +176,8 @@ export default function ClientCrmWorkspace({
   const [view, setView] = useState<'pipeline' | 'new' | 'templates'>('pipeline')
   const [leadDraft, setLeadDraft] = useState(() => emptyLeadDraft())
   const [templateDraft, setTemplateDraft] = useState(() => emptyTemplateDraft('owner'))
+  const [followUpQuoteSendId, setFollowUpQuoteSendId] = useState('')
+  const [quoteArchive, setQuoteArchive] = useState<{subject:string;html:string;from?:string;to?:string;cc?:string;document:boolean} | null>(null)
   const [followUpToId, setFollowUpToId] = useState('')
   const [compose, setCompose] = useState({ senderStaffId: '', templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null })
   const [emailFollowUp, setEmailFollowUp] = useState({ enabled: false, at: '', note: '' })
@@ -287,7 +289,7 @@ export default function ClientCrmWorkspace({
   }, [selectedLeadId])
 
   const selectedLead = data?.opportunities.find((lead) => lead.id === selectedLeadId) ?? null
-  const activityEntries = crmActivity(noteHistory, selectedLead?.communications ?? [], activityTab, notesCursor)
+  const activityEntries = crmActivity(noteHistory, selectedLead?.communications ?? [], activityTab, notesCursor, selectedLead?.quotes ?? [], selectedLead?.quoteSends ?? [])
   const filteredLeads = useMemo(() => filterSortCrmLeads(data?.opportunities ?? [], search, leadSort, leadStageFilter, leadSourceFilter), [data?.opportunities, search, leadSort, leadStageFilter, leadSourceFilter])
 
   useEffect(() => {
@@ -328,6 +330,8 @@ export default function ClientCrmWorkspace({
     )
     setEmailFollowUp({ enabled: false, at: '', note: '' })
     setFollowUpToId('')
+    setFollowUpQuoteSendId('')
+    setQuoteArchive(null)
     setCompose({ senderStaffId: defaultSenderId, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null })
     setComposeEditorKey((current) => current + 1)
     setEmailPreview(null)
@@ -368,6 +372,7 @@ export default function ClientCrmWorkspace({
     const original = selectedLead?.communications.find((item) => item.id === emailId && item.status === 'sent')
     if (!original) return
     const template = data?.templates.find((item) => item.id === CRM_FOLLOW_UP_TEMPLATE_ID && item.status === 'published')
+    setFollowUpQuoteSendId('')
     setFollowUpToId(original.id)
     setCompose((current) => ({ ...current, templateId: template?.id || '', subject: crmFollowUpSubject(original.subject),
       body: template?.body || 'Hi <<first_name>>,\n\nDid you receive my earlier email below? Please let me know if you have any questions or would like to discuss your cleaning requirements.',
@@ -376,6 +381,41 @@ export default function ClientCrmWorkspace({
     setComposeEditorKey((current) => current + 1)
     setEmailPreview(null)
     document.getElementById('crm-email-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  async function viewQuoteArchive(sendId: string, document: boolean) {
+    if (!selectedLead || historyRequest.current) return
+    const controller = new AbortController()
+    historyRequest.current = controller
+    setBusy(`quote-history:${sendId}`)
+    try {
+      const params = new URLSearchParams({ opportunity: selectedLead.id, quoteSendId: sendId, document: document ? '1' : '0' })
+      const response = await fetch(`/api/admin/client-crm?${params}`, { cache: 'no-store', signal: controller.signal })
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error || 'Unable to load quote history.')
+      if (!controller.signal.aborted) setQuoteArchive({ ...result.email, document })
+    } catch (error) { if (!controller.signal.aborted) setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load quote history.' }) }
+    finally { if (historyRequest.current === controller) { historyRequest.current = null; setBusy('') } }
+  }
+
+  function startQuoteFollowUp(sendId: string) {
+    const original = selectedLead?.quoteSends?.find(send => send.id === sendId)
+    if (!original) return
+    setFollowUpToId('')
+    setFollowUpQuoteSendId(sendId)
+    setCompose(current => ({ ...current, templateId: '', subject: crmFollowUpSubject(original.subject),
+      body: 'Hi <<first_name>>,\n\nI am following up on our cleaning quote. Have you had a chance to review it? Please let me know if you have any questions or would like to discuss the next steps.', bodyHtml: '', bodyDocument: null }))
+    setEmailFollowUp({ enabled: true, at: businessDayFollowUp(2), note: `Follow up quote ${original.quoteRef}` })
+    setComposeEditorKey(current => current + 1)
+    setEmailPreview(null)
+    document.getElementById('crm-email-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function quoteHistoryHref(quoteRef: string) {
+    const path = portal === 'agent' && data?.actor.availabilityAssigneeId
+      ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quoteRef)}`
+      : `/admin/quotes/${encodeURIComponent(quoteRef)}`
+    return `${path}?opportunity=${encodeURIComponent(selectedLeadId)}`
   }
 
   function chooseTemplate(templateId: string) {
@@ -391,7 +431,7 @@ export default function ClientCrmWorkspace({
     setCompose((current) => ({
       ...current,
       templateId,
-      subject: followUpToId ? current.subject : template.subject,
+      subject: (followUpToId || followUpQuoteSendId) ? current.subject : template.subject,
       body: template.body,
       bodyHtml: template.bodyHtml || plainTextToEmailHtml(template.body),
       bodyDocument: template.bodyDocument,
@@ -606,6 +646,7 @@ export default function ClientCrmWorkspace({
     return {
       opportunityId: selectedLead.id,
       followUpToId: followUpToId || null,
+      followUpQuoteSendId: followUpQuoteSendId || null,
       senderStaffId: compose.senderStaffId,
       templateId: compose.templateId || null,
       subject: compose.subject,
@@ -648,6 +689,8 @@ export default function ClientCrmWorkspace({
       })
       setEmailPreview(null)
       setFollowUpToId('')
+    setFollowUpQuoteSendId('')
+    setQuoteArchive(null)
       setCompose((current) => ({ ...current, templateId: '', subject: '', body: '', bodyHtml: '', bodyDocument: null }))
       setComposeEditorKey((current) => current + 1)
       await loadWorkspace(selectedLead.id)
@@ -905,21 +948,23 @@ export default function ClientCrmWorkspace({
             <label className="mt-4 block text-sm font-medium text-gray-700">New note<textarea rows={3} maxLength={4000} value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Record a call, site detail, follow-up, or internal context" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
             <div className="mt-3 flex items-center justify-between gap-3"><span className="text-xs text-gray-500">{noteDraft.length}/4000 characters</span><button type="button" onClick={() => void addNote()} disabled={busy === 'note-add' || !noteDraft.trim()} className="rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy === 'note-add' ? 'Adding note...' : 'Add note'}</button></div>
             <div className="mt-4 flex gap-2" role="tablist" aria-label="Notes and activity">
-              {([['all', 'All activity'], ['notes', 'Notes'], ['emails', 'Emails']] as const).map(([tab, label]) => <button key={tab} id={`crm-activity-${tab}`} type="button" role="tab" aria-selected={activityTab === tab} aria-controls="crm-activity-panel" onClick={() => { setActivityTab(tab); setActivityLimit(10) }} className={`rounded-lg px-3 py-2 text-sm font-semibold ${activityTab === tab ? 'bg-teal-700 text-white' : 'bg-gray-100 text-gray-700'}`}>{label}</button>)}
+              {([['all', 'All activity'], ['notes', 'Notes'], ['emails', 'Emails'], ['quotes', 'Quotes']] as const).map(([tab, label]) => <button key={tab} id={`crm-activity-${tab}`} type="button" role="tab" aria-selected={activityTab === tab} aria-controls="crm-activity-panel" onClick={() => { setActivityTab(tab); setActivityLimit(10) }} className={`rounded-lg px-3 py-2 text-sm font-semibold ${activityTab === tab ? 'bg-teal-700 text-white' : 'bg-gray-100 text-gray-700'}`}>{label}</button>)}
             </div>
             <ClientEmailStatus lead={selectedLead} />
             <div id="crm-activity-panel" role="tabpanel" aria-labelledby={`crm-activity-${activityTab}`} className="mt-3 divide-y divide-gray-100 border-t border-gray-100">
               {activityEntries.slice(0, activityLimit).map(entry => {
                 if (entry.kind === 'note') { const note = entry.value; return <article key={`note:${note.id}`} className="py-4"><p className="mb-1 text-xs font-semibold text-gray-500">Internal note</p><p className="whitespace-pre-wrap text-sm leading-6 text-gray-800">{note.body}</p><p className="mt-2 text-xs font-medium text-gray-500">{note.authorName} · {dateLabel(note.createdAt)}</p></article> }
+                if (entry.kind === 'quote') { const quote = entry.value; return <article key={`quote:${quote.id}`} className="py-3"><p className="text-xs font-semibold text-indigo-700">Quote created</p><div className="flex flex-wrap items-center justify-between gap-2"><strong>#{quote.sequenceNumber} - {quote.quoteRef}</strong><Link href={quoteHistoryHref(quote.quoteRef)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold">Open quote</Link></div><p className="mt-1 text-xs text-gray-500">{dateLabel(quote.createdAt)} · Current status: {quote.status}</p>{quote.finalQuoteSentAt && !selectedLead.quoteSends?.some(send => send.quoteRef === quote.quoteRef) ? <p className="mt-1 text-xs text-gray-500">Recorded as sent {dateLabel(quote.finalQuoteSentAt)}. Detailed send archive unavailable.</p> : null}</article> }
+                if (entry.kind === 'quoteSend') { const send = entry.value; return <article key={`quote-send:${send.id}`} className="py-3"><p className="mb-1 text-xs font-semibold text-teal-700">Quote email sent · {send.quoteRef} · version {send.version}</p><strong>{send.subject}</strong><p className="mt-1 text-xs text-gray-500">{send.senderName} · {dateLabel(send.at)} · To: {send.recipient}</p><div className="mt-2 flex flex-wrap gap-2">{send.hasEmail ? <button disabled={!!busy} onClick={() => void viewQuoteArchive(send.id, false)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold">View sent email</button> : <span className="text-xs text-gray-500">Original email content not archived</span>}{send.hasDocument ? <button disabled={!!busy} onClick={() => void viewQuoteArchive(send.id, true)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold">View sent quote</button> : <span className="text-xs text-gray-500">Sent document version not retained</span>}<button disabled={!!busy || selectedLead.suppressed || hasUnresolvedEmail} onClick={() => startQuoteFollowUp(send.id)} className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Follow up quote</button><Link href={quoteHistoryHref(send.quoteRef)} className="px-3 py-1.5 text-xs font-semibold text-gray-600">Open current quote</Link></div></article> }
                 const item = entry.value
                 return <div key={`email:${item.id}`} className="py-3"><p className="mb-1 text-xs font-semibold text-teal-700">Email</p><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-semibold text-gray-900">{item.subject}</span><div className="flex items-center gap-2">{<button type="button" disabled={!!busy} onClick={() => void viewSentEmail(selectedLead.id, item.id)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">View sent email</button>}{item.status === 'sent' ? <button type="button" disabled={!!busy || selectedLead.suppressed || hasUnresolvedEmail} onClick={() => startEmailFollowUp(item.id)} className="rounded-lg border border-teal-300 px-3 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Follow up</button> : null}<span className={`rounded-full px-2 py-1 text-xs font-semibold ${item.status === 'sent' ? 'bg-green-100 text-green-700' : item.status === 'unknown' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'}`}>{item.status}</span></div></div><p className="mt-1 text-xs text-gray-500">{item.senderName} - {dateLabel(item.sentAt || item.createdAt)}</p>{item.followUpToId ? <p className="mt-1 text-xs text-teal-700">Follow-up to: {selectedLead.communications.find((original) => original.id === item.followUpToId)?.subject || 'Earlier email'}</p> : null}</div>
               })}
               {activityEntries.length === 0 ? <p className="py-4 text-sm text-gray-500">No {activityTab === 'notes' ? 'internal notes' : activityTab === 'emails' ? 'emails' : 'activity'} to show.</p> : null}
             </div>
-            {activityEntries.length > activityLimit || (activityTab !== 'emails' && notesCursor) ? <button type="button" disabled={olderActivityLoading} onClick={async () => {
+            {activityEntries.length > activityLimit || ((activityTab === 'all' || activityTab === 'notes') && notesCursor) ? <button type="button" disabled={olderActivityLoading} onClick={async () => {
               setOlderActivityLoading(true)
               try {
-                if (activityTab !== 'emails' && notesCursor && activityLimit >= activityEntries.length) await loadNotes(selectedLead.id, notesCursor)
+                if ((activityTab === 'all' || activityTab === 'notes') && notesCursor && activityLimit >= activityEntries.length) await loadNotes(selectedLead.id, notesCursor)
                 if (activeNotesOpportunityId.current === selectedLead.id) setActivityLimit(limit => limit + 10)
               } catch (error) { setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load older activity.' }) }
               finally { setOlderActivityLoading(false) }
@@ -927,6 +972,7 @@ export default function ClientCrmWorkspace({
           </section>
           <section id="crm-email-composer" className="scroll-mt-40 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold text-gray-900">Email client</h2>
+            {followUpQuoteSendId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up quote: {selectedLead.quoteSends?.find(send => send.id === followUpQuoteSendId)?.quoteRef}</strong><p>The sent quote reference, version and date will be included in the preview. This sends a follow-up message, not a replacement quote.</p><button type="button" onClick={() => { setFollowUpQuoteSendId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove quote reference</button></div> : null}
             {followUpToId ? <div className="mt-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900"><strong>Following up: {selectedLead.communications.find((item) => item.id === followUpToId)?.subject}</strong><p>The earlier message and its sent date will appear below your message in the preview. Attachments are not resent. Inbox grouping depends on the recipient’s email app.</p><button type="button" onClick={() => void viewSentEmail(selectedLead.id, followUpToId)} className="mr-4 mt-2 font-semibold underline">View earlier email</button><button type="button" onClick={() => { setFollowUpToId(''); setEmailPreview(null) }} className="mt-2 font-semibold underline">Remove earlier email</button></div> : null}
             <p className="mt-1 text-sm text-gray-600">To: <strong>{selectedLead.email}</strong>. Sender access, recipient details, contact source, signature, unsubscribe state, and unresolved sends are verified again when you send.</p>
             <ClientEmailStatus lead={selectedLead} />
@@ -940,7 +986,7 @@ export default function ClientCrmWorkspace({
               </label>
               <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => { setCompose({ ...compose, subject: event.target.value }); setEmailPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => { setCompose((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) })); setEmailPreview(null) }} /></span></label>
-              <div className="md:col-span-2 lg:col-span-3 rounded-lg border p-3"><label><input type="checkbox" checked={emailFollowUp.enabled} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, enabled: e.target.checked, at: emailFollowUp.at || businessDayFollowUp(2) })} /> Remind the assigned agent to follow up after sending</label>{emailFollowUp.enabled ? <div className="mt-2 space-y-2"><label className="block">Follow-up time (device timezone) <input required type="datetime-local" value={emailFollowUp.at} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, at: e.target.value })} className="border p-2" /></label><label className="block">Internal action <input maxLength={1000} value={emailFollowUp.note} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, note: e.target.value })} className="border p-2" /></label><p className="text-xs">Created after successful sending. An earlier outstanding reminder is kept. No automatic client email is sent.</p></div> : null}</div>
+              <div className="md:col-span-2 lg:col-span-3 rounded-lg border p-3"><label><input type="checkbox" checked={emailFollowUp.enabled} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, enabled: e.target.checked, at: emailFollowUp.at || businessDayFollowUp(2) })} /> Remind the assigned agent to follow up after sending</label>{emailFollowUp.enabled ? <div className="mt-2 space-y-2"><label className="block">Follow-up time (device timezone) <input required type="datetime-local" value={emailFollowUp.at} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, at: e.target.value })} className="border p-2" /></label><label className="block">Internal action <input maxLength={1000} value={emailFollowUp.note} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, note: e.target.value })} className="border p-2" /></label><p className="text-xs">Created after successful sending. The previous reminder is replaced after a successful follow-up. No automatic client email is sent.</p></div> : null}</div>
               <div className="md:col-span-2 lg:col-span-3"><RichEmailEditor value={createRichEmailContent({ document: compose.bodyDocument, html: compose.bodyHtml, text: compose.body })} resetKey={`crm-compose-${composeEditorKey}`} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message: RichEmailContent) => { setCompose((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
             </div>
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
@@ -959,19 +1005,11 @@ export default function ClientCrmWorkspace({
             <div className="mt-4 flex flex-wrap gap-3"><button type="button" onClick={() => void previewEmail()} disabled={!canPrepareEmail || busy === 'email-preview'} className="rounded-lg bg-gray-900 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email-preview' ? 'Preparing preview...' : 'Preview email'}</button><button type="button" onClick={() => void sendEmail()} disabled={!canSend || busy === 'email'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'email' ? 'Sending...' : 'Send email'}</button></div>
             <p className="mt-2 text-xs text-gray-500">Preview is required after every change. The system verifies sender permission, recipient consistency, contact source, unsubscribe status, signature completeness, and unresolved prior sends again before delivery.</p>
           </section>
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">Quote history</h2>
-            <div className="mt-3 divide-y divide-gray-100">{selectedLead.quotes.map((quote) => {
-              const opportunityQuery = `opportunity=${encodeURIComponent(selectedLead.id)}`
-              const quoteHref = portal === 'agent' && data.actor.availabilityAssigneeId
-                ? `/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
-                : `/admin/quotes/${encodeURIComponent(quote.quoteRef)}?${opportunityQuery}`
-              return <div key={quote.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><Link href={quoteHref} className="font-semibold text-teal-700 hover:underline">#{quote.sequenceNumber} - {quote.quoteRef}</Link><p className="text-xs text-gray-500">{dateLabel(quote.createdAt)}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold uppercase text-gray-700">{quote.status}</span><Link href={quoteHref} className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-700 hover:border-teal-300 hover:text-teal-700">Open quote</Link></div></div>
-            })}{selectedLead.quotes.length === 0 ? <p className="py-3 text-sm text-gray-500">No quotes are linked to this opportunity yet.</p> : null}</div>
-          </section>
+
 
         </div> : <section className="rounded-2xl border border-gray-200 bg-white p-6 text-gray-600">Create or select an opportunity to begin.</section>}
       </div> : null}
+      <EmailPreviewModal open={Boolean(quoteArchive)} title={quoteArchive?.document ? 'Sent quote archive' : 'Sent quote email'} description={quoteArchive?.document ? 'Read-only client-facing content from the saved sent version.' : 'The email content archived at sending time.'} subject={quoteArchive?.subject ?? ''} html={quoteArchive?.html ?? ''} from={quoteArchive?.from} to={quoteArchive?.to} cc={quoteArchive?.cc} onClose={() => setQuoteArchive(null)} />
       <EmailPreviewModal open={Boolean(emailPreview)} title={emailPreview?.history ? 'Sent email' : 'Client email preview'} subject={emailPreview?.subject ?? ''} from={emailPreview?.from} to={emailPreview?.to} cc={emailPreview?.cc} html={emailPreview?.html ?? ''} sending={busy === 'email'} onClose={() => { historyRequest.current?.abort(); setEmailPreview(null) }} onSend={emailPreview?.history ? undefined : () => void sendEmail()} />
     </div>
   )

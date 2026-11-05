@@ -281,12 +281,14 @@ function finalRouteFixture(kind, options = {}) {
       return ['responsible@example.com']
     } },
     '@/lib/email': { EmailProviderRejectedError, buildUpdatedQuoteEmail: async (...args) => { calls.push(['preview', ...args]); return { to: args[3].to, subject: 'Preview', html: '<p>Rendered</p>' } }, sendUpdatedQuoteEmail: async (...args) => {
+      await args[3]?.archiveBeforeSend?.({subject:'Exact',html:'Exact'})
       calls.push(['send', ...args])
       if (options.rejected) throw new EmailProviderRejectedError('Rejected')
       if (options.uncertain) throw new Error('Timeout')
       return { id: 'provider-id' }
     } },
     '@/lib/quoteWorkflowData': {
+      archiveFinalQuoteEmail: async () => { calls.push('archive'); if (options.archiveError) throw new Error('Archive failed') },
       getQuoteWorkflowByRef: async () => quote,
       createFinalQuoteSendAttempt: async () => { calls.push('claim'); return options.claimed !== false },
       getPublicQuoteWorkflowByRef: async () => ({ ...quote, displayPrice: { low: 100, high: 100 } }),

@@ -2,6 +2,7 @@
 
 type Props = {
   open: boolean
+  description?: string
   title?: string
   subject: string
   from?: string
@@ -15,7 +16,7 @@ type Props = {
   onSend?: () => void
 }
 
-export default function EmailPreviewModal({ open, title = 'Email preview', subject, from, to, cc, replyTo, html, sendLabel = 'Confirm & send', sending = false, onClose, onSend }: Props) {
+export default function EmailPreviewModal({ open, title = 'Email preview', description = 'This is the complete email, including protected system content.', subject, from, to, cc, replyTo, html, sendLabel = 'Confirm & send', sending = false, onClose, onSend }: Props) {
   if (!open) return null
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-950/60 p-4" role="dialog" aria-modal="true" aria-label={title}>
@@ -23,7 +24,7 @@ export default function EmailPreviewModal({ open, title = 'Email preview', subje
         <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-4">
           <div>
             <h2 className="text-xl font-bold text-gray-900">{title}</h2>
-            <p className="mt-1 text-sm text-gray-500">This is the complete email, including protected system content.</p>
+            <p className="mt-1 text-sm text-gray-500">{description}</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">Close</button>
         </div>

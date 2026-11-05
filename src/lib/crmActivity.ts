@@ -1,10 +1,12 @@
-import type { CrmCommunication, CrmInternalNote } from './clientCrmData'
-export type CrmActivityTab = 'all' | 'notes' | 'emails'
-export type CrmActivityEntry = { kind: 'note'; value: CrmInternalNote; at: string } | { kind: 'email'; value: CrmCommunication; at: string }
-export function crmActivity(notes: CrmInternalNote[], emails: CrmCommunication[], tab: CrmActivityTab, notesCursor: string | null = null): CrmActivityEntry[] {
+import type { CrmCommunication, CrmInternalNote, CrmQuoteHistory, CrmQuoteSend } from './clientCrmData'
+export type CrmActivityTab = 'all' | 'notes' | 'emails' | 'quotes'
+export type CrmActivityEntry = { kind: 'note'; value: CrmInternalNote; at: string } | { kind: 'email'; value: CrmCommunication; at: string } | { kind: 'quote'; value: CrmQuoteHistory; at: string } | { kind: 'quoteSend'; value: CrmQuoteSend; at: string }
+export function crmActivity(notes: CrmInternalNote[], emails: CrmCommunication[], tab: CrmActivityTab, notesCursor: string | null = null, quotes: CrmQuoteHistory[] = [], sends: CrmQuoteSend[] = []): CrmActivityEntry[] {
   const entries: CrmActivityEntry[] = [
-    ...(tab === 'emails' ? [] : notes.map(value => ({ kind: 'note' as const, value, at: value.createdAt }))),
-    ...(tab === 'notes' ? [] : emails.map(value => ({ kind: 'email' as const, value, at: value.sentAt || value.createdAt }))),
+    ...(tab === 'emails' || tab === 'quotes' ? [] : notes.map(value => ({ kind: 'note' as const, value, at: value.createdAt }))),
+    ...(tab === 'notes' || tab === 'quotes' ? [] : emails.map(value => ({ kind: 'email' as const, value, at: value.sentAt || value.createdAt }))),
+    ...(tab === 'all' || tab === 'quotes' ? quotes.map(value => ({ kind: 'quote' as const, value, at: value.createdAt })) : []),
+    ...(tab !== 'notes' ? sends.map(value => ({ kind: 'quoteSend' as const, value, at: value.at })) : []),
   ]
   // Do not show older emails ahead of notes that have not been fetched yet.
   const boundary = tab === 'all' && notesCursor ? Date.parse(notesCursor.split('|')[0]) : -Infinity

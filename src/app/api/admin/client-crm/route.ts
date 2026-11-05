@@ -1,3 +1,4 @@
+import { getCrmQuoteArchive } from '@/lib/crmQuoteActivity'
 import { CRM_EMAIL_SEND_LIMIT, CRM_EMAIL_PREVIEW_LIMIT, CRM_EMAIL_WINDOW_MS, crmEmailLimitMessage } from '@/lib/crmEmailRateLimit'
 import { getPremisesCatalog, savePremisesOption } from '@/lib/premisesCatalogServer'
 import { previewLeadCsv, importLeadCsv, exportLeadCsv } from '@/lib/clientLeadCsvServer'
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest) {
       return new NextResponse(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename=client-leads.csv', 'Cache-Control': 'no-store' } })
     }
     if (request.nextUrl.searchParams.get('followUps') === '1') return NextResponse.json({ success: true, ...(await getCrmFollowUps(actor)) })
+    const quoteSendId = request.nextUrl.searchParams.get('quoteSendId')
+    if (quoteSendId) return NextResponse.json({ success: true, email: await getCrmQuoteArchive(actor, request.nextUrl.searchParams.get('opportunity') || '', quoteSendId, request.nextUrl.searchParams.get('document') === '1') }, { headers: { 'Cache-Control': 'no-store' } })
     const emailId = request.nextUrl.searchParams.get('emailId')
     if (emailId) return NextResponse.json({ success: true, email: await getCrmSentEmail(actor, request.nextUrl.searchParams.get('opportunity') || '', emailId) })
     const notesFor = request.nextUrl.searchParams.get('notesFor')
