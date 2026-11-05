@@ -35,16 +35,13 @@ test('admin shortcuts resolve to focused management routes with accurate labels'
   assert.doesNotMatch(dashboard, /href="\/admin\/(?:content|pricing)"/)
 })
 
-test('dashboard summaries flow into a compact two-column workspace and preserve schedule editing', () => {
+test('dashboard summaries flow into a shared to-do panel and preserve schedule editing', () => {
   assert.doesNotMatch(reporting, /ReportingTrendNotes|BreakdownCard/)
   assert.doesNotMatch(dashboard, /<OverdueWorkflowPanel|<DispatchBoard|<UpcomingInspectionsPanel/)
   assert.match(dashboard, /Operations overview/)
-  assert.match(dashboard, /xl:grid-cols-\[minmax\(0,1fr\)_22rem\]/)
-  assert.match(dashboard, /xl:sticky xl:top-4/)
-  assert.match(dashboard, /aria-controls="admin-alert-drawer"/)
-  assert.match(dashboard, /role="dialog" aria-modal="true"/)
-  assert.match(dashboard, /fixed inset-0 z-\[70\] xl:hidden/)
-  assert.match(dashboard, /hidden min-w-0 xl:sticky xl:top-4 xl:block/)
+  assert.match(dashboard, /<AdminTodoPanel alerts=\{alerts\} onOpenAlert=\{openAlert\} onDismissAlert=\{dismissAlert\}/)
+  assert.ok(dashboard.indexOf('<AdminTodoPanel') < dashboard.indexOf('id="admin-workarea"'))
+  assert.doesNotMatch(dashboard, /admin-alert-drawer|<ClientFollowUps|<AlertsPanel/)
   assert.doesNotMatch(dashboard, /order-first/)
   assert.match(dashboard, /flex min-w-max flex-nowrap items-center gap-1\.5 whitespace-nowrap/)
   assert.match(deleteQuote, /whitespace-nowrap rounded-lg border border-red-200/)

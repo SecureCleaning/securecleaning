@@ -1,13 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import styles from './ClientFollowUps.module.css'
 import { useVisibleRefresh } from '@/lib/useVisibleRefresh'
 import type { CrmFollowUpItem } from '@/lib/clientCrmReads'
 import { followUpGroup, followUpInput, followUpIso } from '@/lib/crmFollowUpTime'
 
 type Workspace = { opportunities: CrmFollowUpItem[]; actor: { role: string; availabilityAssigneeId?: string | null } }
-export default function ClientFollowUps({ refreshKey, compact = false }: { refreshKey?: unknown; compact?: boolean }) {
+export default function ClientFollowUps({ refreshKey, compact = false, embedded = false, onCountChange }: { refreshKey?: unknown; compact?: boolean; embedded?: boolean; onCountChange?: (count: number | null) => void }) {
   const [data, setData] = useState<Workspace | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
@@ -36,8 +36,10 @@ export default function ClientFollowUps({ refreshKey, compact = false }: { refre
     finally { setBusy('') }
   }
   const items = (data?.opportunities ?? []).filter((item) => item.nextFollowUpAt && !['won', 'lost', 'cancelled'].includes(item.stage)).sort((a, b) => Date.parse(a.nextFollowUpAt!) - Date.parse(b.nextFollowUpAt!))
+  const count = data ? items.length : null
+  useEffect(() => { onCountChange?.(count) }, [count, onCountChange])
   const base = data?.actor.role === 'agent' ? `/availability/clients/${encodeURIComponent(data.actor.availabilityAssigneeId || '')}` : '/admin/clients'
-  return <section className={`${styles.panel} ${compact ? '' : 'my-5'} min-w-0 rounded-2xl border border-gray-200 bg-white shadow-sm`} aria-label="Client follow-ups">
+  return <section className={`${styles.panel} ${embedded ? '' : `${compact ? '' : 'my-5'} rounded-2xl border border-gray-200 shadow-sm`} min-w-0 bg-white`} aria-label="Client follow-ups">
     <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
       <h2 className="text-lg font-bold text-[#1a2744]">Client follow-ups</h2>
       <span className="rounded-full bg-teal-50 px-2.5 py-1 text-xs font-bold text-teal-800">{items.length}</span>

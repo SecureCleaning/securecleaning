@@ -31,7 +31,9 @@ export default function AlertsPanel({
   alerts,
   onOpenAlert,
   onDismissAlert,
+  embedded = false,
 }: {
+  embedded?: boolean
   alerts: AdminAlert[]
   onOpenAlert: (alert: AdminAlert) => void
   onDismissAlert: (alert: AdminAlert) => void
@@ -45,9 +47,9 @@ export default function AlertsPanel({
   )
 
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+    <div className={embedded ? "bg-white" : "rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden"}>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5">
-        <h2 className="text-base font-bold" style={{ color: '#1a2744' }}>Action needed</h2>
+        <h2 className="text-base font-bold" style={{ color: '#1a2744' }}>{embedded ? 'Operational actions' : 'Action needed'}</h2>
         <div className="flex flex-wrap gap-1.5">
           {(['critical', 'warning', 'info'] as const).map((severity) => (
             <div
