@@ -95,5 +95,23 @@ test('workflow accepts configured metric IDs with spaces while retaining diction
  for(const metrics of [JSON.parse('{"__proto__":1}'),{constructor:1},{prototype:1},{'':1},{' ':1},{['x'.repeat(129)]:1},{'Entrance\nDoors':1},{'Entrance Doors':{nested:1}},{'Entrance Doors':Infinity},{'Entrance Doors':-1},Object.fromEntries(Array.from({length:101},(_,i)=>['field '+i,1]))]) {
   assert.equal(validWorkflowInput({...workflow,firmQuoteDraft:{...workflow.firmQuoteDraft,roomItems:[{...room,metrics}]}}),false)
  }
- assert.equal(validWorkflowInput({...workflow,firmQuoteDraft:{...workflow.firmQuoteDraft,roomItems:[{...room,scopeTaskSelections:{'unexpected key':true}}]}}),false)
+ assert.equal(validWorkflowInput({...workflow,firmQuoteDraft:{...workflow.firmQuoteDraft,roomItems:[{...room,scopeTaskSelections:{'invalid\nkey':true}}]}}),false)
+})
+
+ test('configured task IDs with spaces save selections and cadence overrides without weakening limits', () => {
+ const draft=JSON.parse(JSON.stringify(createDefaultFirmQuoteDraft(inputs)))
+ const task='Open Office-vacuum-or-mop-accessible-floor-areas-1'
+ const room={...draft.roomItems[0],type:'Open Office',scopeTaskSelections:{[task]:true},scopeTaskCadences:{[task]:'weekly'}}
+ const payload=room=>({firmQuoteDraft:{...draft,roomItems:[room]}})
+ assert.equal(validWorkflowInput(payload(room)),true)
+ assert.equal(validWorkflowInput(payload(JSON.parse(JSON.stringify(room)))),true)
+ for(const field of ['scopeTaskSelections','scopeTaskCadences']) {
+  const value=field==='scopeTaskSelections'?false:'monthly'
+  for(const key of ['', ' ', 'bad\nkey', 'x'.repeat(129), '__proto__','constructor','prototype']) {
+   assert.equal(validWorkflowInput(payload({...room,[field]:Object.fromEntries([[key,value]])})),false)
+  }
+  assert.equal(validWorkflowInput(payload({...room,[field]:Object.fromEntries(Array.from({length:101},(_,i)=>['task '+i,value]))})),false)
+ }
+ assert.equal(validWorkflowInput(payload({...room,scopeTaskSelections:{[task]:'true'}})),false)
+ assert.equal(validWorkflowInput(payload({...room,scopeTaskCadences:{[task]:'invalid'}})),false)
 })
