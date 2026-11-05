@@ -97,7 +97,8 @@ test('role filters hide owner-only controls, empty groups and inaccessible invoi
   }
   assert.deepEqual(menus.menuDestinations('admin','agent'), [])
   assert.ok(menus.menuDestinations('agent','agent','agent/a').find(x=>x.id==='invoices').href.endsWith('agent%2Fa'))
-  assert.ok(menus.isMenuDestinationActive('/admin/quotes/ABC','/admin'))
+  assert.equal(menus.isMenuDestinationActive('/admin/quotes/ABC','/admin'), false)
+  assert.ok(menus.isMenuDestinationActive('/admin/quotes/ABC','/admin/quotes'))
   assert.equal(menus.isMenuDestinationActive('/admin/invoices','/'),false)
 })
 
@@ -231,4 +232,22 @@ test('invoice allocation pagination uses the real composite key and includes eve
   assert.equal(result.invoices[1].paidCents,25000)
   assert.deepEqual(offsets,[0,500])
   assert.deepEqual(pageOrders,[['payment_id','invoice_id'],['payment_id','invoice_id']])
+})
+
+
+test('admin Quotes upgrades old menus without resetting placement, hidden links or groups', () => {
+  const config = menus.defaultMenuConfiguration()
+  config.admin = menus.moveMenuLink(config.admin, 'chat', 'hidden')
+  config.admin.items = config.admin.items.filter(item => item.id !== 'quotes').reverse()
+  const previous = json(config)
+  const result = menus.parseMenuConfiguration(config)
+  assert.deepEqual(config, previous)
+  assert.deepEqual(result.admin.items.slice(0, -1), previous.admin.items)
+  assert.deepEqual(result.admin.items.at(-1), {kind:'link', id:'quotes'})
+  assert.deepEqual(result.admin.hidden, previous.admin.hidden)
+  result.admin = menus.moveMenuLink(result.admin, 'quotes', 'settings-group')
+  assert.deepEqual(menus.parseMenuConfiguration(result), result)
+  result.admin = menus.moveMenuLink(result.admin, 'quotes', 'hidden')
+  assert.deepEqual(menus.parseMenuConfiguration(result), result)
+  assert.ok(menus.menuDestinations('admin', 'owner').some(item => item.id === 'quotes' && item.href === '/admin/quotes'))
 })

@@ -2,6 +2,7 @@ import { getAdminSupabase } from '@/lib/supabase'
 import { writeAuditLogStrict } from '@/lib/auditLog'
 import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
 import { isValidAdminAlertId } from '@/lib/adminAlertId'
+import { adminAlertClientLabel } from '@/lib/adminAlertClientLabel'
 import { needsBookingAssignment } from '@/lib/bookingWorkflow'
 
 export { isValidAdminAlertId } from '@/lib/adminAlertId'
@@ -56,10 +57,10 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   const nowIso = new Date().toISOString()
 
   const [quotesRes, pendingBookingsRes, overdueBookingsRes, unassignedBookingsRes, emailAlertsRes] = await Promise.all([
-    db.from('quotes').select('quote_ref, created_at').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('bookings').select('booking_ref, created_at, status').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('quotes').select('quote_ref, created_at, inputs').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('bookings').select('booking_ref, created_at, status, inputs').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings')
-      .select('booking_ref, created_at, status, inspection_status, inspection_scheduled_for')
+      .select('booking_ref, created_at, status, inspection_status, inspection_scheduled_for, inputs')
       .eq('inspection_status', 'scheduled')
       .neq('status', 'completed')
       .neq('status', 'cancelled')
@@ -91,7 +92,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
         id: `quote-${quote.quote_ref}`,
         entity_ref: quote.quote_ref,
         kind: 'new_quote',
-        title: `New/pending quote ${quote.quote_ref}`,
+        title: `${adminAlertClientLabel(quote.inputs, quote.quote_ref)} - pending quote`,
         description: 'Quote still pending review or follow-up.',
         severity: 'info',
         happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
@@ -104,7 +105,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       id: `booking-${booking.booking_ref}`,
       entity_ref: booking.booking_ref,
       kind: 'new_booking',
-        title: `New/pending booking ${booking.booking_ref}`,
+        title: `${adminAlertClientLabel(booking.inputs, booking.booking_ref)} - pending booking`,
         description: 'Booking requires review or triage.',
         severity: 'info',
         happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
@@ -119,7 +120,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       id: `booking-unassigned-${booking.booking_ref}`,
       entity_ref: booking.booking_ref,
       kind: 'unassigned_booking',
-      title: `Booking ${booking.booking_ref} still needs assignment`,
+      title: `${adminAlertClientLabel(booking.inputs, booking.booking_ref)} - assignment needed`,
       description: 'Missing site and/or operator assignment.',
       severity: 'warning',
       happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,
@@ -132,7 +133,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       id: `booking-overdue-${booking.booking_ref}`,
       entity_ref: booking.booking_ref,
       kind: 'overdue_inspection',
-      title: `Inspection overdue for ${booking.booking_ref}`,
+      title: `${adminAlertClientLabel(booking.inputs, booking.booking_ref)} - inspection overdue`,
       description: 'Scheduled inspection time has already passed.',
       severity: 'critical',
       happenedAt: Number.isFinite(happenedAt) ? happenedAt : 0,

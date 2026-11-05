@@ -10,6 +10,7 @@ export type MenuDestination = { id: string; label: string; href: string; roles?:
 export const MENU_CATALOG: Record<MenuAudience, MenuDestination[]> = {
   admin: [
     { id: 'overview', label: 'Overview', href: '/admin' },
+    { id: 'quotes', label: 'Quotes', href: '/admin/quotes' },
     { id: 'invoices', label: 'Invoices', href: '/admin/invoices', roles: ['owner', 'manager'] },
     { id: 'clients', label: 'Clients', href: '/admin/clients', roles: ['owner', 'manager'] },
     { id: 'products', label: 'Products', href: '/admin/products', roles: ['owner', 'manager'] },
@@ -44,7 +45,7 @@ const link = (id: string): MenuLink => ({ kind: 'link', id })
 export function defaultMenuConfiguration(): MenuConfiguration {
   return {
     version: 1,
-    admin: { items: [link('overview'), link('invoices'), link('clients'), link('calendar'),
+    admin: { items: [link('overview'), link('quotes'), link('invoices'), link('clients'), link('calendar'),
       { kind: 'group', id: 'sales-group', label: 'Sales', children: ['products', 'sales', 'commissions'] },
       { kind: 'group', id: 'operations-group', label: 'Operations', children: ['availability', 'cleaners'] },
       { kind: 'group', id: 'settings-group', label: 'Settings', children: ['pricing', 'content', 'chat', 'sms', 'staff', 'telemarketing', 'menus'] },
@@ -91,8 +92,13 @@ export function parseMenuConfiguration(value: unknown): MenuConfiguration {
     const hidden = candidate.hidden.map(destination)
     // Append newly introduced destinations without resetting customised menus.
     const missing = catalog.filter(item => !used.has(item.id)).map(item => item.id)
-    if (audience === 'admin' && missing.every(id => ['sms', 'telemarketing'].includes(id))) {
+    if (audience === 'admin' && missing.every(id => ['quotes', 'sms', 'telemarketing'].includes(id))) {
       for (const id of missing) {
+        if (id === 'quotes') {
+          items.push(link(id))
+          used.add(id)
+          continue
+        }
         const settings = items.find((item): item is MenuGroup => item.kind === 'group' && (item.label.toLowerCase() === 'settings' || item.id === 'settings-group'))
         if (settings) settings.children.push(id)
         else if (groups.size < 8) {
@@ -120,7 +126,7 @@ export function menuDestinations(audience: MenuAudience, role: AdminRole, assign
 }
 
 export function isMenuDestinationActive(currentPath: string, href: string) {
-  if (href === '/admin') return currentPath === href || currentPath.startsWith('/admin/quotes/')
+  if (href === '/admin') return currentPath === href
   if (href === '/') return currentPath === href
   return currentPath === href || currentPath.startsWith(`${href}/`)
 }
