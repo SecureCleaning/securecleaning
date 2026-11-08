@@ -2,11 +2,12 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import ActionToast from '@/components/ActionToast'
+import PartnerCleanerIntakes, { type PartnerCleanerIntake } from './PartnerCleanerIntakes'
 import type { City } from '@/lib/types'
 type Company = { id: string; name: string; active: boolean; cities: City[]; assignee_ids: string[]; expires_at: string | null }
 type User = { id: string; company_id: string; username: string; display_name: string; active: boolean }
 type Activity = { contact_review_required?: boolean; id: string; user_id: string; company_id: string; created_at: string; email_status: string; calendar_status: string; bookings: { booking_ref: string; inputs: { businessName: string; preferredInspectionAssigneeName: string }; opportunity_id: string | null } | null }
-type Data = { companies: Company[]; users: User[]; activity: Activity[]; calendars: { id: string; name: string; city: City; active: boolean }[] }
+type Data = { companies: Company[]; users: User[]; activity: Activity[]; cleanerIntakes: PartnerCleanerIntake[]; calendars: { id: string; name: string; city: City; active: boolean }[] }
 const newCompany = (): Company => ({ id: '', name: '', active: false, cities: [], assignee_ids: [], expires_at: null })
 const newUser = () => ({ id: '', company_id: '', username: '', display_name: '', active: true, password: '' })
 const regions: Record<City,string> = { melbourne: 'VIC', sydney: 'NSW', brisbane: 'QLD' }
@@ -43,6 +44,6 @@ export default function TelemarketingAdmin() {
     <label className="flex gap-2"><input type="checkbox" checked={user.active} onChange={e=>setUser({...user,active:e.target.checked})}/>Enable caller</label><p className="text-sm text-gray-600">Saving an account ends its existing sessions. Share the login details directly with the caller; no email is sent here.</p><button disabled={busy} className={button}>Save caller account</button></form></section>
     <section className="space-y-4 rounded-xl border bg-white p-6"><div className="flex justify-between"><h2 className="text-xl font-bold">Recent partner bookings and delivery checks</h2><button className="rounded-lg border px-3 py-2" disabled={busy} onClick={()=>void load().catch(e=>setNotice({text:e.message,error:true}))}>Refresh</button></div><p className="text-sm text-gray-600">Latest 100 bookings. Queued, sending or review-required outcomes need a team check before any resend.</p>{!data.activity.length&&<p>No partner bookings yet.</p>}
     {data.activity.map(a=><article key={a.id} className="space-y-1 rounded-lg border p-4"><p className="font-bold">{a.bookings?.booking_ref||'Booking removed'} · {a.bookings?.inputs.businessName}</p><p>{data.companies.find(c=>c.id===a.company_id)?.name} · {data.users.find(u=>u.id===a.user_id)?.display_name} · {new Date(a.created_at).toLocaleString('en-AU')}</p><p>Agent: {a.bookings?.inputs.preferredInspectionAssigneeName||'Check booking'}</p><p className={a.email_status!=='sent'||!['sent','internal'].includes(a.calendar_status)?'font-semibold text-amber-800':''}>Confirmations: {a.email_status.replaceAll('_',' ')} · Calendar: {a.calendar_status==='internal'?'Secure Cleaning calendar':a.calendar_status.replaceAll('_',' ')}</p>{a.contact_review_required&&<p className="font-semibold text-amber-800">Client details need review. The appointment request is saved; an administrator must check the details before linking it to Client CRM. <Link className="underline" href="/admin#appointment-requests">Review request</Link></p>}{a.bookings?.opportunity_id&&<Link className="inline-block text-teal-700 underline" href={`/admin/clients?opportunity=${encodeURIComponent(a.bookings.opportunity_id)}`}>Open client record</Link>}</article>)}
-    </section></>}
+    </section><PartnerCleanerIntakes items={data.cleanerIntakes || []} companies={data.companies} users={data.users} /></>}
   </div>
 }

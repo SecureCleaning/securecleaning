@@ -13,6 +13,7 @@ export type LocalitySuggestion = {
 }
 
 interface LocalityAutocompleteProps {
+  idPrefix?: string
   city?: City
   suburb: string
   postcode: string
@@ -27,6 +28,7 @@ function formatLocalityQuery(suburb: string, postcode: string) {
 }
 
 export default function LocalityAutocomplete({
+  idPrefix,
   city,
   suburb,
   postcode,
@@ -35,6 +37,7 @@ export default function LocalityAutocomplete({
   required,
   onChange,
 }: LocalityAutocompleteProps) {
+  const inputId = (name: string) => idPrefix ? `${idPrefix}-${name}` : name
   const [query, setQuery] = useState(() => formatLocalityQuery(suburb, postcode))
   const [suggestions, setSuggestions] = useState<LocalitySuggestion[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -122,12 +125,12 @@ export default function LocalityAutocomplete({
   return (
     <div ref={containerRef} className="space-y-4">
       <div className="relative">
-        <label htmlFor="locality-search" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor={inputId('locality-search')} className="block text-sm font-medium text-gray-700 mb-1">
           Suburb or Postcode Search
           {required && <span className="text-red-500 ml-1">*</span>}
         </label>
         <input
-          id="locality-search"
+          id={inputId('locality-search')}
           type="text"
           placeholder={city ? 'Start typing a suburb or postcode…' : 'Select state first'}
           value={query}
@@ -184,12 +187,12 @@ export default function LocalityAutocomplete({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="suburb" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor={inputId('suburb')} className="block text-sm font-medium text-gray-700 mb-1">
             Suburb
             {required && <span className="text-red-500 ml-1">*</span>}
           </label>
           <input
-            id="suburb"
+            id={inputId('suburb')}
             type="text"
             value={suburb}
             onChange={(e) => onChange({ suburb: e.target.value, postcode })}
@@ -200,12 +203,12 @@ export default function LocalityAutocomplete({
           {suburbError ? <p className="mt-1 text-xs text-red-600">{suburbError}</p> : null}
         </div>
         <div>
-          <label htmlFor="postcode" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor={inputId('postcode')} className="block text-sm font-medium text-gray-700 mb-1">
             Postcode
             {required && <span className="text-red-500 ml-1">*</span>}
           </label>
           <input
-            id="postcode"
+            id={inputId('postcode')}
             type="text"
             inputMode="numeric"
             value={postcode}
