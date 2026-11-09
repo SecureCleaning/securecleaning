@@ -109,11 +109,47 @@ for(const [n,outcome] of [[30,'failed'],[31,'unknown']]) {
  assert.equal((await db.query('SELECT status FROM cleaners WHERE id=$1',[(await row(n)).cleaner_id])).rows[0].status,'lead')
 }
 await db.exec('RESET ROLE')
+const welcomeMigration=readFileSync('supabase/migrations/20261109050351_partner_cleaner_welcome_email.sql','utf8')
+await db.exec(welcomeMigration);await db.exec(welcomeMigration)
+await db.exec('SET ROLE service_role')
+const welcomeClaim=async(n,caller=other,session=version)=>(await db.query("SELECT claim_partner_cleaner_welcome_email($1,$2,$3,'Welcome','Requested introduction email') result",[id(n),caller,session])).rows[0].result
+assert.equal((await row(10)).welcome_email_status,'not_required')
+assert.equal(await welcomeClaim(10,user),null)
+assert.deepEqual(await reserve(10),{created:false,emailStatus:'sent',welcomeEmailStatus:'not_required'})
+for(const [n,outcome] of [[200,'sent'],[201,'failed'],[202,'unknown']]) {
+ const reserved=await reserve(n,{email:`welcome${n}@example.test`,welcomeEmailConsent:true},other)
+ assert.equal(reserved.welcomeEmailStatus,'queued')
+ assert.equal(await welcomeClaim(n,user),null)
+ const intro=await welcomeClaim(n)
+ assert.equal(intro.cleaner.email,`welcome${n}@example.test`);assert.equal(intro.cleaner.state,'VIC')
+ assert.ok(intro.emailId);assert.equal(await welcomeClaim(n),null)
+ await db.query('SELECT complete_partner_cleaner_welcome_email($1,$2,$3,$4)',[id(n),outcome,outcome==='sent'?'welcome-provider':null,outcome==='failed'?'Fixture configuration needs review':null])
+ assert.equal((await row(n)).welcome_email_status,outcome);assert.equal((await row(n)).email_status,'queued')
+ assert.equal((await reserve(n,{email:`welcome${n}@example.test`,welcomeEmailConsent:true},other)).welcomeEmailStatus,outcome)
+ assert.equal(await welcomeClaim(n),null)
+ await assert.rejects(db.query("SELECT complete_partner_cleaner_welcome_email($1,'sent','again',NULL)",[id(n)]),/Unclaimed/)
+ // Profile email is independent and retains its own history.
+ await claim(n,other);await db.query("SELECT complete_partner_cleaner_email($1,'sent','profile-provider')",[id(n)])
+ assert.notEqual((await row(n)).email_id,(await row(n)).welcome_email_id)
+}
+assert.equal((await reserve(203,{email:'welcome200@example.test',welcomeEmailConsent:true},other)).welcomeEmailStatus,'review_required')
+assert.equal(await welcomeClaim(203),null)
+for(const [n,kind] of [[204,'suppression'],[205,'revoked'],[206,'changed-email'],[207,'legacy'],[208,'no-consent']]){
+ await reserve(n,{email:`blocked${n}@example.test`,...(kind==='legacy'?{}:{welcomeEmailConsent:kind!=='no-consent'})},other)
+ if(kind==='suppression'){await claim(n,other);await db.query("SELECT complete_partner_cleaner_email($1,'sent','profile-sent-before-optout')",[id(n)]);await db.query('INSERT INTO cleaner_broadcast_suppressions(cleaner_id,email_normalized,reason) VALUES($1,$2,$3)',[(await row(n)).cleaner_id,`blocked${n}@example.test`,'unsubscribed']);assert.equal((await row(n)).email_status,'sent')}
+ if(kind==='changed-email')await db.query("UPDATE cleaners SET email='changed-welcome@example.test' WHERE id=$1",[(await row(n)).cleaner_id])
+ assert.equal(await welcomeClaim(n,other,kind==='revoked'?id(999):version),null)
+ assert.equal((await row(n)).welcome_email_status,['legacy','no-consent'].includes(kind)?'not_required':'skipped')
+}
+console.log('PASS welcome migration twice, legacy no-backfill, consent, separate claims/history, replays, failures, duplicate/suppression and revoked/changed recipient protection.')
+await db.exec('RESET ROLE')
 for(const role of ['anon','authenticated']) {
  await db.exec(`SET ROLE ${role}`)
  await assert.rejects(db.query('SELECT * FROM partner_cleaner_intakes'),/permission denied/)
  await assert.rejects(reserve(100),/permission denied/)
  await assert.rejects(claim(10),/permission denied/)
+ await assert.rejects(welcomeClaim(200),/permission denied/)
+ await assert.rejects(db.query("SELECT complete_partner_cleaner_welcome_email($1,'sent','x',NULL)",[id(200)]),/permission denied/)
  await assert.rejects(db.query("SELECT complete_partner_cleaner_email($1,'sent','x')",[id(10)]),/permission denied/)
  await db.exec('RESET ROLE')
 }

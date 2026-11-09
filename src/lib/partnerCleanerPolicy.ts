@@ -20,14 +20,15 @@ export function partnerCleanerDetails(value: unknown, company: PartnerCompany) {
     // Omit an empty optional field to preserve fingerprints for earlier submissions.
     ...(address ? { address } : {}),
     city: location.city, state: PARTNER_REGIONS[location.city], suburb: location.suburb, postcode: location.postcode,
+    ...(input.welcomeEmailConsent === true ? { welcomeEmailConsent: true } : {}),
     notes: textField(input.notes, 'internal notes', 1500, false), emailConsent: true,
   }
 }
 
 export type PartnerCleanerDetails = ReturnType<typeof partnerCleanerDetails>
-export type PartnerCleanerReceipt = { reference: string; emailStatus: 'sent' | 'team_review'; replay: boolean }
+export type PartnerCleanerReceipt = { reference: string; emailStatus: 'sent' | 'team_review'; replay: boolean; welcomeEmailStatus?: 'sent' | 'team_review' | 'not_required' }
 
 // Never return a cleaner ID, existing record details, or the private profile link to a caller.
-export function partnerCleanerReceipt(reference: string, emailStatus: string, replay: boolean): PartnerCleanerReceipt {
-  return { reference, emailStatus: emailStatus === 'sent' ? 'sent' : 'team_review', replay }
+export function partnerCleanerReceipt(reference: string, emailStatus: string, replay: boolean, welcomeEmailStatus?: string): PartnerCleanerReceipt {
+  return { reference, emailStatus: emailStatus === 'sent' ? 'sent' : 'team_review', replay, ...(welcomeEmailStatus === undefined ? {} : { welcomeEmailStatus: welcomeEmailStatus === 'sent' ? 'sent' : welcomeEmailStatus === 'not_required' ? 'not_required' : 'team_review' }) }
 }

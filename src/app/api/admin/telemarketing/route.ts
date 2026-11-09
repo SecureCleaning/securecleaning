@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
       db.from('partner_booking_users').select('id, company_id, username, display_name, active').order('display_name'),
       db.from('partner_booking_requests').select('id, contact_review_required, company_id, user_id, booking_id, created_at, email_status, calendar_status, bookings!partner_booking_requests_booking_id_fkey(booking_ref, inputs, inspection_scheduled_for, opportunity_id)').order('created_at', { ascending: false }).limit(100),
       loadPartnerConfig(),
-      db.from('partner_cleaner_intakes').select('id, company_id, user_id, created_at, created_cleaner, email_status, review_reason, inputs').order('created_at', { ascending: false }).limit(100),
+      db.from('partner_cleaner_intakes').select('id, company_id, user_id, created_at, created_cleaner, email_status, review_reason, welcome_email_status, welcome_review_reason, inputs').order('created_at', { ascending: false }).limit(100),
     ])
     if (companies.error || users.error || activity.error || cleanerIntakes.error) throw companies.error || users.error || activity.error || cleanerIntakes.error
     return partnerJson({ companies: companies.data, users: users.data, activity: activity.data, cleanerIntakes: cleanerIntakes.data, calendars: config.assignees.map(a => ({ id: a.id, name: a.name, city: a.city, active: a.active })) })

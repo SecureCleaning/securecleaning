@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import { writeFileSync } from 'node:fs'
 import { partnerCleanerMessage } from '../../src/lib/partnerCleanerMessage.ts'
+process.env.NEXT_PUBLIC_SUPABASE_URL='https://example.supabase.co'
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY='synthetic-anon'
+process.env.SUPABASE_SERVICE_ROLE_KEY='synthetic-service'
+const {parseCleanerEmailInput,renderCleanerEmail}=await import('../../src/lib/cleanerEmailPolicy.ts')
 
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const origin=process.env.TEST_ORIGIN || 'http://localhost:3371'
@@ -30,6 +34,16 @@ try {
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth))
     await page.screenshot({path:`/tmp/sc-partner-cleaner-email-${name}.png`,fullPage:true})
   }
+  const welcome=renderCleanerEmail(parseCleanerEmailInput({emails:'cleaner@example.test',subject:'Welcome <<first_name>>',body:'Hello <<first_name>>,\n\nThank you for speaking with our team about cleaning contracts.'}),{id:'fixture',email:'cleaner@example.test',first_name:'Alex',contact_name:'Alex',business_name:'Fixture Cleaning Company',state:'NSW'},{displayName:'Fixture NSW Agent',jobTitle:'Regional Agent',phone:'0400 000 000',email:'agent@example.test'},unsubscribeUrl,'partner_lead')
+  for(const width of [1100,390]) {
+    await page.setViewportSize({width,height:1100});await page.setContent(welcome.html)
+    assert.match(await page.locator('body').innerText(),/Hello Alex/)
+    assert.match(await page.locator('body').innerText(),/Fixture NSW Agent/)
+    assert.doesNotMatch(await page.locator('body').innerText(),/approved cleaner profile/)
+    assert.equal(await page.getByRole('link',{name:'Unsubscribe from cleaner updates and job broadcasts'}).getAttribute('href'),unsubscribeUrl)
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth))
+    await page.screenshot({path:`/tmp/sc-partner-welcome-email-${width}.png`,fullPage:true})
+  }
   // Viewing a link must not unsubscribe (mail-security scanners may open it).
   await page.goto(unsubscribeUrl)
   const unsubscribe=page.getByRole('button',{name:'Unsubscribe from cleaner emails',exact:true})
@@ -43,5 +57,5 @@ try {
   await page.getByRole('alert').filter({hasText:'This link could not be processed'}).waitFor()
   assert.equal(await page.getByText('You have been unsubscribed',{exact:false}).count(),0)
   assert.deepEqual(errors,[])
-  console.log('PASS branded email at desktop/mobile, visible unsubscribe link, GET has no mutation, explicit opt-out success and failure feedback; all API calls mocked, no real sends or records.')
+  console.log('PASS both branded emails with agent signature at desktop/mobile, visible unsubscribe link, GET has no mutation, explicit opt-out success and failure feedback; all API calls mocked, no real sends or records.')
 } finally {await browser.close()}

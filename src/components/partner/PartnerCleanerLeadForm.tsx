@@ -21,7 +21,7 @@ export default function PartnerCleanerLeadForm({ cities, onBusyChange }: { citie
     submitting.current = true; setBusy(true); onBusyChange(true); setMessage('')
     if (!key.current) key.current = crypto.randomUUID()
     try {
-      const response = await fetch('/api/partner-booking/cleaners', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...details, emailConsent: consent, idempotencyKey: key.current }) })
+      const response = await fetch('/api/partner-booking/cleaners', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...details, emailConsent: consent, welcomeEmailConsent: consent, idempotencyKey: key.current }) })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to save the cleaner details.')
       setReceipt(result)
@@ -33,6 +33,7 @@ export default function PartnerCleanerLeadForm({ cities, onBusyChange }: { citie
     {receipt ? <div role="status" className="space-y-3 rounded-lg border border-teal-200 bg-teal-50 p-4">
       <h2 className="text-xl font-bold">Cleaner details received</h2>
       <p>{receipt.emailStatus === 'sent' ? 'The cleaner lead has been saved and the details email has been sent. The cleaner can use its secure link to complete their profile.' : 'Secure Cleaning will review this submission and the email status. Do not enter it again or send another invitation.'}</p>
+      {receipt.welcomeEmailStatus && receipt.welcomeEmailStatus !== 'not_required' && <p>{receipt.welcomeEmailStatus === 'sent' ? 'The separate introduction email has also been sent, signed by and copied to the priority agent for their state.' : 'The separate introduction email needs team review. Do not submit the cleaner again.'}</p>}
       <p className="break-all text-sm">Reference: {receipt.reference}</p>
       <button className={button} onClick={() => { setReceipt(null); setDetails({ ...blank, city: defaultPartnerCity(cities) }); setConsent(false); setReview(false); key.current = ''; setMessage('') }}>Add another cleaner</button>
     </div> : <form className="space-y-4" onSubmit={event => { event.preventDefault(); if (!details.suburb.trim() || !/^\d{4}$/.test(details.postcode)) { setMessage('Choose a suburb and postcode before reviewing.'); return } setMessage(''); setReview(true) }}>
@@ -54,9 +55,10 @@ export default function PartnerCleanerLeadForm({ cities, onBusyChange }: { citie
         <h3 className="font-bold">Review before saving and sending</h3>
         <p className="break-words">{details.businessName}<br />{details.firstName || 'Manager'} {details.lastName}<br />{details.email} · {details.phone}<br />{details.address && <>{details.address}<br /></>}{details.suburb} {details.postcode}, {details.city && regions[details.city]}</p>
         <p>The email will thank them for the call and ask them to review their details, service areas, preferred work, machinery and documents. The link lasts 48 hours. They remain a lead until the team reviews them.</p>
+        <p>A separate introduction email is sent using the saved New Cleaner First Email template, with the signature of the priority agent for their state. That agent receives a copy and replies go to them.</p>
         <p className="text-sm">If the email address is already recorded, the submission goes to the team for review. Existing details are not replaced and another email is not sent.</p>
-        <label className="flex items-start gap-2"><input type="checkbox" disabled={busy} checked={consent} onChange={e => setConsent(e.target.checked)} />The cleaner agreed to have their details recorded and receive the Secure Cleaning profile-completion email. I have checked their email address.</label>
-        <div className="flex flex-wrap gap-3"><button type="button" disabled={busy} className="rounded-lg border px-3 py-2" onClick={() => { setReview(false); setConsent(false); key.current = '' }}>Edit details</button><button type="button" className={button} disabled={busy || !consent} onClick={() => void submit()}>{busy ? 'Saving and sending...' : 'Save cleaner & send details email'}</button></div>
+        <label className="flex items-start gap-2"><input type="checkbox" disabled={busy} checked={consent} onChange={e => setConsent(e.target.checked)} />The cleaner agreed to have their details recorded and receive both the Secure Cleaning profile-completion and introduction emails, with the introduction copied to their state agent. I have checked their email address.</label>
+        <div className="flex flex-wrap gap-3"><button type="button" disabled={busy} className="rounded-lg border px-3 py-2" onClick={() => { setReview(false); setConsent(false); key.current = '' }}>Edit details</button><button type="button" className={button} disabled={busy || !consent} onClick={() => void submit()}>{busy ? 'Saving and sending...' : 'Save cleaner & send emails'}</button></div>
       </div>}
     </form>}
   </section>

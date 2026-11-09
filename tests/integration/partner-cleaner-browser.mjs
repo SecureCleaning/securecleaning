@@ -3,7 +3,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const origin=process.env.TEST_ORIGIN || 'http://localhost:3371'
 const browser=await chromium.launch({headless:true,executablePath:process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'})
 const context=await browser.newContext({viewport:{width:1280,height:1000}})
-const calls=[], unexpected=[];let delivery='sent', failOnce=false
+const calls=[], unexpected=[];let delivery='sent', welcomeDelivery='sent', failOnce=false
 let cities=['melbourne','sydney'], signedIn=true
 await context.route('**/*',async route=>{
  const request=route.request(),url=new URL(request.url())
@@ -21,7 +21,7 @@ await context.route('**/*',async route=>{
   calls.push(request.postDataJSON())
   if(failOnce){failOnce=false;return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Synthetic transient error. Retry this submission.'})})}
   await new Promise(resolve=>setTimeout(resolve,200))
-  return respond({reference:calls.at(-1).idempotencyKey,emailStatus:delivery,replay:calls.length>1})
+  return respond({reference:calls.at(-1).idempotencyKey,emailStatus:delivery,welcomeEmailStatus:welcomeDelivery,replay:calls.length>1})
  }
  // Analytics and unrelated shell APIs cannot reach a real service.
  if(request.method()!=='GET')unexpected.push(url.pathname)
@@ -52,7 +52,7 @@ try {
  assert.equal(await section.getByLabel('Street address (optional)').inputValue(),'Unit 2, 10 Example Street')
  assert.equal(await section.getByRole('combobox',{name:/^State/}).inputValue(),'melbourne')
  await section.getByRole('button',{name:'Review cleaner details'}).click()
- const save=section.getByRole('button',{name:'Save cleaner & send details email'})
+ const save=section.getByRole('button',{name:'Save cleaner & send emails'})
  assert.equal(await save.isEnabled(),false)
  await section.getByRole('checkbox').check()
  // Simulate an uncertain network result and verify retry retains its reference.
@@ -60,7 +60,8 @@ try {
  await save.click();await section.getByRole('heading',{name:'Cleaner details received'}).waitFor()
  assert.equal(calls.length,2);assert.equal(calls[0].idempotencyKey,calls[1].idempotencyKey)
  assert.equal(calls[0].firstName,'');assert.equal(calls[0].notes,'Private fixture note');assert.equal(calls[0].emailConsent,true)
- assert.equal(calls[0].address,'Unit 2, 10 Example Street')
+ assert.equal(calls[0].address,'Unit 2, 10 Example Street');assert.equal(calls[0].welcomeEmailConsent,true)
+ assert.match(await section.innerText(),/separate introduction email has also been sent/)
  await page.screenshot({path:'/tmp/sc-partner-cleaner-desktop.png',fullPage:true})
  await section.getByRole('button',{name:'Add another cleaner'}).click()
  assert.equal(await section.getByLabel('Business name *',{exact:true}).inputValue(),'')
@@ -77,8 +78,8 @@ try {
  await section.getByRole('checkbox').check()
  await page.screenshot({path:'/tmp/sc-partner-cleaner-mobile.png',fullPage:true})
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth))
- delivery='team_review';await save.click();await section.getByRole('heading',{name:'Cleaner details received'}).waitFor()
- assert.match(await section.innerText(),/will review/);assert.doesNotMatch(await section.innerText(),/has been sent/)
+ welcomeDelivery='team_review';await save.click();await section.getByRole('heading',{name:'Cleaner details received'}).waitFor()
+ assert.match(await section.innerText(),/details email has been sent/);assert.match(await section.innerText(),/separate introduction email needs team review/);assert.doesNotMatch(await section.innerText(),/introduction email has also been sent/)
  assert.notEqual(calls[2].idempotencyKey,calls[0].idempotencyKey)
  assert.equal(calls[2].address,'');assert.equal(calls[2].city,'sydney')
  await page.getByRole('button',{name:'Log out',exact:true}).click()
@@ -95,5 +96,5 @@ try {
  await page.getByRole('button',{name:'Add cleaner lead',exact:true}).click()
  assert.equal(await section.getByRole('combobox',{name:/^State/}).inputValue(),'melbourne')
  assert.deepEqual(unexpected,[]);assert.deepEqual(errors,[])
- console.log('PASS NSW defaults on session/sign-in/reset, allowed-state fallback, optional address/blank submission, draft preservation, consent gate, stable retry key, review-needed receipt, 390px layout, zero real API writes or sends.')
+ console.log('PASS NSW defaults on session/sign-in/reset, allowed-state fallback, optional address/blank submission, draft preservation, consent gate, stable retry key, two-email consent and independent partial-failure receipt, 390px layout, zero real API writes or sends.')
 } finally {await browser.close()}
