@@ -7,6 +7,7 @@ export function partnerCleanerDetails(value: unknown, company: PartnerCompany) {
   if (!companyEnabled(company) || !company.cities.includes(location.city)) throw new PartnerError('This state is not available for your account.', 403)
   const email = textField(input.email, 'email address', 254).toLowerCase()
   const phone = textField(input.phone, 'phone number', 40)
+  const address = textField(input.address, 'street address', 240, false)
   if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) throw new PartnerError('Enter one valid email address.')
   if (!/^[+()\d .-]+$/.test(phone) || phone.replace(/\D/g, '').length < 8 || phone.replace(/\D/g, '').length > 15) throw new PartnerError('Enter a valid phone number.')
   if (input.emailConsent !== true) throw new PartnerError('Confirm that the cleaner agreed to receive the details email.')
@@ -16,6 +17,8 @@ export function partnerCleanerDetails(value: unknown, company: PartnerCompany) {
     idempotencyKey, businessName: textField(input.businessName, 'business name', 160),
     firstName: textField(input.firstName, 'first name', 80, false) || 'Manager',
     lastName: textField(input.lastName, 'surname', 80, false), email, phone,
+    // Omit an empty optional field to preserve fingerprints for earlier submissions.
+    ...(address ? { address } : {}),
     city: location.city, state: PARTNER_REGIONS[location.city], suburb: location.suburb, postcode: location.postcode,
     notes: textField(input.notes, 'internal notes', 1500, false), emailConsent: true,
   }

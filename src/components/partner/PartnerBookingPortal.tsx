@@ -5,6 +5,7 @@ import AddressAutocomplete from '@/components/booking/AddressAutocomplete'
 import ActionToast from '@/components/ActionToast'
 import PartnerCleanerLeadForm from './PartnerCleanerLeadForm'
 import { isPartnerWeekday } from '@/lib/partnerBookingDates'
+import { defaultPartnerCity } from '@/lib/partnerPortalDefaults'
 import type { City } from '@/lib/types'
 
 type Session = { name: string; company: string; cities: City[] }
@@ -30,8 +31,8 @@ export default function PartnerBookingPortal() {
   const calendarRef = useRef<HTMLElement>(null), detailsRef = useRef<HTMLFormElement>(null), businessRef = useRef<HTMLInputElement>(null)
   useEffect(() => { if (availability) { calendarRef.current?.focus({ preventScroll: true }); scrollToStep(calendarRef.current) } }, [availability])
   useEffect(() => { if (slot || requestMode) { businessRef.current?.focus({ preventScroll: true }); scrollToStep(detailsRef.current) } }, [slot,requestMode])
-  useEffect(() => { let cancelled = false; api('session').then(data => { if (!cancelled) { setSession(data); setLocation(l => ({ ...l, city: data.cities[0] || '' })) } }).catch(() => {}).finally(() => { if (!cancelled) setLoading(false) }); return () => { cancelled = true } }, [])
-  async function signIn(event: React.FormEvent) { event.preventDefault(); setBusy(true); setMessage(''); try { await api('session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(login) }); const data = await api('session'); setSession(data); setLocation({ city: data.cities[0] || '', suburb: '', postcode: '' }); setLogin({ username: '', password: '' }) } catch (error) { setMessage((error as Error).message) } finally { setBusy(false) } }
+  useEffect(() => { let cancelled = false; api('session').then(data => { if (!cancelled) { setSession(data); setLocation(l => ({ ...l, city: defaultPartnerCity(data.cities) })) } }).catch(() => {}).finally(() => { if (!cancelled) setLoading(false) }); return () => { cancelled = true } }, [])
+  async function signIn(event: React.FormEvent) { event.preventDefault(); setBusy(true); setMessage(''); try { await api('session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(login) }); const data = await api('session'); setSession(data); setLocation({ city: defaultPartnerCity(data.cities), suburb: '', postcode: '' }); setLogin({ username: '', password: '' }) } catch (error) { setMessage((error as Error).message) } finally { setBusy(false) } }
   async function search(date = '') {
     const version = ++searchVersion.current; setBusy(true); setMessage(''); setSlot(null); setRequestMode(false); setReview(false); setAgreed(false)
     try { const data = await api(`availability?${new URLSearchParams({ ...location, date })}`); if (version === searchVersion.current) setAvailability(data) } catch (error) { if (version === searchVersion.current) { setMessage((error as Error).message); setAvailability(null) } } finally { if (version === searchVersion.current) setBusy(false) }

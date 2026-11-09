@@ -9,6 +9,7 @@ import { createCleanerPortalLink } from './cleanerPortal'
 import { EmailProviderRejectedError, sendEmailOrThrow } from './email'
 import { reportEmailFailure } from './emailFailureAlerts'
 import { PARTNER_CLEANER_SUBJECT, PARTNER_CLEANER_HISTORY, partnerCleanerMessage } from './partnerCleanerMessage'
+import { getSiteUrl } from './siteUrl'
 
 export async function createPartnerCleaner(actor: PartnerActor, input: unknown) {
   const details = partnerCleanerDetails(input, actor.company)
@@ -38,19 +39,26 @@ export async function createPartnerCleaner(actor: PartnerActor, input: unknown) 
   let outcome: 'sent' | 'failed' | 'unknown' = 'unknown', providerId: string | null = null
   let providerAttempted = false
   try {
+    const { data: cleaner, error: cleanerError } = await db.from('cleaners')
+      .select('broadcast_unsubscribe_token').eq('id', claim.data.cleanerId).eq('email', claim.data.email).maybeSingle()
+    if (cleanerError || !cleaner?.broadcast_unsubscribe_token) throw new Error('Cleaner email preferences unavailable')
+    const token = encodeURIComponent(cleaner.broadcast_unsubscribe_token)
+    const unsubscribeUrl = `${getSiteUrl()}/cleaner-email-preferences/unsubscribe?token=${token}`
+    const oneClickUrl = `${getSiteUrl()}/api/cleaner-email-preferences/unsubscribe?token=${token}`
     const link = createCleanerPortalLink({ mode: 'update', email: claim.data.email, cleanerId: claim.data.cleanerId })
-    const message = partnerCleanerMessage(claim.data.firstName, claim.data.businessName, link)
+    const message = partnerCleanerMessage(claim.data.firstName, claim.data.businessName, link, unsubscribeUrl)
     providerAttempted = true
     const result = await sendEmailOrThrow({
       from: process.env.FROM_EMAIL || 'Secure Cleaning <quotes@securecleaning.com.au>',
       to: claim.data.email, replyTo: process.env.ADMIN_EMAIL || 'info@securecleaning.com.au', ...message,
+      headers: { 'List-Unsubscribe': `<${oneClickUrl}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
     }, { idempotencyKey: `partner-cleaner/${details.idempotencyKey}` })
     outcome = 'sent'; providerId = result.id
   } catch (error) {
     outcome = error instanceof EmailProviderRejectedError ? 'failed' : 'unknown'
     if (!providerAttempted) {
       outcome = 'failed'
-      await reportEmailFailure({ payload: { to: claim.data.email, subject: PARTNER_CLEANER_SUBJECT }, outcome: 'not_sent', code: 'cleaner_profile_link_unavailable', idempotencyKey: `partner-cleaner/${details.idempotencyKey}` }).catch(() => {})
+      await reportEmailFailure({ payload: { to: claim.data.email, subject: PARTNER_CLEANER_SUBJECT }, outcome: 'not_sent', code: 'cleaner_invitation_preparation_failed', idempotencyKey: `partner-cleaner/${details.idempotencyKey}` }).catch(() => {})
     }
   }
   const completed = await db.rpc('complete_partner_cleaner_email', {

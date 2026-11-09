@@ -59,3 +59,22 @@ test('cleaner unsubscribe rejects malformed and unknown tokens without claiming 
     globalThis.fetch = originalFetch
   }
 })
+
+test('mailbox one-click unsubscribe uses the capability in the URL with a form POST', async () => {
+  const originalFetch = globalThis.fetch
+  try {
+    let rpcBody
+    globalThis.fetch = async (url, options) => {
+      if (String(url).endsWith('/consume_public_rate_limit')) return new Response(JSON.stringify({ allowed: true }), { headers: { 'Content-Type': 'application/json' } })
+      assert.ok(String(url).endsWith('/rest/v1/rpc/unsubscribe_cleaner_broadcast'))
+      rpcBody = JSON.parse(String(options?.body))
+      return new Response('true', { headers: { 'Content-Type': 'application/json' } })
+    }
+    const response = await POST(new NextRequest(`https://example.com/api/cleaner-email-preferences/unsubscribe?token=${validToken}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'x-forwarded-for': '198.51.100.150' },
+      body: 'List-Unsubscribe=One-Click',
+    }))
+    assert.equal(response.status, 200)
+    assert.deepEqual(rpcBody, { p_token: validToken })
+  } finally { globalThis.fetch = originalFetch }
+})
