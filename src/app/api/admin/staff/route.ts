@@ -49,14 +49,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (role === 'agent') {
+    if ((role === 'agent' || role === 'owner') && availabilityAssigneeId) {
       const config = await getAvailabilityConfig()
       if (!config.assignees.some((assignee) => assignee.id === availabilityAssigneeId)) {
         return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
       }
+      if ((await listStaffAccounts()).some((account) => account.active && account.availabilityAssigneeId === availabilityAssigneeId)) {
+        return NextResponse.json({ success: false, error: 'This regional profile is already linked to an active team account.' }, { status: 409 })
+      }
     }
 
-    const account = await createStaffAccount({ username, displayName, email, jobTitle, phone, role, password, availabilityAssigneeId: role === 'agent' ? availabilityAssigneeId : null })
+    const account = await createStaffAccount({ username, displayName, email, jobTitle, phone, role, password, availabilityAssigneeId: role === 'agent' || role === 'owner' ? availabilityAssigneeId || null : null })
     return NextResponse.json({ success: true, account }, { status: 201 })
   } catch (error) {
     console.error('[api/admin/staff] Failed to create staff account:', error)
@@ -96,11 +99,16 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Keep at least one active owner account.' }, { status: 409 })
     }
 
-    if (nextRole === 'agent') {
-      if (!availabilityAssigneeId) return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+    if (nextRole === 'agent' && !availabilityAssigneeId) {
+      return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+    }
+    if ((nextRole === 'agent' || nextRole === 'owner') && availabilityAssigneeId) {
       const config = await getAvailabilityConfig()
       if (!config.assignees.some((assignee) => assignee.id === availabilityAssigneeId)) {
         return NextResponse.json({ success: false, error: 'Select a valid availability profile for this agent.' }, { status: 400 })
+      }
+      if (nextActive && accounts.some((account) => account.id !== id && account.active && account.availabilityAssigneeId === availabilityAssigneeId)) {
+        return NextResponse.json({ success: false, error: 'This regional profile is already linked to an active team account.' }, { status: 409 })
       }
     }
 
@@ -121,7 +129,7 @@ export async function PATCH(request: NextRequest) {
       role: nextRole,
       active: nextActive,
       password,
-      availabilityAssigneeId: nextRole === 'agent' ? availabilityAssigneeId : null,
+      availabilityAssigneeId: nextRole === 'agent' || nextRole === 'owner' ? availabilityAssigneeId || null : null,
     })
     return NextResponse.json({ success: true, account })
   } catch (error) {
