@@ -20,6 +20,19 @@ export function canManageSharedCrmTemplates(role: AdminRole) {
   return role === 'owner' || role === 'manager'
 }
 
+export function isInspectionStaffAccount(account: Pick<StaffAccount, 'active' | 'role' | 'availabilityAssigneeId'>) {
+  return Boolean(
+    account.active
+    && canAccessClientCrm(account.role)
+    && account.availabilityAssigneeId?.trim(),
+  )
+}
+
+export function resolveDefaultInspectionStaffId(actorId: string, assignedStaffId: string | null, allowedStaffIds: string[]) {
+  if (assignedStaffId && allowedStaffIds.includes(assignedStaffId)) return assignedStaffId
+  return allowedStaffIds.includes(actorId) ? actorId : ''
+}
+
 export function canActorSendCrmEmailAs(role: AdminRole, actorId: string, senderStaffId: string) {
   if (role === 'owner' || role === 'manager') return Boolean(senderStaffId)
   return role === 'agent' && Boolean(actorId) && senderStaffId === actorId

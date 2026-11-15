@@ -11,6 +11,7 @@ import { sendBookingConfirmationEmail } from '@/lib/email'
 import { createBookingFollowUpEvent } from '@/lib/googleCalendar'
 import { getAdminSupabase } from '@/lib/supabase'
 import { listStaffAccounts } from '@/lib/staffAccounts'
+import { isInspectionStaffAccount } from '@/lib/clientCrmPolicy'
 import type { BookingInputs, CleaningFrequency, PremisesType, TimePreference } from '@/lib/types'
 
 const PREMISES_TYPES: PremisesType[] = [
@@ -155,15 +156,15 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
   const resolvedStaffId = actor.role === 'agent'
     ? actor.id
     : (currentAssignedStaffId || assignedStaffId)
-  const selectedAgent = staff.find((account) => account.id === resolvedStaffId && account.active && account.role === 'agent')
-  if (!selectedAgent?.availabilityAssigneeId) {
+  const selectedInspector = staff.find((account) => account.id === resolvedStaffId && isInspectionStaffAccount(account))
+  if (!selectedInspector?.availabilityAssigneeId) {
     throw new ClientCrmError('Choose an active inspection agent with a linked calendar.', 409)
   }
-  if (actor.role === 'agent' && selectedAgent.id !== actor.id) {
+  if (actor.role === 'agent' && selectedInspector.id !== actor.id) {
     throw new ClientCrmError('This appointment must be booked into your assigned inspection calendar.', 403)
   }
   const config = await getAvailabilityConfig()
-  const availabilityAssignee = getAvailabilityAssignee(config, selectedAgent.availabilityAssigneeId)
+  const availabilityAssignee = getAvailabilityAssignee(config, selectedInspector.availabilityAssigneeId)
   if (!availabilityAssignee?.active) throw new ClientCrmError('That inspection calendar is no longer active.', 409)
   if (availabilityAssignee.city !== city) {
     throw new ClientCrmError('Choose an inspection agent assigned to this site’s service region.', 409)
@@ -196,7 +197,7 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
     preferredInspectionStartTime: inspectionWindow.startTime,
     preferredInspectionEndTime: inspectionWindow.endTime,
     preferredInspectionAssigneeId: availabilityAssignee.id,
-    preferredInspectionAssigneeName: selectedAgent.displayName,
+    preferredInspectionAssigneeName: selectedInspector.displayName,
     preferredInspectionCalendarId: availabilityAssignee.calendarId,
     inspectionBookingSource: 'crm_manual',
     inspectionDurationMinutes: durationMinutes,
@@ -247,7 +248,7 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
   }
   if (!context.opportunity.assigned_staff_id) {
     await db.from('crm_opportunities')
-      .update({ assigned_staff_id: selectedAgent.id, updated_at: new Date().toISOString() })
+      .update({ assigned_staff_id: selectedInspector.id, updated_at: new Date().toISOString() })
       .eq('id', opportunityId)
       .is('assigned_staff_id', null)
   }
@@ -259,7 +260,7 @@ export async function createCrmInspectionAppointment(actor: ClientCrmActor, inpu
     durationMinutes,
     availabilityOverridden: true,
     assigneeId: availabilityAssignee.id,
-    assignedStaffId: selectedAgent.id,
+    assignedStaffId: selectedInspector.id,
   })
 
   if (canEmailClient) {

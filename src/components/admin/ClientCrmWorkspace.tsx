@@ -23,7 +23,7 @@ import ActionToast from '@/components/ActionToast'
 import DeleteClientCrmButton from '@/components/admin/DeleteClientCrmButton'
 import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
-import { getMissingCrmSignatureFields, resolveDefaultCrmSenderId } from '@/lib/clientCrmPolicy'
+import { getMissingCrmSignatureFields, resolveDefaultCrmSenderId, resolveDefaultInspectionStaffId } from '@/lib/clientCrmPolicy'
 import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity, CrmSenderOption } from '@/lib/clientCrmData'
 import { appendEmailMergeField, CLIENT_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
 import { createRichEmailContent, hasRichEmailContent, plainTextToEmailHtml, type RichEmailContent } from '@/lib/richEmailContent'
@@ -324,7 +324,11 @@ export default function ClientCrmWorkspace({
     setNoteDraft('')
     setAppointmentOpen(false)
     setAppointmentDraft(emptyAppointmentDraft(
-      selectedLead.assignedStaffId || (data?.actor.role === 'agent' ? data.actor.id : ''),
+      resolveDefaultInspectionStaffId(
+        data?.actor.id ?? '',
+        selectedLead.assignedStaffId,
+        data?.agents.map((agent) => agent.id) ?? [],
+      ),
       { frequency: selectedLead.cleaningFrequency, timePreference: selectedLead.cleaningTimePreference },
     ))
     const defaultSenderId = resolveDefaultCrmSenderId(

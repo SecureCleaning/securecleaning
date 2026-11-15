@@ -13,6 +13,7 @@ import { normalizeCrmPhone } from '@/lib/clientCrmOpportunity'
 import {
   buildContactSourceExplanation,
   canActorAccessAssignedOpportunity,
+  isInspectionStaffAccount,
   isValidCrmEmail,
   normalizeCrmContactBasis,
   normalizeCrmEmail,
@@ -231,7 +232,7 @@ export async function getCrmAssignmentCandidates(input: {
   return staff
     .filter(account => eligibleProfiles.some(a => a.id === account.availabilityAssigneeId))
     .sort((a, b) => priorityMode ? compareBookingPriority(eligibleProfiles.find(p => p.id === a.availabilityAssigneeId)!, eligibleProfiles.find(p => p.id === b.availabilityAssigneeId)!) : 0)
-    .filter((account) => account.active && account.role === 'agent' && account.availabilityAssigneeId && assigneeIds.has(account.availabilityAssigneeId))
+    .filter((account) => isInspectionStaffAccount(account) && assigneeIds.has(account.availabilityAssigneeId!))
     .map((account) => ({
       id: account.id,
       displayName: account.displayName,
@@ -245,7 +246,7 @@ export async function getCrmAssignmentCandidates(input: {
 
 async function getAllowedCrmAgents(actor: ClientCrmActor) {
   if (actor.role === 'agent') {
-    return [{
+    return isInspectionStaffAccount(actor) ? [{
       id: actor.id,
       displayName: actor.displayName,
       email: actor.email,
@@ -253,10 +254,10 @@ async function getAllowedCrmAgents(actor: ClientCrmActor) {
       phone: actor.phone,
       availabilityAssigneeId: actor.availabilityAssigneeId,
       active: actor.active,
-    }]
+    }] : []
   }
   return (await listStaffAccounts())
-    .filter((account) => account.active && account.role === 'agent')
+    .filter(isInspectionStaffAccount)
     .map((account) => ({
       id: account.id,
       displayName: account.displayName,
@@ -1077,7 +1078,7 @@ export async function syncBookingCrmOpportunity(input: {
   const db = getAdminSupabase()
   const staff = await listStaffAccounts()
   const linkedAgent = input.availabilityAssigneeId
-    ? staff.find((account) => account.active && account.role === 'agent' && account.availabilityAssigneeId === input.availabilityAssigneeId)
+    ? staff.find((account) => isInspectionStaffAccount(account) && account.availabilityAssigneeId === input.availabilityAssigneeId)
     : null
   const candidates = linkedAgent ? [linkedAgent] : await getCrmAssignmentCandidates(input)
   const assignedStaffId = candidates[0]?.id ?? null
