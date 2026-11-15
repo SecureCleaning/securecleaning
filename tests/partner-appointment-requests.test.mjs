@@ -61,7 +61,7 @@ test('pasted sender and admin settings do not prevent appointment notification p
   for(const state of ['pending','confirmed','declined']){
    const result=configured.partnerAppointmentPayloads({...notice,state,selected:state==='confirmed'?0:null})
    assert.equal(result.client.from,sender);assert.equal(result.staff.from,sender)
-   assert.equal(result.client.replyTo,'info@example.invalid');assert.equal(result.staff.replyTo,'info@example.invalid')
+   assert.equal(result.client.replyTo,notice.agentEmail);assert.equal(result.staff.replyTo,'info@example.invalid')
    assert.deepEqual(Array.from(result.staff.to),['info@example.invalid','agent@example.invalid'])
    for(const attachment of result.staff.attachments){
     const content=Buffer.from(attachment.content,'base64').toString()
@@ -72,7 +72,7 @@ test('pasted sender and admin settings do not prevent appointment notification p
  }
  const empty=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:' \n',ADMIN_EMAIL:' \r\n'})
  assert.equal(empty.partnerAppointmentPayloads(notice).client.from,'quotes@securecleaning.com.au')
- assert.equal(empty.partnerAppointmentPayloads(notice).client.replyTo,'info@securecleaning.com.au')
+ assert.equal(empty.partnerAppointmentPayloads(notice).client.replyTo,notice.agentEmail)
  for(const sender of ['quotes@example.invalid\r\nATTENDEE:mailto:other@example.invalid','Secure\nCleaning <quotes@example.invalid>']){
   const invalid=load('partnerAppointmentMessages',messageMocks,{FROM_EMAIL:sender})
   assert.throws(()=>invalid.partnerAppointmentPayloads(notice),/Invalid calendar mailbox/)
@@ -84,6 +84,20 @@ test('initial customer message is TBA without invite or notes; agent has tentati
  assert.match(result.staff.html,/PRIVATE &lt;script&gt;<br>Internal note/);assert.doesNotMatch(result.staff.html,/<script>/)
  assert.equal(result.staff.attachments.length,2)
  for(const item of result.staff.attachments){const text=Buffer.from(item.content,'base64').toString();assert.match(text,/STATUS:TENTATIVE/);assert.match(text,/TRANSP:TRANSPARENT/);assert.match(text,/SEQUENCE:0/);assert.match(text.replace(/\r\n[ \t]/g,''),/PRIVATE/)}
+})
+test('request and decision replies use the assigned agent while staff notifications still go to admin and agent',()=>{
+ for(const agentEmail of ['nsw@example.invalid','melbourne@example.invalid','second-nsw@example.invalid']){
+  for(const state of ['pending','confirmed','declined']){
+   const result=messages.partnerAppointmentPayloads({...notice,agentEmail,state,selected:state==='confirmed'?0:null})
+   assert.equal(result.client.replyTo,agentEmail)
+   assert.equal(result.client.to,inputs.email)
+   assert.equal(result.client.from,'quotes@securecleaning.com.au')
+   assert.equal(result.client.cc,undefined)
+   assert.equal(result.staff.replyTo,'info@securecleaning.com.au')
+   assert.deepEqual(Array.from(result.staff.to),['info@securecleaning.com.au',agentEmail])
+   assert.doesNotMatch(JSON.stringify(result.client),/PRIVATE|Internal note/)
+  }
+ }
 })
 test('confirmation updates selected calendar UID, cancels alternatives and gives client a private invite',()=>{
  const result=messages.partnerAppointmentPayloads({...notice,state:'confirmed',selected:0})

@@ -43,12 +43,33 @@ test('appointment changes notify the client and assigned agent with distinct ide
   })
 
   assert.deepEqual(sends.map(item => item.payload.to), ['client@example.test', 'agent@example.test'])
+  assert.deepEqual(sends.map(item => item.payload.replyTo), ['agent@example.test', 'admin@example.test'])
   assert.deepEqual(sends.map(item => item.options.idempotencyKey), [
     'booking-appointment-BK-EXAMPLE-2-rescheduled-client', 'booking-appointment-BK-EXAMPLE-2-rescheduled-agent',
   ])
   assert.equal(outcomes.map(item => item.status).join(','), 'sent,sent')
   assert.equal(audits.length, 2)
   assert.match(sends[0].payload.subject, /appointment updated/i)
+})
+
+test('reschedule and cancellation replies follow the assigned mailbox with a safe admin fallback', async () => {
+  for (const change of ['rescheduled', 'cancelled']) {
+    for (const agentEmail of [' NSW@example.test ', 'melbourne@example.test', 'second-nsw@example.test', undefined, 'invalid', '<bad@example.test>']) {
+      const sends = []
+      const { module } = loadNotificationModule({ send: async payload => { sends.push(payload); return { id: 'fixture-id' } } })
+      await module.sendAppointmentChangeNotifications({
+        bookingRef: 'BK-REPLY', inputs: bookingInputs, change, previousScheduledFor: '2026-11-05T00:00:00Z',
+        scheduledFor: change === 'rescheduled' ? '2026-11-05T01:00:00Z' : null, agentEmail, agentName: 'Assigned Agent', revision: 2,
+      })
+      const usable = agentEmail?.includes('@') && !agentEmail.includes('<')
+      assert.equal(sends[0].replyTo, usable ? agentEmail.trim().toLowerCase() : 'admin@example.test')
+      assert.equal(sends[0].to, 'client@example.test')
+      assert.equal(sends[0].from, 'quotes@example.test')
+      assert.equal(sends[0].attachments.length, 1)
+      assert.equal(sends.length, usable ? 2 : 1)
+      if (usable) assert.equal(sends[1].replyTo, 'admin@example.test')
+    }
+  }
 })
 
 test('amended and cancelled calendars retain the UID and increase their revision sequence', () => {

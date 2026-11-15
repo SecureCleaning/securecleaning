@@ -15,7 +15,7 @@ export type AppointmentNotificationOutcome = {
 }
 
 function validEmail(value: unknown): value is string {
-  return typeof value === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
+  return typeof value === 'string' && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value.trim())
 }
 
 function appointmentLabel(value: string, timeZone: string) {
@@ -115,7 +115,9 @@ export async function sendAppointmentChangeNotifications(input: {
       const result = await sendEmailOrThrow({
         from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au',
         to: recipient.email.trim().toLowerCase(),
-        replyTo: process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au',
+        replyTo: recipient.kind === 'client' && validEmail(input.agentEmail)
+          ? input.agentEmail.trim().toLowerCase()
+          : process.env.ADMIN_EMAIL?.trim() || 'info@securecleaning.com.au',
         subject: `Inspection appointment ${input.change === 'cancelled' ? 'cancelled' : 'updated'} — ${business}`,
         html: notificationHtml({ ...input, recipient: recipient.kind }),
         attachments: calendar ? [{

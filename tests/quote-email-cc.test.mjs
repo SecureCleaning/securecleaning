@@ -163,7 +163,13 @@ function emailFixture(options = {}) {
     '@/lib/richEmailServer': richEmail,
     './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },
     './siteUrl': { getSiteUrl: () => 'https://example.com' }, './publicRoomScope': scope,
-    './availability': { getAvailabilityConfig: async()=>({}), getAvailabilityAssignee: ()=>({email:'agent@example.com'}) }, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
+    './availability': {
+      getAvailabilityConfig: async () => {
+        if (options.availabilityError) throw options.availabilityError
+        return { assignees: options.assignees ?? [{ id: 'agent', email: 'agent@example.com' }] }
+      },
+      getAvailabilityAssignee: (config, id) => config.assignees.find(agent => agent.id === id),
+    }, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
     './quoteEmailRecipients': { getQuoteAgentCc: async (...args) => {
       lookups.push(args)
       if (options.lookupError) throw options.lookupError
@@ -540,8 +546,47 @@ test('partner booking notes are escaped and sent only to admin and the selected 
  assert.equal(fixture.payloads.length,2)
  const [client,staff]=fixture.payloads
  assert.equal(client.to,inputs.email)
+ assert.equal(client.reply_to,'agent@example.com')
  assert.doesNotMatch(client.html,/Private|Second line|Internal appointment notes/)
  assert.deepEqual([...staff.to],['admin@example.com','agent@example.com'])
  assert.match(staff.html,/Private &lt;script&gt; note<br>Second line/)
  assert.doesNotMatch(staff.html,/<script>/)
+})
+
+test('booking client reply-to follows the exact assigned agent, not the state priority or another agent', async () => {
+  const assignees = [
+    { id: 'nsw-first', email: 'first@example.test', city: 'sydney', bookingPriority: 1 },
+    { id: 'nsw-second', email: ' SECOND@example.test ', city: 'sydney', bookingPriority: 100 },
+    { id: 'vic', email: 'vic@example.test', city: 'melbourne', bookingPriority: 1 },
+  ]
+  for (const agent of assignees) {
+    for (const source of ['partner', 'crm_manual', undefined]) {
+      const fixture = emailFixture({ assignees })
+      await fixture.sendBookingConfirmationEmail('BK-REPLY', {
+        ...inputs, city: agent.city, inspectionBookingSource: source, preferredInspectionAssigneeId: agent.id,
+      })
+      const [client, staff] = fixture.payloads
+      assert.equal(client.reply_to, agent.email.trim().toLowerCase())
+      assert.equal(client.to, inputs.email)
+      assert.equal(client.from, 'quotes@example.com')
+      assert.equal(client.cc, undefined)
+      assert.equal(client.attachments.length, 1)
+      assert.deepEqual([...staff.to], ['admin@example.com', agent.email.trim().toLowerCase()])
+    }
+  }
+})
+
+test('bookings without a usable assigned mailbox retain the admin reply fallback', async () => {
+  for (const options of [
+    { id: undefined },
+    { id: 'missing', assignees: [] },
+    { id: 'agent', assignees: [{ id: 'agent', email: 'invalid' }] },
+    { id: 'agent', assignees: [{ id: 'agent', email: '<bad@example.test>' }] },
+    { id: 'agent', availabilityError: new Error('Synthetic config outage') },
+  ]) {
+    const fixture = emailFixture(options)
+    await fixture.sendBookingConfirmationEmail('BK-FALLBACK', { ...inputs, preferredInspectionAssigneeId: options.id })
+    assert.equal(fixture.payloads[0].reply_to, 'admin@example.com')
+    assert.deepEqual([...fixture.payloads[1].to], ['admin@example.com'])
+  }
 })

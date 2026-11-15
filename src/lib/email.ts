@@ -42,7 +42,7 @@ async function getSelectedInspectionAssigneeEmail(inputs: BookingInputs): Promis
     const config = await getAvailabilityConfig()
     const assignee = getAvailabilityAssignee(config, inputs.preferredInspectionAssigneeId)
     const email = assignee?.email?.trim().toLowerCase() ?? ''
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
+    return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(email) ? email : null
   } catch (error) {
     console.error('[email] Failed to resolve inspection assignee email:', error)
     return null
@@ -374,7 +374,7 @@ export async function sendBookingConfirmationEmail(
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
-    replyTo: ADMIN_EMAIL,
+    replyTo: selectedAssigneeEmail || ADMIN_EMAIL.trim(),
     subject: `${staffConfirmed ? 'Site Inspection Confirmed' : 'Site Inspection Request Received'} — ${bookingRef}`,
     attachments: [
       {
