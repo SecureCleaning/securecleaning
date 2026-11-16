@@ -12,6 +12,7 @@ export type PublicQuoteDisplayInputs = Pick<QuoteInputs,
 
 export type PublicQuoteDocument = {
   quoteRef: string
+  validUntil?: string | null
   variant: QuoteDocumentVariant
   customerJourney: QuoteCustomerJourney
   isFirmPrice: boolean
@@ -24,6 +25,7 @@ export function toPublicQuoteDocument(record: PublicQuoteWorkflowRecord, variant
   const source = record.inputs
   return {
     quoteRef: record.quoteRef,
+    validUntil: record.validUntil,
     variant,
     customerJourney: record.customerJourney,
     isFirmPrice: record.displayPrice.isFirm,

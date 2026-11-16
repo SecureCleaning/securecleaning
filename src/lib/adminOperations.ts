@@ -44,7 +44,7 @@ export async function resendQuoteEmailByRef(quoteRef: string) {
   const quote = await getPublicQuoteWorkflowByRef(quoteRef)
   if (!quote) throw new Error('Quote not found.')
 
-  await sendQuoteEmail(quote.quoteRef, quote.inputs, quote.result, quote.displayPrice)
+  await sendQuoteEmail(quote.quoteRef, quote.inputs, quote.result, quote.displayPrice, quote.validUntil)
   await writeAuditLog('quote', quoteRef, 'email_resent')
   return { success: true }
 }
@@ -56,7 +56,7 @@ export async function resendScopeOfWorksEmailByRef(quoteRef: string) {
   const quote = await getPublicQuoteWorkflowByRef(quoteRef, variant)
   if (!quote) throw new Error('Quote not found.')
 
-  await sendScopeOfWorksEmail(quote.quoteRef, quote.inputs, variant)
+  await sendScopeOfWorksEmail(quote.quoteRef, quote.inputs, variant, quote.validUntil)
   await writeAuditLog('quote', quoteRef, 'scope_email_resent')
   return { success: true }
 }

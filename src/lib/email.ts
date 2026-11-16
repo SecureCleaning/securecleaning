@@ -1,3 +1,5 @@
+import quoteTermsPdf from '@/content/quote-service-terms-pdf.json' with { type: 'json' }
+import { QUOTE_TERMS_PATH, quoteValidityLabel } from './quoteTerms'
 import { escapeHtml } from '@/lib/htmlEscape'
 import { sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import type { QuoteInputs, QuoteResult, BookingInputs } from './types'
@@ -34,6 +36,10 @@ function getResend() {
 const FROM_EMAIL = process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'info@securecleaning.com.au'
 const SITE_URL = getSiteUrl()
+
+function quoteTermsEmailHtml(validUntil?: string | null) {
+  return `<p><strong>${escapeHtml(quoteValidityLabel(validUntil))}</strong></p><p>Please review the <a href="${SITE_URL}${QUOTE_TERMS_PATH}">Quote &amp; Service Terms</a> with your quote and Scope of Works. A PDF copy is attached when this email is sent. Ongoing service has no fixed minimum term and 30 days' notice; a fixed-term contract is available on request.</p>`
+}
 
 async function getSelectedInspectionAssigneeEmail(inputs: BookingInputs): Promise<string | null> {
   if (!inputs.preferredInspectionAssigneeId) return null
@@ -114,7 +120,8 @@ export async function sendQuoteEmail(
   quoteRef: string,
   inputs: QuoteInputs,
   result: QuoteResult,
-  displayPrice?: FirmQuoteDisplayPrice
+  displayPrice?: FirmQuoteDisplayPrice,
+  validUntil?: string | null,
 ): Promise<string | null> {
   const cityLabel = inputs.city === 'brisbane' ? 'Queensland' : inputs.city === 'melbourne' ? 'Melbourne' : 'Sydney'
   const businessLabel = inputs.businessName?.trim() || 'your premises'
@@ -143,6 +150,7 @@ export async function sendQuoteEmail(
     from: FROM_EMAIL,
     to: inputs.email,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
+    attachments: [{ ...quoteTermsPdf }],
     replyTo,
     subject: `Your Secure Cleaning Quote — ${quoteRef}`,
     html: `
@@ -193,6 +201,7 @@ export async function sendQuoteEmail(
             View Scope of Works
           </a>
 
+          ${quoteTermsEmailHtml(validUntil)}
           <p style="color: #64748b; font-size: 13px;">For a requested quote, we may send an SMS to the mobile number you supplied when this email is sent. Reply STOP to opt out, or reply to this email to request email-only contact. This does not subscribe you to unrelated marketing. <a href="${SITE_URL}/terms">Terms of Service</a> | <a href="${SITE_URL}/privacy">Privacy Policy</a>.</p>
           <p style="color: #64748b; font-size: 13px; margin-top: 32px;">
             This remote quote is valid for 30 days. Prices exclude GST. Final pricing is confirmed after a site inspection.
@@ -211,7 +220,8 @@ export async function sendQuoteEmail(
 export async function sendScopeOfWorksEmail(
   quoteRef: string,
   inputs: QuoteInputs,
-  variant: 'remote_review' | 'final' = 'remote_review'
+  variant: 'remote_review' | 'final' = 'remote_review',
+  validUntil?: string | null,
 ): Promise<void> {
   const documentAccessToken = await createQuoteCapability(quoteRef, 'document', variant)
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({
@@ -227,6 +237,7 @@ export async function sendScopeOfWorksEmail(
     from: FROM_EMAIL,
     to: inputs.email,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
+    attachments: [{ ...quoteTermsPdf }],
     replyTo,
     subject: `Your Secure Cleaning Scope of Works - ${quoteRef}`,
     html: `
@@ -238,6 +249,7 @@ export async function sendScopeOfWorksEmail(
         <div style="padding: 32px 24px;">
           <p>Hi ${escapeHtml(inputs.contactName.trim().split(/\s+/)[0] || 'there')},</p>
           <p>Your client scope of works for <strong>${escapeHtml(businessLabel)}</strong> is ready to view online.</p>
+          ${quoteTermsEmailHtml(validUntil)}
           <p><strong>Service frequency:</strong> ${escapeHtml(frequencyLabel)}</p>
           <p>The report lists the planned areas, regular tasks, and options selected for your ${variant === 'final' ? 'final quote' : 'remote quotation'}. Any agreed changes can be reflected in the same online report.</p>
           <p style="margin: 28px 0; text-align: center;">
@@ -262,6 +274,7 @@ export async function buildUpdatedQuoteEmail(
     // Server-resolved before claiming a final send, so lookup failures remain retryable.
     agentCc?: string[]
     agentReplyTo?: string
+    validUntil?: string | null
     to?: string
     subject?: string
     message?: string
@@ -300,6 +313,7 @@ export async function buildUpdatedQuoteEmail(
     from: FROM_EMAIL,
     to: recipient,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
+    attachments: [{ ...quoteTermsPdf }],
     replyTo,
     subject,
     html: `
@@ -334,6 +348,7 @@ export async function buildUpdatedQuoteEmail(
             ${options?.includeConsumablesCatalogue ? `<a href="${consumablesUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background: #d39f2a; color: #172033; padding: 14px 22px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 8px; margin-left: 8px;">View Consumables Pricing</a>` : ''}
           </p>
 
+          ${quoteTermsEmailHtml(options?.validUntil)}
           <p style="color: #64748b; font-size: 13px;">For a requested quote, we may send an SMS to the mobile number you supplied when this email is sent. Reply STOP to opt out, or reply to this email to request email-only contact. This does not subscribe you to unrelated marketing. <a href="${SITE_URL}/terms">Terms of Service</a> | <a href="${SITE_URL}/privacy">Privacy Policy</a>.</p>
           <p style="color: #64748b; font-size: 13px; margin-top: 28px;">This quote is provided for ${escapeHtml(businessLabel)}. If you have any questions or would like to discuss the next step, please reply to this email.</p>
         </div>

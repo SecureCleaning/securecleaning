@@ -45,7 +45,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     const routing = await getQuoteEmailRouting(params.ref, quote.finalDocument.inputs, to)
     if (body.previewOnly === true) {
       const preview = await buildUpdatedQuoteEmail(params.ref, quote.finalDocument.inputs, quote.finalDocument.displayPrice, {
-        to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html,
+        validUntil: quote.validUntil, to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html,
         includeConsumablesCatalogue: quote.finalDocument.firmQuoteDraft.includeConsumablesCatalogue,
       })
       return NextResponse.json({ success: true, preview }, { headers: { 'Cache-Control': 'no-store' } })
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
       archiveBeforeSend: async payload => { await archiveFinalQuoteEmail(attemptId!, payload); providerCallStarted = true },
-      to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      validUntil: quote.validUntil, to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)

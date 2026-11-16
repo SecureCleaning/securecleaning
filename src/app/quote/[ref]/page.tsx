@@ -27,6 +27,7 @@ export default async function QuoteByRefPage(
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         <QuoteResultView
           quoteRef={quote.quoteRef}
+          validUntil={quote.validUntil}
           result={quote.result}
           inputs={quote.inputs}
           documentVariant={quote.variant}

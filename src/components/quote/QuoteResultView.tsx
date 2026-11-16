@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { QUOTE_TERMS_PATH, QUOTE_TERMS_PDF_PATH, quoteValidityLabel } from '@/lib/quoteTerms'
 import type { QuoteResult as QuoteResultType, QuoteInputs } from '@/lib/types'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomScope } from '@/lib/publicRoomScope'
 import { formatPriceRange } from '@/lib/quoteEngine'
@@ -9,6 +10,7 @@ import { isSelfServiceQuoteJourney, type QuoteCustomerJourney } from '@/lib/quot
 
 interface QuoteResultViewProps {
   quoteRef: string
+  validUntil?: string | null
   result: QuoteResultType | Pick<QuoteResultType, 'totalLow' | 'totalHigh' | 'carpetSteamSeparate'>
   inputs: QuoteInputs | PublicQuoteDisplayInputs
   documentAccessToken?: string
@@ -53,6 +55,7 @@ const timeLabels: Record<string, string> = {
 
 export default function QuoteResultView({
   quoteRef,
+  validUntil,
   result,
   inputs,
   emailSent,
@@ -196,6 +199,16 @@ export default function QuoteResultView({
           </p>
         ) : null}
       </div> : null}
+
+      <section className="mb-6 rounded-xl border border-teal-200 bg-teal-50 p-5 text-sm">
+        <h2 className="font-bold text-teal-900">Quote &amp; Service Terms</h2>
+        <p className="mt-2">{quoteValidityLabel(validUntil)}</p>
+        <p className="mt-2">Ongoing service with no fixed minimum term and 30 days&apos; notice. A fixed-term contract is available on request. Please review the terms with your quote and Scope of Works.</p>
+        <div className="mt-3 flex flex-wrap gap-4">
+          <a href={QUOTE_TERMS_PATH} target="_blank" rel="noopener noreferrer" className="font-semibold text-teal-800 underline">Read terms</a>
+          <a href={QUOTE_TERMS_PDF_PATH} download className="font-semibold text-teal-800 underline">Download terms PDF</a>
+        </div>
+      </section>
 
       <p className="text-xs text-gray-500 text-center mb-8">
         {documentVariant === 'final'

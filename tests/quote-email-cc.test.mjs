@@ -9,6 +9,8 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
+const quoteTerms = await import('../src/lib/quoteTerms.ts')
+const quoteTermsPdf = JSON.parse(readFileSync(new URL('../src/content/quote-service-terms-pdf.json', import.meta.url), 'utf8'))
 const crmPolicy = await import('../src/lib/clientCrmPolicy.ts')
 const availability = await import('../src/lib/availability.ts')
 const { formatPriceRange } = await import('../src/lib/quoteEngine.ts')
@@ -160,6 +162,7 @@ function emailFixture(options = {}) {
   const lookups = []
   const capabilities = []
   const exports = loadTs('src/lib/email.ts', {
+    './quoteTerms': quoteTerms, '@/content/quote-service-terms-pdf.json': { default: quoteTermsPdf },
     './emailFailureAlerts': { reportEmailFailure: async () => {} },
     '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
@@ -629,4 +632,33 @@ test('quote previews and sends use assigned reply address and first-name greetin
   assert.equal(email.reply_to,'agent@example.com')
   assert.match(email.html,/Hi Rhonda,/)
  }
+})
+
+test('quote terms PDF matches the download and accompanies previews, final sends, initial quotes and scope resends', async () => {
+  const fixture = emailFixture()
+  const validUntil = '2026-12-16T01:00:00.000Z'
+  const pdf = readFileSync(new URL('../public/documents/' + quoteTermsPdf.filename, import.meta.url))
+  const preview = await fixture.buildUpdatedQuoteEmail('SC-TEST', inputs, { low: 200, high: 200 }, { validUntil })
+  assert.match(preview.html, /16 December 2026/)
+  assert.match(preview.html, /quote-terms\/2026-11-16/)
+  assert.deepEqual(Buffer.from(preview.attachments[0].content, 'base64'), pdf)
+  assert.equal(fixture.payloads.length, 0)
+  assert.equal(fixture.capabilities.length, 0)
+  let archived
+  await fixture.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 200, high: 200 }, { validUntil, archiveBeforeSend: async payload => { archived = payload } })
+  await fixture.sendQuoteEmail('SC-TEST', inputs, { totalLow: 200, totalHigh: 200 }, undefined, validUntil)
+  await fixture.sendScopeOfWorksEmail('SC-TEST', inputs, 'final', validUntil)
+  for (const payload of fixture.payloads) {
+    assert.equal(payload.attachments.length, 1)
+    assert.deepEqual(Buffer.from(payload.attachments[0].content, 'base64'), pdf)
+    assert.match(payload.html, /16 December 2026/)
+    assert.match(payload.html, /Quote &amp; Service Terms/)
+  }
+  assert.equal(archived.attachments[0].content, fixture.payloads[0].attachments[0].content)
+})
+
+test('quote validity displays a saved expiry without renewing it on resend', () => {
+  assert.match(quoteTerms.quoteValidityLabel('2020-01-01T00:00:00Z'), /1 January 2020/)
+  assert.equal(quoteTerms.quoteValidityLabel(null), 'Valid for 30 days from the quote issue date.')
+  assert.equal(quoteTerms.quoteValidityLabel('bad'), quoteTerms.quoteValidityLabel(null))
 })

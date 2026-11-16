@@ -115,7 +115,7 @@ test('scope email resends use the latest saved document frequency and matching s
 
   assert.match(operations, /const variant = workflow\.finalDocument \? 'final' : 'remote_review'/)
   assert.match(operations, /getPublicQuoteWorkflowByRef\(quoteRef, variant\)/)
-  assert.match(operations, /sendScopeOfWorksEmail\(quote\.quoteRef, quote\.inputs, variant\)/)
+  assert.match(operations, /sendScopeOfWorksEmail\(quote\.quoteRef, quote\.inputs, variant, quote\.validUntil\)/)
   assert.match(email, /Service frequency:/)
   assert.match(email, /variant === 'final' \? \{ variant: 'final' \} : \{\}/)
 })
@@ -190,7 +190,7 @@ test('public quote DTO shows company while excluding contact, workflow, staff, c
   }
   for (const variant of ['remote_review', 'final']) {
     const dto = toPublicQuoteDocument(record, variant)
-    assert.deepEqual(Object.keys(dto).sort(), ['customerJourney', 'includeConsumablesCatalogue', 'inputs', 'isFirmPrice', 'quoteRef', 'result', 'variant'])
+    assert.deepEqual(Object.keys(dto).sort(), ['customerJourney', 'includeConsumablesCatalogue', 'inputs', 'isFirmPrice', 'quoteRef', 'result', 'validUntil', 'variant'])
     assert.equal(dto.inputs.businessName, 'Private business')
     assert.equal(dto.customerJourney, 'agent_created')
     assert.equal(dto.isFirmPrice, true)

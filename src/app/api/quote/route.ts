@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
     let emailError: string | null = null
 
     try {
-      const providerMessageId = await sendQuoteEmail(quoteRef, inputs, result, displayPrice)
+      const providerMessageId = await sendQuoteEmail(quoteRef, inputs, result, displayPrice, validUntil.toISOString())
       emailSent = true
       if (quoteData?.id) {
         try {
@@ -256,6 +256,7 @@ export async function POST(request: NextRequest) {
       success: true,
       quoteRef,
       result: customerResult,
+      validUntil: validUntil.toISOString(),
       bookingHandoffToken: await createQuoteBookingHandoffToken(quoteRef),
       documentAccessToken: await createQuoteCapability(quoteRef, 'document'),
       emailSent,

@@ -10,6 +10,7 @@ const QUOTE_DRAFT_KEY = 'quoteDraft'
 
 export interface StoredQuoteResult {
   quoteRef: string
+  validUntil?: string | null
   result: QuoteResult
   inputs: QuoteInputs
   documentAccessToken?: string

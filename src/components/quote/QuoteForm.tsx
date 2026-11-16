@@ -172,6 +172,7 @@ export default function QuoteForm() {
 
       saveQuoteResult({
         quoteRef: data.quoteRef,
+        validUntil: data.validUntil,
         bookingHandoffToken: data.bookingHandoffToken,
         documentAccessToken: data.documentAccessToken,
         result: data.result,
