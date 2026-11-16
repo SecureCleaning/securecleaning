@@ -1,3 +1,4 @@
+import QuoteEmailTemplateEditor from '@/components/admin/QuoteEmailTemplateEditor'
 import AdminDashboard from '@/components/admin/AdminDashboard'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import { getAdminDashboardData } from '@/lib/adminDashboard'
@@ -11,6 +12,7 @@ export default async function AdminQuotesPage() {
     const identity = await getAdminSessionIdentityFromCookies()
     return <div>
       <AdminPageHeader title="Quotes" description="Search, review and manage client quotes." showBack={false} />
+      {identity && (identity.role === 'owner' || identity.role === 'manager') ? <QuoteEmailTemplateEditor /> : null}
       <AdminDashboard
         initialData={await getAdminDashboardData()}
         canDeleteQuotes={Boolean(identity && hasAdminRole(identity.role, 'owner'))}

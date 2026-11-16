@@ -1,5 +1,9 @@
 'use client'
 
+import QuoteEmailTemplateEditor from '@/components/admin/QuoteEmailTemplateEditor'
+import { quoteEmailDraft as mergeQuoteEmailDraft } from '@/lib/quoteEmailTemplate'
+import { QUOTE_TERMS_PDF_PATH } from '@/lib/quoteTerms'
+
 import { appendSavedQuoteField, overrideIncludedQuoteField } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 import RoomPriceSummary from '@/components/admin/RoomPriceSummary'
@@ -199,6 +203,24 @@ export default function QuoteWorkflowEditor({
     message: 'Following our review of your requirements, your updated quote is ready to view online.',
   })
 
+  const [quoteTemplateCanEdit, setQuoteTemplateCanEdit] = useState(false)
+  const [quoteTemplateReset, setQuoteTemplateReset] = useState(0)
+  async function loadQuoteTemplate() {
+    setQuoteEmailPreview(null)
+    setQuoteEmailPreviewBusy(true)
+    try {
+      const response = await fetch('/api/quote-email-template', { cache: 'no-store' })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to load template.')
+      const draft = mergeQuoteEmailDraft(data.template, { quote_ref: quote.quoteRef, business_name: quote.finalDocument?.inputs.businessName || quote.inputs.businessName || '' })
+      setQuoteEmailDraft(current => ({ ...current, subject: draft.subject, message: draft.body }))
+      setQuoteEmailRich({ html: draft.bodyHtml, document: null })
+      setQuoteTemplateCanEdit(data.canEdit === true)
+      setQuoteTemplateReset(key => key + 1)
+    } catch (error) { setQuoteEmailAction({ busy: false, message: null, error: error instanceof Error ? error.message : 'Unable to load template.' }) }
+    finally { setQuoteEmailPreviewBusy(false) }
+  }
+
   const derivedInputs = useMemo(() => deriveQuoteInputsFromRooms(firmQuoteDraft, roomTypeConfig), [firmQuoteDraft, roomTypeConfig])
   const preview = useMemo(() => buildFirmQuotePreview(firmQuoteDraft, pricingConfig, roomTypeConfig), [firmQuoteDraft, pricingConfig, roomTypeConfig])
   const roomPricingBreakdown = useMemo(
@@ -334,6 +356,7 @@ export default function QuoteWorkflowEditor({
   async function openFinalQuoteEmail() {
     if (firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted') return
     if (finalPublished) {
+      if (!quoteTemplateReset) await loadQuoteTemplate()
       setQuoteEmailComposerOpen(true)
       return
     }
@@ -361,6 +384,7 @@ export default function QuoteWorkflowEditor({
         throw new Error(result.error || 'The final quote could not be prepared for sending.')
       }
 
+      if (!quoteTemplateReset) await loadQuoteTemplate()
       setFirmQuoteDraft(reviewedDraft)
       setFinalPublished(true)
       setQuoteEmailDraft((current) => ({ ...current, to: derivedInputs.email.trim().toLowerCase() }))
@@ -664,7 +688,7 @@ export default function QuoteWorkflowEditor({
               disabled={quoteEmailAction.busy || saveState.saving || firmQuoteDraft.status === 'sent' || firmQuoteDraft.status === 'accepted'}
               className="rounded-lg border border-green-200 bg-green-600 px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {quoteEmailAction.busy ? quoteEmailComposerOpen ? 'Sending...' : 'Preparing final quote...' : quoteEmailComposerOpen ? 'Close email' : firmQuoteDraft.status === 'sent' ? 'Final quote sent' : 'Send final quote'}
+              {quoteEmailAction.busy ? quoteEmailComposerOpen ? 'Sending...' : 'Preparing final quote...' : quoteEmailComposerOpen ? 'Close email' : firmQuoteDraft.status === 'sent' ? 'Final quote sent' : finalPublished ? 'Edit quote email' : 'Prepare final quote & email'}
             </button>
           ) : null}
           {canReconcileDelivery && finalPublished ? (
@@ -705,7 +729,7 @@ export default function QuoteWorkflowEditor({
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="font-semibold text-gray-900">Email updated quote</h3>
-              <p className="mt-1 text-sm text-gray-600">Review the customer email and add any commentary before sending.</p>
+              <p className="mt-1 text-sm text-gray-600">Edit the subject and formatted message before previewing. Pricing, quote links and the terms PDF are added automatically. Nothing is sent until you choose Send final quote.</p>
             </div>
             <button
               type="button"
@@ -716,6 +740,8 @@ export default function QuoteWorkflowEditor({
               Cancel
             </button>
           </div>
+          <button type="button" disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} onClick={() => void loadQuoteTemplate()} className="mt-3 rounded-lg border px-3 py-2 text-sm">Replace message with saved template</button>
+          {quoteTemplateCanEdit ? <QuoteEmailTemplateEditor /> : null}
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <label className="text-sm font-semibold text-gray-700">
               To
@@ -733,17 +759,17 @@ export default function QuoteWorkflowEditor({
                 type="text"
                 value={quoteEmailDraft.subject}
                 disabled={quoteEmailPreviewBusy || quoteEmailAction.busy}
-                onChange={(event) => setQuoteEmailDraft((current) => ({ ...current, subject: event.target.value }))}
+                onChange={(event) => { setQuoteEmailPreview(null); setQuoteEmailDraft((current) => ({ ...current, subject: event.target.value })) }}
                 className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 font-normal text-gray-900"
               />
             </label>
           </div>
-          <RichEmailEditor mergeFields={[INDUSTRY_MERGE_FIELD]} value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}`} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
+          <RichEmailEditor mergeFields={[INDUSTRY_MERGE_FIELD]} value={createRichEmailContent({ text: quoteEmailDraft.message, ...quoteEmailRich })} resetKey={`quote-email-${quote.quoteRef}-${quoteTemplateReset}`} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy} label="Message" onChange={content => { setQuoteEmailPreview(null); setQuoteEmailDraft(current => ({ ...current, message: content.text })); setQuoteEmailRich({ html: content.html, document: content.document }) }} />
           <label className="mt-3 flex items-start gap-3 text-sm text-gray-700">
             <input type="checkbox" checked={quoteRequestConfirmed} onChange={e => setQuoteRequestConfirmed(e.target.checked)} className="mt-1 h-4 w-4" />
             <span>The client requested this quote and supplied this mobile number for quote contact. I have explained that Secure Cleaning may send an SMS when the quote is emailed, and that they can reply STOP or request email-only contact. Record this quote request as the SMS permission basis. Existing opt-outs remain in force. <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">View terms</a>.</span>
           </label>
-          <EmailPreviewModal open={Boolean(quoteEmailPreview)} title="Final quote email preview" subject={quoteEmailPreview?.subject ?? ''} from={quoteEmailPreview?.from} to={quoteEmailPreview?.to} cc={quoteEmailPreview?.cc?.join(', ')} replyTo={quoteEmailPreview?.replyTo} html={quoteEmailPreview?.html ?? ''} onClose={() => setQuoteEmailPreview(null)} />
+          <EmailPreviewModal open={Boolean(quoteEmailPreview)} title="Final quote email preview" subject={quoteEmailPreview?.subject ?? ''} from={quoteEmailPreview?.from} to={quoteEmailPreview?.to} cc={quoteEmailPreview?.cc?.join(', ')} replyTo={quoteEmailPreview?.replyTo} html={quoteEmailPreview?.html ?? ''} attachments={[{ filename: 'Quote & Service Terms.pdf', url: QUOTE_TERMS_PDF_PATH }]} onClose={() => setQuoteEmailPreview(null)} />
           <div className="mt-3 flex justify-end gap-3">
             <button type="button" onClick={() => void previewQuoteEmail()} disabled={quoteEmailPreviewBusy || quoteEmailAction.busy || saveState.saving} className="rounded-lg border border-green-700 bg-white px-4 py-2 text-sm font-semibold text-green-800 disabled:opacity-60">{quoteEmailPreviewBusy ? 'Preparing preview...' : 'Preview email'}</button>
             <button
