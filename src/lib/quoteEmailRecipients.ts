@@ -6,6 +6,7 @@ import {
   getAvailabilityConfig,
   locationMatchesServiceZones,
 } from '@/lib/availability'
+import { isInspectionStaffAccount } from '@/lib/clientCrmPolicy'
 import { getCrmOpportunityIdForQuote } from '@/lib/clientCrmQuoteAccess'
 import { getAdminSupabase } from '@/lib/supabase'
 import type { QuoteInputs } from '@/lib/types'
@@ -44,7 +45,14 @@ export async function getQuoteAgentCc(quoteRef: string, inputs: QuoteInputs, rec
           const { data: staff, error: staffError } = await db.from('admin_staff_accounts')
             .select('email, active, role, availability_assignee_id').eq('id', opportunity.assigned_staff_id).maybeSingle()
           if (staffError) throw staffError
-          if (!staff?.active || staff.role !== 'agent') return agentCc([], recipient)
+          if (!staff?.active) return agentCc([], recipient)
+          if (staff.role !== 'agent') {
+            if (!isInspectionStaffAccount({ ...staff, availabilityAssigneeId: staff.availability_assignee_id })) return agentCc([], recipient)
+            const config = await getAvailabilityConfig()
+            const profile = getAvailabilityAssignee(config, staff.availability_assignee_id ?? '')
+            if (!profile?.active || profile.city !== inputs.city) return agentCc([], recipient)
+            return agentCc([validEmail(staff.email) ?? validEmail(profile.email)], recipient)
+          }
           const email = validEmail(staff.email)
           if (email) return agentCc([email], recipient)
           const config = await getAvailabilityConfig()

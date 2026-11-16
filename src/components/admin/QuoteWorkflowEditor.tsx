@@ -1337,8 +1337,8 @@ export default function QuoteWorkflowEditor({
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
-                              <div key={task.id} className={`flex flex-col items-start justify-between gap-3 rounded-lg border p-3 2xl:flex-row ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
-                                <span className="flex min-w-0 items-start gap-3">
+                              <div key={task.id} className={`flex min-w-0 flex-col gap-3 rounded-lg border p-3 ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
+                                <span className="flex w-full min-w-0 items-start gap-3">
                                   <input
                                     type="checkbox"
                                     aria-label={task.label}
@@ -1350,10 +1350,10 @@ export default function QuoteWorkflowEditor({
                                       },
                                       ...(isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index)) ? { moppingEnabled: event.target.checked } : {}),
                                     })}
-                                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
+                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-teal-700 focus:ring-teal-600"
                                   />
                                   <span className="min-w-0">
-                                    <span className="block text-sm font-medium text-gray-800">{task.label}</span>
+                                    <span className="block break-words text-sm font-medium leading-5 text-gray-800">{task.label}</span>
                                     <select
                                       aria-label={`${task.label} frequency`}
                                       value={task.cadence}
@@ -1364,14 +1364,14 @@ export default function QuoteWorkflowEditor({
                                     </select>
                                   </span>
                                 </span>
-                                <span className="max-w-full shrink-0 text-left text-xs font-semibold text-teal-800 2xl:text-right">
+                                <span className="min-w-0 w-full border-t border-gray-100 pt-2 text-left text-xs font-semibold leading-5 text-teal-800 break-words">
                                   {task.pricingMode === 'area'
                                     ? task.minutesPerSqm > 0
                                       ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity))} for this area · {task.minutesPerSqm} min / sqm</span></>
                                       : 'Area labour'
                                     : task.price > 0 ? `${formatTaskCurrency(task.price)} when done` : 'Included'}
                                   <span className="mt-1 block font-semibold text-teal-900">{formatTaskCurrency(contribution)} per clean</span>
-                                  <span className="block font-normal text-gray-500">{!selected ? 'Not selected - no contribution.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour; no separate task charge.' : 'Includes quantity and quote adjustment; amortised over the cleaning schedule. Rounded for display.'}</span>
+                                  <span className="mt-1 block font-normal text-gray-500">{!selected ? 'Not selected - no contribution.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour; no separate task charge.' : 'Includes quantity and quote adjustment; amortised over the cleaning schedule. Rounded for display.'}</span>
                                 </span>
                               </div>
                             )

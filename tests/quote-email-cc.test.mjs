@@ -9,6 +9,7 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 
+const crmPolicy = await import('../src/lib/clientCrmPolicy.ts')
 const availability = await import('../src/lib/availability.ts')
 const { formatPriceRange } = await import('../src/lib/quoteEngine.ts')
 const scope = await import('../src/lib/publicRoomScope.ts')
@@ -67,6 +68,7 @@ function recipientFixture(options = {}) {
   const exports = loadTs('src/lib/quoteEmailRecipients.ts', {
     'server-only': {},
     '@/lib/availability': { ...availability, getAvailabilityConfig: async () => config },
+    '@/lib/clientCrmPolicy': crmPolicy,
     '@/lib/clientCrmQuoteAccess': { getCrmOpportunityIdForQuote: async () => options.opportunityId ?? null },
     '@/lib/supabase': { getAdminSupabase: () => db },
   })
@@ -276,6 +278,7 @@ function finalRouteFixture(kind, options = {}) {
     '@/lib/adminAuth': { isAuthorizedAdminRequest: () => options.authorized !== false, getAdminSessionIdentityFromRequest: () => ({ id: 'staff', username: 'Staff' }) },
     '@/lib/availabilityAgentAuth': { isAuthorizedAvailabilityAgentRequest: async () => options.authorized !== false },
     '@/lib/availability': { getAvailabilityConfig: async () => config, getAvailabilityAssignee: () => config.assignees[0] },
+    '@/lib/clientCrmPolicy': crmPolicy,
     '@/lib/clientCrmQuoteAccess': { canAvailabilityAgentAccessQuote: async () => options.inRegion !== false },
     '@/lib/staffAccounts': { getStaffAccountById: async () => null },
     '@/lib/quoteWorkflow': { getFinalQuoteReadiness: () => ({ ready: true }) },
@@ -589,4 +592,16 @@ test('bookings without a usable assigned mailbox retain the admin reply fallback
     assert.equal(fixture.payloads[0].reply_to, 'admin@example.com')
     assert.deepEqual([...fixture.payloads[1].to], ['admin@example.com'])
   }
+})
+
+test('linked owner and manager quote assignments use their email and require an active matching regional profile', async () => {
+ for (const role of ['owner','manager']) {
+  const rows={crm_opportunities:{assigned_staff_id:'staff'},admin_staff_accounts:{active:true,role,email:'owner@example.com',availability_assignee_id:'regional'}}
+  const good=recipientFixture({opportunityId:'opportunity',rows})
+  assert.deepEqual([...await good.getQuoteAgentCc('SC-TEST',inputs)],['owner@example.com'])
+  for(const profile of [[],[{...regionalAgent,active:false}],[{...regionalAgent,city:'sydney'}]]) {
+   const bad=recipientFixture({opportunityId:'opportunity',rows,config:configFor(profile)})
+   await assert.rejects(()=>bad.getQuoteAgentCc('SC-TEST',inputs),/Assign an active agent/)
+  }
+ }
 })
