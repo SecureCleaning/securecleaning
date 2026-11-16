@@ -9,7 +9,6 @@ const nextConfig = {
   async redirects() {
     return [
       // Keep older admin bookmarks working after the admin area was consolidated.
-      { source: '/admin/quotes', destination: '/admin', permanent: false },
       { source: '/admin/bookings', destination: '/admin', permanent: false },
       { source: '/admin/site', destination: '/admin/sites', permanent: false },
       { source: '/admin/contents', destination: '/admin/content', permanent: false },
