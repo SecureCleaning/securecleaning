@@ -164,6 +164,7 @@ function emailFixture(options = {}) {
   const exports = loadTs('src/lib/email.ts', {
     './quoteTerms': quoteTerms, '@/content/quote-service-terms-pdf.json': { default: quoteTermsPdf },
     './emailFailureAlerts': { reportEmailFailure: async () => {} },
+    './inspectionSms': { bookingSmsSnapshot: () => ({}), recordInspectionEmailSms: async () => {} },
     '@/lib/htmlEscape': { escapeHtml },
     '@/lib/richEmailServer': richEmail,
     './quoteEngine': { formatPriceRange }, './calendarInvite': { buildBookingInviteIcs: () => 'synthetic-calendar' },

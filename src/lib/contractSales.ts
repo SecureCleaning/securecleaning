@@ -10,6 +10,7 @@ import 'server-only'
 import { createHash, randomUUID } from 'node:crypto'
 import { getAdminSupabase } from '@/lib/supabase'
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
+import { recordInspectionEmailSms } from '@/lib/inspectionSms'
 import { writeAuditLogStrict } from '@/lib/auditLog'
 import type { ContractProductActor } from '@/lib/contractProductAuth'
 import { getContractProducts, ContractProductError } from '@/lib/contractProducts'
@@ -1570,6 +1571,11 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
     if (claimError) throw claimError
     try {
       const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: target.email, replyTo: staffEmail, subject: target.subject, html: target.html, attachments: [{ filename: `inspection-${sale.sale_code}.ics`, content: Buffer.from(ics).toString('base64') }] }) as { id?: string } | null
+      if (target.recipient === 'client') await recordInspectionEmailSms({
+        entityType: 'sale_inspection', entityRef: String(inspection.id), kind: 'confirmation',
+        phone: String(context.client?.phone || ''), email: target.email, providerMessageId: result?.id,
+        snapshot: { startsAt: startsAt.getTime(), duration: durationMinutes, location },
+      })
       Object.assign(claimed, { status: 'sent' as const, providerMessageId: result?.id ?? '' })
       if (target.recipient !== 'staff') {
         const { error: historyError } = await db.from('contract_sale_inspection_messages').insert({

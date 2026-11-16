@@ -12,6 +12,7 @@ import { getAvailabilityAssignee, getAvailabilityConfig } from './availability'
 import { createQuoteCapability, createQuoteBookingHandoffToken } from './quoteBookingAccess'
 import { getQuoteEmailRouting } from './quoteEmailRecipients'
 import { reportEmailFailure } from './emailFailureAlerts'
+import { bookingSmsSnapshot, recordInspectionEmailSms } from './inspectionSms'
 
 /**
  * Email helper module using Resend.
@@ -390,7 +391,7 @@ export async function sendBookingConfirmationEmail(
     new Set([ADMIN_EMAIL, selectedAssigneeEmail].filter((email): email is string => Boolean(email)))
   )
 
-  await sendEmailOrThrow({
+  const clientResult = await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     replyTo: selectedAssigneeEmail || ADMIN_EMAIL.trim(),
@@ -445,6 +446,10 @@ export async function sendBookingConfirmationEmail(
       </div>
     `,
   })
+
+  await recordInspectionEmailSms({ entityType: 'booking', entityRef: bookingRef,
+    kind: staffConfirmed ? 'confirmation' : 'request', phone: inputs.phone, email: inputs.email,
+    snapshot: bookingSmsSnapshot(inputs), providerMessageId: (clientResult as { id?: string } | null)?.id })
 
   // Internal notes belong only in the staff notification, never the customer ICS.
   await sendEmailOrThrow({

@@ -3,6 +3,7 @@ import { escapeIcsText, serializeIcs } from './ics'
 import { buildBookingInviteIcs, getCityTimeZone, getDateTimeInTimeZone } from './calendarInvite'
 import { sendEmailOrThrow } from './email'
 import { reportEmailFailure } from './emailFailureAlerts'
+import { bookingSmsSnapshot, recordInspectionEmailSms } from './inspectionSms'
 import { getSiteUrl } from './siteUrl'
 import type { BookingInputs } from './types'
 import type { ProposedAppointment } from './partnerAppointmentPolicy'
@@ -60,5 +61,9 @@ export async function sendPartnerAppointmentNotice(input: Notice) {
   const {client,staff} = payloads
   // A persisted delivery claim is acquired by the caller. Uncertain sends are not retried automatically.
   await sendEmailOrThrow(staff)
-  await sendEmailOrThrow(client)
+  const result = await sendEmailOrThrow(client) as { id?: string } | null
+  if (input.state !== 'declined') await recordInspectionEmailSms({
+    entityType: 'booking', entityRef: input.bookingRef, kind: input.state === 'pending' ? 'request' : 'confirmation',
+    phone: input.inputs.phone, email: input.inputs.email, snapshot: bookingSmsSnapshot(input.inputs), providerMessageId: result?.id,
+  })
 }

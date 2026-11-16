@@ -12,7 +12,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/calendarI
 const email = {}
 vm.runInNewContext(source, {
   exports: email,
-  require: name => name === 'resend' ? require('resend') : name === './siteUrl' ? { getSiteUrl: () => 'https://example.test' } : name === './calendarInvite' ? calendar : name === '@/lib/htmlEscape' ? { escapeHtml: value => String(value ?? '') } : {},
+  require: name => name === 'resend' ? require('resend') : name === './siteUrl' ? { getSiteUrl: () => 'https://example.test' } : name === './inspectionSms' ? { bookingSmsSnapshot: () => ({}), recordInspectionEmailSms: async () => {} } : name === './calendarInvite' ? calendar : name === '@/lib/htmlEscape' ? { escapeHtml: value => String(value ?? '') } : {},
   Buffer, Headers,
   process: { env: { RESEND_API_KEY: 're_synthetic_test_key' } }, console,
 })

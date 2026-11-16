@@ -43,7 +43,7 @@ test('request agent selection checks suburb and company restrictions before prio
  assert.equal(proposals.proposalAgent(c,{...company,assignee_ids:['a']},inputs),null)
  assert.throws(()=>proposals.proposalAgent(c,{...company,cities:[]},inputs))
 })
-const messageMocks={'./emailFailureAlerts':{reportEmailFailure:async()=>{}},'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}}
+const messageMocks={'./inspectionSms':{bookingSmsSnapshot:()=>({}),recordInspectionEmailSms:async()=>{}},'./emailFailureAlerts':{reportEmailFailure:async()=>{}},'./htmlEscape':html,'./ics':ics,'./calendarInvite':calendar,'./email':{sendEmailOrThrow:()=>{throw Error('No real send')}},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'}}
 const messages=load('partnerAppointmentMessages',messageMocks)
 const notice={requestId:'11111111-1111-4111-8111-111111111111',bookingRef:'BK-FIXTURE',inputs,proposals:times,agentEmail:'agent@example.invalid',state:'pending'}
 test('calendar preparation failure alerts the owner without sending either appointment notice',async()=>{

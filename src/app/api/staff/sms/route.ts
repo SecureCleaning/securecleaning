@@ -20,7 +20,7 @@ export async function GET(request:NextRequest) {
     if(view==='inbox') return reply({replies:await smsInbox(actor),owner:actor.role==='owner'})
     requireSmsOwner(actor)
     const db=getAdminSupabase(), settings=await smsSettings()
-    const [jobs,alerts]=await Promise.all([db.from('sms_jobs').select('id,quote_ref,purpose,mobile,status,reason,due_at,created_at,credits').order('created_at',{ascending:false}).limit(100),db.from('sms_alerts').select('id,code,status,created_at,sent_at').order('created_at',{ascending:false}).limit(50)])
+    const [jobs,alerts]=await Promise.all([db.from('sms_jobs').select('id,quote_ref,entity_type,entity_ref,fields,purpose,mobile,status,reason,due_at,created_at,credits').order('created_at',{ascending:false}).limit(100),db.from('sms_alerts').select('id,code,status,created_at,sent_at').order('created_at',{ascending:false}).limit(50)])
     if(jobs.error||alerts.error) throw jobs.error||alerts.error
     return reply({settings,jobs:jobs.data,alerts:alerts.data,configured:smsCredentialsConfigured(),live:smsLiveEnabled()})
   } catch(error) {return failure(error)}
