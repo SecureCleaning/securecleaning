@@ -1,5 +1,5 @@
 import { recordQuoteSmsRequest } from '@/lib/quoteSmsRequest'
-import { getQuoteAgentCc, QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
+import { getQuoteEmailRouting, QuoteAgentEmailError } from '@/lib/quoteEmailRecipients'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { randomUUID } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
@@ -58,10 +58,10 @@ export async function POST(
       ? { kind: 'staff_account' as const, id: staffAccount.id, name: staffAccount.display_name || staffAccount.username }
       : { kind: 'agent_session' as const, id: assignee.id, name: assignee.name }
     const richMessage = parseRichEmailContent({ ...body, message: message || 'Following our review of your requirements, your updated quote is ready to view online.' }, { text: 'message', html: 'messageHtml', document: 'messageDocument', maxText: 4000 })
-    const agentCc = await getQuoteAgentCc(params.ref, quote.finalDocument.inputs, to)
+    const routing = await getQuoteEmailRouting(params.ref, quote.finalDocument.inputs, to)
     if (body.previewOnly === true) {
       const preview = await buildUpdatedQuoteEmail(params.ref, quote.finalDocument.inputs, quote.finalDocument.displayPrice, {
-        to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html,
+        to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html,
         includeConsumablesCatalogue: quote.finalDocument.firmQuoteDraft.includeConsumablesCatalogue,
       })
       return NextResponse.json({ success: true, preview }, { headers: { 'Cache-Control': 'no-store' } })
@@ -77,7 +77,7 @@ export async function POST(
     if (!finalQuote) throw new Error('Final document unavailable after send claim.')
     const providerResult = await sendUpdatedQuoteEmail(finalQuote.quoteRef, finalQuote.inputs, finalQuote.displayPrice, {
       archiveBeforeSend: async payload => { await archiveFinalQuoteEmail(attemptId!, payload); providerCallStarted = true },
-      to, agentCc, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
+      to, agentCc: routing.cc, agentReplyTo: routing.replyTo, subject, message: richMessage.text, messageHtml: richMessage.html, includeConsumablesCatalogue: finalQuote.firmQuoteDraft.includeConsumablesCatalogue,
     })
     providerAccepted = true
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)

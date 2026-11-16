@@ -172,10 +172,10 @@ function emailFixture(options = {}) {
       },
       getAvailabilityAssignee: (config, id) => config.assignees.find(agent => agent.id === id),
     }, './quoteBookingAccess': { createQuoteBookingHandoffToken: async () => 'sample-token', createQuoteCapability: async () => { capabilities.push('issued'); return 'document-token' } },
-    './quoteEmailRecipients': { getQuoteAgentCc: async (...args) => {
+    './quoteEmailRecipients': { getQuoteEmailRouting: async (...args) => {
       lookups.push(args)
       if (options.lookupError) throw options.lookupError
-      return options.cc ?? ['agent@example.com']
+      return { cc: options.cc ?? ['agent@example.com'], replyTo: 'agent@example.com' }
     } },
     resend: { Resend: class { emails = { send: async (payload) => {
       payloads.push(payload)
@@ -205,7 +205,7 @@ test('final/revised quote and scope link preserve client content in a single sha
   const fixture = emailFixture()
   const result = await fixture.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 150, high: 150, isFirm: true }, {
     subject: 'Your revised quote', messageHtml: '<p><strong>Agreed changes</strong></p>', includeConsumablesCatalogue: true,
-    agentCc: ['responsible@example.com'],
+    agentCc: ['responsible@example.com'], agentReplyTo: 'responsible@example.com',
   })
   assert.equal(result.id, 'provider-id')
   assert.equal(fixture.payloads.length, 1)
@@ -230,14 +230,14 @@ test('updated quote email uses either the authored greeting or the automatic gre
     messageHtml: '<p>Hi Jim,</p><p>Here is your updated quote.</p>',
   })
   assert.equal((authored.payloads[0].html.match(/<p>Hi Jim,<\/p>/g) ?? []).length, 1)
-  assert.doesNotMatch(authored.payloads[0].html, /<p>Hi Sample Client,<\/p>/)
+  assert.doesNotMatch(authored.payloads[0].html, /<p>Hi Sample,<\/p>/)
 
   const automatic = emailFixture()
   await automatic.sendUpdatedQuoteEmail('SC-TEST', inputs, { low: 150, high: 150 }, {
     message: 'Here is your updated quote.',
     messageHtml: '<p>Here is your updated quote.</p>',
   })
-  assert.equal((automatic.payloads[0].html.match(/<p>Hi Sample Client,<\/p>/g) ?? []).length, 1)
+  assert.equal((automatic.payloads[0].html.match(/<p>Hi Sample,<\/p>/g) ?? []).length, 1)
 })
 
 test('direct final sends resolve CC and empty deduped CC does not send an empty provider header', async () => {
@@ -284,10 +284,10 @@ function finalRouteFixture(kind, options = {}) {
     '@/lib/quoteWorkflow': { getFinalQuoteReadiness: () => ({ ready: true }) },
     '@/lib/finalQuoteSendPolicy': sendPolicy,
     '@/lib/quoteSmsRequest': { recordQuoteSmsRequest: async input => { calls.push(['permission', input]); if (options.permissionError) throw new Error('Database unavailable'); return true } },
-    '@/lib/quoteEmailRecipients': { QuoteAgentEmailError, getQuoteAgentCc: async () => {
+    '@/lib/quoteEmailRecipients': { QuoteAgentEmailError, getQuoteEmailRouting: async () => {
       calls.push('resolve')
       if (options.noAgent) throw new QuoteAgentEmailError('Assign an active agent with a valid email address before sending this quote.')
-      return ['responsible@example.com']
+      return { cc: ['responsible@example.com'], replyTo: 'responsible@example.com' }
     } },
     '@/lib/email': { EmailProviderRejectedError, buildUpdatedQuoteEmail: async (...args) => { calls.push(['preview', ...args]); return { to: args[3].to, subject: 'Preview', html: '<p>Rendered</p>' } }, sendUpdatedQuoteEmail: async (...args) => {
       await args[3]?.archiveBeforeSend?.({subject:'Exact',html:'Exact'})
@@ -320,6 +320,7 @@ for (const kind of ['admin', 'agent']) {
     const sends = fixture.calls.filter(Array.isArray).filter((call) => call[0] === 'send')
     assert.equal(sends.length, 1)
     assert.deepEqual([...sends[0][4].agentCc], ['responsible@example.com'])
+    assert.equal(sends[0][4].agentReplyTo, 'responsible@example.com')
     assert.ok(fixture.calls.some((call) => Array.isArray(call) && call[0] === 'accepted' && call[2] === 'provider-id'))
     assert.equal(fixture.calls.at(-1), 'complete')
   })
@@ -434,7 +435,7 @@ test('public quote, scope and booking email text cannot inject HTML into capture
   assert.equal(fixture.payloads.length, 4)
   for (const email of fixture.payloads) {
     assert.doesNotMatch(email.html, /<img src=x>|<b>spoof|<iframe>|<script>|<svg>|href="https:\/\/evil.test"/)
-    assert.match(email.html, /&lt;img src=x&gt;/)
+    assert.match(email.html, /&lt;img/)
   }
 })
 
@@ -532,6 +533,7 @@ for (const kind of ['admin','agent']) {
  test(`${kind} preview does not record consent, claim a send or contact provider`, async () => {
   const f=finalRouteFixture(kind,{previewOnly:true,confirmed:true});const response=await f.run()
   assert.equal(response.status,200);assert.equal(response.body.preview.to,inputs.email)
+  assert.equal(f.calls.find(c=>Array.isArray(c)&&c[0]==='preview')[4].agentReplyTo,'responsible@example.com')
   assert.deepEqual(f.calls.map(c=>Array.isArray(c)?c[0]:c),['resolve','preview'])
  })
  test(`${kind} preview retains authentication and recipient protection`, async () => {
@@ -603,5 +605,28 @@ test('linked owner and manager quote assignments use their email and require an 
    const bad=recipientFixture({opportunityId:'opportunity',rows,config:configFor(profile)})
    await assert.rejects(()=>bad.getQuoteAgentCc('SC-TEST',inputs),/Assign an active agent/)
   }
+ }
+})
+
+test('quote routing retains reply address when assigned staff is also recipient', async () => {
+ const fixture=recipientFixture()
+ const routing=await fixture.getQuoteEmailRouting('SC-TEST',inputs,'regional@example.com')
+ assert.deepEqual([...routing.cc],[])
+ assert.equal(routing.replyTo,'regional@example.com')
+})
+test('quote previews and sends use assigned reply address and first-name greeting', async () => {
+ const fixture=emailFixture()
+ const recipient={...inputs,contactName:'  Rhonda Neligan  '}
+ const preview=await fixture.buildUpdatedQuoteEmail('SC-TEST',recipient,{low:200,high:200})
+ assert.equal(preview.replyTo,'agent@example.com')
+ assert.match(preview.html,/Hi Rhonda,/)
+ assert.doesNotMatch(preview.html,/Hi Rhonda Neligan/)
+ await fixture.sendUpdatedQuoteEmail('SC-TEST',recipient,{low:200,high:200})
+ assert.equal(fixture.payloads[0].reply_to,preview.replyTo)
+ await fixture.sendQuoteEmail('SC-TEST',recipient,{totalLow:200,totalHigh:200})
+ await fixture.sendScopeOfWorksEmail('SC-TEST',recipient,'final')
+ for(const email of fixture.payloads) {
+  assert.equal(email.reply_to,'agent@example.com')
+  assert.match(email.html,/Hi Rhonda,/)
  }
 })

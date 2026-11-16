@@ -18,17 +18,17 @@ function validEmail(value: unknown): string | null {
   return email.length <= 254 && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) ? email : null
 }
 
-function agentCc(emails: Array<string | null>, recipient: string): string[] {
+function agentCc(emails: Array<string | null>, recipient: string): { cc: string[]; replyTo: string } {
   if (emails.length === 0 || emails.some((email) => !email)) {
     throw new QuoteAgentEmailError('Assign an active agent with a valid email address before sending this quote.')
   }
-  return [...new Set(emails as string[])].filter((email) => email !== recipient.trim().toLowerCase())
+  return { cc: [...new Set(emails as string[])].filter((email) => email !== recipient.trim().toLowerCase()), replyTo: emails[0]! }
 }
 
 /** CRM ownership takes precedence over the latest inspection booking, then a unique service-zone agent.
  * QuoteInputs has no agent assignment field; never trust extra assignee/CC fields in quote submissions.
  */
-export async function getQuoteAgentCc(quoteRef: string, inputs: QuoteInputs, recipient = inputs.email): Promise<string[]> {
+export async function getQuoteEmailRouting(quoteRef: string, inputs: QuoteInputs, recipient = inputs.email): Promise<{ cc: string[]; replyTo: string }> {
   try {
     const db = getAdminSupabase()
     const { data: quote, error: quoteError } = await db.from('quotes')
@@ -86,4 +86,8 @@ export async function getQuoteAgentCc(quoteRef: string, inputs: QuoteInputs, rec
     if (error instanceof QuoteAgentEmailError) throw error
     throw new QuoteAgentEmailError('Could not confirm the quote agent email. Please retry before sending this quote.')
   }
+}
+
+export async function getQuoteAgentCc(quoteRef: string, inputs: QuoteInputs, recipient = inputs.email): Promise<string[]> {
+  return (await getQuoteEmailRouting(quoteRef, inputs, recipient)).cc
 }

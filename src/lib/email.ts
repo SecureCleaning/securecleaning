@@ -8,7 +8,7 @@ import { isBathroomRoomScopeType, sanitizePublicRoomScope, summarizePublicRoomSc
 import type { FirmQuoteDisplayPrice } from './quoteWorkflow'
 import { getAvailabilityAssignee, getAvailabilityConfig } from './availability'
 import { createQuoteCapability, createQuoteBookingHandoffToken } from './quoteBookingAccess'
-import { getQuoteAgentCc } from './quoteEmailRecipients'
+import { getQuoteEmailRouting } from './quoteEmailRecipients'
 import { reportEmailFailure } from './emailFailureAlerts'
 
 /**
@@ -136,14 +136,14 @@ export async function sendQuoteEmail(
   const documentAccessToken = await createQuoteCapability(quoteRef, 'document')
   const onlineQuoteUrl = `${SITE_URL}/quote/${quoteRef}?${new URLSearchParams({ access: documentAccessToken, handoff: bookingHandoffToken }).toString()}`
   const scopeUrl = `${SITE_URL}/scope/${quoteRef}?${new URLSearchParams({ access: documentAccessToken, handoff: bookingHandoffToken }).toString()}`
-  const agentCc = await getQuoteAgentCc(quoteRef, inputs)
+  const { cc: agentCc, replyTo } = await getQuoteEmailRouting(quoteRef, inputs)
 
   // Email to client
   const providerResult = await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
-    replyTo: ADMIN_EMAIL,
+    replyTo,
     subject: `Your Secure Cleaning Quote — ${quoteRef}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -152,7 +152,7 @@ export async function sendQuoteEmail(
           <p style="color: #22c55e; margin: 4px 0 0;">Professional Commercial Cleaning</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${escapeHtml(inputs.contactName)},</p>
+          <p>Hi ${escapeHtml(inputs.contactName.trim().split(/\s+/)[0] || 'there')},</p>
           <p>Thank you for requesting a remote quote from Secure Cleaning. Here's your estimate for <strong>${escapeHtml(businessLabel)}</strong> in ${cityLabel}.</p>
           
           <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin: 24px 0;">
@@ -221,13 +221,13 @@ export async function sendScopeOfWorksEmail(
   const businessLabel = inputs.businessName?.trim() || 'your premises'
   const frequencyLabel = inputs.frequency.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase())
 
-  const agentCc = await getQuoteAgentCc(quoteRef, inputs)
+  const { cc: agentCc, replyTo } = await getQuoteEmailRouting(quoteRef, inputs)
 
   await sendEmailOrThrow({
     from: FROM_EMAIL,
     to: inputs.email,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
-    replyTo: ADMIN_EMAIL,
+    replyTo,
     subject: `Your Secure Cleaning Scope of Works - ${quoteRef}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
@@ -236,7 +236,7 @@ export async function sendScopeOfWorksEmail(
           <p style="color: #bbf7d0; margin: 4px 0 0;">Client Scope of Works</p>
         </div>
         <div style="padding: 32px 24px;">
-          <p>Hi ${escapeHtml(inputs.contactName)},</p>
+          <p>Hi ${escapeHtml(inputs.contactName.trim().split(/\s+/)[0] || 'there')},</p>
           <p>Your client scope of works for <strong>${escapeHtml(businessLabel)}</strong> is ready to view online.</p>
           <p><strong>Service frequency:</strong> ${escapeHtml(frequencyLabel)}</p>
           <p>The report lists the planned areas, regular tasks, and options selected for your ${variant === 'final' ? 'final quote' : 'remote quotation'}. Any agreed changes can be reflected in the same online report.</p>
@@ -261,6 +261,7 @@ export async function buildUpdatedQuoteEmail(
     archiveBeforeSend?: (payload: { from: string; to: string; subject: string; html: string; cc?: string[]; replyTo: string }) => Promise<void>
     // Server-resolved before claiming a final send, so lookup failures remain retryable.
     agentCc?: string[]
+    agentReplyTo?: string
     to?: string
     subject?: string
     message?: string
@@ -284,19 +285,22 @@ export async function buildUpdatedQuoteEmail(
   const message = options?.message?.trim().replace(industryToken, () => industry) || 'Following our review of your requirements, your updated quote is ready to view online.'
   const automaticGreetingHtml = startsWithGreeting(message)
     ? ''
-    : `<p>Hi ${escapeHtml(inputs.contactName)},</p>`
+    : `<p>Hi ${escapeHtml(inputs.contactName.trim().split(/\s+/)[0] || 'there')},</p>`
   const messageHtml = options?.messageHtml ? sanitizeRichEmailHtml(options.messageHtml.replace(industryToken, () => escapeHtml(industry))) : message
     .split(/\n\s*\n/)
     .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
     .join('')
 
-  const agentCc = options?.agentCc ?? await getQuoteAgentCc(quoteRef, inputs, recipient)
+  const routing = options?.agentCc && options.agentReplyTo
+    ? { cc: options.agentCc, replyTo: options.agentReplyTo }
+    : await getQuoteEmailRouting(quoteRef, inputs, recipient)
+  const { cc: agentCc, replyTo } = routing
 
   return {
     from: FROM_EMAIL,
     to: recipient,
     ...(agentCc.length > 0 ? { cc: agentCc } : {}),
-    replyTo: ADMIN_EMAIL,
+    replyTo,
     subject,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; color: #334155;">
