@@ -64,6 +64,16 @@ test('inspection cancellation clears schedule and preserves booking and assignme
   assert.deepEqual(booking.inputs, { city: 'melbourne', businessName: 'Fixture', contactName: 'Client', phone: '0400000000', address: '1 Test Street', suburb: 'Melbourne', postcode: '3000', frequency: 'weekly', timePreference: 'business_hours', preferredInspectionAssigneeId: agent.id, customerNote: 'retain', appointmentNotificationRevision: 1 })
   assert.equal(audits[0].action, 'agent_inspection_cancelled')
 })
+test('authorized admin staff can cancel an assigned appointment from the combined calendar', async () => {
+  const token = await mintTestSession({ id: 'staff-calendar', username: 'calendar.staff', role: 'staff' })
+  fixture()
+  const request = req('DELETE', null, { cookie: `${ADMIN_SESSION_COOKIE}=${token}` })
+  const response = await DELETE(request, props)
+  assert.equal(response.status, 200)
+  assert.equal(booking.inspection_status, 'cancelled')
+  assert.equal(booking.inspection_scheduled_for, null)
+  assert.equal(audits[0].action, 'agent_inspection_cancelled')
+})
 test('authorized agents can reopen completed inspections without manager approval', async () => {
   fixture(); booking.inspection_status = 'completed'
   const response = await PATCH(req('PATCH', { preferredStartDate: '2098-01-02', preferredInspectionStartTime: '10:00' }), props)

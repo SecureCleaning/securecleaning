@@ -201,6 +201,7 @@ test('calendar and booking mutations share the linkage predicate and operator id
 
 test('admin schedule links are encoded and destination pages retain role-bound authorization', () => {
   const dashboardSource = source('src/components/admin/AdminDashboard.tsx')
+  const adminCalendarSource = source('src/components/admin/CalendarAdmin.tsx')
   const adminPageSource = source('src/app/admin/availability/quoters/[assigneeId]/page.tsx')
   const agentPageSource = source('src/app/availability/quoters/[assigneeId]/page.tsx')
 
@@ -211,6 +212,9 @@ test('admin schedule links are encoded and destination pages retain role-bound a
   assert.match(adminPageSource, /return withAdminPage\(async \(\) => \{/)
   assert.match(agentPageSource, /hasAvailabilityAgentSession\(assigneeId\)/)
   assert.match(agentPageSource, /apiPath=\{`\/api\/availability-agent\/\$\{assigneeId\}`\}/)
+  assert.match(adminCalendarSource, /selectedEvent\.event\.kind === 'booking' && selectedEvent\.event\.bookingRef/)
+  assert.match(adminCalendarSource, /`\/api\/availability-agent\/\$\{encodeURIComponent\(assignee\.id\)\}\/bookings\/\$\{encodeURIComponent\(bookingRef\)\}`/)
+  assert.match(adminCalendarSource, /method: 'DELETE'/)
 })
 
 test('agent schedule explains the suburb and postcode coverage for every inspection zone', () => {

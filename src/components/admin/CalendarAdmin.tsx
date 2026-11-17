@@ -12,6 +12,11 @@ type CalendarData = {
 
 type ViewMode = 'week' | 'day'
 
+type CalendarActionState = {
+  type: 'idle' | 'saving' | 'success' | 'warning' | 'error'
+  message: string
+}
+
 const AGENT_COLOURS = [
   { border: 'border-teal-300', bg: 'bg-teal-50', text: 'text-teal-950', dot: 'bg-teal-500' },
   { border: 'border-violet-300', bg: 'bg-violet-50', text: 'text-violet-950', dot: 'bg-violet-500' },
@@ -80,14 +85,16 @@ function eventDayKey(event: AgentCalendarEvent) {
 }
 
 export default function CalendarAdmin({ calendars }: { calendars: CalendarData[] }) {
+  const [calendarData, setCalendarData] = useState(calendars)
   const [viewMode, setViewMode] = useState<ViewMode>('week')
   const [anchorDate, setAnchorDate] = useState(() => startOfWeek(new Date()))
   const [selectedIds, setSelectedIds] = useState(() => new Set(calendars.map(({ assignee }) => assignee.id)))
   const [selectedEvent, setSelectedEvent] = useState<{ event: AgentCalendarEvent; assignee: AvailabilityAssignee } | null>(null)
+  const [actionState, setActionState] = useState<CalendarActionState>({ type: 'idle', message: '' })
 
   const visibleCalendars = useMemo(
-    () => calendars.filter(({ assignee }) => selectedIds.has(assignee.id)),
-    [calendars, selectedIds],
+    () => calendarData.filter(({ assignee }) => selectedIds.has(assignee.id)),
+    [calendarData, selectedIds],
   )
 
   const days = useMemo(() => {
@@ -131,6 +138,41 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
     if (next === 'week') setAnchorDate(startOfWeek(anchorDate))
   }
 
+  async function cancelSelectedAppointment() {
+    const bookingRef = selectedEvent?.event.bookingRef
+    if (!bookingRef || selectedEvent.event.kind !== 'booking' || actionState.type === 'saving') return
+    const { event, assignee } = selectedEvent
+    if (!window.confirm(`Cancel the ${event.title} appointment on ${formatTimeRange(event)}?`)) return
+
+    setActionState({ type: 'saving', message: '' })
+    try {
+      const response = await fetch(
+        `/api/availability-agent/${encodeURIComponent(assignee.id)}/bookings/${encodeURIComponent(bookingRef)}`,
+        { method: 'DELETE' },
+      )
+      const result = await response.json()
+      if (!response.ok || !result.success) throw new Error(result.error || 'Unable to cancel appointment.')
+
+      setCalendarData((current) => current.map((calendar) => (
+        calendar.assignee.id === assignee.id
+          ? { ...calendar, events: calendar.events.filter((item) => item.bookingRef !== bookingRef) }
+          : calendar
+      )))
+      setSelectedEvent(null)
+
+      const statuses = (result.notifications ?? []).map((item: { status?: string }) => item.status)
+      if (result.unchanged) {
+        setActionState({ type: 'success', message: 'The appointment was already cancelled. No new emails were sent.' })
+      } else if (statuses.length === 2 && statuses.every((status: string | undefined) => status === 'sent')) {
+        setActionState({ type: 'success', message: 'Appointment cancelled. Confirmation emails were sent to the client and agent.' })
+      } else {
+        setActionState({ type: 'warning', message: 'Appointment cancelled, but one or more notification emails need review. Do not repeat the cancellation.' })
+      }
+    } catch (error) {
+      setActionState({ type: 'error', message: error instanceof Error ? error.message : 'Unable to cancel appointment.' })
+    }
+  }
+
   return (
     <div>
       <AdminPageHeader
@@ -142,6 +184,15 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
         </div>}
       />
 
+        {actionState.type !== 'idle' && actionState.type !== 'saving' ? (
+          <p
+            className={`mb-4 rounded-lg border px-4 py-3 text-sm ${actionState.type === 'success' ? 'border-green-200 bg-green-50 text-green-800' : actionState.type === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-red-200 bg-red-50 text-red-700'}`}
+            role={actionState.type === 'success' ? 'status' : 'alert'}
+          >
+            {actionState.message}
+          </p>
+        ) : null}
+
         <section className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -149,12 +200,12 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
               <p className="mt-1 text-sm text-gray-600">Select which agents appear in the calendar.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setSelectedIds(new Set(calendars.map(({ assignee }) => assignee.id)))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">Select all</button>
+              <button type="button" onClick={() => setSelectedIds(new Set(calendarData.map(({ assignee }) => assignee.id)))} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">Select all</button>
               <button type="button" onClick={() => setSelectedIds(new Set())} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:border-gray-300">Clear all</button>
             </div>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {calendars.map(({ assignee }, index) => {
+            {calendarData.map(({ assignee }, index) => {
               const colour = AGENT_COLOURS[index % AGENT_COLOURS.length]
               return (
                 <label key={assignee.id} className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 px-3 py-3 hover:border-gray-300">
@@ -222,6 +273,19 @@ export default function CalendarAdmin({ calendars }: { calendars: CalendarData[]
               <button type="button" onClick={() => setSelectedEvent(null)} className="text-sm font-semibold text-gray-500 hover:text-gray-900">Close</button>
             </div>
             {selectedEvent.event.details?.length ? <dl className="mt-5 space-y-3">{selectedEvent.event.details.map((detail) => <div key={`${detail.label}-${detail.value}`}><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500">{detail.label}</dt><dd className="mt-0.5 text-sm text-gray-900">{detail.value}</dd></div>)}</dl> : <div className="mt-5 space-y-3 text-sm text-gray-700">{selectedEvent.event.subtitle ? <p>{selectedEvent.event.subtitle}</p> : null}{selectedEvent.event.description ? <p className="whitespace-pre-line">{selectedEvent.event.description}</p> : null}{selectedEvent.event.location ? <p>{selectedEvent.event.location}</p> : null}</div>}
+            {actionState.type === 'error' ? <p className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{actionState.message}</p> : null}
+            {selectedEvent.event.kind === 'booking' && selectedEvent.event.bookingRef ? (
+              <div className="mt-6 flex justify-end border-t border-gray-100 pt-4">
+                <button
+                  type="button"
+                  onClick={() => void cancelSelectedAppointment()}
+                  disabled={actionState.type === 'saving'}
+                  className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {actionState.type === 'saving' ? 'Cancelling…' : 'Cancel appointment'}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
