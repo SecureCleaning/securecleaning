@@ -29,19 +29,20 @@ function emailFixture(failRecipient){
  return{module,sends,receipts}
 }
 const booking={businessName:'Example',contactName:'Casey',email:'client@example.test',phone:'0412345678',city:'sydney',address:'1 Example Street',suburb:'Sydney',postcode:'2000',frequency:'weekly',timePreference:'after_hours',preferredStartDate:'2099-01-01',preferredInspectionAssigneeId:'agent',inspectionBookingSource:'partner'}
-test('initial visit SMS records only accepted client email, even if the staff email then fails',async()=>{
- for(const source of ['partner','crm_manual',undefined]){const f=emailFixture();await f.module.sendBookingConfirmationEmail('BK-1',{...booking,inspectionBookingSource:source});assert.equal(f.receipts.length,1);assert.equal(f.receipts[0].providerMessageId,'accepted-1');assert.equal(f.receipts[0].kind,source?'confirmation':'request')}
+test('initial visit SMS records only accepted confirmation emails, even if the staff email then fails',async()=>{
+ for(const source of ['partner','crm_manual',undefined]){const f=emailFixture();await f.module.sendBookingConfirmationEmail('BK-1',{...booking,inspectionBookingSource:source});assert.equal(f.sends.length,2);assert.equal(f.receipts.length,source?1:0);if(source){assert.equal(f.receipts[0].providerMessageId,'accepted-1');assert.equal(f.receipts[0].kind,'confirmation')}}
  const rejected=emailFixture(1);await assert.rejects(rejected.module.sendBookingConfirmationEmail('BK-1',booking));assert.equal(rejected.receipts.length,0)
  const staffRejected=emailFixture(2);await assert.rejects(staffRejected.module.sendBookingConfirmationEmail('BK-1',booking));assert.equal(staffRejected.receipts.length,1)
 })
-test('partner request and confirmation SMS follow client acceptance; declines and previews never queue',async()=>{
+test('partner SMS follows accepted confirmation only; pending, declined and previews never queue',async()=>{
  for(const state of ['pending','confirmed','declined']){
   for(const rejectClient of [false,true]){
    const receipts=[],sends=[];const mod=compile(file('src/lib/partnerAppointmentMessages.ts'),{'./htmlEscape':{escapeHtml:v=>String(v??'')},'./ics':{escapeIcsText:v=>v,serializeIcs:()=> 'ICS'},'./calendarInvite':{getDateTimeInTimeZone:()=>new Date('2099-01-01T00:00Z'),getCityTimeZone:()=> 'Australia/Sydney',buildBookingInviteIcs:()=> 'ICS'},'./siteUrl':{getSiteUrl:()=> 'https://fixture.invalid'},'./emailFailureAlerts':{reportEmailFailure:async()=>{}},'./email':{sendEmailOrThrow:async p=>{sends.push(p);if(rejectClient&&sends.length===2)throw Error('Rejected');return{id:'accepted-'+sends.length}}},'./inspectionSms':{bookingSmsSnapshot:()=>({}),recordInspectionEmailSms:async x=>receipts.push(x)}})
    const notice={bookingRef:'BK-1',requestId:'request',inputs:booking,agentEmail:'agent@example.test',state,selected:state==='confirmed'?0:null,proposals:[{date:'2099-01-01',startTime:'10:00'}]}
    mod.partnerAppointmentPayloads(notice);assert.equal(sends.length+receipts.length,0)
    await mod.sendPartnerAppointmentNotice(notice).catch(()=>{})
-   assert.equal(receipts.length,!rejectClient&&state!=='declined'?1:0)
+   assert.equal(sends.length,2)
+   assert.equal(receipts.length,!rejectClient&&state==='confirmed'?1:0)
    if(receipts.length)assert.equal(receipts[0].providerMessageId,'accepted-2')
   }
  }
@@ -60,9 +61,9 @@ test('purchasing-cleaner inspection sends SMS only for the accepted CLIENT invit
  const actor={id:'staff',email:'agent@example.test',displayName:'Agent'},request={saleId:'sale',date:'2099-01-01',time:'10:00',durationMinutes:60,location:'Example',previewFingerprint:'preview',clientRequestId:'11111111-1111-4111-8111-111111111111',cleanerRequestId:'22222222-2222-4222-8222-222222222222'}
  for(const rejected of [undefined,'client@example.test','cleaner@example.test']){const f=saleFixture(rejected);await f.mod.scheduleContractSaleInspection(actor,request).catch(e=>{if(!rejected)throw e});assert.equal(f.receipts.length,rejected==='client@example.test'?0:1);if(f.receipts.length){assert.equal(f.receipts[0].phone,'0412345678');assert.equal(f.receipts[0].entityType,'sale_inspection');assert.equal(f.receipts[0].providerMessageId,'accepted-1')}}
 })
-test('fixed appointment SMS messages remain one segment and include opt-out wording',()=>{
- const sql=file('supabase/migrations/20261116231302_inspection_email_sms.sql')
+test('confirmation SMS wording fits the configured two-segment limit and includes opt-out wording',()=>{
+ const sql=file('supabase/migrations/20261117030329_inspection_sms_confirmations_only.sql')
  const messages=[...sql.matchAll(/'Secure Cleaning: (.*?)'/g)].length // SQL escaped apostrophes need explicit extraction below.
  assert.ok(messages>0)
- for(const text of sql.matchAll(/'((?:Secure Cleaning: )(?:(?:'')|[^'])*)'/g)){const message=text[1].replaceAll("''", "'");assert.equal(smsSegments(message).segments,1);assert.match(message,/Reply STOP to opt out\.$/)}
+ for(const text of sql.matchAll(/'((?:Secure Cleaning: )(?:(?:'')|[^'])*)'/g)){const message=text[1].replaceAll("''", "'");assert.equal(smsSegments(message).segments,message.includes('induction')?2:1);assert.doesNotMatch(message,/purchasing|not confirmed/);assert.match(message,/Reply STOP to opt out\.$/)}
 })

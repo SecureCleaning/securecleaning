@@ -447,8 +447,8 @@ export async function sendBookingConfirmationEmail(
     `,
   })
 
-  await recordInspectionEmailSms({ entityType: 'booking', entityRef: bookingRef,
-    kind: staffConfirmed ? 'confirmation' : 'request', phone: inputs.phone, email: inputs.email,
+  if (staffConfirmed) await recordInspectionEmailSms({ entityType: 'booking', entityRef: bookingRef,
+    kind: 'confirmation', phone: inputs.phone, email: inputs.email,
     snapshot: bookingSmsSnapshot(inputs), providerMessageId: (clientResult as { id?: string } | null)?.id })
 
   // Internal notes belong only in the staff notification, never the customer ICS.

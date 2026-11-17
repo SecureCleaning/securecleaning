@@ -14,7 +14,7 @@ export function bookingSmsSnapshot(inputs: BookingInputs) {
 
 export type InspectionSmsReceipt = {
   entityType: 'booking' | 'sale_inspection'; entityRef: string;
-  kind: 'request' | 'confirmation'; phone: string; email: string;
+  kind: 'confirmation'; phone: string; email: string;
   snapshot: Record<string, unknown>; providerMessageId?: string | null;
 }
 

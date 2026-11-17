@@ -125,4 +125,42 @@ assert.equal((await jobs('UNCERTAIN'))[0].status,'review')
 await booking('FROZEN');await receipt('FROZEN');const frozen=(await jobs('FROZEN'))[0]
 await db.query("update sms_jobs set first_attempt_at=now(),provider_scope='fixture-scope',request_payload='{\"fixed\":true}' where id=$1",[frozen.id])
 await assert.rejects(dispatch(frozen),/SMS payload changed/)
-await db.close();console.log('PASS: inspection SMS receipt matching, deduplication, stages, opt-out/email-only, stale appointments, client routing, QLD timezones, permissions and no backfill')
+// Forward rollout: pending-request SMS is disabled, while email and sent history stay intact.
+for(const ref of ['LEGACY-QUEUED','LEGACY-LEASED','LEGACY-SENT','LEGACY-UNKNOWN']){
+ await booking(ref,{preferredStartDate:'',inspectionBookingSource:'partner_request'})
+ await receipt(ref,{kind:'request'})
+}
+const queued=(await jobs('LEGACY-QUEUED'))[0],leased=(await jobs('LEGACY-LEASED'))[0],sent=(await jobs('LEGACY-SENT'))[0],unknown=(await jobs('LEGACY-UNKNOWN'))[0]
+await db.query("update sms_jobs set status='leased',lease_token=$2,lease_until=now()+interval '1 minute' where id=$1",[leased.id,randomUUID()])
+await db.query("update sms_jobs set status='delivered',first_attempt_at=now()-interval '2 minutes' where id=$1",[sent.id])
+await db.query("update sms_jobs set status='unknown',first_attempt_at=now(),provider_scope='fixture-scope',request_payload='{\"keep\":true}' where id=$1",[unknown.id])
+const sentBefore=await jobs('LEGACY-SENT'),unknownBefore=await jobs('LEGACY-UNKNOWN')
+await db.exec('reset role')
+await db.exec(await readFile(new URL('../supabase/migrations/20261117030329_inspection_sms_confirmations_only.sql',import.meta.url),'utf8'))
+await db.exec('set role service_role')
+for(const legacy of [queued,leased]){
+ assert.equal(await scalar('select status from sms_jobs where id=$1',[legacy.id]),'cancelled')
+ assert.equal(await reason(legacy),'inspection_request_sms_disabled')
+ assert.equal((await dispatch(legacy)).length,0)
+}
+assert.deepEqual(await jobs('LEGACY-SENT'),sentBefore)
+assert.deepEqual(await jobs('LEGACY-UNKNOWN'),unknownBefore)
+assert.equal(await scalar('select sms_inspection_block_reason($1)',[unknown.inspection_email_id]),'inspection_request_sms_disabled')
+const receiptsBefore=await scalar('select count(*)::int from sms_inspection_emails')
+await booking('CONFIRMATION-ONLY',{preferredStartDate:'',inspectionBookingSource:'partner_request'})
+assert.equal(await receipt('CONFIRMATION-ONLY',{kind:'request'}),true,'older app request receipt is a safe no-op')
+assert.equal((await jobs('CONFIRMATION-ONLY')).length,0)
+assert.equal(await scalar('select count(*)::int from sms_inspection_emails'),receiptsBefore)
+await db.exec("update bookings set inputs=inputs||'{\"preferredStartDate\":\"2099-11-18\",\"inspectionBookingSource\":\"partner\"}'::jsonb where booking_ref='CONFIRMATION-ONLY'")
+assert.equal(await receipt('CONFIRMATION-ONLY'),true);await receipt('CONFIRMATION-ONLY',{provider:'resend'})
+assert.equal((await jobs('CONFIRMATION-ONLY')).length,1)
+assert.equal((await dispatch((await jobs('CONFIRMATION-ONLY'))[0])).length,1)
+// Only new induction notices use the approved wording; retry payload/history is not rewritten.
+await db.query("update contract_product_sales set status='inspection_scheduled' where id=$1",[sale])
+await db.query("update contract_sale_inspections set starts_at='2099-11-19T00:00Z' where id=$1",[inspection])
+assert.equal(await receipt(inspection,{type:'sale_inspection'}),true)
+const induction=(await jobs(inspection)).find(j=>j.id!==purchase.id)
+assert.equal(induction.template,"Secure Cleaning: We've emailed your cleaning site induction confirmation. Please let us know if you need to change it. Check your inbox/junk folder for details. Reply STOP to opt out.")
+assert.equal(await scalar("select has_function_privilege('authenticated','public.sms_record_inspection_email(text,text,text,text,text,jsonb,text)','EXECUTE')"),false)
+assert.equal(await scalar("select has_function_privilege('service_role','public.sms_record_inspection_email(text,text,text,text,text,jsonb,text)','EXECUTE')"),true)
+await db.close();console.log('PASS: inspection SMS receipt matching, deduplication, opt-out/email-only, stale appointments, quote regression, confirmation-only rollout, induction wording and preserved sent/uncertain history')

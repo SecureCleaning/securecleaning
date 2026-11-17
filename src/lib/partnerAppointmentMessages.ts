@@ -62,8 +62,8 @@ export async function sendPartnerAppointmentNotice(input: Notice) {
   // A persisted delivery claim is acquired by the caller. Uncertain sends are not retried automatically.
   await sendEmailOrThrow(staff)
   const result = await sendEmailOrThrow(client) as { id?: string } | null
-  if (input.state !== 'declined') await recordInspectionEmailSms({
-    entityType: 'booking', entityRef: input.bookingRef, kind: input.state === 'pending' ? 'request' : 'confirmation',
+  if (input.state === 'confirmed') await recordInspectionEmailSms({
+    entityType: 'booking', entityRef: input.bookingRef, kind: 'confirmation',
     phone: input.inputs.phone, email: input.inputs.email, snapshot: bookingSmsSnapshot(input.inputs), providerMessageId: result?.id,
   })
 }
