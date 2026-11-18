@@ -2,6 +2,8 @@ import { usesMelbournePriority, compareBookingPriority } from '@/lib/availabilit
 import { crmCleaningFrequency, crmCleaningTime, resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
 import { getAdminSupabase } from '@/lib/supabase'
+import { ClientCrmError } from '@/lib/clientCrmErrors'
+import { normalizeCrmTemplateDocumentIds, type CrmTemplateDocument } from '@/lib/clientCrmTemplateDocuments'
 import { parseRichEmailContent } from '@/lib/richEmailServer'
 import { CLIENT_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
 import { findMatchingZones, getAvailabilityConfig } from '@/lib/availability'
@@ -122,6 +124,7 @@ export type CrmEmailTemplate = {
   body: string
   bodyHtml: string
   bodyDocument: Record<string, unknown> | null
+  attachments: CrmTemplateDocument[]
   currentVersion: number
   createdByStaffId: string | null
   updatedAt: string
@@ -144,11 +147,7 @@ export type CrmCommunication = {
   createdAt: string
 }
 
-export class ClientCrmError extends Error {
-  constructor(message: string, readonly status = 400) {
-    super(message)
-  }
-}
+export { ClientCrmError } from '@/lib/clientCrmErrors'
 
 function clean(value: unknown, maxLength = 500) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
@@ -300,6 +299,7 @@ function mapTemplate(row: Record<string, unknown>): CrmEmailTemplate {
     body: String(row.body ?? ''),
     bodyHtml: String(row.body_html ?? ''),
     bodyDocument: row.body_document && typeof row.body_document === 'object' ? row.body_document as Record<string, unknown> : null,
+    attachments: [],
     currentVersion: Number(row.current_version ?? 1),
     createdByStaffId: typeof row.created_by_staff_id === 'string' ? row.created_by_staff_id : null,
     updatedAt: String(row.updated_at ?? ''),
@@ -365,6 +365,44 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   ])
   if (opportunitiesResult.error) throw opportunitiesResult.error
   if (templatesResult.error) throw templatesResult.error
+
+  const templateRows = ((templatesResult.data ?? []) as Array<Record<string, unknown>>)
+    .filter((row) => row.created_by_staff_id === actor.id || row.visibility === 'shared')
+  const templateIds = templateRows.map((row) => String(row.id))
+  const templateDocumentLinks = templateIds.length > 0
+    ? await db.from('crm_email_template_version_documents')
+      .select('template_id,template_version,document_id,position')
+      .in('template_id', templateIds)
+      .order('position', { ascending: true })
+    : { data: [], error: null }
+  if (templateDocumentLinks.error) throw templateDocumentLinks.error
+  const currentVersions = new Map(templateRows.map((row) => [String(row.id), Number(row.current_version ?? 1)]))
+  const currentTemplateDocumentLinks = (templateDocumentLinks.data ?? [])
+    .filter((link) => currentVersions.get(String(link.template_id)) === Number(link.template_version))
+  const linkedDocumentIds = [...new Set(currentTemplateDocumentLinks.map((link) => String(link.document_id)))]
+  const templateDocumentsResult = actor.role === 'agent'
+    ? linkedDocumentIds.length > 0
+      ? await db.from('crm_email_template_documents')
+        .select('id,file_name,size_bytes,sha256,created_at')
+        .in('id', linkedDocumentIds)
+        .eq('status', 'active')
+        .not('sha256', 'is', null)
+        .order('created_at', { ascending: false })
+      : { data: [], error: null }
+    : await db.from('crm_email_template_documents')
+      .select('id,file_name,size_bytes,sha256,created_at')
+      .eq('status', 'active')
+      .not('sha256', 'is', null)
+      .order('created_at', { ascending: false })
+  if (templateDocumentsResult.error) throw templateDocumentsResult.error
+  const templateDocuments: CrmTemplateDocument[] = (templateDocumentsResult.data ?? []).map((row) => ({
+    id: String(row.id),
+    fileName: String(row.file_name ?? ''),
+    sizeBytes: Number(row.size_bytes ?? 0),
+    sha256: String(row.sha256 ?? ''),
+    createdAt: String(row.created_at ?? ''),
+  }))
+  const templateDocumentsById = new Map(templateDocuments.map((document) => [document.id, document]))
 
   const opportunityRows = (opportunitiesResult.data ?? []) as Array<Record<string, unknown>>
   const opportunityIds = opportunityRows.map((row) => String(row.id))
@@ -595,8 +633,15 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
     }
   })
 
-  const templates = ((templatesResult.data ?? []) as Array<Record<string, unknown>>)
-    .map(mapTemplate)
+  const templates = templateRows
+    .map((row) => {
+      const template = mapTemplate(row)
+      const attachments = currentTemplateDocumentLinks
+        .filter((link) => String(link.template_id) === template.id && Number(link.template_version) === template.currentVersion)
+        .map((link) => templateDocumentsById.get(String(link.document_id)))
+        .filter((document): document is CrmTemplateDocument => Boolean(document))
+      return { ...template, attachments }
+    })
     .filter((template) => (
       template.createdByStaffId === actor.id
       || template.visibility === 'shared'
@@ -604,7 +649,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
 
   const availabilityConfig = await getAvailabilityConfig()
   const defaultCity = getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
-  return { opportunities, templates, agents, senders, actor, defaultCity, premisesOptions: await getPremisesCatalog() }
+  return { opportunities, templates, templateDocuments, agents, senders, actor, defaultCity, premisesOptions: await getPremisesCatalog() }
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -967,6 +1012,7 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
 
 export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<string, unknown>) {
   const id = clean(input.id, 100)
+  const attachmentIds = normalizeCrmTemplateDocumentIds(input.attachmentIds)
   const followUpDays = input.followUpDays == null ? null : Number(input.followUpDays)
   if (followUpDays !== null && (!Number.isInteger(followUpDays) || followUpDays < 1 || followUpDays > 60)) throw new ClientCrmError('Choose 1 to 60 business days for the follow-up.')
   const followUpNote = clean(input.followUpNote, 1000)
@@ -994,7 +1040,7 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
     throw new ClientCrmError(`Remove or correct unsupported database fields: ${unsupportedFields.join(', ')}.`)
   }
   const db = getAdminSupabase()
-  const { data, error } = await db.rpc('save_client_crm_template', {
+  const { data, error } = await db.rpc('save_client_crm_template_with_documents', {
     p_template_id: id || null,
     p_name: name,
     p_description: description,
@@ -1005,6 +1051,7 @@ export async function saveCrmTemplate(actor: ClientCrmActor, input: Record<strin
     p_body: body,
     p_actor_id: actor.id,
     p_actor_role: actor.role,
+    p_document_ids: attachmentIds,
   })
   if (error) {
     if (error.code === '42501') {

@@ -21,6 +21,11 @@ import {
 import { parseRichEmailContent, richEmailFingerprint, sanitizeRichEmailHtml } from '@/lib/richEmailServer'
 import type { RichEmailContent } from '@/lib/richEmailContent'
 import { CLIENT_EMAIL_MERGE_FIELD_KEYS, findUnsupportedEmailMergeFields } from '@/lib/emailMergeFields'
+import {
+  getCrmTemplateDocumentsForVersion,
+  loadCrmTemplateDocumentContents,
+  type CrmTemplateDocumentRecord,
+} from '@/lib/clientCrmTemplateDocuments'
 
 function clean(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
@@ -245,6 +250,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   }
   const purpose = 'marketing' as const
   let templateVersion: number | null = null
+  let templateAttachments: CrmTemplateDocumentRecord[] = []
   if (templateId) {
     const { data: template, error: templateError } = await db.from('crm_email_templates')
       .select('id, visibility, status, created_by_staff_id, current_version')
@@ -257,6 +263,7 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
       throw new ClientCrmError('Email template not found.', 404)
     }
     templateVersion = Number(template.current_version ?? 1)
+    templateAttachments = await getCrmTemplateDocumentsForVersion(templateId, templateVersion)
   }
 
   const contactName = String(contact.contact_name ?? intake.contact_name ?? '')
@@ -311,7 +318,22 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
   const attachmentNote = attachment ? `Attached quote: ${attachment.quoteRef}, sent version ${attachment.version} (${attachment.filename}).` : ''
   const finalHtml = buildClientCrmHtml({ bodyHtml: content.html + (attachmentNote ? textToHtml(attachmentNote) : ''), signature, sourceExplanation, unsubscribeUrl, originalHtml: originalQuote.html })
   const finalText = `${content.text}${attachmentNote ? `\n\n${attachmentNote}` : ''}\n\n${signature}${originalQuote.text}\n\n${footer}`
-  const previewFingerprint = richEmailFingerprint({ subject, html: finalHtml, text: finalText, context: JSON.stringify([opportunity.id, recipient, fromHeader, sender.email, followUpToId, followUpQuoteSendId, quoteAttachmentSendId, attachment?.sha256]) })
+  const previewFingerprint = richEmailFingerprint({
+    subject,
+    html: finalHtml,
+    text: finalText,
+    context: JSON.stringify([
+      opportunity.id,
+      recipient,
+      fromHeader,
+      sender.email,
+      followUpToId,
+      followUpQuoteSendId,
+      quoteAttachmentSendId,
+      attachment?.sha256,
+      templateAttachments.map((document) => [document.id, document.sha256]),
+    ]),
+  })
 
   return {
     db,
@@ -337,12 +359,24 @@ async function prepareClientCrmEmail(actor: ClientCrmActor, input: Record<string
     followUpToId,
     followUpQuoteSendId,
     attachment,
+    templateAttachments,
     warnings,
   }
 }
 
 export async function previewClientCrmEmail(actor: ClientCrmActor, input: Record<string, unknown>) {
   const prepared = await prepareClientCrmEmail(actor, input)
+  const attachments = [
+    ...(prepared.attachment ? [{ filename: prepared.attachment.filename, url: `/api/admin/client-crm?${new URLSearchParams({ opportunity: prepared.opportunity.id, quoteSendId: prepared.attachment.sendId, format: 'pdf' })}` }] : []),
+    ...prepared.templateAttachments.map((document) => ({
+      filename: document.fileName,
+      url: `/api/admin/client-crm?${new URLSearchParams({
+        templateDocumentId: document.id,
+        templateId: prepared.templateId,
+        templateVersion: String(prepared.templateVersion),
+      })}`,
+    })),
+  ]
   return {
     subject: prepared.subject,
     from: prepared.fromHeader,
@@ -352,7 +386,7 @@ export async function previewClientCrmEmail(actor: ClientCrmActor, input: Record
     text: prepared.finalText,
     previewFingerprint: prepared.previewFingerprint,
     warnings: prepared.warnings,
-    attachments: prepared.attachment ? [{ filename: prepared.attachment.filename, url: `/api/admin/client-crm?${new URLSearchParams({ opportunity: prepared.opportunity.id, quoteSendId: prepared.attachment.sendId, format: 'pdf' })}` }] : [],
+    attachments,
   }
 }
 
@@ -373,6 +407,30 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
   if (clean(input.previewFingerprint, 100) !== previewFingerprint) {
     throw new ClientCrmError('Preview this exact email before sending it.', 409)
   }
+
+  const templateAttachmentContents = await loadCrmTemplateDocumentContents(prepared.templateAttachments)
+  const attachmentBytes = templateAttachmentContents.reduce((total, document) => total + document.sizeBytes, 0)
+    + (prepared.attachment?.content.length ?? 0)
+  if (attachmentBytes > 25 * 1024 * 1024) {
+    throw new ClientCrmError('The combined email attachments are too large. Remove a template document or the quote PDF before sending.', 409)
+  }
+  const attachmentSnapshot = [
+    ...(prepared.attachment ? [{
+      kind: 'quote',
+      sendId: prepared.attachment.sendId,
+      quoteRef: prepared.attachment.quoteRef,
+      version: prepared.attachment.version,
+      fileName: prepared.attachment.filename,
+      sha256: prepared.attachment.sha256,
+    }] : []),
+    ...templateAttachmentContents.map((document) => ({
+      kind: 'template',
+      documentId: document.documentId,
+      fileName: document.filename,
+      sizeBytes: document.sizeBytes,
+      sha256: document.sha256,
+    })),
+  ]
 
   const { data: existing } = await db.from('crm_communications')
     .select('id, status, sent_at')
@@ -438,6 +496,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
     body_html_snapshot: content.html,
     final_html_snapshot: finalHtml,
     final_text_snapshot: finalText,
+    attachment_snapshot: attachmentSnapshot,
   }).eq('id', communicationId).eq('status', 'sending')
   if (snapshotError) {
     await db.from('crm_communications').update({
@@ -449,6 +508,10 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
 
   let response: unknown
   try {
+    const providerAttachments = [
+      ...(prepared.attachment ? [{ filename: prepared.attachment.filename, content: prepared.attachment.content.toString('base64'), content_type: prepared.attachment.contentType }] : []),
+      ...templateAttachmentContents.map((document) => ({ filename: document.filename, content: document.content.toString('base64'), content_type: document.contentType })),
+    ]
     response = await sendEmailOrThrow({
       from: fromHeader,
       to: recipient,
@@ -456,7 +519,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
       replyTo: sender.email,
       subject,
       html: finalHtml,
-      ...(prepared.attachment ? { attachments: [{ filename: prepared.attachment.filename, content: prepared.attachment.content.toString('base64'), content_type: prepared.attachment.contentType }] } : {}),
+      ...(providerAttachments.length > 0 ? { attachments: providerAttachments } : {}),
       headers: {
         'List-Unsubscribe': `<${oneClickUnsubscribeUrl}>`,
         'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
@@ -495,6 +558,7 @@ export async function sendClientCrmEmail(actor: ClientCrmActor, input: Record<st
       followUpToId: prepared.followUpToId || null,
       followUpQuoteSendId: prepared.followUpQuoteSendId || null,
       quoteAttachment: prepared.attachment ? { sendId: prepared.attachment.sendId, quoteRef: prepared.attachment.quoteRef, version: prepared.attachment.version, filename: prepared.attachment.filename, sha256: prepared.attachment.sha256 } : null,
+      templateAttachments: templateAttachmentContents.map((document) => ({ documentId: document.documentId, filename: document.filename, sha256: document.sha256 })),
       templateId: templateId || null,
       purpose,
     },

@@ -25,8 +25,10 @@ import EmailMergeFieldPicker from '@/components/admin/EmailMergeFieldPicker'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 import { getMissingCrmSignatureFields, resolveDefaultCrmSenderId, resolveDefaultInspectionStaffId } from '@/lib/clientCrmPolicy'
 import type { CrmAgentOption, CrmEmailTemplate, CrmOpportunity, CrmSenderOption } from '@/lib/clientCrmData'
+import type { CrmTemplateDocument } from '@/lib/clientCrmTemplateDocuments'
 import { appendEmailMergeField, CLIENT_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
 import { createRichEmailContent, hasRichEmailContent, plainTextToEmailHtml, type RichEmailContent } from '@/lib/richEmailContent'
+import { supabase } from '@/lib/supabase'
 import type { StaffAccount } from '@/lib/staffAccounts'
 import type { CleaningFrequency, PremisesType, TimePreference } from '@/lib/types'
 
@@ -35,6 +37,7 @@ type WorkspaceData = {
   premisesOptions: PremisesOption[]
   opportunities: CrmOpportunity[]
   templates: CrmEmailTemplate[]
+  templateDocuments: CrmTemplateDocument[]
   agents: CrmAgentOption[]
   senders: CrmSenderOption[]
   defaultCity: CrmServiceRegion | null
@@ -102,6 +105,7 @@ function emptyTemplateDraft(actorRole: string) {
     id: '', name: '', description: '', category: 'outreach', purpose: 'marketing', followUpDays: null as number | null, followUpNote: '',
     visibility: actorRole === 'agent' ? 'personal' : 'shared',
     status: actorRole === 'agent' ? 'draft' : 'published', subject: '', body: '', bodyHtml: '', bodyDocument: null as Record<string, unknown> | null,
+    attachmentIds: [] as string[],
   }
 }
 
@@ -231,6 +235,7 @@ export default function ClientCrmWorkspace({
 
   const workspaceRead = useRef<Promise<void> | null>(null)
   const historyRequest = useRef<AbortController | null>(null)
+  const templateDocumentInput = useRef<HTMLInputElement | null>(null)
   useEffect(() => () => { historyRequest.current?.abort() }, [selectedLeadId])
   async function viewSentEmail(opportunityId: string, emailId: string) {
     if (historyRequest.current && !historyRequest.current.signal.aborted) return
@@ -731,6 +736,7 @@ export default function ClientCrmWorkspace({
       body: template.body,
       bodyHtml: template.bodyHtml || plainTextToEmailHtml(template.body),
       bodyDocument: template.bodyDocument,
+      attachmentIds: template.attachments.map((attachment) => attachment.id),
     })
     setTemplateEditorKey((current) => current + 1)
     setView('templates')
@@ -753,11 +759,75 @@ export default function ClientCrmWorkspace({
     }
   }
 
+  function toggleTemplateDocument(documentId: string) {
+    setTemplateDraft((current) => {
+      if (current.attachmentIds.includes(documentId)) {
+        return { ...current, attachmentIds: current.attachmentIds.filter((id) => id !== documentId) }
+      }
+      const selected = data?.templateDocuments.filter((document) => [...current.attachmentIds, documentId].includes(document.id)) ?? []
+      if (selected.length > 3) {
+        setStatus({ type: 'error', message: 'A template can include up to three PDF attachments.' })
+        return current
+      }
+      if (selected.reduce((total, document) => total + document.sizeBytes, 0) > 20 * 1024 * 1024) {
+        setStatus({ type: 'error', message: 'Automatic template attachments must total 20 MB or less.' })
+        return current
+      }
+      setStatus(null)
+      return { ...current, attachmentIds: [...current.attachmentIds, documentId] }
+    })
+  }
+
+  async function uploadTemplateDocument(file: File) {
+    if (!data || (data.actor.role !== 'owner' && data.actor.role !== 'manager')) return
+    if (file.type !== 'application/pdf' || !/\.pdf$/i.test(file.name) || file.size < 1 || file.size > 10 * 1024 * 1024) {
+      setStatus({ type: 'error', message: 'Choose a PDF no larger than 10 MB.' })
+      return
+    }
+    const selectedDocuments = data.templateDocuments.filter((document) => templateDraft.attachmentIds.includes(document.id))
+    if (selectedDocuments.length >= 3) {
+      setStatus({ type: 'error', message: 'Remove an attachment before uploading another PDF for this template.' })
+      return
+    }
+    if (selectedDocuments.reduce((total, document) => total + document.sizeBytes, 0) + file.size > 20 * 1024 * 1024) {
+      setStatus({ type: 'error', message: 'Remove an attachment so the selected PDFs total 20 MB or less.' })
+      return
+    }
+    setBusy('template-document')
+    setStatus(null)
+    try {
+      const created = await post({
+        action: 'template-document.upload.create',
+        fileName: file.name,
+        contentType: file.type,
+        sizeBytes: file.size,
+      })
+      const upload = created.result as { documentId: string; bucket: string; path: string; token: string }
+      const uploaded = await supabase.storage.from(upload.bucket).uploadToSignedUrl(upload.path, upload.token, file, {
+        cacheControl: '3600',
+        contentType: 'application/pdf',
+        upsert: false,
+      })
+      if (uploaded.error) throw uploaded.error
+      const finalized = await post({ action: 'template-document.upload.finalize', documentId: upload.documentId })
+      const document = finalized.result as CrmTemplateDocument
+      setTemplateDraft((current) => ({ ...current, attachmentIds: [...current.attachmentIds, document.id] }))
+      await loadWorkspace(selectedLeadId)
+      setStatus({ type: 'success', message: `${document.fileName} uploaded privately and selected for this template.` })
+    } catch (error) {
+      setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to upload the template document.' })
+    } finally {
+      setBusy('')
+      if (templateDocumentInput.current) templateDocumentInput.current.value = ''
+    }
+  }
+
   if (!data) {
     return <div><AdminPageHeader title="Client CRM" description="Loading client records and outreach tools..." />{status ? <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">{status.message}</p> : null}</div>
   }
 
   const canManageShared = data.actor.role === 'owner' || data.actor.role === 'manager'
+  const selectedComposeTemplate = data.templates.find((template) => template.id === compose.templateId) ?? null
   const selectedSender = data.senders.find((sender) => sender.id === compose.senderStaffId) ?? null
   const signatureMissing = selectedSender ? getMissingCrmSignatureFields(selectedSender) : ['sender']
   const hasUnresolvedEmail = selectedLead?.hasContactUnresolvedEmail ?? false
@@ -822,7 +892,7 @@ export default function ClientCrmWorkspace({
       </form> : null}
 
       {view === 'templates' ? <div className="grid gap-5 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h2 className="font-bold text-gray-900">Stored templates</h2><div className="mt-3 space-y-2">{data.templates.map((template) => <button key={template.id} type="button" onClick={() => editTemplate(template)} className="block w-full rounded-xl border border-gray-200 p-3 text-left hover:border-teal-300"><span className="font-semibold text-gray-900">{template.name}</span><span className="mt-1 block text-xs text-gray-500">{template.visibility} - {template.status} - version {template.currentVersion}</span></button>)}</div></section>
+        <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"><h2 className="font-bold text-gray-900">Stored templates</h2><div className="mt-3 space-y-2">{data.templates.map((template) => <button key={template.id} type="button" onClick={() => editTemplate(template)} className="block w-full rounded-xl border border-gray-200 p-3 text-left hover:border-teal-300"><span className="font-semibold text-gray-900">{template.name}</span><span className="mt-1 block text-xs text-gray-500">{template.visibility} - {template.status} - version {template.currentVersion}{template.attachments.length ? ` - ${template.attachments.length} automatic attachment${template.attachments.length === 1 ? '' : 's'}` : ''}</span></button>)}</div></section>
         <form onSubmit={saveTemplate} className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"><h2 className="font-bold text-gray-900">{templateDraft.id ? 'Edit template' : 'New template'}</h2><div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="text-sm font-medium text-gray-700">Name<input required value={templateDraft.name} onChange={(event) => setTemplateDraft({ ...templateDraft, name: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /></label>
           <div className="md:col-span-2 rounded-lg border p-3"><label><input type="checkbox" checked={templateDraft.followUpDays !== null} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpDays: e.target.checked ? 2 : null })} /> Create follow-up after sending</label>{templateDraft.followUpDays !== null ? <div className="mt-2 flex flex-wrap gap-3"><label>Business days <input type="number" min={1} max={60} value={templateDraft.followUpDays} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpDays: Number(e.target.value) })} className="w-20 border p-2" /></label><label>Suggested action <input maxLength={1000} value={templateDraft.followUpNote} onChange={(e) => setTemplateDraft({ ...templateDraft, followUpNote: e.target.value })} className="border p-2" /></label></div> : null}</div>
@@ -832,6 +902,17 @@ export default function ClientCrmWorkspace({
           <label className="text-sm font-medium text-gray-700">Status<select disabled={!canManageShared} value={templateDraft.status} onChange={(event) => setTemplateDraft({ ...templateDraft, status: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 disabled:bg-gray-100"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label>
           <label className="text-sm font-medium text-gray-700 md:col-span-2">Subject<input required value={templateDraft.subject} onChange={(event) => setTemplateDraft({ ...templateDraft, subject: event.target.value })} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => setTemplateDraft((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) }))} /></span></label>
           <div className="md:col-span-2"><RichEmailEditor value={createRichEmailContent({ document: templateDraft.bodyDocument, html: templateDraft.bodyHtml, text: templateDraft.body })} resetKey={`crm-template-${templateEditorKey}`} minHeight={300} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message) => setTemplateDraft((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document }))} /></div>
+          <section className="md:col-span-2 rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><h3 className="font-semibold text-gray-900">Automatic PDF attachments</h3><p className="mt-1 text-xs text-gray-600">Selected documents are attached automatically whenever this exact template version is used. The email preview lists every file before sending.</p></div>
+              {canManageShared ? <div><input ref={templateDocumentInput} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void uploadTemplateDocument(file) }} /><button type="button" disabled={busy === 'template-document'} onClick={() => templateDocumentInput.current?.click()} className="rounded-lg border border-teal-700 bg-white px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-60">{busy === 'template-document' ? 'Uploading...' : 'Upload PDF'}</button></div> : null}
+            </div>
+            <div className="mt-3 space-y-2">
+              {data.templateDocuments.map((document) => <label key={document.id} className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 text-sm"><input type="checkbox" className="mt-0.5" checked={templateDraft.attachmentIds.includes(document.id)} onChange={() => toggleTemplateDocument(document.id)} /><span className="min-w-0"><span className="block truncate font-semibold text-gray-900">{document.fileName}</span><span className="text-xs text-gray-500">{(document.sizeBytes / (1024 * 1024)).toFixed(2)} MB</span></span></label>)}
+              {data.templateDocuments.length === 0 ? <p className="rounded-lg border border-dashed border-gray-300 bg-white p-3 text-sm text-gray-500">No reusable PDFs have been uploaded yet.</p> : null}
+            </div>
+            <p className="mt-3 text-xs text-gray-500">PDF only. Maximum 10 MB per file, three files per template, and 20 MB combined. Replacing a document means uploading a new copy and selecting it for the next template version; earlier sent history stays unchanged.</p>
+          </section>
         </div><p className="mt-3 text-xs text-gray-500">Choose a database field from the menus to insert it. The selected client&apos;s current saved details are filled during preview; older {'{{field}}'} templates remain supported. The agent signature and unsubscribe section are added automatically.</p><div className="mt-4 flex gap-3"><button type="submit" disabled={busy === 'template'} className="rounded-lg bg-green-600 px-5 py-3 font-semibold text-white disabled:opacity-60">{busy === 'template' ? 'Saving...' : 'Save template'}</button><button type="button" onClick={() => { setTemplateDraft(emptyTemplateDraft(data.actor.role)); setTemplateEditorKey((current) => current + 1) }} className="rounded-lg border border-gray-200 px-5 py-3 font-semibold text-gray-700">New template</button></div></form>
       </div> : null}
 
@@ -1004,10 +1085,11 @@ export default function ClientCrmWorkspace({
                   {data.senders.map((sender) => <option key={sender.id} value={sender.id}>{sender.displayName} - {sender.jobTitle}</option>)}
                 </select> : <span className="mt-1 block rounded-lg border border-gray-300 bg-gray-100 px-3 py-2.5 font-normal">{selectedSender?.displayName ?? data.actor.displayName}</span>}
               </label>
-              <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></label>
+              <label className="text-sm font-medium text-gray-700">Template<select value={compose.templateId} onChange={(event) => chooseTemplate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5"><option value="">Custom marketing email</option>{data.templates.filter((template) => template.status === 'published' || template.createdByStaffId === data.actor.id).map((template) => <option key={template.id} value={template.id}>{template.name}{template.attachments.length ? ` (${template.attachments.length} attachment${template.attachments.length === 1 ? '' : 's'})` : ''}</option>)}</select></label>
               <label className="text-sm font-medium text-gray-700">Subject<input value={compose.subject} onChange={(event) => { setCompose({ ...compose, subject: event.target.value }); setEmailPreview(null) }} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5" /><span className="mt-2 block"><EmailMergeFieldPicker fields={CLIENT_EMAIL_MERGE_FIELDS} onInsert={(token) => { setCompose((current) => ({ ...current, subject: appendEmailMergeField(current.subject, token) })); setEmailPreview(null) }} /></span></label>
               <div className="md:col-span-2 lg:col-span-3 rounded-lg border p-3"><label><input type="checkbox" checked={emailFollowUp.enabled} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, enabled: e.target.checked, at: emailFollowUp.at || businessDayFollowUp(2) })} /> Remind the assigned agent to follow up after sending</label>{emailFollowUp.enabled ? <div className="mt-2 space-y-2"><label className="block">Follow-up time (device timezone) <input required type="datetime-local" value={emailFollowUp.at} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, at: e.target.value })} className="border p-2" /></label><label className="block">Internal action <input maxLength={1000} value={emailFollowUp.note} onChange={(e) => setEmailFollowUp({ ...emailFollowUp, note: e.target.value })} className="border p-2" /></label><p className="text-xs">Created after successful sending. The previous reminder is replaced after a successful follow-up. No automatic client email is sent.</p></div> : null}</div>
               <div className="md:col-span-2 lg:col-span-3"><RichEmailEditor value={createRichEmailContent({ document: compose.bodyDocument, html: compose.bodyHtml, text: compose.body })} resetKey={`crm-compose-${composeEditorKey}`} mergeFields={CLIENT_EMAIL_MERGE_FIELDS} onChange={(message: RichEmailContent) => { setCompose((current) => ({ ...current, body: message.text, bodyHtml: message.html, bodyDocument: message.document })); setEmailPreview(null) }} /></div>
+              {selectedComposeTemplate?.attachments.length ? <div className="md:col-span-2 lg:col-span-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-950"><strong>Attached automatically with this template:</strong><ul className="mt-1 list-disc pl-5">{selectedComposeTemplate.attachments.map((attachment) => <li key={attachment.id}>{attachment.fileName} ({(attachment.sizeBytes / (1024 * 1024)).toFixed(2)} MB)</li>)}</ul><p className="mt-2 text-xs">These files are fixed to template version {selectedComposeTemplate.currentVersion} and will appear in the email preview.</p></div> : null}
             </div>
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-3">

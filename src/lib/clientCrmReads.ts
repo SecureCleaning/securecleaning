@@ -56,8 +56,25 @@ export async function getCrmSentEmail(actor: ClientCrmActor, opportunityId: stri
   const opportunity=await db.from('crm_opportunities').select('id,assigned_staff_id').eq('id',opportunityId).maybeSingle()
   if (opportunity.error) throw opportunity.error
   if (!opportunity.data || !canActorAccessAssignedOpportunity(actor.role,actor.id,opportunity.data.assigned_staff_id)) throw new ClientCrmError('Opportunity not found.',404)
-  const email=await db.from('crm_communications').select('subject_snapshot,to_email,sender_name,final_html_snapshot').eq('id',emailId).eq('opportunity_id',opportunityId).maybeSingle()
+  const email=await db.from('crm_communications').select('subject_snapshot,to_email,sender_name,final_html_snapshot,template_id,template_version,attachment_snapshot').eq('id',emailId).eq('opportunity_id',opportunityId).maybeSingle()
   if (email.error) throw email.error
   if (!email.data?.final_html_snapshot) throw new ClientCrmError('No saved email content is available.',404)
-  return {subject:email.data.subject_snapshot,to:email.data.to_email,from:email.data.sender_name,html:email.data.final_html_snapshot,history:true}
+  const savedEmail = email.data
+  const snapshot = Array.isArray(savedEmail.attachment_snapshot) ? savedEmail.attachment_snapshot as Array<Record<string, unknown>> : []
+  const attachments = snapshot.flatMap((item) => {
+    const fileName = typeof item.fileName === 'string' ? item.fileName : ''
+    if (!fileName) return []
+    if (item.kind === 'quote' && typeof item.sendId === 'string') {
+      return [{ filename: fileName, url: `/api/admin/client-crm?${new URLSearchParams({ opportunity: opportunityId, quoteSendId: item.sendId, format: 'pdf' })}` }]
+    }
+    if (item.kind === 'template' && typeof item.documentId === 'string' && savedEmail.template_id && savedEmail.template_version) {
+      return [{ filename: fileName, url: `/api/admin/client-crm?${new URLSearchParams({
+        templateDocumentId: item.documentId,
+        templateId: String(savedEmail.template_id),
+        templateVersion: String(savedEmail.template_version),
+      })}` }]
+    }
+    return []
+  })
+  return {subject:savedEmail.subject_snapshot,to:savedEmail.to_email,from:savedEmail.sender_name,html:savedEmail.final_html_snapshot,attachments,history:true}
 }

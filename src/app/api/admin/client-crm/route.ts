@@ -19,6 +19,11 @@ import {
   updateCrmOpportunity,
 } from '@/lib/clientCrmData'
 import { previewClientCrmEmail, sendClientCrmEmail } from '@/lib/clientCrmEmail'
+import {
+  createCrmTemplateDocumentUpload,
+  downloadCrmTemplateDocument,
+  finalizeCrmTemplateDocumentUpload,
+} from '@/lib/clientCrmTemplateDocuments'
 import { createCrmInspectionAppointment } from '@/lib/clientCrmAppointments'
 import { createCrmQuoteDraft } from '@/lib/clientCrmQuotes'
 import { getContractProductActor } from '@/lib/contractProductAuth'
@@ -31,6 +36,24 @@ export async function GET(request: NextRequest) {
   const actor = await getClientCrmActor(request)
   if (!actor) return NextResponse.json({ success: false, error: 'Client CRM access required.' }, { status: 403 })
   try {
+    const templateDocumentId = request.nextUrl.searchParams.get('templateDocumentId')
+    if (templateDocumentId) {
+      const limited = await rateLimit(request, { key: `crm-template-document:${actor.id}`, limit: 120, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      const document = await downloadCrmTemplateDocument(actor, {
+        documentId: templateDocumentId,
+        templateId: request.nextUrl.searchParams.get('templateId') || '',
+        templateVersion: Number(request.nextUrl.searchParams.get('templateVersion')),
+      })
+      const fileName = document.filename.replace(/[^a-zA-Z0-9._-]/g, '-').slice(0, 160) || 'attachment.pdf'
+      return new NextResponse(new Uint8Array(document.content), { headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${fileName}"`,
+        'Cache-Control': 'private, no-store',
+        'Content-Security-Policy': "sandbox; default-src 'none'",
+        'X-Content-Type-Options': 'nosniff',
+      } })
+    }
     if (request.nextUrl.searchParams.has('premises')) return NextResponse.json({ success: true, options: await getPremisesCatalog() })
     if (request.nextUrl.searchParams.has('csv')) {
       const csv = request.nextUrl.searchParams.get('csv') === 'template' ? leadCsv([]) : await exportLeadCsv(actor)
@@ -116,6 +139,16 @@ export async function POST(request: NextRequest) {
     }
     if (action === 'template.save') {
       return NextResponse.json({ success: true, result: await saveCrmTemplate(actor, body) })
+    }
+    if (action === 'template-document.upload.create' || action === 'template-document.upload.finalize') {
+      const limited = await rateLimit(request, { key: `crm-template-document-upload:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
+      if (limited) return limited
+      return NextResponse.json({
+        success: true,
+        result: action === 'template-document.upload.create'
+          ? await createCrmTemplateDocumentUpload(actor, body)
+          : await finalizeCrmTemplateDocumentUpload(actor, body),
+      }, { status: action === 'template-document.upload.create' ? 201 : 200 })
     }
     if (action === 'email.preview') {
       const limited = await rateLimit(request, { key: `client-crm-preview:${actor.id}`, limit: CRM_EMAIL_PREVIEW_LIMIT, windowMs: CRM_EMAIL_WINDOW_MS })
