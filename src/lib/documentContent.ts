@@ -1,3 +1,4 @@
+import { pdfWithoutImagePayloads } from './pdfImageStreamScan'
 import { inflateSync } from 'node:zlib'
 
 
@@ -22,8 +23,9 @@ export function validateDocumentContent(data: Buffer, name: string, declaredType
     const text = data.toString('latin1')
     if (!/^%PDF-1\.[0-7]|^%PDF-2\.0/.test(text) || !/%%EOF\s*$/.test(text) || !/\btrailer\b|\/Type\s*\/XRef/.test(text) || !/\bstartxref\s+\d+/.test(text)) throw invalid()
     // Decode escaped PDF names before rejecting active actions and embedded payloads.
-    const names = text.replace(/#([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
-    if (/\/(?:JavaScript|JS|OpenAction|AA|Launch|EmbeddedFile|Filespec|RichMedia|XFA|SubmitForm|ImportData)\b/i.test(names) || /<\s*(?:script|html|iframe|object)\b/i.test(text)) throw invalid()
+    const scan = pdfWithoutImagePayloads(text)
+    const names = scan.replace(/#([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)))
+    if (/\/(?:JavaScript|JS|OpenAction|AA|Launch|EmbeddedFile|Filespec|RichMedia|XFA|SubmitForm|ImportData)\b/i.test(names) || /<\s*(?:script|html|iframe|object)\b/i.test(scan)) throw invalid()
     contentType = 'application/pdf'; extension = 'pdf'
   } else if (data.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
     let offset = 8; let ended = false; let header = false; const image: Buffer[] = []
