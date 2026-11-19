@@ -510,8 +510,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
               {!broadcastCleanersLoading && broadcastCleaners.length > 0 ? <span className="mt-2 block text-xs font-normal text-gray-500">Eligible addresses: {broadcastCleaners.map((cleaner) => cleaner.email).join(', ')}</span> : null}
             </label> : <p className="text-sm text-gray-600 sm:col-span-2">{broadcastCleanersLoading ? 'Checking cleaner eligibility...' : `${broadcastCleaners.length} cleaners are currently eligible in ${broadcastState}. Final eligibility is checked again before sending.`}</p>}
             <div className="text-xs text-gray-600 sm:col-span-2">
-              <p>Eligibility: leads, pending-approval and approved cleaners in {broadcastState} with a valid email, excluding blocked or unsubscribed recipients. Shared email addresses appear once.</p>
-              {broadcastEligibility && !broadcastCleanersLoading ? <p className="mt-1">{broadcastEligibility.consideredCount} eligible-status records checked: {broadcastCleaners.length} eligible; {broadcastEligibility.excluded.invalidEmail ?? 0} invalid or missing email; {broadcastEligibility.excluded.suppressed ?? 0} blocked or unsubscribed; {broadcastEligibility.excluded.duplicateEmail ?? 0} duplicate email.</p> : null}
+              <p>Eligibility: all cleaner statuses in {broadcastState} with a valid email, excluding blocked or unsubscribed recipients. Shared email addresses appear once.</p>
+              {broadcastEligibility && !broadcastCleanersLoading ? <p className="mt-1">{broadcastEligibility.consideredCount} cleaner records checked: {broadcastCleaners.length} eligible; {broadcastEligibility.excluded.invalidEmail ?? 0} invalid or missing email; {broadcastEligibility.excluded.suppressed ?? 0} blocked or unsubscribed; {broadcastEligibility.excluded.duplicateEmail ?? 0} duplicate email.</p> : null}
             </div>
           </div>
         </div>
@@ -604,7 +604,7 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
           {broadcastPreview ? <div className="mt-4 space-y-4">
             <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm">
               <strong>{broadcastPreview.recipientCount} eligible recipient{broadcastPreview.recipientCount === 1 ? '' : 's'} confirmed</strong>
-              {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} eligible-status records checked.</p>}
+              {broadcastPreview.targetCleaners.length > 0 ? <ul className="mt-2 space-y-1 text-gray-700">{broadcastPreview.targetCleaners.map((cleaner) => <li key={cleaner.id}>{cleaner.businessName || cleaner.name} · {cleaner.email}</li>)}</ul> : <p className="mt-1 text-gray-700">All eligible cleaners in {broadcastState}; {broadcastPreview.consideredCount} cleaner records checked.</p>}
               <p className="mt-1 text-gray-600">Excluded: {broadcastPreview.excluded.suppressed ?? 0} suppressed, {broadcastPreview.excluded.invalidEmail ?? 0} invalid email, {broadcastPreview.excluded.duplicateEmail ?? 0} duplicate email.</p>
               {!broadcastPreview.canSend ? <p className="mt-2 font-semibold text-amber-800">No eligible recipients are selected.</p> : null}
             </div>

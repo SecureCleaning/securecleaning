@@ -178,7 +178,7 @@ async function getEligibleCleaners(state: ContractProductState) {
   const db = getAdminSupabase()
   const candidates = await readEmailPages((from, to) => db.from('cleaners')
     .select('id, email, phone, address, contact_name, business_name, first_name, last_name, city, suburb, postcode, abn, services, broadcast_unsubscribe_token')
-    .in('status', ['lead', 'pending_approval', 'approved']).eq('state', state).order('id').range(from, to))
+    .eq('state', state).order('id').range(from, to))
   const emails = candidates.map((row) => String(row.email ?? '').trim().toLowerCase()).filter(Boolean)
   const [globalSuppressions, cleanerSuppressions] = emails.length ? await Promise.all([
     readEmailPages((from, to) => db.from('crm_email_suppressions').select('email_normalized').eq('blocks_all', true).order('email_normalized').range(from, to)),

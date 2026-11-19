@@ -35,8 +35,8 @@ async function prepare(actor: AdminSessionIdentity, value: unknown) {
   }
   const messages = input.emails.map(email => {
     const cleaner = rows.find(row => String(row.email).trim().toLowerCase() === email)
-    if (!cleaner || cleaner.status !== 'approved' || blockedEmails.has(email) || blockedIds.has(cleaner.id) || !cleaner.broadcast_unsubscribe_token) {
-      throw new CleanerEmailError(`${email} is not an eligible approved cleaner or has unsubscribed. Remove this address before previewing.`)
+    if (!cleaner || blockedEmails.has(email) || blockedIds.has(cleaner.id) || !cleaner.broadcast_unsubscribe_token) {
+      throw new CleanerEmailError(`${email} is not an eligible cleaner or has unsubscribed. Remove this address before previewing.`)
     }
     const unsubscribeUrl = `${getSiteUrl()}/cleaner-email-preferences/unsubscribe?token=${encodeURIComponent(cleaner.broadcast_unsubscribe_token)}`
     return { cleanerId: cleaner.id as string, email, name: cleaner.contact_name as string, unsubscribeUrl, ...renderCleanerEmail(input, cleaner as CleanerEmailRecipient, sender, unsubscribeUrl) }

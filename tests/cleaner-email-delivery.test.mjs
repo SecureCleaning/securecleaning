@@ -75,7 +75,7 @@ function backend(options = {}) {
       return json({id:'provider-test-id'})
     }
     if (path.includes('/admin_staff_accounts?')) { const id = new URL(path).searchParams.get('id'); return json(id ? staffRows.find(row => 'eq.' + row.id === id) : staffRows) }
-    if (path.includes('/cleaners?')) return json(cleanerRows.map(c=>({...c,status:options.rejected?'rejected':'approved'})))
+    if (path.includes('/cleaners?')) return json(cleanerRows.map(c=>({...c,status:options.status ?? 'approved'})))
     if (path.includes('/crm_email_suppressions?')) return json(options.suppressed?[{email_normalized:draft.emails}]:[])
     if (path.includes('/cleaner_broadcast_suppressions?')) return json([])
     if (path.includes('/background_email_jobs?')) return json({status:'running'})
@@ -120,10 +120,10 @@ test('preview/send uses server-approved recipients and preview binding, with dur
     assert.equal(mock.sent,1)
   } finally {globalThis.fetch=previous}
 })
-test('rejected/suppressed recipients fail preview and eligibility changes at claim skip sending',async()=>{
+test('suppressed recipients fail preview and eligibility changes at claim skip sending',async()=>{
   const previous=globalThis.fetch
   try {
-    for(const setting of [{rejected:true},{suppressed:true}]){globalThis.fetch=backend(setting).fetch;await assert.rejects(previewCleanerEmail(actor,draft),/not an eligible/)}
+    for(const setting of [{suppressed:true}]){globalThis.fetch=backend(setting).fetch;await assert.rejects(previewCleanerEmail(actor,draft),/not an eligible/)}
     const mock=backend({changedAfterPreview:true});globalThis.fetch=mock.fetch
     const preview=await previewCleanerEmail(actor,draft)
     const result=await deliverCleanerEmail(actor,{...draft,requestId:'55555555-5555-4555-8555-555555555555',fingerprint:preview.fingerprint})
@@ -226,3 +226,11 @@ test('send and resume only enqueue; background delivery continues without browse
     assert.equal(mock.sent,21)
   } finally { globalThis.fetch=previous }
 })
+
+ test('all cleaner workflow statuses can preview without approval',async()=>{
+ const previous=globalThis.fetch
+ try { for(const status of ['lead','pending_approval','approved','paused','rejected','inactive']) {
+ const mock=backend({status});globalThis.fetch=mock.fetch
+ const result=await previewCleanerEmail(actor,draft);assert.equal(result.recipients.length,1);assert.equal(mock.sent,0)
+ }} finally {globalThis.fetch=previous}
+ })
