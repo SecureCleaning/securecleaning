@@ -3,7 +3,7 @@ import { writeAuditLogStrict } from '@/lib/auditLog'
 import { rankAdminAlerts } from '@/lib/adminAlertRanking.mjs'
 import { isValidAdminAlertId } from '@/lib/adminAlertId'
 import { adminAlertClientLabel } from '@/lib/adminAlertClientLabel'
-import { needsBookingAssignment } from '@/lib/bookingWorkflow'
+import { matchesBookingQueue, needsBookingAssignment } from '@/lib/bookingWorkflow'
 
 export { isValidAdminAlertId } from '@/lib/adminAlertId'
 
@@ -58,7 +58,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
 
   const [quotesRes, pendingBookingsRes, overdueBookingsRes, unassignedBookingsRes, emailAlertsRes] = await Promise.all([
     db.from('quotes').select('quote_ref, created_at, inputs').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
-    db.from('bookings').select('booking_ref, created_at, status, inputs').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
+    db.from('bookings').select('booking_ref, quote_id, created_at, status, inspection_status, inputs').eq('status', 'pending').order('created_at', { ascending: true }).limit(100),
     db.from('bookings')
       .select('booking_ref, created_at, status, inspection_status, inspection_scheduled_for, inputs')
       .eq('inspection_status', 'scheduled')
@@ -69,7 +69,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
       .order('inspection_scheduled_for', { ascending: true })
       .limit(100),
     db.from('bookings')
-      .select('booking_ref, created_at, status, assigned_operator_id, site_id, inputs')
+      .select('booking_ref, quote_id, created_at, status, inspection_status, assigned_operator_id, site_id, inputs')
       .neq('status', 'completed')
       .neq('status', 'cancelled')
       .order('created_at', { ascending: true })
@@ -100,6 +100,7 @@ export async function getAdminAlerts(): Promise<AdminAlert[]> {
   }
 
   for (const booking of pendingBookingsRes.data ?? []) {
+    if (!matchesBookingQueue(booking, 'pending')) continue
     const happenedAt = new Date(booking.created_at ?? '').getTime()
     alertsById.set(`booking-${booking.booking_ref}`, {
       id: `booking-${booking.booking_ref}`,

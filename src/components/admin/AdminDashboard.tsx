@@ -49,6 +49,7 @@ type QuoteRow = {
 }
 
 type BookingRow = {
+  quote_id?: string | null
   id: string
   booking_ref: string
   status: string

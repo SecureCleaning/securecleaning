@@ -1,4 +1,5 @@
 export type BookingWorkflowRecord = {
+  quote_id?: string | null
   status?: string | null
   site_id?: string | null
   assigned_operator_id?: string | null
@@ -8,8 +9,13 @@ export type BookingWorkflowRecord = {
 
 export type BookingQueue = 'active' | 'pending' | 'unassigned' | 'inspections' | 'closed' | 'all'
 
+export function isCancelledAppointmentOnlyBooking(booking: BookingWorkflowRecord) {
+  return booking.inspection_status === 'cancelled' && booking.quote_id === null
+    && ['crm_manual', 'partner', 'partner_request'].includes(String(booking.inputs?.inspectionBookingSource ?? ''))
+}
+
 export function isClosedBooking(booking: BookingWorkflowRecord) {
-  return booking.status === 'completed' || booking.status === 'cancelled'
+  return booking.status === 'completed' || booking.status === 'cancelled' || isCancelledAppointmentOnlyBooking(booking)
 }
 
 export function isActiveBooking(booking: BookingWorkflowRecord) {

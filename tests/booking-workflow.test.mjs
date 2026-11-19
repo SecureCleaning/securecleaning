@@ -70,3 +70,21 @@ test('booking mutations validate lifecycle status server-side', () => {
   assert.match(route, /isBookingStatus\(updates\.status\)/)
   assert.match(operations, /isBookingStatus\(status\)/)
 })
+
+test('cancelled appointment-only records leave action queues without cancelling service work', async () => {
+  const { matchesBookingQueue, needsBookingAssignment, needsInspectionAction } = await import('../src/lib/bookingWorkflow.ts')
+  for (const source of ['crm_manual', 'partner', 'partner_request']) {
+    for (const status of ['pending', 'confirmed']) {
+      const booking = { status, quote_id: null, inspection_status: 'cancelled', inputs: { inspectionBookingSource: source } }
+      for (const queue of ['active', 'pending', 'unassigned', 'inspections']) assert.equal(matchesBookingQueue(booking, queue), false)
+      assert.equal(matchesBookingQueue(booking, 'closed'), true)
+      assert.equal(matchesBookingQueue(booking, 'all'), true)
+      assert.equal(needsBookingAssignment(booking), false)
+      assert.equal(needsInspectionAction(booking), false)
+      assert.equal(matchesBookingQueue({ ...booking, inspection_status: 'scheduled' }, 'active'), true)
+      assert.equal(matchesBookingQueue({ ...booking, quote_id: 'real-service-quote' }, 'active'), true)
+      assert.equal(matchesBookingQueue({ ...booking, quote_id: undefined }, 'active'), true)
+    }
+  }
+  assert.equal(matchesBookingQueue({status:'pending',inspection_status:'cancelled',inputs:{inspectionBookingSource:'public'}}, 'pending'), true)
+})

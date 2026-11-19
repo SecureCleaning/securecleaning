@@ -1,5 +1,5 @@
 import { getAdminSupabase } from '@/lib/supabase'
-import { needsBookingAssignment, needsInspectionAction } from '@/lib/bookingWorkflow'
+import { matchesBookingQueue, needsBookingAssignment, needsInspectionAction } from '@/lib/bookingWorkflow'
 
 export interface ReportingSnapshot {
   quoteCount: number
@@ -26,20 +26,20 @@ export async function getReportingSnapshot(): Promise<ReportingSnapshot> {
 
   const [quotesRes, bookingsRes, leadsRes, operatorsRes] = await Promise.all([
     db.from('quotes').select('status, follow_up_status'),
-    db.from('bookings').select('status, assigned_operator_id, site_id, inspection_status, inspection_assignee:inputs->>preferredInspectionAssigneeId'),
+    db.from('bookings').select('status, quote_id, assigned_operator_id, site_id, inspection_status, inspection_assignee:inputs->>preferredInspectionAssigneeId, inspection_source:inputs->>inspectionBookingSource'),
     db.from('leads').select('follow_up_status'),
     db.from('owner_operators').select('is_active'),
   ])
 
   const quotes = quotesRes.data ?? []
-  const bookings = (bookingsRes.data ?? []).map(row => ({ ...row, inputs: { preferredInspectionAssigneeId: row.inspection_assignee } }))
+  const bookings = (bookingsRes.data ?? []).map(row => ({ ...row, inputs: { preferredInspectionAssigneeId: row.inspection_assignee, inspectionBookingSource: row.inspection_source } }))
   const leads = leadsRes.data ?? []
   const operators = operatorsRes.data ?? []
 
   return {
     quoteCount: quotes.length,
     bookingCount: bookings.length,
-    pendingBookings: bookings.filter((item) => item.status === 'pending').length,
+    pendingBookings: bookings.filter((item) => matchesBookingQueue(item, 'pending')).length,
     completedBookings: bookings.filter((item) => item.status === 'completed').length,
     activeOperators: operators.filter((item) => item.is_active).length,
     unassignedBookings: bookings.filter(needsBookingAssignment).length,

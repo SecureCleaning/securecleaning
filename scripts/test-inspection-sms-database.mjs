@@ -9,7 +9,7 @@ await db.exec(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_
  CREATE TABLE admin_audit_log(entity_type text,entity_ref text,action text,details jsonb);
  CREATE TABLE quotes(id uuid primary key default gen_random_uuid(),quote_ref text unique,inputs jsonb,status text default 'pending',valid_until timestamptz default now()+interval '30 days',final_quote_document jsonb,final_quote_document_version integer,firm_quote_workflow jsonb);
  CREATE TABLE quote_send_attempts(id uuid primary key,quote_ref text references quotes(quote_ref),status text,provider_message_id text,document_version integer,provider_accepted_at timestamptz,actor jsonb);
- CREATE TABLE bookings(id uuid primary key default gen_random_uuid(),booking_ref text unique,quote_id uuid,inputs jsonb,status text default 'pending');
+ CREATE TABLE bookings(id uuid primary key default gen_random_uuid(),booking_ref text unique,quote_id uuid,inputs jsonb,status text default 'pending',inspection_status text default 'scheduled');
  CREATE TABLE partner_booking_requests(booking_id uuid,request_kind text,decision_status text);
  CREATE TABLE clients(id uuid primary key default gen_random_uuid(),phone text,email text);
  CREATE TABLE crm_opportunities(id uuid primary key default gen_random_uuid(),primary_contact_id uuid);
@@ -163,4 +163,35 @@ const induction=(await jobs(inspection)).find(j=>j.id!==purchase.id)
 assert.equal(induction.template,"Secure Cleaning: We've emailed your cleaning site induction confirmation. Please let us know if you need to change it. Check your inbox/junk folder for details. Reply STOP to opt out.")
 assert.equal(await scalar("select has_function_privilege('authenticated','public.sms_record_inspection_email(text,text,text,text,text,jsonb,text)','EXECUTE')"),false)
 assert.equal(await scalar("select has_function_privilege('service_role','public.sms_record_inspection_email(text,text,text,text,text,jsonb,text)','EXECUTE')"),true)
-await db.close();console.log('PASS: inspection SMS receipt matching, deduplication, opt-out/email-only, stale appointments, quote regression, confirmation-only rollout, induction wording and preserved sent/uncertain history')
+
+// Cancellation rollout and future status-only cancellations (without deleting appointment inputs).
+for (const ref of ['CANCEL-EXISTING','CANCEL-FUTURE','CANCEL-LEASED','CANCEL-SENT','CANCEL-UNKNOWN','CANCEL-OTHER']) {
+ await booking(ref); await receipt(ref)
+}
+await db.query("update sms_jobs set status='leased',lease_token=$1,lease_until=now()+interval '1 minute' where entity_ref='CANCEL-LEASED'",[randomUUID()])
+await db.exec("update sms_jobs set status='delivered',first_attempt_at=now() where entity_ref='CANCEL-SENT'")
+await db.exec("update sms_jobs set status='unknown',first_attempt_at=now(),request_payload='{\"preserve\":true}' where entity_ref='CANCEL-UNKNOWN'")
+await db.exec("update sms_jobs set purpose='unrelated_followup' where entity_ref='CANCEL-OTHER'")
+const preservedSent=await jobs('CANCEL-SENT'),preservedUnknown=await jobs('CANCEL-UNKNOWN'),preservedOther=await jobs('CANCEL-OTHER')
+await db.exec("update bookings set inspection_status='cancelled' where booking_ref='CANCEL-EXISTING'")
+await db.exec('reset role')
+await db.exec(await readFile(new URL('../supabase/migrations/20261119015650_cancelled_appointment_reminders.sql',import.meta.url),'utf8'))
+await db.exec('set role service_role')
+assert.equal((await jobs('CANCEL-EXISTING'))[0].status,'cancelled')
+for (const ref of ['CANCEL-FUTURE','CANCEL-LEASED','CANCEL-SENT','CANCEL-UNKNOWN','CANCEL-OTHER']) {
+ await db.query("update bookings set inspection_status='cancelled' where booking_ref=$1",[ref])
+}
+for (const ref of ['CANCEL-FUTURE','CANCEL-LEASED']) {
+ const j=(await jobs(ref))[0]; assert.equal(j.status,'cancelled');assert.equal(j.lease_token,null)
+ // Simulate a worker holding an older lease snapshot: dispatch still refuses to send.
+ assert.equal((await dispatch(j)).length,0)
+ assert.equal(await scalar('select sms_inspection_block_reason($1)',[j.inspection_email_id]),'inspection_cancelled')
+}
+assert.deepEqual(await jobs('CANCEL-SENT'),preservedSent)
+assert.deepEqual(await jobs('CANCEL-UNKNOWN'),preservedUnknown)
+assert.deepEqual(await jobs('CANCEL-OTHER'),preservedOther)
+await db.query("update contract_sale_inspections set status='cancelled' where id=$1",[inspection])
+assert.equal((await jobs(inspection)).find(j=>j.id===induction.id).status,'cancelled')
+assert.equal(await scalar('select sms_inspection_block_reason($1)',[unknown.inspection_email_id]),'inspection_request_sms_disabled','confirmation-only protection retained')
+for(const role of ['anon','authenticated']) assert.equal(await scalar(`select has_function_privilege('${role}','public.cancel_appointment_sms_jobs()','EXECUTE')`),false)
+await db.close();console.log('PASS: inspection SMS lifecycle, forward cancellation cleanup, status-only guard, queued/leased cancellation, preserved history/unrelated messages and service-only permissions')
