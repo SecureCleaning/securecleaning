@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const actor = authorization.identity
     if (input.action === 'preview') return NextResponse.json({ success: true, preview: await previewCleanerEmail(actor, input) })
     if (input.action === 'send') return NextResponse.json({ success: true, result: await deliverCleanerEmail(actor, input) })
-    if (input.action === 'continue') return NextResponse.json({ success: true, result: await continueCleanerEmail(actor, input.requestId) })
+    if (input.action === 'continue') return NextResponse.json({ success: true, result: await continueCleanerEmail(actor, input.requestId, false, input.resume === true) })
     if (input.action === 'status') return NextResponse.json({ success: true, result: await cleanerEmailResults(actor, input.requestId) })
     throw new CleanerEmailError('Choose preview or send.')
   } catch (error) {

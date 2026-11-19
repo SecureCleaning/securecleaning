@@ -1,7 +1,8 @@
+import { enqueueBackgroundEmail, backgroundEmailStatus, requireBackgroundEmailWorker } from '@/lib/backgroundEmailQueue'
 import { getPremisesCatalog } from '@/lib/premisesCatalogServer'
 import { premisesLabel } from '@/lib/premisesCatalog'
 import 'server-only'
-import { readEmailPages, acquireEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
+import { readEmailPages, waitForEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
 
 import { EmailProviderRejectedError, sendEmailOrThrow } from '@/lib/email'
 import { createCleanerJobsAccessToken } from '@/lib/cleanerJobsAccess'
@@ -508,7 +509,8 @@ function providerId(response: unknown) {
     ? (response as { id: string }).id : null
 }
 
-export async function sendContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>) {
+export async function sendContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>, processInWorker = false, resume = false) {
+  if (!processInWorker) requireBackgroundEmailWorker()
   const sender = await resolveBroadcastSender(actor, input.senderStaffId)
   const idempotencyKey = clean(input.idempotencyKey, 100)
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('A valid send request ID is required.')
@@ -635,6 +637,10 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   }
 
   if (!delivery) throw new ContractProductError('Broadcast delivery details are missing.', 409)
+  if (!processInWorker) {
+    await enqueueBackgroundEmail('broadcast', campaignId, actor.id, resume)
+    return getContractProductBroadcastStatus(actor, { idempotencyKey })
+  }
   const { jobsUrl, fromAddress } = delivery
   const deliverySender = delivery.sender
   const runnerToken = crypto.randomUUID()
@@ -680,7 +686,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
   const deadline = Date.now() + EMAIL_DELIVERY_STEP_MS
   let paused = false
   for (const row of (recipientRows ?? []).filter((candidate) => candidate.status === 'queued')) {
-    if (Date.now() >= deadline || !(await acquireEmailDeliverySlot())) break
+    if (Date.now() >= deadline || !(await waitForEmailDeliverySlot(deadline))) break
     const recipientId = String(row.id)
     const leaseUntil = new Date(Date.now() + 2 * 60 * 1000).toISOString()
     const { data: renewed, error: renewError } = await db.from('cleaner_broadcast_campaigns')
@@ -734,7 +740,7 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
           'List-Unsubscribe': `<${getSiteUrl()}/api/cleaner-email-preferences/unsubscribe?token=${encodeURIComponent(cleaner.unsubscribeToken)}>`,
           'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
         },
-      })
+      }, { idempotencyKey: `cleaner-broadcast/${recipientId}` })
       const { data: finalized, error } = await db.from('cleaner_broadcast_recipients').update({
         status: 'sent', provider_message_id: providerId(response), sent_at: new Date().toISOString(),
       }).eq('id', recipientId).eq('status', 'sending').select('id').maybeSingle()
@@ -783,12 +789,17 @@ export async function sendContractProductBroadcast(actor: ContractProductActor, 
 export async function getContractProductBroadcastHistory(actor: ContractProductActor) {
   const db = getAdminSupabase()
   let query = db.from('cleaner_broadcast_campaigns')
-    .select('id, state, subject_snapshot, recipient_mode, target_cleaner_id, status, recipient_count, sent_count, failed_count, skipped_count, sender_staff_id, sender_name_snapshot, sender_email_snapshot, created_at, completed_at')
+    .select('id, idempotency_key, created_by_staff_id, state, subject_snapshot, recipient_mode, target_cleaner_id, status, recipient_count, sent_count, failed_count, skipped_count, sender_staff_id, sender_name_snapshot, sender_email_snapshot, created_at, completed_at')
     .order('created_at', { ascending: false }).limit(50)
   if (actor.role === 'agent') query = query.eq('sender_staff_id', actor.id)
   const { data, error } = await query
   if (error) throw error
+  const { data: jobs, error: jobsError } = data?.length ? await db.from('background_email_jobs')
+    .select('target_id,status,updated_at').eq('kind', 'broadcast').in('target_id', data.map(row => row.id)) : { data: [], error: null }
+  if (jobsError) throw jobsError
   return (data ?? []).map((row) => ({
+    backgroundStatus: jobs?.find(job => job.target_id === row.id)?.status ?? null,
+    resumeRequestId: row.created_by_staff_id === actor.id && row.status === 'sending' ? row.idempotency_key : null,
     id: String(row.id), state: String(row.state), subject: String(row.subject_snapshot), status: String(row.status),
     recipientMode: row.recipient_mode === 'single' || row.recipient_mode === 'multiple' ? row.recipient_mode : 'state',
     senderName: String(row.sender_name_snapshot ?? ''), senderEmail: String(row.sender_email_snapshot ?? ''),
@@ -832,7 +843,7 @@ export async function getContractProductBroadcastHistoryPreview(
   }
 }
 
-export async function continueContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>) {
+export async function continueContractProductBroadcast(actor: ContractProductActor, input: Record<string, unknown>, processInWorker = false) {
   const idempotencyKey = clean(input.idempotencyKey, 100)
   if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('Invalid broadcast request.')
   const db = getAdminSupabase()
@@ -849,5 +860,26 @@ export async function continueContractProductBroadcast(actor: ContractProductAct
   const state = assertBroadcastState(actor, draft.state)
   const intro = getBroadcastIntro(draft, state)
   const previewFingerprint = broadcastDraftFingerprint(draft, { state, recipientMode: getRecipientMode(draft.recipientMode), senderId: draft.senderStaffId, subject: draft.subject, intro })
-  return sendContractProductBroadcast(actor, { ...draft, previewFingerprint })
+  return sendContractProductBroadcast(actor, { ...draft, previewFingerprint }, processInWorker, !processInWorker && input.resume === true)
+}
+
+
+export async function getContractProductBroadcastStatus(actor: ContractProductActor, input: Record<string, unknown>) {
+  const idempotencyKey = clean(input.idempotencyKey, 100)
+  if (!/^[0-9a-f-]{36}$/i.test(idempotencyKey)) throw new ContractProductError('Invalid broadcast request.')
+  const db = getAdminSupabase()
+  const { data: campaign, error } = await db.from('cleaner_broadcast_campaigns')
+    .select('id,status,state').eq('idempotency_key', idempotencyKey).eq('created_by_staff_id', actor.id).maybeSingle()
+  if (error || !campaign) throw new ContractProductError('Broadcast request not found. Check history before starting another send.', 404)
+  assertBroadcastState(actor, campaign.state)
+  const rows = await readEmailPages((from, to) => db.from('cleaner_broadcast_recipients')
+    .select('status').eq('campaign_id', campaign.id).order('id').range(from, to))
+  const remainingCount = rows.filter(row => row.status === 'queued').length
+  const inProgress = remainingCount > 0 || rows.some(row => row.status === 'sending')
+  const background = await backgroundEmailStatus('broadcast', campaign.id)
+  return { campaignId: campaign.id, status: campaign.status, sentCount: rows.filter(row => row.status === 'sent').length,
+    failedCount: rows.filter(row => ['unknown', 'rejected'].includes(row.status)).length,
+    skippedCount: rows.filter(row => ['skipped', 'suppressed'].includes(row.status)).length,
+    remainingCount, inProgress, duplicate: true, ...background, paused: inProgress && background.paused,
+    deliveryMessage: inProgress ? background.deliveryMessage : 'Delivery finished. Check any unresolved recipients in email history.' }
 }

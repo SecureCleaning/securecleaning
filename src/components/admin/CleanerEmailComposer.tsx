@@ -2,7 +2,7 @@
 
 import CleanerEmailDetails from '@/components/admin/CleanerEmailDetails'
 import { useEffect, useState } from 'react'
-import { useEmailQueueRunner } from '@/lib/useEmailQueueRunner'
+import { useEmailDeliveryStatus } from '@/lib/useEmailDeliveryStatus'
 import RichEmailComposer from '@/components/admin/RichEmailComposer'
 import { createRichEmailContent } from '@/lib/richEmailContent'
 import { CLEANER_EMAIL_MERGE_FIELDS } from '@/lib/emailMergeFields'
@@ -30,7 +30,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
   const [error, setError] = useState('')
   const [confirmed, setConfirmed] = useState(false)
   useEffect(() => { const saved = sessionStorage.getItem('cleaner-email-request'); if (saved) setRequestId(saved) }, [])
-  const queue = useEmailQueueRunner()
+  const queue = useEmailDeliveryStatus()
   const locked = Boolean(requestId)
   const invalidate = () => { setPreview(null); setConfirmed(false); setError('') }
   async function api(action: string, extra: Record<string, unknown> = {}) {
@@ -58,19 +58,26 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
       const data = await response.json()
       if (!response.ok || !data.success) throw new Error(data.error || 'The send result could not be confirmed.')
       setResult(data.result)
-      if (data.result.inProgress && !data.result.paused) await continueSend(id)
+      if (data.result.inProgress && !data.result.paused) void watchStatus(id)
     } catch (issue) { setError(`${issue instanceof Error ? issue.message : 'The send result could not be confirmed.'} Use Check delivery status before sending another copy.`) }
     finally { setBusy('') }
   }
-  async function continueSend(id = requestId) {
+  async function watchStatus(id = requestId) {
     if (!id) return
     setError('')
     try {
-      await queue.run(async () => (await api('continue', { requestId: id })).result as CleanerEmailResult, value => {
+      await queue.run(async () => (await api('status', { requestId: id })).result as CleanerEmailResult, value => {
         setResult(value)
-        if (value.paused) setError('Resend has reached the account sending quota. Resume after the plan upgrade or quota reset.')
+        if (value.paused) setError(value.deliveryMessage || 'Delivery needs review before resuming.')
       })
     } catch (issue) { setError(issue instanceof Error ? issue.message : 'Sending paused. Check delivery status and resume the unsent recipients.') }
+  }
+  async function continueSend(id = requestId) {
+    if (!id) return
+    setBusy('resume'); setError('')
+    try { setResult((await api('continue', { requestId: id, resume: true })).result); void watchStatus(id) }
+    catch (issue) { setError(issue instanceof Error ? issue.message : 'Unable to resume saved recipients.') }
+    finally { setBusy('') }
   }
   async function selectPreview(index: number) {
     if (!preview) return
@@ -84,7 +91,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
   }
   async function checkStatus() {
     setBusy('status'); setError('')
-    try { setResult((await api('status')).result) }
+    try { setResult((await api('status')).result); void watchStatus() }
     catch (issue) { setError(issue instanceof Error ? issue.message : 'Unable to check status.') }
     finally { setBusy('') }
   }
@@ -102,7 +109,7 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
     <section aria-label="Email cleaners" className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3 bg-[#1a2744] px-6 py-5 text-white">
         <div><p className="text-xs font-semibold uppercase tracking-widest text-[#dec16e]">Secure Cleaning</p><h2 className="mt-1 text-xl font-bold">Email your cleaner network</h2><p className="mt-1 text-sm text-slate-200">A personal email to one cleaner, or separate copies to a selected group.</p></div>
-        <button type="button" disabled={(Boolean(busy) || queue.running)} onClick={close} className="rounded-lg border border-white/40 px-3 py-2 text-sm disabled:opacity-50">Close email</button>
+        <button type="button" disabled={Boolean(busy)} onClick={close} className="rounded-lg border border-white/40 px-3 py-2 text-sm disabled:opacity-50">Close email</button>
       </div>
       <div className="grid gap-6 p-5 xl:grid-cols-2">
         <div className="min-w-0 space-y-5">
@@ -128,8 +135,8 @@ export default function CleanerEmailComposer({ cleaners, templates, onClose }: {
             <button type="button" onClick={() => void makePreview()} disabled={!emails.trim() || !subject.trim() || !body.trim()} className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy === 'preview' ? 'Checking recipients...' : 'Check recipients & preview'}</button>
           </fieldset>
           {error ? <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p> : null}
-          {locked ? <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="break-all text-xs text-slate-600">Email request: {requestId}</p><div className="flex flex-wrap gap-2"><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={() => void checkStatus()} className="rounded-lg border bg-white px-3 py-2 text-sm">Check delivery status</button><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={() => void continueSend()}>Resume unsent recipients</button><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={startNew} className="rounded-lg border bg-white px-3 py-2 text-sm">Start a new email</button></div><p className="text-xs text-slate-500">Keep this page open while sending. You can resume queued recipients after an interruption; sent or uncertain deliveries are never resent.</p></div> : null}
-          {result ? <div role="status" className="space-y-2"><h3 className="font-bold">Delivery results</h3><p>{result.recipients.filter(item => item.delivery_outcome === 'sent').length} sent; {result.recipients.filter(item => item.delivery_outcome === 'queued').length} queued{queue.running ? ' - sending, keep this page open' : ''}</p><p className="text-xs text-slate-500">Sent means accepted by the email provider, not confirmed inbox delivery.</p><ul className="max-h-64 overflow-auto divide-y rounded-lg border">{result.recipients.map(item => <li key={item.id} className="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm"><span className="break-all">{item.to_email}</span><strong>{({ sent: 'Sent', failed: 'Failed', skipped: 'Skipped', unknown: 'Unknown - check provider', sending: 'Pending - check provider', queued: 'Pending - not sent' } as Record<string, string>)[item.delivery_outcome] || 'Unknown'}</strong></li>)}</ul></div> : null}
+          {locked ? <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4"><p className="break-all text-xs text-slate-600">Email request: {requestId}</p><div className="flex flex-wrap gap-2"><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={() => void checkStatus()} className="rounded-lg border bg-white px-3 py-2 text-sm">Check delivery status</button><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={() => void continueSend()}>Resume unsent recipients</button><button type="button" disabled={(Boolean(busy) || queue.running)} onClick={startNew} className="rounded-lg border bg-white px-3 py-2 text-sm">Start a new email</button></div><p className="text-xs text-slate-500">{result?.deliveryMessage || 'Check this saved request before resuming. Sent or uncertain deliveries are never resent.'}</p></div> : null}
+          {result ? <div role="status" className="space-y-2"><h3 className="font-bold">Delivery results</h3><p>{result.recipients.filter(item => item.delivery_outcome === 'sent').length} sent; {result.recipients.filter(item => item.delivery_outcome === 'queued').length} queued{result.backgroundStatus === 'queued' || result.backgroundStatus === 'running' ? ' - sending in the background' : ''}</p><p className="text-xs text-slate-500">Sent means accepted by the email provider, not confirmed inbox delivery.</p><ul className="max-h-64 overflow-auto divide-y rounded-lg border">{result.recipients.map(item => <li key={item.id} className="flex flex-wrap justify-between gap-2 px-3 py-2 text-sm"><span className="break-all">{item.to_email}</span><strong>{({ sent: 'Sent', failed: 'Failed', skipped: 'Skipped', unknown: 'Unknown - check provider', sending: 'Pending - check provider', queued: 'Pending - not sent' } as Record<string, string>)[item.delivery_outcome] || 'Unknown'}</strong></li>)}</ul></div> : null}
         </div>
         <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4">
           <h3 className="font-bold text-slate-900">3. Review & send</h3>

@@ -7,7 +7,7 @@ export type CleanerEmailInput = { emails: string[]; subject: string; body: strin
 export type CleanerEmailRecipient = { id: string; email: string; contact_name: string; first_name?: string | null; last_name?: string | null; business_name: string; city?: string | null; suburb?: string | null; state?: string | null }
 export type CleanerEmailSender = { displayName: string; jobTitle: string; phone: string; email: string }
 export type CleanerEmailPreview = { fingerprint: string; recipients: Array<{ id: string; email: string; name: string; subject: string; html: string }>; sender: CleanerEmailSender; from: string; replyTo: string; cc: string }
-export type CleanerEmailResult = { recipients: Array<{ id: string; to_email: string; delivery_outcome: string; subject: string }>; duplicate: boolean; inProgress?: boolean; paused?: boolean }
+export type CleanerEmailResult = { recipients: Array<{ id: string; to_email: string; delivery_outcome: string; subject: string }>; duplicate: boolean; inProgress?: boolean; paused?: boolean; backgroundStatus?: string | null; deliveryMessage?: string }
 
 export function parseCleanerEmailInput(value: unknown): CleanerEmailInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new CleanerEmailError('Enter recipients, subject and message.')

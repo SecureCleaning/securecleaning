@@ -4,6 +4,7 @@ import { createCleanerJobsAccessToken } from '@/lib/cleanerJobsAccess'
 import { getContractProductActor } from '@/lib/contractProductAuth'
 import {
   getContractProductBroadcastHistory,
+  getContractProductBroadcastStatus,
   getContractProductBroadcastHistoryPreview,
   listEligibleContractProductBroadcastCleaners,
   listContractProductBroadcastSenders,
@@ -89,6 +90,9 @@ export async function POST(request: NextRequest) {
       const limited = await rateLimit(request, { key: `contract-product-broadcast-template:${actor.id}`, limit: 30, windowMs: 60 * 60 * 1000 })
       if (limited) return limited
       return NextResponse.json({ success: true, result: await archiveContractProductBroadcastTemplate(actor, body) })
+    }
+    if (action === 'broadcast.status') {
+      return NextResponse.json({ success: true, result: await getContractProductBroadcastStatus(actor, body) })
     }
     if (action === 'broadcast.continue') {
       const limited = await rateLimit(request, { key: `contract-product-broadcast-continue:${actor.id}`, limit: 120, windowMs: 60_000 })

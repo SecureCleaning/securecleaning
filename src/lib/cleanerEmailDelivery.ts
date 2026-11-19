@@ -1,4 +1,5 @@
-import { readEmailPages, acquireEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
+import { enqueueBackgroundEmail, backgroundEmailStatus, requireBackgroundEmailWorker } from '@/lib/backgroundEmailQueue'
+import { readEmailPages, waitForEmailDeliverySlot, emailProviderPause, EMAIL_DELIVERY_STEP_SIZE, EMAIL_DELIVERY_STEP_MS } from '@/lib/emailDeliveryQueue'
 import { createHash } from 'node:crypto'
 import { getAdminSupabase } from '@/lib/supabase'
 import { getCleanerEmailSenders, resolveCleanerEmailSender } from '@/lib/cleanerEmailSenders'
@@ -58,7 +59,10 @@ async function results(actor: AdminSessionIdentity, requestId: string, duplicate
   const { data: batch, error: batchError } = await db.from('cleaner_email_batches').select('id').eq('id', requestId).eq('actor_id', actor.id).maybeSingle()
   if (batchError || !batch) throw new CleanerEmailError('Email request not found. Keep this draft and check again before sending another copy.')
   const data = await readEmailPages((from, to) => db.from('cleaner_emails').select('id,to_email,subject,delivery_outcome').eq('batch_id', requestId).order('id').range(from, to))
-  return { recipients: data, duplicate, inProgress: data.some(row => row.delivery_outcome === 'queued') }
+  const inProgress = data.some(row => ['queued', 'sending'].includes(row.delivery_outcome))
+  const background = await backgroundEmailStatus('cleaner_batch', requestId)
+  return { recipients: data, duplicate, inProgress, ...background, paused: inProgress && background.paused,
+    deliveryMessage: inProgress ? background.deliveryMessage : 'Delivery finished. Check any unresolved recipients in email history.' }
 }
 export async function cleanerEmailResults(actor: AdminSessionIdentity, requestId: unknown) {
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('Invalid email request.')
@@ -66,6 +70,7 @@ export async function cleanerEmailResults(actor: AdminSessionIdentity, requestId
   return results(actor, requestId, true)
 }
 export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Record<string, unknown>) {
+  requireBackgroundEmailWorker()
   const input = parseCleanerEmailInput(value)
   const requestId = value.requestId
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('A valid email request ID is required.')
@@ -76,6 +81,7 @@ export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Re
   if (existingError) throw new Error('Email delivery migration is unavailable')
   if (existing) {
     if (existing.actor_id !== actor.id || existing.input_hash !== inputHash) throw new CleanerEmailError('This email request belongs to a different draft. Start a new message.')
+    await enqueueBackgroundEmail('cleaner_batch', requestId, actor.id)
     return results(actor, requestId, true)
   }
   const prepared = await prepare(actor, value)
@@ -88,11 +94,11 @@ export async function deliverCleanerEmail(actor: AdminSessionIdentity, value: Re
     p_delivery: { from: prepared.sender.from, replyTo: prepared.sender.replyTo, cc: prepared.sender.cc, senderStaffId: prepared.sender.id },
   })
   if (reserveError) throw new CleanerEmailError('Unable to reserve this send. Recipients may have changed, or the hourly send limit was reached. Preview again or try later.')
-  if (!reserved) return results(actor, requestId, true)
-  return continueCleanerEmail(actor, requestId)
+  await enqueueBackgroundEmail('cleaner_batch', requestId, actor.id)
+  return results(actor, requestId, !reserved)
 }
 
-export async function continueCleanerEmail(actor: AdminSessionIdentity, requestId: unknown) {
+export async function continueCleanerEmail(actor: AdminSessionIdentity, requestId: unknown, processInWorker = false, resume = false) {
   if (typeof requestId !== 'string' || !CLEANER_EMAIL_UUID.test(requestId)) throw new CleanerEmailError('Invalid email request.')
   await getCleanerEmailSenders(actor)
   const db = getAdminSupabase()
@@ -100,6 +106,15 @@ export async function continueCleanerEmail(actor: AdminSessionIdentity, requestI
   if (batchError || !batch) throw new CleanerEmailError('Email request not found.')
   if (!batch.delivery?.from || !batch.delivery?.replyTo) throw new CleanerEmailError('This older email request cannot be resumed. Check its delivery history before starting another send.')
   await senderFor(actor, batch.delivery.senderStaffId)
+  if (!processInWorker) {
+    await enqueueBackgroundEmail('cleaner_batch', requestId, actor.id, resume)
+    return results(actor, requestId, true)
+  }
+  // An expired worker may have lost the provider response. Never resend its claim.
+  const { error: staleError } = await db.from('cleaner_emails')
+    .update({ delivery_outcome: 'unknown', error_message: 'Delivery outcome is unknown. Check provider history before sending again.' })
+    .eq('batch_id', requestId).eq('delivery_outcome', 'sending')
+  if (staleError) throw new Error('Unable to reconcile previous delivery claims')
   const { data: entries, error: entryError } = await db.from('cleaner_emails')
     .select('id,to_email,subject,final_html_snapshot,final_text_snapshot,delivery_headers')
     .eq('batch_id', requestId).eq('delivery_outcome', 'queued').order('id').limit(EMAIL_DELIVERY_STEP_SIZE)
@@ -107,7 +122,7 @@ export async function continueCleanerEmail(actor: AdminSessionIdentity, requestI
   const deadline = Date.now() + EMAIL_DELIVERY_STEP_MS
   let paused = false
   for (const entry of entries ?? []) {
-    if (Date.now() >= deadline || !(await acquireEmailDeliverySlot())) break
+    if (Date.now() >= deadline || !(await waitForEmailDeliverySlot(deadline))) break
     const { data: claimed, error: claimError } = await db.rpc('claim_cleaner_email_delivery', { p_email_id: entry.id, p_actor_id: actor.id })
     if (claimError) throw new Error('Unable to check recipient before delivery')
     if (!claimed) continue
@@ -117,7 +132,7 @@ export async function continueCleanerEmail(actor: AdminSessionIdentity, requestI
       const response = await sendEmailOrThrow({
         from: batch.delivery.from, to: entry.to_email, replyTo: batch.delivery.replyTo, cc: batch.delivery.cc,
         subject: entry.subject, html: entry.final_html_snapshot, text: entry.final_text_snapshot, headers: entry.delivery_headers,
-      })
+      }, { idempotencyKey: `cleaner-email/${entry.id}` })
       providerId = response && typeof response === 'object' && 'id' in response ? String(response.id) : null
     } catch (error) {
       const pause = emailProviderPause(error)

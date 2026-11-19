@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-// A closed page stops requesting new chunks; already claimed messages are never retried.
-export function useEmailQueueRunner() {
+// This hook only polls delivery status. Closing/unmounting stops polling, not the server queue.
+export function useEmailDeliveryStatus() {
   const active = useRef(false)
   const mounted = useRef(true)
   const [running, setRunning] = useState(false)
@@ -18,7 +18,7 @@ export function useEmailQueueRunner() {
         if (!mounted.current) return
         progress(value)
         if (!value.inProgress || value.paused) return
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        await new Promise(resolve => setTimeout(resolve, 3000))
       }
     } finally {
       active.current = false

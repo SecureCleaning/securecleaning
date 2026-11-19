@@ -10,8 +10,15 @@ process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co'
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key'
 process.env.RESEND_API_KEY = 'test-resend-key'
+process.env.BULK_EMAIL_WORKER_SECRET = 'synthetic-worker-secret-32-characters'
 const { parseCleanerEmailInput, renderCleanerEmail } = await import('../src/lib/cleanerEmailPolicy.ts')
-const { previewCleanerEmail, deliverCleanerEmail, continueCleanerEmail } = await import('../src/lib/cleanerEmailDelivery.ts')
+const { previewCleanerEmail, deliverCleanerEmail: enqueueCleanerEmail, continueCleanerEmail: processOrResumeCleanerEmail } = await import('../src/lib/cleanerEmailDelivery.ts')
+// Existing provider tests run the explicitly separate scheduler step after enqueue.
+async function deliverCleanerEmail(actor, request) {
+  const queued = await enqueueCleanerEmail(actor, request)
+  return queued.duplicate ? queued : processOrResumeCleanerEmail(actor, request.requestId, true)
+}
+const continueCleanerEmail = (actor, id) => processOrResumeCleanerEmail(actor, id, true)
 const { POST } = await import('../src/app/api/admin/cleaners/email/route.ts')
 const { ADMIN_SESSION_COOKIE, createAdminSessionToken } = await import('../src/lib/adminAuth.ts')
 const actor = { id: '11111111-1111-4111-8111-111111111111', username: 'staff', role: 'staff' }
@@ -55,6 +62,7 @@ function backend(options = {}) {
     const json = (value, status = 200) => new Response(JSON.stringify(value), {status,headers:{'Content-Type':'application/json'}})
     if (path.includes('api.resend.com')) {
       sent++
+      assert.match(new Headers(init.headers).get('Idempotency-Key'), /^cleaner-email\//)
       assert.ok(cleanerRows.some(c=>c.email===(Array.isArray(body.to) ? body.to[0] : body.to)))
       assert.deepEqual(Array.isArray(body.cc) ? body.cc : [body.cc], [(options.expectedSender || sender).email])
       assert.match(body.from, /<info@securecleaning\.com\.au>/)
@@ -70,9 +78,10 @@ function backend(options = {}) {
     if (path.includes('/cleaners?')) return json(cleanerRows.map(c=>({...c,status:options.rejected?'rejected':'approved'})))
     if (path.includes('/crm_email_suppressions?')) return json(options.suppressed?[{email_normalized:draft.emails}]:[])
     if (path.includes('/cleaner_broadcast_suppressions?')) return json([])
+    if (path.includes('/background_email_jobs?')) return json({status:'running'})
     if (path.includes('/cleaner_email_batches?')) return json(batch)
     if (path.includes('/cleaner_emails?')) {
-      if(init.method === 'PATCH'){ entries[0].delivery_outcome=body.delivery_outcome;return new Response(null,{status:204}) }
+      if(init.method === 'PATCH'){ const params=new URL(path).searchParams; for(const entry of entries) if([...params].every(([key,value])=>key==='batch_id'||entry[key]===value.slice(3))) Object.assign(entry,body);return new Response(null,{status:204}) }
       return json(path.includes('delivery_outcome=eq.queued') ? entries.filter(e=>e.delivery_outcome==='queued').slice(0,Number(new URL(path).searchParams.get('limit')||entries.length)) : entries)
     }
     if (path.includes('/rpc/')) {
@@ -83,6 +92,7 @@ function backend(options = {}) {
         entries=body.p_messages.map((m,i)=>({id:`33333333-3333-4333-8333-${String(i).padStart(12,'0')}`,cleaner_id:m.cleaner_id,to_email:m.email,subject:m.subject,delivery_outcome:'queued',final_html_snapshot:m.html,final_text_snapshot:m.text,delivery_headers:m.headers}))
         return json(true)
       }
+      if (rpc === 'enqueue_background_email') return new Response(null,{status:204})
       if (rpc === 'acquire_cleaner_email_slot') return json(true)
       if (rpc === 'claim_cleaner_email_delivery') {
         const entry=entries.find(e=>e.id===body.p_email_id)
@@ -197,4 +207,22 @@ test('network owner sender choice binds preview, frozen delivery headers and per
     assert.equal(result.recipients[0].delivery_outcome, 'sent')
     assert.equal(mock.sent, 1)
   } finally { globalThis.fetch = previous }
+})
+
+
+test('send and resume only enqueue; background delivery continues without browser activity', async () => {
+  const previous=globalThis.fetch; const mock=backend({count:21}); globalThis.fetch=mock.fetch
+  try {
+    const input={...draft,emails:Array.from({length:21},(_,i)=>`cleaner${i}@example.test`).join(',')}
+    const preview=await previewCleanerEmail(actor,input)
+    const request={...input,requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',fingerprint:preview.fingerprint}
+    const queued=await enqueueCleanerEmail(actor,request)
+    assert.equal(queued.inProgress,true); assert.equal(mock.sent,0)
+    await processOrResumeCleanerEmail(actor,request.requestId); assert.equal(mock.sent,0)
+    // Three scheduled ticks, no browser status/continue/send requests.
+    for(let i=0;i<3;i++) await continueCleanerEmail(actor,request.requestId)
+    assert.equal(mock.sent,21)
+    await enqueueCleanerEmail(actor,request); await continueCleanerEmail(actor,request.requestId)
+    assert.equal(mock.sent,21)
+  } finally { globalThis.fetch=previous }
 })

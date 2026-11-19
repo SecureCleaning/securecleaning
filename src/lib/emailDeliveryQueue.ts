@@ -29,3 +29,12 @@ export function emailProviderPause(error: unknown): 'rate' | 'quota' | null {
   if (['daily_quota_exceeded', 'monthly_quota_exceeded'].includes(error.providerErrorName || '')) return 'quota'
   return null
 }
+
+
+export async function waitForEmailDeliverySlot(deadline: number) {
+  while (Date.now() < deadline) {
+    if (await acquireEmailDeliverySlot()) return true
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+  return false
+}

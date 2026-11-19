@@ -4,7 +4,7 @@ import BroadcastCleanerPicker from '@/components/admin/BroadcastCleanerPicker'
 
 import ContractNotes from '@/components/admin/ContractNotes'
 
-import { useEmailQueueRunner } from '@/lib/useEmailQueueRunner'
+import { useEmailDeliveryStatus } from '@/lib/useEmailDeliveryStatus'
 import RichEmailEditor from '@/components/admin/RichEmailComposer'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -31,7 +31,7 @@ function cleanerTaskDisplay(task: string | { label: string; cadence: string }) {
 
 type WorkspaceData = {
   products: ContractProduct[]
-  broadcasts: Array<{ id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single' | 'multiple'; senderName: string; senderEmail: string; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
+  broadcasts: Array<{ backgroundStatus?: string | null; resumeRequestId?: string | null; id: string; state: string; subject: string; status: string; recipientMode: 'state' | 'single' | 'multiple'; senderName: string; senderEmail: string; recipientCount: number; sentCount: number; failedCount: number; skippedCount: number; createdAt: string }>
   templates: Array<{ id: string; name: string; subject: string; message: string; messageHtml: string; messageDocument: RichEmailDocument; updatedAt: string }>
   senders: BroadcastSender[]
   actor: { id: string; role: string; state: string | null; displayName: string }
@@ -155,7 +155,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
   const [broadcastCleanersLoading, setBroadcastCleanersLoading] = useState(false)
   const [broadcastPreview, setBroadcastPreview] = useState<BroadcastPreview | null>(null)
   const [broadcastRequestId, setBroadcastRequestId] = useState('')
-  const queue = useEmailQueueRunner()
+  const queue = useEmailDeliveryStatus()
+  const [broadcastDelivery, setBroadcastDelivery] = useState<{ inProgress?: boolean; paused?: boolean; deliveryMessage?: string; sentCount: number; failedCount: number; remainingCount?: number } | null>(null)
   useEffect(() => { setBroadcastRequestId(sessionStorage.getItem('cleaner-broadcast-request') || '') }, [])
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [templateName, setTemplateName] = useState('')
@@ -339,15 +340,16 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
     } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to preview broadcast.', 'error') }
   }
 
-  async function continueBroadcast(requestId: string) {
+  async function watchBroadcast(requestId: string) {
     try {
       await queue.run(async () => {
-        const response = await fetch('/api/admin/contract-products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'broadcast.continue', idempotencyKey: requestId }) })
+        const response = await fetch('/api/admin/contract-products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'broadcast.status', idempotencyKey: requestId }) })
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'Sending paused. Resume unsent recipients when ready.')
-        return data.result as { inProgress?: boolean; paused?: boolean; sentCount: number; failedCount: number; remainingCount?: number }
+        return data.result as { inProgress?: boolean; paused?: boolean; deliveryMessage?: string; sentCount: number; failedCount: number; remainingCount?: number }
       }, result => {
-        showMessage(result.paused ? 'Resend account quota reached. Resume after upgrading your plan or the quota resets.' : `${result.sentCount} sent, ${result.failedCount} unresolved or failed, ${result.remainingCount ?? 0} queued. ${result.inProgress ? 'Keep this page open while sending.' : 'Broadcast complete.'}`, result.paused || result.failedCount > 0 ? 'error' : 'success')
+        setBroadcastDelivery(result)
+        if (result.paused) showMessage(result.deliveryMessage || 'Delivery needs review.', 'error')
         if (!result.inProgress) {
           sessionStorage.removeItem('cleaner-broadcast-request')
           setBroadcastRequestId(''); setBroadcastPreview(null)
@@ -355,6 +357,13 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         }
       })
     } catch (error) { showMessage(error instanceof Error ? error.message : 'Sending paused. Resume unsent recipients.', 'error') }
+  }
+
+  async function continueBroadcast(requestId: string) {
+    try {
+      await action('broadcast.continue', { idempotencyKey: requestId, resume: true })
+      void watchBroadcast(requestId)
+    } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to resume the saved request.', 'error') }
   }
 
   async function sendBroadcast() {
@@ -370,7 +379,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         senderStaffId: broadcastSenderId, idempotencyKey: requestId, previewFingerprint: broadcastPreview.previewFingerprint,
       })
       if (result.paused) { showMessage('Resend account quota reached. Resume after the plan upgrade or quota reset.', 'error'); return }
-      await continueBroadcast(requestId)
+      showMessage('Broadcast queued. Emails will send in the background; you can close this page.', 'success')
+      void watchBroadcast(requestId)
     } catch (error) { showMessage(error instanceof Error ? error.message : 'Unable to send broadcast. Check history before starting another send.', 'error') }
   }
 
@@ -469,7 +479,8 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         <h2 className="text-xl font-bold">Email available jobs</h2>
         <p className="mt-1 text-sm text-gray-600">Send to one cleaner, a selected group, or every eligible cleaner in a state. Every email includes the selected products and the state-filtered available-jobs link.</p>
 
-        {broadcastRequestId ? <div role="status" className="my-3 rounded-lg bg-blue-50 p-3 text-sm"><p>Send request saved. Keep this page open; after an interruption resume only unsent recipients.</p><button type="button" disabled={queue.running || Boolean(busy)} onClick={() => void continueBroadcast(broadcastRequestId)} className="mt-2 rounded border px-3 py-2">{queue.running ? 'Sending...' : 'Resume / check this broadcast'}</button><button type="button" disabled={queue.running || Boolean(busy)} onClick={() => { if (window.confirm('Start a separate broadcast? Check history first. This does not cancel the previous request and could send duplicate emails.')) { sessionStorage.removeItem('cleaner-broadcast-request'); setBroadcastRequestId(''); setBroadcastPreview(null) } }} className="ml-3">Start a new broadcast</button></div> : null}
+        {broadcastRequestId ? <div role="status" className="my-3 rounded-lg bg-blue-50 p-3 text-sm"><p>{broadcastDelivery?.deliveryMessage || 'Send request saved. Check its delivery status before starting another broadcast.'}</p><button type="button" disabled={queue.running || Boolean(busy)} onClick={() => void watchBroadcast(broadcastRequestId)} className="mt-2 rounded border px-3 py-2">{queue.running ? 'Checking delivery...' : 'Check delivery status'}</button>{!queue.running ? <button type="button" disabled={Boolean(busy)} onClick={() => void continueBroadcast(broadcastRequestId)} className="ml-3 rounded border px-3 py-2">Resume unsent recipients</button> : null}<button type="button" disabled={queue.running || Boolean(busy)} onClick={() => { if (window.confirm('Start a separate broadcast? Check history first. This does not cancel the previous request and could send duplicate emails.')) { sessionStorage.removeItem('cleaner-broadcast-request'); setBroadcastRequestId(''); setBroadcastPreview(null) } }} className="ml-3">Start a new broadcast</button></div> : null}
+        {broadcastDelivery ? <p role="status" className="mb-3 text-sm">{broadcastDelivery.sentCount} sent; {broadcastDelivery.remainingCount ?? 0} queued; {broadcastDelivery.failedCount} unresolved or failed. {broadcastDelivery.deliveryMessage}</p> : null}
         <fieldset disabled={Boolean(broadcastRequestId)}>
         <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
           <h3 className="font-semibold text-gray-900">1. Choose recipients</h3>
@@ -628,12 +639,18 @@ export default function ContractProductsWorkspace({ portal = 'admin', initialPro
         </section> : null}
 
         <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold">Email history</h2>
+          <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">Email history</h2><button type="button" onClick={() => void load(selectedId)} className="text-sm font-semibold text-teal-700">Refresh</button></div>
           <div className="mt-3 divide-y divide-gray-100">{data.broadcasts.map((campaign) => <div key={campaign.id} className="py-3 text-sm">
-            <div className="flex justify-between gap-3"><strong>{campaign.state} · {campaign.subject}</strong><span className="text-xs uppercase text-gray-500">{campaign.status}</span></div>
+            <div className="flex justify-between gap-3"><strong>{campaign.state} · {campaign.subject}</strong><span className="text-xs uppercase text-gray-500">{campaign.backgroundStatus && campaign.backgroundStatus !== 'completed' ? campaign.backgroundStatus === 'review' ? 'Needs review' : campaign.backgroundStatus === 'running' || campaign.backgroundStatus === 'queued' ? 'Sending in background' : 'Paused' : campaign.status}</span></div>
             <p className="mt-1 text-xs text-gray-500">{campaign.recipientMode === 'single' ? 'Single cleaner' : campaign.recipientMode === 'multiple' ? 'Selected cleaners' : 'State broadcast'} · {new Date(campaign.createdAt).toLocaleString('en-AU')}</p>
             <p className="mt-1 text-xs text-gray-500">Sent as {campaign.senderName || 'Secure Cleaning'}{campaign.senderEmail ? ` · ${campaign.senderEmail}` : ''}</p>
             <p className="mt-1 text-xs text-gray-500">{campaign.sentCount}/{campaign.recipientCount} sent · {campaign.failedCount} unresolved/failed</p>
+            {campaign.status === 'sending' && !campaign.backgroundStatus ? <p className="mt-1 text-xs text-amber-800">Older saved request. Review recipient history before resuming.</p> : null}
+            {campaign.resumeRequestId && (!campaign.backgroundStatus || ['paused', 'review'].includes(campaign.backgroundStatus)) ? <button type="button" disabled={Boolean(busy) || queue.running} className="mt-2 mr-2 rounded-md border px-3 py-1.5 text-xs font-semibold" onClick={() => {
+              if (window.confirm('Resume this saved broadcast? Review any later broadcasts first to avoid sending the same content twice. Only recipients still marked unsent in this request will be processed.')) {
+                sessionStorage.setItem('cleaner-broadcast-request', campaign.resumeRequestId!); setBroadcastRequestId(campaign.resumeRequestId!); void continueBroadcast(campaign.resumeRequestId!)
+              }
+            }}>Resume unsent recipients</button> : null}
             <button type="button" onClick={() => void previewBroadcastHistory(campaign.id)} disabled={Boolean(busy)} className="mt-2 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-50">View sent email</button>
           </div>)}{data.broadcasts.length === 0 ? <p className="py-3 text-sm text-gray-500">No emails sent yet.</p> : null}</div>
         </section>
