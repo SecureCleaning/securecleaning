@@ -1,0 +1,9 @@
+# Background cleaner email release evidence
+
+Validated against production 7bc7881. Full 878 tests, type-check, lint, synthetic production build, isolated PostgreSQL queue tests and mocked React browser checks passed.
+
+Repository migration 20261119033522_background_cleaner_email_delivery.sql applied as database history 20261119035702, name background_cleaner_email_delivery. Do not replay based on timestamp difference. RLS and service-only ACLs verified; scheduler active every 15 seconds; ledger empty at rollout. Existing 401-recipient campaign completed and left untouched.
+
+The saved Management API PAT returned HTTP 401. Provisioning instead used existing authorized deployment access and the working Supabase connector. A distinct worker key was derived independently in each environment as hex HMAC-SHA256(key = existing SMS_WORKER_SECRET / Vault sms_worker_secret, message = securecleaning:bulk-email-worker:v1). No credential was printed, written to a file or supplied in process arguments. The child is stored separately as production-only sensitive BULK_EMAIL_WORKER_SECRET and Vault bulk_email_worker_secret. Parent SMS credentials were not changed. This is a one-time provisioning derivation, not a runtime dependency: future rotation can use a fresh independent key, updating both child stores together. Vault bulk_email_worker_url is fixed to https://securecleaning.com.au/api/email/worker.
+
+Advisors introduced only expected informational notices: service-only table has no client RLS policies and its new actor index is not yet used. Existing warnings unchanged. No historical campaign enrollment, test emails/SMS, provider retries or real customer test records. Production verification must use authenticated GET only, not POST. Misc Issues import outputs are unrelated artifacts and must be preserved.
