@@ -1,5 +1,6 @@
 'use client'
 
+import CleanerSourceFields from '@/components/cleaners/CleanerSourceFields'
 import CleanerMachineryFields from '@/components/cleaners/CleanerMachineryFields'
 import type { CleanerMachinery } from '@/lib/cleanerMachinery'
 
@@ -48,6 +49,8 @@ type Props = {
 
 type CleanerFormState = {
   businessName: string
+  leadSource: string
+  leadSourceDetails: string
   firstName: string
   lastName: string
   email: string
@@ -266,6 +269,8 @@ function toFormState(cleaner?: CleanerRecord | null): CleanerFormState {
   const fallbackName = splitContactName(cleaner?.contact_name)
   return {
     businessName: cleaner?.business_name ?? '',
+    leadSource: cleaner?.lead_source ?? '',
+    leadSourceDetails: cleaner?.lead_source_details ?? '',
     firstName: cleaner?.first_name ?? fallbackName.firstName,
     lastName: cleaner?.last_name ?? fallbackName.lastName,
     email: cleaner?.email ?? '',
@@ -389,6 +394,8 @@ function parseCleanerCsvRecords(text: string) {
 
     return {
       businessName: value('business_name', 'business'),
+      leadSource: value('lead_source', 'cleaner_source') || undefined,
+      leadSourceDetails: value('lead_source_details', 'source_details') || undefined,
       firstName: value('first_name', 'firstname', 'given_name'),
       lastName: value('last_name', 'surname', 'family_name'),
       contactName: value('contact_name', 'contact'),
@@ -853,6 +860,8 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
       const serviceAreas = fromCsv(form.serviceAreas)
       const payload = {
         businessName: form.businessName,
+        leadSource: form.leadSource,
+        leadSourceDetails: form.leadSourceDetails,
         firstName: form.firstName,
         lastName: form.lastName,
         contactName: [form.firstName, form.lastName].filter(Boolean).join(' '),
@@ -1354,7 +1363,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="font-medium text-gray-900">{cleaner.business_name}</div>
+                      <div className="font-medium text-gray-900">{cleaner.business_name || getCleanerDisplayName(cleaner)}</div>
                       <div className="mt-1 text-xs text-gray-500">{cleaner.abn ? `ABN ${cleaner.abn}` : 'No ABN'}</div>
                     </td>
                     <td className="px-4 py-4">
@@ -1455,13 +1464,14 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
             <div className="overflow-y-auto p-5">
               {modalTab === 'details' ? (
                 <form id="cleaner-details-form" onSubmit={saveCleaner} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <p className="mb-4 text-sm text-gray-600">Only first name, email and mobile are required.</p>
                   <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-1 text-sm font-medium text-gray-700">
-                Business name
-                <input required value={form.businessName} onChange={(event) => setField('businessName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                Business name (optional)
+                <input value={form.businessName} onChange={(event) => setField('businessName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
-                First name
+                First name *
                 <input required value={form.firstName} onChange={(event) => setField('firstName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
@@ -1469,12 +1479,12 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                 <input value={form.lastName} onChange={(event) => setField('lastName', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
-                Email
+                Email *
                 <input required type="email" value={form.email} onChange={(event) => setField('email', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
-                Mobile
-                <input value={form.phone} onChange={(event) => setField('phone', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
+                Mobile *
+                <input required type="tel" value={form.phone} onChange={(event) => setField('phone', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
               <label className="space-y-1 text-sm font-medium text-gray-700">
                 Alternate phone
@@ -1484,6 +1494,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
                 ABN
                 <input value={form.abn} onChange={(event) => setField('abn', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />
               </label>
+              <CleanerSourceFields source={form.leadSource} details={form.leadSourceDetails} disabled={isSaving} onChange={(value) => setForm((current) => ({ ...current, ...value }))} />
               <label className="space-y-1 text-sm font-medium text-gray-700 md:col-span-2">
                 Address
                 <input value={form.address} onChange={(event) => setField('address', event.target.value)} className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" />

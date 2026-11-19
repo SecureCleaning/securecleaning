@@ -75,8 +75,8 @@ export async function saveCleanerPortalProfile(claims: CleanerPortalClaims, cand
   await Promise.all(recipients.map((recipient) => sendEmailOrThrow({
     from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: recipient.email,
     replyTo: claims.email,
-    subject: `Cleaner registration awaiting approval — ${payload.businessName}`,
-    html: `<p>A new cleaner registration is awaiting approval.</p><p><strong>${escapeHtml(payload.businessName)}</strong><br>${escapeHtml(payload.contactName)}<br>${escapeHtml(payload.state)}</p><p><a href="${escapeHtml(recipient.reviewUrl)}">Review cleaner record</a></p><p>The cleaner cannot receive contract offers until an agent or owner changes the status to approved.</p>`,
+    subject: `Cleaner registration awaiting approval — ${payload.businessName || payload.contactName}`,
+    html: `<p>A new cleaner registration is awaiting approval.</p><p><strong>${escapeHtml(payload.businessName || payload.contactName)}</strong><br>${escapeHtml(payload.contactName)}<br>${escapeHtml(payload.state)}</p><p><a href="${escapeHtml(recipient.reviewUrl)}">Review cleaner record</a></p><p>The cleaner cannot receive contract offers until an agent or owner changes the status to approved.</p>`,
   })))
   return { cleanerId: cleaner.id, profile: toProfile(cleaner as unknown as Record<string, unknown>), created: true }
 }

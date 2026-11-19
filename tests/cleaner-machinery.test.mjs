@@ -14,8 +14,8 @@ test('machinery rejects unknown choices, malformed objects, missing Other and ov
 })
 test('secure update and onboarding whitelist machinery while retaining registered identity and excluding staff fields',()=>{
  const details={items:['rotary_buffer','other'],other:'Pressure washer',notes:'Hired when needed'}
- const payload=sanitizeCleanerPortalPayload({businessName:'Test',firstName:'Test',lastName:'Cleaner',state:'NSW',email:'attacker@example.invalid',specialistMachinery:details,status:'approved',notes:'internal'},'registered@example.invalid')
+ const payload=sanitizeCleanerPortalPayload({businessName:'Test',firstName:'Test',lastName:'Cleaner',phone:'0400000000',state:'NSW',email:'attacker@example.invalid',specialistMachinery:details,status:'approved',notes:'internal'},'registered@example.invalid')
  assert.deepEqual(payload.specialistMachinery,details)
  assert.equal(payload.email,'registered@example.invalid');assert.equal(payload.status,undefined);assert.equal(payload.notes,undefined)
- assert.equal(sanitizeCleanerPortalPayload({businessName:'Test',firstName:'Test',lastName:'Cleaner',state:'NSW'},'registered@example.invalid').specialistMachinery,undefined)
+ assert.equal(sanitizeCleanerPortalPayload({businessName:'Test',firstName:'Test',lastName:'Cleaner',phone:'0400000000',state:'NSW'},'registered@example.invalid').specialistMachinery,undefined)
 })

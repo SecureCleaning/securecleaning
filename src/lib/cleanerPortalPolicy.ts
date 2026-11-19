@@ -48,7 +48,9 @@ export function sanitizeCleanerPortalPayload(candidate: unknown, registeredEmail
   const lastName = clean(body.lastName, 80)
   const businessName = clean(body.businessName, 160)
   const state = clean(body.state, 8).toUpperCase()
-  if (!businessName || !firstName || !lastName) throw new Error('Business name, first name and surname are required.')
+  const phone = clean(body.phone, 40)
+  if (!firstName) throw new Error('First name is required.')
+  if (!phone) throw new Error('Mobile is required.')
   if (!AUSTRALIAN_STATES.includes(state as typeof AUSTRALIAN_STATES[number])) throw new Error('Select a valid state or territory.')
 
   return {
@@ -56,9 +58,9 @@ export function sanitizeCleanerPortalPayload(candidate: unknown, registeredEmail
     businessName,
     firstName,
     lastName,
-    contactName: `${firstName} ${lastName}`,
+    contactName: [firstName, lastName].filter(Boolean).join(' '),
     email: registeredEmail.trim().toLowerCase(),
-    phone: clean(body.phone, 40),
+    phone,
     alternatePhone: clean(body.alternatePhone, 40),
     address: clean(body.address, 240),
     suburb: clean(body.suburb, 80),

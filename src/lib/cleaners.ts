@@ -1,3 +1,4 @@
+import { parseCleanerLeadSource, parseCleanerLeadSourceDetails, type CleanerLeadSource } from '@/lib/cleanerLeadSource'
 import { parseCleanerMachinery, type CleanerMachinery } from '@/lib/cleanerMachinery'
 import { agentCleanerSearchFilter } from '@/lib/cleanerSearch'
 import { createHash } from 'node:crypto'
@@ -24,6 +25,8 @@ export type CleanerDocumentType = 'insurance' | 'police_check' | 'induction' | '
 export interface CleanerRecord {
   id: string
   business_name: string
+  lead_source?: CleanerLeadSource | null
+  lead_source_details?: string | null
   first_name?: string | null
   last_name?: string | null
   contact_name: string
@@ -114,10 +117,12 @@ export interface CleanerDocument {
 
 export interface CleanerPayload {
   specialistMachinery?: CleanerMachinery | null
-  businessName: string
+  businessName?: string | null
+  leadSource?: string | null
+  leadSourceDetails?: string | null
   firstName?: string | null
   lastName?: string | null
-  contactName: string
+  contactName?: string | null
   email: string
   phone?: string | null
   alternatePhone?: string | null
@@ -186,7 +191,7 @@ const AGENT_CLEANER_LIST_SELECT = 'id, business_name, first_name, last_name, con
 const AGENT_EMAIL_HISTORY_SELECT = 'id, subject, status, delivery_outcome, template_name, created_at, sent_at, final_html_snapshot, to_email'
 
 const CLEANER_SELECT =
-  'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, specialist_machinery, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, created_at, updated_at'
+  'id, business_name, first_name, last_name, contact_name, email, phone, alternate_phone, address, suburb, postcode, city, state, abn, status, specialist_machinery, services, service_areas, preferred_work, compliance_status, insurance_expiry, police_check_expiry, induction_expiry, working_with_children_check, internal_owner, rating, notes, lead_source, lead_source_details, created_at, updated_at'
 const AGENT_CLEANER_DETAIL_SELECT = CLEANER_SELECT
 
 const COMMENT_SELECT = 'id, cleaner_id, author_name, comment, created_at'
@@ -221,6 +226,8 @@ const CLEANER_CSV_COLUMNS: Array<{ key: keyof CleanerRecord; label: string }> = 
   { key: 'internal_owner', label: 'internal_owner' },
   { key: 'rating', label: 'rating' },
   { key: 'notes', label: 'notes' },
+  { key: 'lead_source', label: 'lead_source' },
+  { key: 'lead_source_details', label: 'lead_source_details' },
 ]
 
 function cleanString(value: unknown, maxLength = 500) {
@@ -290,6 +297,8 @@ function toDbPayload(payload: Partial<CleanerPayload>) {
 
   return {
     business_name: payload.businessName !== undefined ? cleanString(payload.businessName, 160) : undefined,
+    lead_source: parseCleanerLeadSource(payload.leadSource),
+    lead_source_details: parseCleanerLeadSourceDetails(payload.leadSourceDetails),
     first_name: firstName,
     last_name: lastName,
     contact_name: contactName,
@@ -323,6 +332,9 @@ function normaliseCleanerImportPayload(record: Partial<CleanerPayload>): Cleaner
   const lastName = cleanString(record.lastName, 80)
   return {
     businessName: cleanString(record.businessName, 160),
+    // Blank or absent CSV attribution must not erase a saved source. Clear it in the record instead.
+    leadSource: parseCleanerLeadSource(record.leadSource) ?? undefined,
+    leadSourceDetails: parseCleanerLeadSourceDetails(record.leadSourceDetails) ?? undefined,
     firstName,
     lastName,
     contactName: cleanString(record.contactName, 160) || [firstName, lastName].filter(Boolean).join(' '),
@@ -350,15 +362,14 @@ function normaliseCleanerImportPayload(record: Partial<CleanerPayload>): Cleaner
   }
 }
 
-function assertCleanerPayload(payload: Partial<CleanerPayload>) {
-  if (!cleanString(payload.businessName, 160)) {
-    throw new Error('Business name is required.')
-  }
-  if (!cleanString(payload.firstName, 80)) {
+function assertCleanerPayload(payload: Partial<CleanerPayload>, partial = false) {
+  if ((!partial || payload.firstName !== undefined) && !cleanString(payload.firstName, 80)) {
     throw new Error('First name is required.')
   }
-  const email = cleanString(payload.email, 254)
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if ((!partial || payload.phone !== undefined) && !cleanString(payload.phone, 40)) {
+    throw new Error('Mobile is required.')
+  }
+  if ((!partial || payload.email !== undefined) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanString(payload.email, 254))) {
     throw new Error('A valid email is required.')
   }
 }
@@ -722,6 +733,8 @@ export async function importCleaners(
       .from('cleaners')
       .update(toDbPayload({
         ...record,
+        // Missing optional CSV names must not clear an existing business.
+        businessName: record.businessName || undefined,
         serviceAreas: hasServiceAreas ? cleanerServiceAreasForImportUpdate(record.serviceAreas) : undefined,
       }))
       .eq('id', cleanerId)
@@ -750,6 +763,7 @@ export async function createCleaner(payload: CleanerPayload, actor: CleanerAudit
     .from('cleaners')
     .insert({
       ...toDbPayload(payload),
+      business_name: cleanString(payload.businessName, 160),
       status: payload.status ?? 'lead',
       services: payload.services ?? [],
       service_areas: serviceAreas,
@@ -763,6 +777,7 @@ export async function createCleaner(payload: CleanerPayload, actor: CleanerAudit
 }
 
 export async function updateCleaner(cleanerId: string, payload: Partial<CleanerPayload>, actor: CleanerAuditActor) {
+  assertCleanerPayload(payload, true)
   const updatePayload = toDbPayload(payload)
   const db = getAdminSupabase()
   const { data, error } = await db

@@ -30,7 +30,8 @@ test('onboarding tokens cannot carry cleaner ownership and require valid email',
 
 test('cleaner portal payload locks email and omits approval and internal fields', () => {
   const payload = sanitizeCleanerPortalPayload({
-    businessName: ' Clean Co ', firstName: ' Alex ', lastName: ' Smith ', email: 'attacker@example.com', state: 'vic',
+    businessName: ' Clean Co ', firstName: ' Alex ', lastName: ' Smith ', email: 'attacker@example.com', phone: '0400000000', state: 'vic',
+    leadSource: 'referral', leadSourceDetails: 'overwrite staff attribution',
     status: 'approved', complianceStatus: 'current', internalOwner: 'attacker', rating: 5, notes: 'overwrite staff notes',
     services: ['Office cleaning', 'Office cleaning'], serviceAreas: ['Melbourne', 'Richmond'], workingWithChildrenCheck: true,
   }, 'registered@example.com')
@@ -42,11 +43,21 @@ test('cleaner portal payload locks email and omits approval and internal fields'
   assert.equal(payload.complianceStatus, undefined)
   assert.equal(payload.internalOwner, undefined)
   assert.equal(payload.notes, undefined)
+  assert.equal(payload.leadSource, undefined)
+  assert.equal(payload.leadSourceDetails, undefined)
 })
 
 test('cleaner portal rejects missing identity and invalid regions', () => {
-  assert.throws(() => sanitizeCleanerPortalPayload({ businessName: '', firstName: 'A', lastName: 'B', state: 'VIC' }, 'a@example.com'))
-  assert.throws(() => sanitizeCleanerPortalPayload({ businessName: 'A', firstName: 'A', lastName: 'B', state: 'invalid' }, 'a@example.com'))
+  assert.throws(() => sanitizeCleanerPortalPayload({ firstName: '', phone: '0400000000', state: 'VIC' }, 'a@example.com'), /First name/)
+  assert.throws(() => sanitizeCleanerPortalPayload({ firstName: 'A', state: 'VIC' }, 'a@example.com'), /Mobile/)
+  assert.throws(() => sanitizeCleanerPortalPayload({ businessName: 'A', firstName: 'A', phone: '0400000000', lastName: 'B', state: 'invalid' }, 'a@example.com'))
+})
+
+test('cleaner self-service accepts omitted business name and surname', () => {
+  const payload = sanitizeCleanerPortalPayload({ firstName: 'Arif', phone: '0400000000', state: 'NSW' }, 'arif@example.test')
+  assert.equal(payload.businessName, '')
+  assert.equal(payload.lastName, '')
+  assert.equal(payload.contactName, 'Arif')
 })
 
 test('portal routes retain signed ownership, regional invitations, pending approval, notices and private upload guards', async () => {
@@ -71,7 +82,7 @@ test('portal routes retain signed ownership, regional invitations, pending appro
   assert.match(portal, /No active owner is configured/)
   assert.match(portal, /No active.*agent is configured/)
   assert.match(portal, /eq\('id', claims\.cleanerId\)\.eq\('email', claims\.email\)/)
-  assert.doesNotMatch(portal.match(/const PORTAL_SELECT[^\n]+/)?.[0] ?? '', /notes|rating|internal_owner|compliance_status/)
+  assert.doesNotMatch(portal.match(/const PORTAL_SELECT[^\n]+/)?.[0] ?? '', /notes|rating|internal_owner|compliance_status|lead_source/)
   assert.match(profileRoute, /verifyCleanerPortalToken\(request\.cookies/)
   assert.match(uploadRoute, /verifyCleanerPortalToken\(request\.cookies/)
   assert.match(uploadRoute, /10 \* 1024 \* 1024/)

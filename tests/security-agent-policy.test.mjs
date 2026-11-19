@@ -89,7 +89,7 @@ test('reopening and cancellation reject unrelated assignment without writes', as
 })
 test('approved cleaners can move interstate without changing approval or internal fields', async () => {
   fixture()
-  const result = await saveCleanerPortalProfile({ mode: 'update', cleanerId: 'c1', email: cleaner.email }, { businessName: 'Clean', firstName: 'A', lastName: 'B', state: 'NSW', email: 'other@example.com', status: 'pending_approval', notes: 'tamper', complianceStatus: 'current' })
+  const result = await saveCleanerPortalProfile({ mode: 'update', cleanerId: 'c1', email: cleaner.email }, { businessName: 'Clean', firstName: 'A', lastName: 'B', phone: '0400000000', state: 'NSW', email: 'other@example.com', status: 'pending_approval', notes: 'tamper', complianceStatus: 'current' })
   assert.equal(result.profile.state, 'NSW')
   assert.equal(result.profile.status, 'approved')
   assert.equal(result.profile.email, 'cleaner@example.com')
@@ -98,10 +98,10 @@ test('approved cleaners can move interstate without changing approval or interna
 test('cleaner updates reject mismatched email or record ownership and invalid states', async () => {
   for (const claims of [{ mode: 'update', cleanerId: 'c2', email: 'cleaner@example.com' }, { mode: 'update', cleanerId: 'c1', email: 'other@example.com' }]) {
     fixture()
-    await assert.rejects(saveCleanerPortalProfile(claims, { businessName: 'Clean', firstName: 'A', lastName: 'B', state: 'NSW' }), /access is no longer valid/)
+    await assert.rejects(saveCleanerPortalProfile(claims, { businessName: 'Clean', firstName: 'A', lastName: 'B', phone: '0400000000', state: 'NSW' }), /access is no longer valid/)
     assert.deepEqual(mutations, [])
   }
   fixture()
-  await assert.rejects(saveCleanerPortalProfile({ mode: 'update', cleanerId: 'c1', email: cleaner.email }, { businessName: 'Clean', firstName: 'A', lastName: 'B', state: 'invalid' }), /valid state/)
+  await assert.rejects(saveCleanerPortalProfile({ mode: 'update', cleanerId: 'c1', email: cleaner.email }, { businessName: 'Clean', firstName: 'A', lastName: 'B', phone: '0400000000', state: 'invalid' }), /valid state/)
   assert.deepEqual(mutations, [])
 })
