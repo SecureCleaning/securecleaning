@@ -280,7 +280,7 @@ test('quote history links to the correct admin or regional-agent editor', () => 
   assert.ok(workspace.includes('`/availability/quotes/${encodeURIComponent(data.actor.availabilityAssigneeId)}/${encodeURIComponent(quoteRef)}`'))
   assert.ok(workspace.includes('opportunity=${encodeURIComponent(selectedLeadId)}'))
   assert.match(workspace, />Open quote</)
-  assert.match(adminQuote, /Back to client record/)
+  assert.match(adminQuote, /<Link href=\{`\/admin\/clients\?opportunity=\$\{encodeURIComponent\(opportunityId\)\}`\}[^>]*>Open client CRM<\/Link>/)
   assert.match(agentQuote, /Back to client record/)
   assert.match(workspace, /initialOpportunityId/)
 })

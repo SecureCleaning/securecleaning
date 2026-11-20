@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import AdminPageHeader from '@/components/admin/AdminPageHeader'
 import QuoteWorkflowEditor from '@/components/admin/QuoteWorkflowEditor'
 import { withAdminPage } from '@/lib/adminPage'
@@ -33,10 +34,11 @@ export default async function AdminQuoteWorkflowPage(props: { params: Promise<{ 
           <AdminPageHeader
             title="Quote Workbench"
             description="Start from the original remote quote, complete the inspection worksheet, then refine the inputs and client-facing scope into a firmer quotation."
-            backHref={opportunityId ? `/admin/clients?opportunity=${encodeURIComponent(opportunityId)}` : '/admin'}
-            backLabel={opportunityId ? 'Back to client record' : 'Back to overview'}
             meta={<div className="text-right text-sm text-gray-500"><div className="font-mono font-semibold text-gray-700">{quote.quoteRef}</div><div>Status: <span className="capitalize">{quote.status}</span></div></div>}
-            actions={<DismissAlertButton alertId={`quote-${quote.quoteRef}`} />}
+            actions={<>
+              {opportunityId ? <Link href={`/admin/clients?opportunity=${encodeURIComponent(opportunityId)}`} className="inline-flex min-h-10 items-center rounded-lg bg-teal-700 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700">Open client CRM</Link> : null}
+              <DismissAlertButton alertId={`quote-${quote.quoteRef}`} />
+            </>}
           />
           <QuoteWorkflowEditor
             quote={quote}
