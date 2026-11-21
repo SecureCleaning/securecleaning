@@ -18,7 +18,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ ref: 
     return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
   }
 
-  return NextResponse.json({ success: true, quote })
+  const [pricingConfig, roomTypeConfig] = await Promise.all([getQuotePricingConfig(), getQuoteRoomTypeConfig()])
+  return NextResponse.json({ success: true, quote, pricingConfig, roomTypeConfig }, { headers: { 'Cache-Control': 'no-store' } })
 }
 
 export async function POST(request: NextRequest, props: { params: Promise<{ ref: string }> }) {

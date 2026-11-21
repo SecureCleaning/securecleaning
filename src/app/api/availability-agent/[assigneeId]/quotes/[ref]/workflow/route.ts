@@ -11,6 +11,17 @@ import { getQuotePricingConfig } from '@/lib/pricing'
 import { getAdminSessionIdentityFromRequest } from '@/lib/adminAuth'
 import { getStaffAccountById } from '@/lib/staffAccounts'
 
+export async function GET(request: NextRequest, props: { params: Promise<{ assigneeId: string; ref: string }> }) {
+  const params = await props.params
+  if (!await isAuthorizedAvailabilityAgentRequest(request, params.assigneeId)) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+  const config = await getAvailabilityConfig()
+  const quote = await getQuoteWorkflowByRef(params.ref)
+  if (!getAvailabilityAssignee(config, params.assigneeId) || !quote) return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
+  if (!await canAvailabilityAgentAccessQuote(config, params.assigneeId, quote)) return NextResponse.json({ success: false, error: 'This quote is outside your assigned service region.' }, { status: 403 })
+  const [pricingConfig, roomTypeConfig] = await Promise.all([getQuotePricingConfig(), getQuoteRoomTypeConfig()])
+  return NextResponse.json({ success: true, pricingConfig, roomTypeConfig }, { headers: { 'Cache-Control': 'no-store' } })
+}
+
 export async function POST(
   request: NextRequest,
   props: { params: Promise<{ assigneeId: string; ref: string }> }

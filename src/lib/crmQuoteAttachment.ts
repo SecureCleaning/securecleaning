@@ -1,3 +1,4 @@
+import { quoteEntries } from './quoteSections'
 import { createHash } from 'node:crypto'
 import { getCrmQuoteSend } from './crmQuoteActivity'
 import { ClientCrmError } from './clientCrmData'
@@ -17,8 +18,8 @@ export function buildCrmQuoteAttachment(send: Awaited<ReturnType<typeof getCrmQu
     'Cleaning quote', `Quote reference: ${send.quote_ref}`, `Sent version: ${send.document_version}`,
     `Business: ${report.businessName}`, `Contact: ${report.contactName}`, `Location: ${report.location}`,
     `Price per visit: ${report.displayedPrice} excluding GST`, `Frequency: ${report.frequencyLabel}`, `Cleaning time: ${report.timePreferenceLabel}`, '',
-    ...report.rooms.flatMap((room, index) => [
-      `${index + 1}. ${room.label.toUpperCase()}`, `Quantity: ${room.quantity}`, `Floor area: ${room.size ?? 0} sqm each`, `Floor: ${room.floor}`,
+    ...quoteEntries(report.rooms, report.sectionTitles).flatMap((room) => room.kind === 'section' ? ['', room.label.toUpperCase(), ''] : [
+      `${report.rooms.findIndex(item => item.id === room.id) + 1}. ${room.label.toUpperCase()}`, `Quantity: ${room.quantity}`, `Floor area: ${room.size ?? 0} sqm each`, `Floor: ${room.floor}`,
       room.description, ...room.tasks.map(task => `- ${task.label} - ${getRoomTaskCadenceLabel(task.cadence)}`), ...room.selectedOptions.map(option => `- ${option}`), '',
     ]),
     ...report.selectedOptions.map(option => `- ${option}`),

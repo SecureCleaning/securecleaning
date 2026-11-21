@@ -1,3 +1,4 @@
+import type { QuoteSectionTitle } from '@/lib/quoteSections'
 import { formatPriceRange } from '@/lib/quoteEngine'
 import type { QuoteInputs, QuoteResult } from '@/lib/types'
 import type { QuoteCustomerJourney } from '@/lib/quoteCustomerJourney'
@@ -6,6 +7,7 @@ import {
   getWorkflowRoomMetricFields,
   getWorkflowRoomTypeConfig,
   getWorkflowRoomTaskSelections,
+  getRoomTaskQuantity,
   type FirmQuoteDraft,
   type FirmQuotePreview,
   type WorkflowRoomItem,
@@ -13,7 +15,7 @@ import {
 } from '@/lib/quoteWorkflow'
 import {
   getEffectiveRoomTaskCadence,
-  getRoomScopeTaskSchedule,
+  getRoomScopeTaskDefinitions,
   getRoomTaskCadenceLabel,
   getRoomTypeConfigById,
   type QuoteRoomTypeConfig,
@@ -41,6 +43,7 @@ export type ClientScopeReport = {
   frequencyLabel: string
   timePreferenceLabel: string
   rooms: ClientScopeRoom[]
+  sectionTitles?: QuoteSectionTitle[]
   selectedOptions: string[]
   summary: string
   inclusions: string
@@ -163,8 +166,8 @@ function buildRoomScope(
       : undefined,
     floor: room.floor,
     tasks: typeConfig
-      ? getRoomScopeTaskSchedule(typeConfig, getWorkflowRoomTaskSelections(room), true).map((task) => ({
-          ...task,
+      ? getRoomScopeTaskDefinitions(typeConfig, getWorkflowRoomTaskSelections(room), true).map((task) => ({
+          label: getRoomTaskQuantity(room, task.id) > 1 ? `${task.label} (quantity: ${getRoomTaskQuantity(room, task.id)} per room)` : task.label,
           cadence: getEffectiveRoomTaskCadence(task.cadence, frequency),
         }))
       : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' as const })),
@@ -214,6 +217,7 @@ export function buildClientScopeReport(
     premisesLabel: PREMISES_LABELS[draft.revisedInputs.premisesType] ?? 'Commercial premises',
     frequencyLabel: FREQUENCY_LABELS[draft.revisedInputs.frequency] ?? draft.revisedInputs.frequency,
     timePreferenceLabel: TIME_LABELS[draft.revisedInputs.timePreference] ?? draft.revisedInputs.timePreference,
+    sectionTitles: draft.sectionTitles,
     rooms: draft.roomItems.map((room) => buildRoomScope(room, roomTypeConfig, draft.revisedInputs.frequency)),
     selectedOptions: globalOptions,
     summary: draft.scopeSummary.trim() || 'Regular cleaning of the listed areas, completed to the agreed frequency and service requirements.',

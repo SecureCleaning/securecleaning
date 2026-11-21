@@ -1,3 +1,4 @@
+import type { QuoteSectionTitle } from '@/lib/quoteSections'
 import { calculateQuote } from '@/lib/quoteEngine'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import { isBathroomRoomScopeType, sanitizePublicRoomScope } from '@/lib/publicRoomScope'
@@ -9,6 +10,8 @@ import {
   getMoppingRate,
   withSelectedMoppingRate,
   getRoomScopeTaskCadence,
+  getRoomScopeTaskDefinitions,
+  type RoomScopeTaskDefinition,
   ROOM_TASK_CADENCE_OPTIONS,
   getRoomScopeTaskEffectiveRate,
   getRoomScopeTaskId,
@@ -57,8 +60,14 @@ export type WorkflowRoomItem = {
   metrics?: Record<string, number | boolean>
   customMetricFields?: RoomMetricFieldConfig[]
   excludedMetricFieldIds?: string[]
+  quoteTasks?: RoomScopeTaskDefinition[]
+  excludedTaskIds?: string[]
   scopeTaskSelections?: Record<string, boolean>
   scopeTaskCadences?: Record<string, RoomTaskCadence>
+  scopeTaskQuantities?: Record<string, number>
+  taskDefaultPrices?: Record<string, boolean>
+  taskSourceCodes?: Record<string, string>
+  fieldSourceIds?: Record<string, string>
   moppingRateCode?: string
   moppingEnabled?: boolean
   moppingMinutesPerSqm?: number
@@ -88,12 +97,30 @@ export function getWorkflowRoomTypeConfig(room: WorkflowRoomItem, config: QuoteR
   const resolved = room.moppingRateCode || type.moppingRateCode
     ? withSelectedMoppingRate(config, type, room.moppingRateCode ?? 'mopping', Boolean(room.moppingEnabled), room.moppingMinutesPerSqm)
     : type
-  return {
+  const tasks = getRoomScopeTaskDefinitions(resolved).map(task =>
+    room.quoteTasks?.find(override => override.id === task.id) ?? task)
+  tasks.push(...(room.quoteTasks ?? []).filter(task => !tasks.some(existing => existing.id === task.id)))
+  const included = tasks.filter(task => !room.excludedTaskIds?.includes(task.id))
+  const edited = {
     ...resolved,
-    scopeTaskCadences: resolved.scopeTasks.map((_, index) => {
-      const override = room.scopeTaskCadences?.[getRoomScopeTaskId(resolved, index)]
+    scopeTasks: included.map(task => task.label),
+    scopeTaskIds: included.map(task => task.id),
+    scopeTaskPrices: included.map(task => task.price),
+    scopeTaskMinutesPerSqm: included.map(task => task.minutesPerSqm),
+    scopeTaskPricingModes: included.map(task => task.pricingMode),
+    scopeTaskDefaults: included.map(task => task.defaultSelected),
+    scopeTaskCadences: included.map(task => task.cadence),
+    scopeTaskGlobalRateCodes: included.map(task => {
+      const index = resolved.scopeTasks.findIndex((_, i) => getRoomScopeTaskId(resolved, i) === task.id)
+      return index >= 0 ? getRoomScopeTaskGlobalRateCode(resolved, index) : null
+    }),
+  }
+  return {
+    ...edited,
+    scopeTaskCadences: edited.scopeTasks.map((_, index) => {
+      const override = room.scopeTaskCadences?.[getRoomScopeTaskId(edited, index)]
       return ROOM_TASK_CADENCE_OPTIONS.some(option => option.value === override)
-        ? override! : getRoomScopeTaskCadence(resolved, index)
+        ? override! : getRoomScopeTaskCadence(edited, index)
     }),
   }
 }
@@ -128,6 +155,7 @@ export type FirmQuoteDraft = {
   status: FirmQuoteStatus
   revisedInputs: QuoteInputs
   roomItems: WorkflowRoomItem[]
+  sectionTitles?: QuoteSectionTitle[]
   moppingMinutesPerSqm: number
   pricingAdjustmentPercent: number
   targetPrice: string
@@ -407,6 +435,11 @@ function createSeedRoomItems(inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeC
   })
 }
 
+function sanitizeSourceLinks(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(Object.entries(value).filter(([id, code]) => id.length <= 128 && !['__proto__', 'constructor', 'prototype'].includes(id) && typeof code === 'string' && code.length <= 128).slice(0, 100))
+}
+
 function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG): WorkflowRoomItem[] {
   if (!Array.isArray(candidate) || candidate.length === 0) {
     return createSeedRoomItems(inputs, roomTypeConfig)
@@ -427,7 +460,15 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
       // A generic bathroom is not a male bathroom. Use the dedicated male type
       // when a urinal should be included in the room schedule.
       if (type === 'bathroom') metrics.urinals = 0
-      const roomType = getRoomTypeConfigById(roomTypeConfig, type)
+      const quoteTasks = Array.isArray(source.quoteTasks) ? source.quoteTasks.filter(task =>
+        task && typeof task.id === 'string' && task.id.length <= 128 && typeof task.label === 'string' && task.label.trim() && task.label.length <= 200 &&
+        ['fixed', 'area'].includes(task.pricingMode) && typeof task.defaultSelected === 'boolean' &&
+        Number.isFinite(task.price) && task.price >= 0 && task.price <= 1000000 &&
+        Number.isFinite(task.minutesPerSqm) && task.minutesPerSqm >= 0 && task.minutesPerSqm <= 1000 &&
+        ROOM_TASK_CADENCE_OPTIONS.some(option => option.value === task.cadence)
+      ).slice(0, 100) : []
+      const excludedTaskIds = Array.isArray(source.excludedTaskIds) ? source.excludedTaskIds.filter(id => typeof id === 'string' && id.length <= 128).slice(0, 100) : []
+      const roomType = getWorkflowRoomTypeConfig({ ...source, type, quoteTasks, excludedTaskIds } as WorkflowRoomItem, roomTypeConfig)
       const sourceSelections = source.scopeTaskSelections && typeof source.scopeTaskSelections === 'object'
         ? source.scopeTaskSelections
         : {}
@@ -457,7 +498,18 @@ function mergeRoomItems(candidate: unknown, inputs: QuoteInputs, roomTypeConfig:
         excludedMetricFieldIds: Array.isArray(source.excludedMetricFieldIds)
           ? source.excludedMetricFieldIds.filter((id): id is string => typeof id === 'string').map((id) => id.slice(0, 64)).slice(0, 30)
           : [],
+        taskDefaultPrices: source.taskDefaultPrices && typeof source.taskDefaultPrices === 'object'
+          ? Object.fromEntries(Object.entries(source.taskDefaultPrices).filter(([id, value]) => id.length <= 128 && typeof value === 'boolean' && !['__proto__', 'constructor', 'prototype'].includes(id)).slice(0, 100)) : {},
+        taskSourceCodes: sanitizeSourceLinks(source.taskSourceCodes),
+        fieldSourceIds: sanitizeSourceLinks(source.fieldSourceIds),
+        quoteTasks,
+        excludedTaskIds,
         scopeTaskSelections,
+        scopeTaskQuantities: source.scopeTaskQuantities && typeof source.scopeTaskQuantities === 'object'
+          ? Object.fromEntries(Object.entries(source.scopeTaskQuantities).filter(([id, quantity]) =>
+              id.length <= 128 && !['__proto__', 'constructor', 'prototype'].includes(id) &&
+              Number.isInteger(quantity) && quantity >= 1 && quantity <= 1000).slice(0, 100))
+          : {},
         scopeTaskCadences: source.scopeTaskCadences && typeof source.scopeTaskCadences === 'object'
           ? Object.fromEntries(Object.entries(source.scopeTaskCadences).filter(([id, cadence]) =>
               id.length <= 128 && !['__proto__', 'constructor', 'prototype'].includes(id) &&
@@ -583,6 +635,11 @@ export function parseFirmQuoteDraft(
     status: isFirmQuoteStatus(source.status) ? source.status : fallback.status,
     revisedInputs: mergeQuoteInputs(inputs, source.revisedInputs),
     roomItems: mergeRoomItems(source.roomItems, inputs, roomTypeConfig),
+    sectionTitles: Array.isArray(source.sectionTitles) ? source.sectionTitles.filter(section =>
+      section && typeof section.id === 'string' && section.id.startsWith('section-') && section.id.length <= 128 &&
+      typeof section.label === 'string' && section.label.length <= 200 &&
+      (section.beforeRoomId === null || (typeof section.beforeRoomId === 'string' && section.beforeRoomId.length <= 128))
+    ).slice(0, 100) : [],
     moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingAdjustmentPercent:
       typeof source.pricingAdjustmentPercent === 'number' && Number.isFinite(source.pricingAdjustmentPercent)
@@ -708,6 +765,11 @@ export function getRoomMetricExtraTotal(draft: FirmQuoteDraft, roomTypeConfig: Q
 }
 
 /** Per-clean task contribution before any quote-wide percentage adjustment. */
+export function getRoomTaskQuantity(room: WorkflowRoomItem, taskId: string) {
+  const quantity = room.scopeTaskQuantities?.[taskId]
+  return typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 1 && quantity <= 1000 ? quantity : 1
+}
+
 export function getRoomTaskContribution(
   room: WorkflowRoomItem,
   roomType: RoomTypeConfig,
@@ -724,7 +786,7 @@ export function getRoomTaskContribution(
       ? Math.max(0, room.size) * Math.max(0, room.quantity)
       : allocatedArea
     : Math.max(0, room.quantity)
-  return rate * units * factor
+  return rate * units * factor * getRoomTaskQuantity(room, getRoomScopeTaskId(roomType, taskIndex))
 }
 
 export function getRoomScheduledTaskExtraTotal(

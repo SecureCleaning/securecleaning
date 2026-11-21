@@ -1,3 +1,4 @@
+import {quoteEntries} from '../src/lib/quoteSections.ts'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
@@ -18,6 +19,7 @@ function moduleWith(rows,report={rooms:[],selectedOptions:[],businessName:'<scri
  const db={from(table){calls.push(table);const chain={select(){return chain},eq(){return chain},maybeSingle:async()=>({data:rows[table]??null,error:null})};return chain}}
  class CrmError extends Error{}
  const exports={}; vm.runInNewContext(ts.transpileModule(source('src/lib/crmQuoteActivity.ts'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{exports,require(name){
+  if(name==='./quoteSections')return {quoteEntries}
   if(name==='./supabase')return {getAdminSupabase:()=>db}
   if(name==='./clientCrmAuth')return {actorCanAccessOpportunity:(a,assigned)=>a.role==='owner'||a.id===assigned}
   if(name==='./clientCrmData')return {ClientCrmError:CrmError}
@@ -54,4 +56,13 @@ test('quote payload is archived before provider contact and archive errors preve
  calls.length=0
  await assert.rejects(exports.sendUpdatedQuoteEmail('ref',{}, {},{archiveBeforeSend:async()=>{throw Error('archive failed')}}),/archive failed/)
  assert.deepEqual(calls,[])
+})
+
+test('archived quote section titles retain order and escape customer text',()=>{
+ const report={rooms:[{id:'r',label:'Reception',quantity:1,floor:1,tasks:[],selectedOptions:[]}],sectionTitles:[{id:'section-ground',label:'Ground <Floor>',beforeRoomId:'r'}],selectedOptions:[]}
+ const {api}=moduleWith({},report)
+ const html=api.renderArchivedQuote('SC-test',{version:1,inputs:{},firmQuoteDraft:{},result:{},roomTypeConfig:{}})
+ assert.ok(html.includes('Ground &lt;Floor&gt;'))
+ assert.ok(html.indexOf('Ground &lt;Floor&gt;')<html.indexOf('Reception'))
+ assert.ok(!html.includes('Ground <Floor>'))
 })

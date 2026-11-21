@@ -4,9 +4,10 @@ import QuoteEmailTemplateEditor from '@/components/admin/QuoteEmailTemplateEdito
 import { quoteEmailDraft as mergeQuoteEmailDraft } from '@/lib/quoteEmailTemplate'
 import { QUOTE_TERMS_PDF_PATH } from '@/lib/quoteTerms'
 
-import { appendSavedQuoteField, overrideIncludedQuoteField } from '@/lib/savedQuoteFields'
+import { appendSavedQuoteField, overrideIncludedQuoteField, getSavedQuoteOptions, appendGlobalQuoteTask } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
 import RoomPriceSummary from '@/components/admin/RoomPriceSummary'
+import RefreshQuotePricesDialog from '@/components/admin/RefreshQuotePricesDialog'
 
 import QuoteSmsPanel from '@/components/sms/QuoteSmsPanel'
 import { INDUSTRY_MERGE_FIELD } from '@/lib/emailMergeFields'
@@ -15,7 +16,8 @@ import { createRichEmailContent } from '@/lib/richEmailContent'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatCurrency, formatPriceRange } from '@/lib/quoteEngine'
-import { duplicateQuoteRoom, moveQuoteRoom } from '@/lib/quoteRoomEditing'
+import { quoteEntries, moveQuoteEntry } from '@/lib/quoteSections'
+import { duplicateQuoteRoom } from '@/lib/quoteRoomEditing'
 import type { QuotePricingConfig } from '@/lib/pricing'
 import type { QuoteInputs, QuoteResult, PremisesType } from '@/lib/types'
 import type { QuoteWorkflowRecord } from '@/lib/quoteWorkflowData'
@@ -27,6 +29,7 @@ import {
   getRoomAreaAllocationTotal,
   getRoomAreaAllocations,
   getRoomTaskContribution,
+  getRoomTaskQuantity,
   getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
   getWorkflowRoomMetricFields,
@@ -136,8 +139,8 @@ function formatTaskCurrency(amount: number) {
 
 export default function QuoteWorkflowEditor({
   quote,
-  pricingConfig,
-  roomTypeConfig,
+  pricingConfig: initialPricingConfig,
+  roomTypeConfig: initialRoomTypeConfig,
   workflowApiPath = `/api/admin/quotes/${quote.quoteRef}/workflow`,
   canEmailScope = false,
   updatedQuoteApiPath = `/api/admin/quotes/${quote.quoteRef}/send`,
@@ -145,6 +148,9 @@ export default function QuoteWorkflowEditor({
   canReconcileDelivery = false,
   canReviseAcceptedFinal = false,
 }: Props) {
+  const [pricingConfig, setPricingConfig] = useState(initialPricingConfig)
+  const [roomTypeConfig, setRoomTypeConfig] = useState(initialRoomTypeConfig)
+  const [showPriceRefresh, setShowPriceRefresh] = useState(false)
   const [quoteRequestConfirmed, setQuoteRequestConfirmed] = useState(false)
   const [inspectionReport, setInspectionReport] = useState<InspectionReport>(quote.inspectionReport)
   const [firmQuoteDraft, setFirmQuoteDraft] = useState<FirmQuoteDraft>(quote.firmQuoteDraft)
@@ -229,16 +235,12 @@ export default function QuoteWorkflowEditor({
   )
   const roomAreas = useMemo(() => getRoomAreaAllocations(firmQuoteDraft, roomTypeConfig), [firmQuoteDraft, roomTypeConfig])
   const roomTypeOptions = useMemo(
-    () => roomTypeConfig.roomTypes.map((roomType) => [roomType.id as WorkflowRoomType, roomType.label] as const),
+    () => roomTypeConfig.roomTypes
+      .map((roomType) => [roomType.id as WorkflowRoomType, roomType.label] as const)
+      .sort((a, b) => a[1].localeCompare(b[1], 'en-AU', { sensitivity: 'base', numeric: true })),
     [roomTypeConfig]
   )
-  const systemMetricFieldOptions = useMemo(() => {
-    const fields = new Map<string, RoomMetricFieldConfig>()
-    roomTypeConfig.roomTypes.forEach((roomType) => roomType.fields.forEach((field) => {
-      if (!fields.has(field.id)) fields.set(field.id, field)
-    }))
-    return [...fields.values()]
-  }, [roomTypeConfig])
+  const savedQuoteOptions = useMemo(() => getSavedQuoteOptions(roomTypeConfig), [roomTypeConfig])
   const isAcceptedFinal = quote.status === 'accepted' || firmQuoteDraft.status === 'accepted'
   const canReviseFinal = (Boolean(quote.finalDocument) || isAcceptedFinal) && (!isAcceptedFinal || canReviseAcceptedFinal)
   const acceptedEditingLocked = isAcceptedFinal && !canReviseFinal
@@ -514,12 +516,22 @@ export default function QuoteWorkflowEditor({
     }))
   }
 
+  const orderedEntries = quoteEntries(firmQuoteDraft.roomItems, firmQuoteDraft.sectionTitles)
+
   function moveRoom(roomId: string, targetId: string) {
     setFirmQuoteDraft((current) => ({
       ...current,
-      roomItems: moveQuoteRoom(current.roomItems, roomId, targetId),
+      ...moveQuoteEntry(current.roomItems, current.sectionTitles ?? [], roomId, targetId),
     }))
     setRoomEditMessage('Room order updated. Save the quote to update the scope order.')
+  }
+
+  function expandRoom(details: HTMLDetailsElement) {
+    const container = details.closest('[data-quote-rooms]')
+    container?.querySelectorAll<HTMLDetailsElement>('[data-room-panel]').forEach(panel => {
+      if (panel !== details) panel.open = false
+    })
+    details.open = true
   }
 
   function duplicateRoom(roomId: string) {
@@ -532,10 +544,22 @@ export default function QuoteWorkflowEditor({
     window.requestAnimationFrame(() => {
       const details = document.getElementById(`quote-room-${newId}`) as HTMLDetailsElement | null
       if (!details) return
-      details.open = true
+      expandRoom(details)
       const label = details.querySelector<HTMLInputElement>('[data-room-label]')
       label?.focus()
       label?.select()
+    })
+  }
+
+  function addSectionTitle() {
+    const id = `section-${crypto.randomUUID()}`
+    setFirmQuoteDraft(current => ({ ...current, sectionTitles: [...(current.sectionTitles ?? []), { id, label: 'New section', beforeRoomId: null }] }))
+    document.querySelectorAll<HTMLDetailsElement>('[data-room-panel]').forEach(panel => { panel.open = false })
+    window.requestAnimationFrame(() => {
+      const input = document.getElementById(id) as HTMLInputElement | null
+      input?.scrollIntoView({ block: 'center' })
+      input?.focus({ preventScroll: true })
+      input?.select()
     })
   }
 
@@ -544,11 +568,12 @@ export default function QuoteWorkflowEditor({
     setFirmQuoteDraft((current) => ({
       ...current,
       roomItems: [...current.roomItems, room],
+      sectionTitles: current.sectionTitles?.map(section => section.beforeRoomId === null ? { ...section, beforeRoomId: room.id } : section),
     }))
     window.requestAnimationFrame(() => {
       const details = document.getElementById(`quote-room-${room.id}`) as HTMLDetailsElement | null
       if (!details) return
-      details.open = true
+      expandRoom(details)
       details.scrollIntoView({ block: 'start' })
       const label = details.querySelector<HTMLInputElement>('[data-room-label]')
       label?.focus({ preventScroll: true })
@@ -562,6 +587,8 @@ export default function QuoteWorkflowEditor({
       roomItems: current.roomItems.length > 1
         ? current.roomItems.filter((room) => room.id !== roomId)
         : current.roomItems,
+      sectionTitles: current.roomItems.length > 1 ? current.sectionTitles?.map(section => section.beforeRoomId === roomId
+        ? { ...section, beforeRoomId: current.roomItems[current.roomItems.findIndex(room => room.id === roomId) + 1]?.id ?? null } : section) : current.sectionTitles,
     }))
   }
 
@@ -583,7 +610,19 @@ export default function QuoteWorkflowEditor({
   }
 
   function addSystemMetricField(room: WorkflowRoomItem, fieldId: string) {
-    const field = systemMetricFieldOptions.find((candidate) => candidate.id === fieldId)
+    const option = savedQuoteOptions.find(candidate => candidate.value === fieldId)
+    if (!option) return
+    if (option.rate) {
+      const type = getWorkflowRoomTypeConfig(room, roomTypeConfig)
+      if ((room.quoteTasks?.length ?? 0) >= 100 || (type && getRoomScopeTaskDefinitions(type).length >= 100)) {
+        window.alert('This room has reached its task limit.')
+        return
+      }
+      updateRoom(room.id, appendGlobalQuoteTask(room, roomTypeConfig, option.rate.code, `quote-task-${crypto.randomUUID()}`))
+      setRoomEditMessage(`${option.label} added under Tasks included in this room. Save the quote to keep it.`)
+      return
+    }
+    const field = option.field
     if (!field) return
     if ((room.customMetricFields ?? []).length >= 20 || getWorkflowRoomMetricFields(room, roomTypeConfig).length >= 30) {
       window.alert('This room has reached its extra-field limit. Add another room to include more fields.')
@@ -1100,6 +1139,14 @@ export default function QuoteWorkflowEditor({
                 ? "fixed right-4 top-24 z-40 w-[min(20rem,calc(100vw-2rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg"
                 : "flex justify-end rounded-xl border border-gray-200 bg-white p-2 shadow-sm"}>
                 <div className="flex flex-wrap justify-end gap-2" role="group" aria-label="Room controls">
+                  <button type="button" disabled={saveState.saving || acceptedEditingLocked} onClick={() => setShowPriceRefresh(true)} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-50">Refresh all prices</button>
+                  {showPriceRefresh ? <RefreshQuotePricesDialog draft={firmQuoteDraft} pricingConfig={pricingConfig} roomTypeConfig={roomTypeConfig} apiPath={workflowApiPath} onClose={() => setShowPriceRefresh(false)} onApply={(draft, configs) => {
+                    setFirmQuoteDraft(draft)
+                    setPricingConfig(configs.pricingConfig)
+                    setRoomTypeConfig(configs.roomTypeConfig)
+                    setShowPriceRefresh(false)
+                    setRoomEditMessage('Prices refreshed. Review the total, then save the quote to keep these changes.')
+                  }} /> : null}
                   <RoomPriceSummary
                     quoteRef={quote.quoteRef}
                     rooms={firmQuoteDraft.roomItems}
@@ -1115,6 +1162,7 @@ export default function QuoteWorkflowEditor({
                   >
                     {saveState.saving ? 'Saving...' : 'Save'}
                   </button>
+                  <button type="button" disabled={(firmQuoteDraft.sectionTitles?.length ?? 0) >= 100 || saveState.saving || acceptedEditingLocked} onClick={addSectionTitle} className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800">+ Section title</button>
                   <button
                     type="button"
                     onClick={() => addRoom('office')}
@@ -1141,8 +1189,8 @@ export default function QuoteWorkflowEditor({
               </div>
               </div>
               <p role="status" className="mb-3 text-sm text-teal-800">{roomEditMessage}</p>
-              <div className="space-y-3">
-                {firmQuoteDraft.roomItems.map((room, roomIndex) => (
+              <div className="space-y-3" data-quote-rooms>
+                {orderedEntries.map((room, roomIndex) => (
                   <div
                     key={room.id}
                     className={`rounded-xl border ${roomDropTarget === room.id ? 'border-teal-600 ring-2 ring-teal-200' : 'border-gray-200'}`}
@@ -1152,7 +1200,7 @@ export default function QuoteWorkflowEditor({
                       <button
                         type="button"
                         disabled={saveState.saving || acceptedEditingLocked}
-                        aria-label={`Drag to reorder ${room.label || room.type}; use Move up or Move down with a keyboard`}
+                        aria-label={`Drag to reorder ${room.label}; use Move up or Move down with a keyboard`}
                         onPointerDown={(event) => {
                           if (event.button !== 0) return
                           event.currentTarget.setPointerCapture(event.pointerId)
@@ -1191,34 +1239,44 @@ export default function QuoteWorkflowEditor({
                       >
                         Drag
                       </button>
-                      <span className="mr-auto text-xs text-gray-500">Room {roomIndex + 1} of {firmQuoteDraft.roomItems.length}</span>
+                      <span className="mr-auto text-xs text-gray-500">{room.kind === 'section' ? 'Section title' : 'Room'} {roomIndex + 1} of {orderedEntries.length}</span>
                       <button
                         type="button"
-                        aria-label={`Move ${room.label || room.type} up`}
+                        aria-label={`Move ${room.label} up`}
                         disabled={roomIndex === 0 || saveState.saving || acceptedEditingLocked}
-                        onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex - 1].id)}
+                        onClick={() => moveRoom(room.id, orderedEntries[roomIndex - 1].id)}
                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
                       >Move up</button>
                       <button
                         type="button"
-                        aria-label={`Move ${room.label || room.type} down`}
-                        disabled={roomIndex === firmQuoteDraft.roomItems.length - 1 || saveState.saving || acceptedEditingLocked}
-                        onClick={() => moveRoom(room.id, firmQuoteDraft.roomItems[roomIndex + 1].id)}
+                        aria-label={`Move ${room.label} down`}
+                        disabled={roomIndex === orderedEntries.length - 1 || saveState.saving || acceptedEditingLocked}
+                        onClick={() => moveRoom(room.id, orderedEntries[roomIndex + 1].id)}
                         className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-40"
                       >Move down</button>
                       <button
                         type="button"
-                        aria-label={`Duplicate ${room.label || room.type}`}
+                        aria-label={`Duplicate ${room.label}`}
                         disabled={saveState.saving || acceptedEditingLocked}
                         onClick={() => duplicateRoom(room.id)}
+                        hidden={room.kind === 'section'}
                         className="rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 disabled:opacity-40"
                       >Duplicate</button>
                     </div>
-                  <details id={`quote-room-${room.id}`} className="scroll-mt-64 md:scroll-mt-40">
+                  {room.kind === 'section' ? <div className="flex items-center gap-3 rounded-b-xl bg-teal-50 p-4">
+                    <label className="flex-1 text-sm font-semibold text-teal-900">Section title
+                      <input disabled={saveState.saving || acceptedEditingLocked} id={room.id} value={room.label} maxLength={200} placeholder="e.g. Ground Floor" onChange={event => setFirmQuoteDraft(current => ({ ...current, sectionTitles: current.sectionTitles?.map(section => section.id === room.id ? { ...section, label: event.target.value } : section) }))} className="mt-1 w-full rounded-lg border border-teal-200 bg-white px-3 py-2 text-lg font-bold" />
+                    </label>
+                    <button type="button" disabled={saveState.saving || acceptedEditingLocked} onClick={() => setFirmQuoteDraft(current => ({ ...current, sectionTitles: current.sectionTitles?.filter(section => section.id !== room.id) }))} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-red-700">Delete title</button>
+                  </div> : <details id={`quote-room-${room.id}`} data-room-panel className="scroll-mt-64 md:scroll-mt-40"
+                    onToggle={event => {
+                      if (event.target === event.currentTarget && event.currentTarget.open) expandRoom(event.currentTarget)
+                    }}
+                  >
                     <summary className="cursor-pointer list-none border-l-4 border-teal-600 bg-teal-50 px-4 py-4 [&::-webkit-details-marker]:hidden">
                       <div className="flex items-center justify-between gap-4">
                         <div>
-                          <div className="text-xl font-bold text-teal-950">{room.label || room.type}</div>
+                          <div className="text-xl font-bold text-teal-950">{room.label}</div>
                           <div className="mt-1 text-sm text-gray-500">
                             {room.type} · Quantity {room.quantity} · {room.size} sqm each
                           </div>
@@ -1353,11 +1411,19 @@ export default function QuoteWorkflowEditor({
                       <div className="mt-4 rounded-xl border border-teal-100 bg-teal-50/40 p-4">
                         <div className="mb-3">
                           <div className="text-sm font-semibold text-gray-800">Tasks included in this room</div>
-                          <div className="mt-1 text-xs text-gray-500">Tick or untick tasks for this quote. Fixed task charges and scheduled frequency update the working price automatically.</div>
+                          <div className="mt-1 text-xs text-gray-500">Edit, add or remove tasks for this quote only. Saved room defaults stay unchanged. Pricing and frequency update the working price automatically.</div>
                         </div>
+                        <button type="button" disabled={(room.quoteTasks?.length ?? 0) >= 100 || getRoomScopeTaskDefinitions(typeConfig).length >= 100} className="mb-3 rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm font-semibold text-teal-800" onClick={() => updateRoom(room.id, { quoteTasks: [...(room.quoteTasks ?? []), { id: `quote-task-${crypto.randomUUID()}`, label: 'New task', cadence: 'every_clean', price: 0, minutesPerSqm: 0, pricingMode: 'fixed', defaultSelected: true }] })}>+ Add task</button>
                         <div className="grid gap-2 md:grid-cols-2">
-                          {getRoomScopeTaskDefinitions(typeConfig).map((task, index) => {
+                          {getRoomScopeTaskDefinitions(typeConfig)
+                            .map((task, index) => ({ task, index }))
+                            .sort((a, b) => a.task.label.localeCompare(b.task.label, 'en-AU', { sensitivity: 'base', numeric: true }))
+                            .map(({ task, index }) => {
                             if (task.id === `${room.type}-mopping-selected`) return null
+                            const editTask = (patch: Partial<typeof task>) => updateRoom(room.id, {
+                              taskDefaultPrices: { ...room.taskDefaultPrices, [task.id]: patch.price !== undefined || patch.minutesPerSqm !== undefined || patch.pricingMode !== undefined ? false : room.taskDefaultPrices?.[task.id] ?? !room.quoteTasks?.some(existing => existing.id === task.id) },
+                              quoteTasks: [...(room.quoteTasks ?? []).filter(existing => existing.id !== task.id), { ...task, ...patch }],
+                            })
                             const contribution = getRoomTaskContribution(room, typeConfig, index, firmQuoteDraft.revisedInputs.frequency, pricingConfig.settings.hourlyRate, roomAreas.get(room.id) ?? 0) * (1 + (firmQuoteDraft.pricingAdjustmentPercent || 0) / 100)
                             const selected = isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index))
                               ? Boolean(room.moppingEnabled)
@@ -1380,6 +1446,9 @@ export default function QuoteWorkflowEditor({
                                   />
                                   <span className="min-w-0">
                                     <span className="block break-words text-sm font-medium leading-5 text-gray-800">{task.label}</span>
+                                    <label className="mt-2 flex items-center gap-2 text-xs text-gray-700">Quantity per room
+                                      <input type="number" aria-label={`${task.label} quantity per room`} min="1" max="1000" step="1" value={getRoomTaskQuantity(room, task.id)} onChange={event => updateRoom(room.id, { scopeTaskQuantities: { ...room.scopeTaskQuantities, [task.id]: Math.min(1000, Math.max(1, Math.floor(Number(event.target.value) || 1))) } })} className="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1" />
+                                    </label>
                                     <select
                                       aria-label={`${task.label} frequency`}
                                       value={task.cadence}
@@ -1390,12 +1459,21 @@ export default function QuoteWorkflowEditor({
                                     </select>
                                   </span>
                                 </span>
+                                <details className="text-sm">
+                                  <summary className="cursor-pointer font-semibold text-teal-700">Edit task</summary>
+                                  <div className="mt-2 grid gap-2">
+                                    <label>Task wording<input aria-label="Task wording" key={task.label} defaultValue={task.label} maxLength={200} onBlur={event => { const label = event.target.value.trim(); if (label) editTask({ label }); else event.target.value = task.label }} className="mt-1 w-full rounded-lg border p-2" /></label>
+                                    <label>Pricing method<select value={task.pricingMode} onChange={event => editTask({ pricingMode: event.target.value as 'area' | 'fixed' })} className="mt-1 w-full rounded-lg border p-2"><option value="fixed">Fixed amount per item when done</option><option value="area">Time per square metre</option></select></label>
+                                    {task.pricingMode === 'fixed' ? <label>Amount ($)<input type="number" min="0" max="1000000" step="0.01" value={task.price} onChange={event => editTask({ price: Math.min(1000000, Math.max(0, Number(event.target.value) || 0)) })} className="mt-1 w-full rounded-lg border p-2" /></label> : <label>Minutes per sqm<input type="number" min="0" max="1000" step="0.001" value={task.minutesPerSqm} onChange={event => editTask({ minutesPerSqm: Math.min(1000, Math.max(0, Number(event.target.value) || 0)) })} className="mt-1 w-full rounded-lg border p-2" /></label>}
+                                    <button type="button" onClick={() => updateRoom(room.id, { excludedTaskIds: [...(room.excludedTaskIds ?? []), task.id] })} className="rounded-lg border border-red-200 p-2 text-red-700">Remove task from this room</button>
+                                  </div>
+                                </details>
                                 <span className="min-w-0 w-full border-t border-gray-100 pt-2 text-left text-xs font-semibold leading-5 text-teal-800 break-words">
                                   {task.pricingMode === 'area'
                                     ? task.minutesPerSqm > 0
-                                      ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity))} for this area · {task.minutesPerSqm} min / sqm</span></>
+                                      ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity) * getRoomTaskQuantity(room, task.id))} for this area · {task.minutesPerSqm} min / sqm</span></>
                                       : 'Area labour'
-                                    : task.price > 0 ? `${formatTaskCurrency(task.price)} when done` : 'Included'}
+                                    : task.price > 0 ? `${formatTaskCurrency(task.price)} each when done` : 'Included'}
                                   <span className="mt-1 block font-semibold text-teal-900">{formatTaskCurrency(contribution)} per clean</span>
                                   <span className="mt-1 block font-normal text-gray-500">{!selected ? 'Not selected - no contribution.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour; no separate task charge.' : 'Includes quantity and quote adjustment; amortised over the cleaning schedule. Rounded for display.'}</span>
                                 </span>
@@ -1515,7 +1593,7 @@ export default function QuoteWorkflowEditor({
                       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                         <div>
                           <div className="text-sm font-semibold text-gray-800">Extra fields</div>
-                          <div className="text-xs text-gray-500">Use a saved room field or add a blank one for this quote.</div>
+                          <div className="text-xs text-gray-500">Choose a saved field or global task. Global tasks appear under Tasks included in this room.</div>
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <select
@@ -1527,8 +1605,8 @@ export default function QuoteWorkflowEditor({
                             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold"
                           >
                             <option value="">Add saved field…</option>
-                            {systemMetricFieldOptions.map((field) => (
-                              <option key={field.id} value={field.id}>{field.label}</option>
+                            {savedQuoteOptions.map(option => (
+                              <option key={option.value} value={option.value}>{option.label}{option.rate ? ' (task)' : ''}</option>
                             ))}
                           </select>
                           <button type="button" onClick={() => addBlankMetricField(room)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700">
@@ -1598,7 +1676,7 @@ export default function QuoteWorkflowEditor({
                       )
                     })()}
                     </div>
-                  </details>
+                  </details>}
                   </div>
                 ))}
               </div>

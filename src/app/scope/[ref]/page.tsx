@@ -1,3 +1,4 @@
+import { quoteEntries } from '@/lib/quoteSections'
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
@@ -118,7 +119,9 @@ export default async function ScopeOfWorksPage(
               </div>
 
               <div className="mt-4 space-y-3">
-                {report.rooms.map((room) => (
+                {quoteEntries(report.rooms, report.sectionTitles).map((room) => room.kind === 'section' ? (
+                  <h3 key={room.id} className="break-after-avoid border-b-2 border-teal-700 pb-2 pt-6 text-xl font-bold text-teal-900">{room.label}</h3>
+                ) : (
                   <section key={room.id} className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
