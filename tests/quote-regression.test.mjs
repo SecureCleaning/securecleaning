@@ -364,7 +364,8 @@ test('client task schedules cannot promise work more often than the quote servic
     'SC-MONTHLY', monthlyInputs, calculateQuote(monthlyInputs), monthlyDraft, roomTypeConfig
   )
 
-  assert.deepEqual(report.rooms[0].tasks.map((task) => task.cadence), ['every_clean', 'every_clean', 'quarterly'])
+  assert.deepEqual(report.rooms[0].tasks.map((task) => task.cadence), ['every_clean', 'every_clean', 'quarterly', 'every_clean', 'every_clean'])
+  assert.equal(report.rooms[0].tasks.at(-1).label, 'Glass panels (quantity: 2 per room)')
   assert.deepEqual(report.rooms[0].selectedOptions, [
     'Mopping — Every clean',
     'Glass panels: 2 — Every clean',

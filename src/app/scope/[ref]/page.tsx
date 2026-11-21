@@ -139,12 +139,6 @@ export default async function ScopeOfWorksPage(
                     <ul className="mt-3 space-y-1.5 text-[13px] leading-5 text-slate-700">
                       {room.tasks.map((task, taskIndex) => <li key={`${task.label}-${taskIndex}`} className="scope-task grid gap-1 sm:grid-cols-[minmax(0,1fr)_120px]"><span>{task.label}</span><strong className="font-semibold text-slate-600">{getRoomTaskCadenceLabel(task.cadence)}</strong></li>)}
                     </ul>
-                    {room.selectedOptions.length > 0 ? (
-                      <div className="mt-2 border-t border-slate-100 pt-2 text-xs leading-5 text-slate-700">
-                        <span className="scope-label">Selected for this area:</span>
-                        <span className="ml-2">{room.selectedOptions.join(' · ')}</span>
-                      </div>
-                    ) : null}
                   </section>
                 ))}
               </div>

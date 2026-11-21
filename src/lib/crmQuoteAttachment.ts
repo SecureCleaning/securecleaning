@@ -20,7 +20,7 @@ export function buildCrmQuoteAttachment(send: Awaited<ReturnType<typeof getCrmQu
     `Price per visit: ${report.displayedPrice} excluding GST`, `Frequency: ${report.frequencyLabel}`, `Cleaning time: ${report.timePreferenceLabel}`, '',
     ...quoteEntries(report.rooms, report.sectionTitles).flatMap((room) => room.kind === 'section' ? ['', room.label.toUpperCase(), ''] : [
       `${report.rooms.findIndex(item => item.id === room.id) + 1}. ${room.label.toUpperCase()}`, `Quantity: ${room.quantity}`, `Floor area: ${room.size ?? 0} sqm each`, `Floor: ${room.floor}`,
-      room.description, ...room.tasks.map(task => `- ${task.label} - ${getRoomTaskCadenceLabel(task.cadence)}`), ...room.selectedOptions.map(option => `- ${option}`), '',
+      room.description, ...room.tasks.map(task => `- ${task.label} - ${getRoomTaskCadenceLabel(task.cadence)}`), '',
     ]),
     ...report.selectedOptions.map(option => `- ${option}`),
     ...[['Summary', report.summary], ['Inclusions', report.inclusions], ['Exclusions', report.exclusions]]

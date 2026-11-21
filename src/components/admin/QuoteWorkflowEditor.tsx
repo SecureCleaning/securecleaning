@@ -16,6 +16,7 @@ import { createRichEmailContent } from '@/lib/richEmailContent'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { formatCurrency, formatPriceRange } from '@/lib/quoteEngine'
+import { getCombinedRoomScopeTasks } from '@/lib/scopeOfWorks'
 import { quoteEntries, moveQuoteEntry } from '@/lib/quoteSections'
 import { duplicateQuoteRoom } from '@/lib/quoteRoomEditing'
 import type { QuotePricingConfig } from '@/lib/pricing'
@@ -592,23 +593,6 @@ export default function QuoteWorkflowEditor({
     }))
   }
 
-  function addBlankMetricField(room: WorkflowRoomItem) {
-    const id = `custom_${Date.now().toString(36)}`
-    updateRoom(room.id, {
-      customMetricFields: [...(room.customMetricFields ?? []), {
-        id,
-        label: 'New field',
-        inputType: 'integer',
-        defaultValue: 0,
-        includedUnits: 0,
-        pricePerUnit: 0,
-        cadence: 'every_clean',
-        helpText: '',
-      }],
-      metrics: { ...(room.metrics ?? {}), [id]: 0 },
-    })
-  }
-
   function addSystemMetricField(room: WorkflowRoomItem, fieldId: string) {
     const option = savedQuoteOptions.find(candidate => candidate.value === fieldId)
     if (!option) return
@@ -840,7 +824,9 @@ export default function QuoteWorkflowEditor({
         <div>
           <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">Quoted areas</div>
           <div className="space-y-2">
-            {firmQuoteDraft.roomItems.map((room) => (
+            {orderedEntries.map((room) => room.kind === 'section' ? (
+              <h3 key={room.id} className="border-b-2 border-teal-700 pb-2 pt-6 text-xl font-bold text-teal-900">{room.label}</h3>
+            ) : (
               <div key={room.id} className="rounded-xl bg-white border border-gray-200 px-4 py-3 text-sm text-gray-700">
                 <div className="font-semibold" style={{ color: '#1a2744' }}>{room.label}</div>
                 {room.description?.trim() ? <div className="mt-2 whitespace-pre-wrap text-gray-700">{room.description}</div> : null}
@@ -849,19 +835,11 @@ export default function QuoteWorkflowEditor({
                   {getRoomTypeConfigById(roomTypeConfig, room.type)?.tracksSize && room.size > 0 ? ` · ${room.size} sqm each` : ''}
                   {room.floor > 1 ? ` · Floor ${room.floor}` : ''}
                 </div>
-                {room.moppingEnabled ? <div className="text-gray-500 mt-1">{room.moppingRateCode ? getMoppingRate(roomTypeConfig, room.moppingRateCode, room.moppingMinutesPerSqm).label : 'Mopping'} included</div> : null}
-                {getWorkflowRoomMetricFields(room, roomTypeConfig).length ? (
-                  <div className="text-gray-500 mt-1">
-                    {getWorkflowRoomMetricFields(room, roomTypeConfig)
-                      .filter((field) => field.inputType === 'boolean'
-                        ? room.metrics?.[field.id] === true
-                        : Number(room.metrics?.[field.id] ?? field.defaultValue ?? 0) > 0)
-                      .map((field) => field.inputType === 'boolean'
-                        ? field.label
-                        : `${field.label}: ${String(room.metrics?.[field.id] ?? field.defaultValue)}`)
-                      .join(' · ')}
-                  </div>
-                ) : null}
+                <ul className="mt-3 space-y-1.5">
+                  {getCombinedRoomScopeTasks(room, roomTypeConfig, firmQuoteDraft.revisedInputs.frequency).map((task, index) => (
+                    <li key={index} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3"><span className="flex gap-2"><span aria-hidden="true" className="text-teal-700">•</span><span className="min-w-0 break-words">{task.label}</span></span><span className="text-xs font-semibold text-gray-500">{getRoomTaskCadenceLabel(task.cadence)}</span></li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -1413,7 +1391,18 @@ export default function QuoteWorkflowEditor({
                           <div className="text-sm font-semibold text-gray-800">Tasks included in this room</div>
                           <div className="mt-1 text-xs text-gray-500">Edit, add or remove tasks for this quote only. Saved room defaults stay unchanged. Pricing and frequency update the working price automatically.</div>
                         </div>
-                        <button type="button" disabled={(room.quoteTasks?.length ?? 0) >= 100 || getRoomScopeTaskDefinitions(typeConfig).length >= 100} className="mb-3 rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm font-semibold text-teal-800" onClick={() => updateRoom(room.id, { quoteTasks: [...(room.quoteTasks ?? []), { id: `quote-task-${crypto.randomUUID()}`, label: 'New task', cadence: 'every_clean', price: 0, minutesPerSqm: 0, pricingMode: 'fixed', defaultSelected: true }] })}>+ Add task</button>
+                        <details className="mb-3 rounded-lg border border-teal-200 bg-white p-2">
+                          <summary className="cursor-pointer text-sm font-semibold text-teal-800">+ Add task</summary>
+                          <div className="mt-3 flex flex-wrap items-end gap-3">
+                            <label className="min-w-0 flex-1 text-xs font-medium text-gray-700">Choose a saved task
+                              <select aria-label="Choose a saved task" defaultValue="" onChange={event => { if (event.target.value) addSystemMetricField(room, event.target.value); event.target.value = '' }} className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm">
+                                <option value="">Select a saved task...</option>
+                                {savedQuoteOptions.map(option => <option key={option.value} value={option.value}>{option.label}{option.rate ? ' (task)' : ''}</option>)}
+                              </select>
+                            </label>
+                            <button type="button" disabled={(room.quoteTasks?.length ?? 0) >= 100 || getRoomScopeTaskDefinitions(typeConfig).length >= 100} onClick={() => updateRoom(room.id, { quoteTasks: [...(room.quoteTasks ?? []), { id: `quote-task-${crypto.randomUUID()}`, label: 'New task', cadence: 'every_clean', price: 0, minutesPerSqm: 0, pricingMode: 'fixed', defaultSelected: true }] })} className="rounded-lg border border-teal-300 px-3 py-2 text-sm font-semibold text-teal-800">Create custom task</button>
+                          </div>
+                        </details>
                         <div className="grid gap-2 md:grid-cols-2">
                           {getRoomScopeTaskDefinitions(typeConfig)
                             .map((task, index) => ({ task, index }))
@@ -1429,7 +1418,7 @@ export default function QuoteWorkflowEditor({
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
                             return (
-                              <div key={task.id} className={`flex min-w-0 flex-col gap-3 rounded-lg border p-3 ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
+                              <div key={task.id} className={`flex min-w-0 flex-col gap-2 rounded-lg border p-3 ${selected ? 'border-teal-200 bg-white' : 'border-gray-200 bg-gray-50/70'}`}>
                                 <span className="flex w-full min-w-0 items-start gap-3">
                                   <input
                                     type="checkbox"
@@ -1446,17 +1435,19 @@ export default function QuoteWorkflowEditor({
                                   />
                                   <span className="min-w-0">
                                     <span className="block break-words text-sm font-medium leading-5 text-gray-800">{task.label}</span>
-                                    <label className="mt-2 flex items-center gap-2 text-xs text-gray-700">Quantity per room
-                                      <input type="number" aria-label={`${task.label} quantity per room`} min="1" max="1000" step="1" value={getRoomTaskQuantity(room, task.id)} onChange={event => updateRoom(room.id, { scopeTaskQuantities: { ...room.scopeTaskQuantities, [task.id]: Math.min(1000, Math.max(1, Math.floor(Number(event.target.value) || 1))) } })} className="w-20 rounded-lg border border-gray-300 bg-white px-2 py-1" />
+                                    <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                                    <label className="flex items-center gap-2 text-xs text-gray-700">Qty per room
+                                      <input type="number" aria-label={`${task.label} quantity per room`} min="1" max="1000" step="1" value={getRoomTaskQuantity(room, task.id)} onChange={event => updateRoom(room.id, { scopeTaskQuantities: { ...room.scopeTaskQuantities, [task.id]: Math.min(1000, Math.max(1, Math.floor(Number(event.target.value) || 1))) } })} className="w-16 rounded-lg border border-gray-300 bg-white px-2 py-1" />
                                     </label>
                                     <select
                                       aria-label={`${task.label} frequency`}
                                       value={task.cadence}
                                       onChange={(event) => updateRoom(room.id, { scopeTaskCadences: { ...room.scopeTaskCadences, [task.id]: event.target.value as RoomTaskCadence } })}
-                                      className="mt-2 block max-w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
+                                      className="max-w-full rounded-lg border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700"
                                     >
                                       {ROOM_TASK_CADENCE_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                                     </select>
+                                    </span>
                                   </span>
                                 </span>
                                 <details className="text-sm">
@@ -1468,15 +1459,16 @@ export default function QuoteWorkflowEditor({
                                     <button type="button" onClick={() => updateRoom(room.id, { excludedTaskIds: [...(room.excludedTaskIds ?? []), task.id] })} className="rounded-lg border border-red-200 p-2 text-red-700">Remove task from this room</button>
                                   </div>
                                 </details>
-                                <span className="min-w-0 w-full border-t border-gray-100 pt-2 text-left text-xs font-semibold leading-5 text-teal-800 break-words">
-                                  {task.pricingMode === 'area'
-                                    ? task.minutesPerSqm > 0
-                                      ? <>{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm<span className="block font-normal text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity) * getRoomTaskQuantity(room, task.id))} for this area · {task.minutesPerSqm} min / sqm</span></>
-                                      : 'Area labour'
-                                    : task.price > 0 ? `${formatTaskCurrency(task.price)} each when done` : 'Included'}
-                                  <span className="mt-1 block font-semibold text-teal-900">{formatTaskCurrency(contribution)} per clean</span>
-                                  <span className="mt-1 block font-normal text-gray-500">{!selected ? 'Not selected - no contribution.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour; no separate task charge.' : 'Includes quantity and quote adjustment; amortised over the cleaning schedule. Rounded for display.'}</span>
-                                </span>
+                                <div className="min-w-0 w-full border-t border-gray-100 pt-2 text-xs leading-5">
+                                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 font-semibold text-teal-800">
+                                    <span>{task.pricingMode === 'area'
+                                      ? task.minutesPerSqm > 0 ? `${formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60)} / sqm` : 'Area labour'
+                                      : task.price > 0 ? `${formatTaskCurrency(task.price)} each when done` : 'Included'}</span>
+                                    <span className="text-teal-900">{formatTaskCurrency(contribution)} per clean</span>
+                                  </div>
+                                  {task.pricingMode === 'area' && task.minutesPerSqm > 0 ? <div className="text-gray-500">{formatTaskCurrency(task.minutesPerSqm * pricingConfig.settings.hourlyRate / 60 * Math.max(0, room.size) * Math.max(0, room.quantity) * getRoomTaskQuantity(room, task.id))} for this area · {task.minutesPerSqm} min / sqm</div> : null}
+                                  <p className="text-[11px] text-gray-500">{!selected ? 'Not selected.' : task.pricingMode === 'area' && task.minutesPerSqm === 0 ? 'Included in room labour.' : 'Scheduled total, including adjustments.'}</p>
+                                </div>
                               </div>
                             )
                           })}
@@ -1592,26 +1584,8 @@ export default function QuoteWorkflowEditor({
                     <div className="mt-4 rounded-xl border border-gray-200 p-3">
                       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold text-gray-800">Extra fields</div>
-                          <div className="text-xs text-gray-500">Choose a saved field or global task. Global tasks appear under Tasks included in this room.</div>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <select
-                            defaultValue=""
-                            onChange={(event) => {
-                              if (event.target.value) addSystemMetricField(room, event.target.value)
-                              event.target.value = ''
-                            }}
-                            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-semibold"
-                          >
-                            <option value="">Add saved field…</option>
-                            {savedQuoteOptions.map(option => (
-                              <option key={option.value} value={option.value}>{option.label}{option.rate ? ' (task)' : ''}</option>
-                            ))}
-                          </select>
-                          <button type="button" onClick={() => addBlankMetricField(room)} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700">
-                            + Blank field
-                          </button>
+                          <div className="text-sm font-semibold text-gray-800">Additional task details</div>
+                          <div className="text-xs text-gray-500">Existing item quantities and rates. All selected items appear in the combined client task list. Use Add task above for saved or custom tasks.</div>
                         </div>
                       </div>
                       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">

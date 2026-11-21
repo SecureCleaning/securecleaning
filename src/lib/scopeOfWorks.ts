@@ -145,12 +145,34 @@ function getGlobalSelectedOptions(inputs: QuoteInputs) {
   return options
 }
 
+/** One client-facing row per selected task, including existing extra-field tasks. */
+export function getCombinedRoomScopeTasks(room: WorkflowRoomItem, roomTypeConfig: QuoteRoomTypeConfig, frequency: QuoteInputs['frequency']): RoomScopeTaskSchedule[] {
+  const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
+  const tasks: RoomScopeTaskSchedule[] = typeConfig
+    ? getRoomScopeTaskDefinitions(typeConfig, getWorkflowRoomTaskSelections(room), true).map(task => ({
+        label: getRoomTaskQuantity(room, task.id) > 1 ? `${task.label} (quantity: ${getRoomTaskQuantity(room, task.id)} per room)` : task.label,
+        cadence: getEffectiveRoomTaskCadence(task.cadence, frequency),
+      }))
+    : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map(label => ({ label, cadence: 'every_clean' as const }))
+  if (room.moppingEnabled && !room.moppingRateCode && !typeConfig?.moppingRateCode && !STANDARD_MOPPING_ROOM_TYPES.has(room.type)) {
+    tasks.push({ label: 'Mopping', cadence: getEffectiveRoomTaskCadence(typeConfig?.moppingCadence ?? 'every_clean', frequency) })
+  }
+  for (const field of getWorkflowRoomMetricFields(room, roomTypeConfig)) {
+    const value = room.metrics?.[field.id] ?? field.defaultValue
+    if (field.inputType === 'boolean' ? value !== true : !(Number(value) > 0)) continue
+    tasks.push({
+      label: field.inputType !== 'boolean' && Number(value) !== 1 ? `${field.label} (quantity: ${formatMetricValue(Number(value))} per room)` : field.label,
+      cadence: getEffectiveRoomTaskCadence(field.cadence ?? 'every_clean', frequency),
+    })
+  }
+  return tasks
+}
+
 function buildRoomScope(
   room: WorkflowRoomItem,
   roomTypeConfig: QuoteRoomTypeConfig,
   frequency: QuoteInputs['frequency']
 ): ClientScopeRoom {
-  const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
   const savedSize = Number(room.size)
 
   return {
@@ -165,12 +187,7 @@ function buildRoomScope(
       ? Math.round(savedSize * 10) / 10
       : undefined,
     floor: room.floor,
-    tasks: typeConfig
-      ? getRoomScopeTaskDefinitions(typeConfig, getWorkflowRoomTaskSelections(room), true).map((task) => ({
-          label: getRoomTaskQuantity(room, task.id) > 1 ? `${task.label} (quantity: ${getRoomTaskQuantity(room, task.id)} per room)` : task.label,
-          cadence: getEffectiveRoomTaskCadence(task.cadence, frequency),
-        }))
-      : (FALLBACK_TASKS_BY_ROOM_TYPE[room.type] ?? FALLBACK_TASKS_BY_ROOM_TYPE.other).map((label) => ({ label, cadence: 'every_clean' as const })),
+    tasks: getCombinedRoomScopeTasks(room, roomTypeConfig, frequency),
     selectedOptions: getRoomScopeSelectedOptions(room, roomTypeConfig, frequency),
   }
 }
