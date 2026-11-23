@@ -772,3 +772,28 @@ test('duplicate and reordered room data survive save parsing, JSON reload, and s
   const reordered = { ...reloaded, roomItems: moveQuoteRoom(reloaded.roomItems, 'room-copy', source.id) }
   assert.deepEqual(buildFirmQuotePreview(reordered, DEFAULT_QUOTE_PRICING_CONFIG, DEFAULT_QUOTE_ROOM_TYPE_CONFIG), preview)
 })
+
+test('internal multiplier disclosure follows eligible labour and excludes area-priced tasks', () => {
+  const config = structuredClone(DEFAULT_QUOTE_PRICING_CONFIG)
+  config.multipliers.premisesType.office = 1.2
+  config.multipliers.frequency.weekly = 1
+  config.multipliers.timePreference.business_hours = 1
+  config.multipliers.city.sydney = 1
+  config.settings.multiFloorBase = 1
+  const inputs = {...baseInputs, premisesType:'office', frequency:'weekly', timePreference:'business_hours', city:'sydney', floors:1}
+  const draft = createDefaultFirmQuoteDraft(inputs)
+  draft.roomItems = [{id:'test',type:'office',label:'Test',quantity:1,size:100,floor:1,quoteTasks:[]}]
+  const rooms = structuredClone(DEFAULT_QUOTE_ROOM_TYPE_CONFIG)
+  const office = rooms.roomTypes.find(room => room.id === 'office')
+  office.scopeTasks = []
+  const preview = buildFirmQuotePreview(draft,config,rooms)
+  assert.ok(preview.multiplierLabourBefore > 0)
+  assert.equal(preview.multiplierLabourAfter, Math.round(preview.multiplierLabourBefore * 1.2 * 100)/100)
+  draft.roomItems[0].quoteTasks = [{id:'area-task',label:'Area work',pricingMode:'area',minutesPerSqm:0.1,price:0,cadence:'every_clean',defaultSelected:true}]
+  const priced = buildFirmQuotePreview(draft,config,rooms)
+  assert.equal(priced.multiplierLabourBefore,0)
+  assert.equal(priced.multiplierLabourAfter,0)
+  assert.ok(priced.scheduledTaskExtraTotal > 0)
+  config.multipliers.premisesType.office = 1
+  assert.equal(buildFirmQuotePreview(draft,config,rooms).calculatedLow,priced.calculatedLow)
+})

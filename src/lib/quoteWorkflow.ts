@@ -169,6 +169,8 @@ export type FirmQuoteDraft = {
 
 export type FirmQuotePreview = {
   calculated: QuoteResult
+  multiplierLabourBefore: number
+  multiplierLabourAfter: number
   calculatedLow: number
   calculatedHigh: number
   adjustedLow: number
@@ -978,6 +980,8 @@ export function buildFirmQuotePreview(
   const targetPrice = Number(draft.targetPrice)
 
   return {
+    multiplierLabourBefore: roundCurrency(calculated.breakdown.baseLabour * genericLabourFactor),
+    multiplierLabourAfter: roundCurrency(baseLabourAdjusted),
     calculated: {
       ...calculated,
       addOnsTotal: roundCurrency(calculated.addOnsTotal + roomFieldExtra + scheduledTaskExtra + moppingExtra),

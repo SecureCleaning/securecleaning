@@ -1720,6 +1720,27 @@ export default function QuoteWorkflowEditor({
                 </div>
               </div>
 
+              <section className="mt-5 rounded-xl border border-indigo-200 bg-white p-4" aria-label="Internal multiplier breakdown">
+                <h3 className="font-semibold text-indigo-950">Pricing multipliers <span className="text-xs font-normal">Internal only</span></h3>
+                <p className="mt-1 text-sm text-gray-600">Applies to general area-based labour. Separately priced tasks, room extras and mopping are not increased by these multipliers.</p>
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+                  {[
+                    [`Premises: ${labelForPremises(firmQuoteDraft.revisedInputs.premisesType)}`, preview.calculated.breakdown.premisesMultiplier],
+                    ['Floors', preview.calculated.breakdown.floorsMultiplier],
+                    [`Time: ${labelForTime(firmQuoteDraft.revisedInputs.timePreference)}`, preview.calculated.breakdown.timeMultiplier],
+                    ['Cleaning frequency', preview.calculated.breakdown.frequencyMultiplier],
+                    ['Region', preview.calculated.breakdown.cityMultiplier],
+                  ].map(([label, value]) => <div key={label}><dt className="text-gray-600">{label}</dt><dd className="font-semibold">×{value} ({Number(value) === 1 ? 'no change' : `${Number(value) > 1 ? '+' : ''}${Math.round((Number(value) - 1) * 10000) / 100}%`})</dd></div>)}
+                </dl>
+                <div className="mt-4 grid gap-3 border-t pt-3 sm:grid-cols-3 text-sm">
+                  <div>Labour before multipliers<div className="font-bold">${preview.multiplierLabourBefore.toFixed(2)}</div></div>
+                  <div>Labour after multipliers<div className="font-bold">${preview.multiplierLabourAfter.toFixed(2)}</div></div>
+                  <div>Multiplier difference<div className="font-bold">${(preview.multiplierLabourAfter - preview.multiplierLabourBefore).toFixed(2)}</div></div>
+                </div>
+                {preview.multiplierLabourBefore === 0 && <p className="mt-3 text-sm text-indigo-900">No general area-based labour is charged in this draft, so these multipliers do not increase its labour cost.</p>}
+                <p className="mt-2 text-xs text-gray-500">Per visit, excluding GST. Before the estimate range, room pricing rules, quote adjustment, minimum call-out and final client price override. Cleaning frequency can also change the minimum call-out.</p>
+              </section>
+
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
                   <div className="text-sm text-gray-500">Actual calculated total before minimum call-out</div>
