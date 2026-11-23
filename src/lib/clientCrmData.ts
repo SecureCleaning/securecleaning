@@ -451,7 +451,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
   const quoteIds = Array.from(new Set((quoteLinks.data ?? []).map((row) => String(row.quote_id))))
   const [intakes, quotes, products] = await Promise.all([
     intakeIds.length > 0
-      ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis').in('id', intakeIds)
+      ? db.from('leads').select('id, source, source_provider, source_explanation, contact_basis, address, suburb, postcode, city').in('id', intakeIds)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length > 0
       ? db.from('quotes').select('id, quote_ref, status, created_at, cleaning_frequency:inputs->>frequency, cleaning_time_preference:inputs->>timePreference, document_version:final_quote_document->version, final_quote_document_version, final_quote_sent_at').in('id', quoteIds)
@@ -562,6 +562,10 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
     const site = siteId ? sitesById.get(siteId) : null
     const organisation = organisationsById.get(String(row.organisation_id ?? ''))
     const intake = primaryIntakeByOpportunity.get(id)
+    // Before a site is established, the intake retains the entered locality.
+    // Once linked, use only the site so cleared fields do not revive old intake data.
+    const location = siteId ? site : intake
+    const city = cityFromInput(location?.city ?? contact?.city)
     const assignedStaffId = typeof row.assigned_staff_id === 'string' ? row.assigned_staff_id : null
     const product = productsByOpportunity.get(id)
     const latestLink = (quoteLinks.data ?? []).find((link) => String(link.opportunity_id) === id)
@@ -587,11 +591,11 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
       premisesType: String(site?.premises_type ?? ''),
       premisesTypeOther: String(site?.premises_type_other ?? ''),
       siteName: String(site?.site_name ?? ''),
-      address: String(site?.address ?? ''),
-      suburb: String(site?.suburb ?? ''),
-      postcode: String(site?.postcode ?? ''),
-      city: cityFromInput(site?.city ?? contact?.city),
-      state: (site?.city ?? contact?.city) === 'brisbane' ? 'QLD' : (site?.city ?? contact?.city) === 'sydney' ? 'NSW' : (site?.city ?? contact?.city) === 'melbourne' ? 'VIC' : '',
+      address: String(location?.address ?? ''),
+      suburb: String(location?.suburb ?? ''),
+      postcode: String(location?.postcode ?? ''),
+      city,
+      state: city === 'brisbane' ? 'QLD' : city === 'sydney' ? 'NSW' : city === 'melbourne' ? 'VIC' : '',
       sourceType: String(intake?.source ?? 'manual'),
       sourceProvider: String(intake?.source_provider ?? ''),
       telemarketingCompanies: [...(telemarketingByOpportunity.get(id) ?? [])],

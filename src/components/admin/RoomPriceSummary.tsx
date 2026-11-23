@@ -20,6 +20,9 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, moppingPrice
     high: sum.high + (prices[room.id]?.high ?? 0),
   }), { low: 0, high: 0 })
 
+  const moppingTotal = rooms.reduce((sum, room) => sum + (moppingPrices[room.id] ?? 0), 0)
+  const hasUnseparatedMopping = rooms.some(room => moppingPrices[room.id] == null)
+
   return (
     <>
       <button
@@ -78,6 +81,16 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, moppingPrice
                 ))}
                 {rooms.length === 0 ? <tr><td colSpan={6} className="py-6 text-center text-gray-500">No rooms added yet.</td></tr> : null}
               </tbody>
+              <tfoot className="border-t border-gray-200 bg-teal-50 text-sm font-bold text-teal-950">
+                <tr>
+                  <th scope="row" colSpan={4} className="py-2 pr-3">Mopping subtotal{hasUnseparatedMopping ? ' (partial)' : ''}</th>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums">${moppingTotal.toFixed(2)}</td>
+                  <td />
+                </tr>
+                <tr>
+                  <td colSpan={6} className="pb-2 text-xs font-normal">Already included in the overall quote; not an additional charge.{hasUnseparatedMopping ? ' Excludes rooms marked Not separated.' : ''}</td>
+                </tr>
+              </tfoot>
             </table>
           </div>
           <div className="space-y-1 border-t border-gray-200 bg-gray-50 px-5 py-3 text-sm">
