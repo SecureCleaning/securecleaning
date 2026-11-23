@@ -9,6 +9,7 @@ import {
   getGlobalMoppingMinutesPerSqm,
   getMoppingRate,
   withSelectedMoppingRate,
+  splitRoomMoppingTasks,
   getRoomScopeTaskCadence,
   getRoomScopeTaskDefinitions,
   type RoomScopeTaskDefinition,
@@ -88,7 +89,14 @@ export function selectWorkflowRoomMoppingRate(room: WorkflowRoomItem, config: Qu
       selections[getRoomScopeTaskId(type, index)] = false
     }
   })
-  return { ...room, moppingRateCode: code, moppingMinutesPerSqm: rate.minutesPerSqm, scopeTaskSelections: selections }
+  const effective = getWorkflowRoomTypeConfig(room, config)
+  const separated = effective ? getRoomScopeTaskDefinitions(splitRoomMoppingTasks(config, effective, code)) : []
+  const quoteTasks = room.quoteTasks?.flatMap(task => {
+    if (!/mop/i.test(task.label)) return [task]
+    const replacement = separated.find(candidate => candidate.id === task.id)
+    return replacement ? [replacement] : []
+  })
+  return { ...room, quoteTasks, moppingRateCode: code, moppingMinutesPerSqm: rate.minutesPerSqm, scopeTaskSelections: selections }
 }
 
 export function getWorkflowRoomTypeConfig(room: WorkflowRoomItem, config: QuoteRoomTypeConfig) {
@@ -564,7 +572,7 @@ export function createDefaultFirmQuoteDraft(
   return {
     status: 'draft',
     revisedInputs: JSON.parse(JSON.stringify(inputs)) as QuoteInputs,
-    roomItems: createSeedRoomItems(inputs, roomTypeConfig),
+    roomItems: createSeedRoomItems(inputs, roomTypeConfig).map(room => selectWorkflowRoomMoppingRate(room, roomTypeConfig, room.moppingRateCode ?? 'mopping')),
     moppingMinutesPerSqm: getGlobalMoppingMinutesPerSqm(roomTypeConfig),
     pricingAdjustmentPercent: 0,
     targetPrice: '',
@@ -789,6 +797,23 @@ export function getRoomTaskContribution(
       : allocatedArea
     : Math.max(0, room.quantity)
   return rate * units * factor * getRoomTaskQuantity(room, getRoomScopeTaskId(roomType, taskIndex))
+}
+
+/** Separate mopping contribution, or null when legacy combined task pricing cannot be split. */
+export function getRoomMoppingContribution(
+  room: WorkflowRoomItem,
+  draft: FirmQuoteDraft,
+  pricingConfig: QuotePricingConfig,
+  roomTypeConfig: QuoteRoomTypeConfig
+): number | null {
+  if (!room.moppingEnabled) return 0
+  const roomType = getWorkflowRoomTypeConfig(room, roomTypeConfig)
+  if (!roomType || !(room.moppingRateCode || roomType.moppingRateCode)) return null
+  const index = roomType.scopeTasks.findIndex((_task, taskIndex) => getRoomScopeTaskId(roomType, taskIndex) === `${room.type}-mopping-selected`)
+  if (index < 0) return null
+  return getRoomTaskContribution(room, roomType, index, draft.revisedInputs.frequency,
+    pricingConfig.settings.hourlyRate, Math.max(0, room.size) * Math.max(0, room.quantity)) *
+    (1 + (draft.pricingAdjustmentPercent || 0) / 100)
 }
 
 export function getRoomScheduledTaskExtraTotal(

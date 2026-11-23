@@ -30,6 +30,7 @@ import {
   getRoomAreaAllocationTotal,
   getRoomAreaAllocations,
   getRoomTaskContribution,
+  getRoomMoppingContribution,
   getRoomTaskQuantity,
   getRoomMetricFieldExtra,
   getRoomPricingBreakdown,
@@ -118,7 +119,7 @@ function originalSummary(result: QuoteResult) {
 function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomItem, frequency: QuoteInputs['frequency']) {
   const rate = Number(field.pricePerUnit ?? 0)
   if (!Number.isFinite(rate) || rate === 0) {
-    return `${field.label} does not currently change the quote total.`
+    return `Current contribution ${formatTaskCurrency(0)} per clean · No additional charge`
   }
 
   const included = isQuoteSpecificMetricField(room, field) ? 0 : Math.max(0, Number(field.includedUnits ?? 0))
@@ -126,7 +127,7 @@ function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomIt
   const rateLabel = field.inputType === 'boolean'
     ? `${formatTaskCurrency(rate)} when included`
     : `${formatTaskCurrency(rate)} per ${included > 0 ? 'additional ' : ''}unit`
-  return `${allowance}${rateLabel} · Current contribution ${formatTaskCurrency(getRoomMetricFieldExtra(room, field, frequency))} per visit`
+  return `${allowance}${rateLabel} · Current contribution ${formatTaskCurrency(getRoomMetricFieldExtra(room, field, frequency))} per clean`
 }
 
 function formatTaskCurrency(amount: number) {
@@ -565,7 +566,8 @@ export default function QuoteWorkflowEditor({
   }
 
   function addRoom(type: WorkflowRoomType = 'office') {
-    const room = createRoomItem(type, roomTypeConfig)
+    const initialRoom = createRoomItem(type, roomTypeConfig)
+    const room = selectWorkflowRoomMoppingRate(initialRoom, roomTypeConfig, initialRoom.moppingRateCode ?? 'mopping')
     setFirmQuoteDraft((current) => ({
       ...current,
       roomItems: [...current.roomItems, room],
@@ -1266,6 +1268,7 @@ export default function QuoteWorkflowEditor({
                     {(() => {
                       const typeConfig = getWorkflowRoomTypeConfig(room, roomTypeConfig)
                       const canPriceMopping = Boolean(typeConfig)
+                      const moppingContribution = getRoomMoppingContribution(room, firmQuoteDraft, pricingConfig, roomTypeConfig)
                       const selectedMoppingCode = room.moppingRateCode ?? (typeConfig?.moppingRateCode ? 'mopping' : '')
                       const internalRoomPrice = roomPricingBreakdown[room.id]
                       const roomPricingCode = ['bathroom', 'female_bathroom', 'male_bathroom', 'accessible_bathroom'].includes(room.type)
@@ -1293,7 +1296,7 @@ export default function QuoteWorkflowEditor({
                               excludedMetricFieldIds: [],
                               scopeTaskCadences: {},
                               scopeTaskSelections: nextTypeConfig ? getDefaultRoomScopeTaskSelections(nextTypeConfig) : {},
-                              moppingRateCode: nextTypeConfig?.moppingRateCode,
+                              moppingRateCode: nextTypeConfig?.moppingRateCode ?? 'mopping',
                               moppingMinutesPerSqm: getMoppingRate(roomTypeConfig, nextTypeConfig?.moppingRateCode, nextTypeConfig?.moppingMinutesPerSqm).minutesPerSqm,
                               moppingEnabled: nextTypeConfig?.defaultMopping ?? false,
                               pricingOverride: false,
@@ -1505,6 +1508,10 @@ export default function QuoteWorkflowEditor({
                             </span>
                           </span>
                         </label>
+                        <div className="mt-2 text-sm font-semibold text-teal-900 sm:text-right" aria-live="polite">
+                          {moppingContribution === null ? 'Choose a mopping rate to show its separate contribution.' : `Mopping contribution: ${formatTaskCurrency(moppingContribution)} per clean`}
+                          {moppingContribution !== null ? <span className="block text-xs font-normal text-gray-600">Includes room quantity, schedule and quote adjustment. Already included in the calculated total.</span> : null}
+                        </div>
                         <label className="mt-3 block text-sm font-medium text-gray-700">
                           Mopping rate for this area
                           <select
@@ -1512,11 +1519,20 @@ export default function QuoteWorkflowEditor({
                             value={selectedMoppingCode}
                             onChange={(event) => {
                               const code = event.target.value
-                              if (code) updateRoom(room.id, selectWorkflowRoomMoppingRate(room, roomTypeConfig, code))
+                              if (!code) return
+                              const converted = selectWorkflowRoomMoppingRate(room, roomTypeConfig, code)
+                              if (!selectedMoppingCode) {
+                                const nextDraft = { ...firmQuoteDraft, roomItems: firmQuoteDraft.roomItems.map(item => item.id === room.id ? converted : item) }
+                                const nextPreview = buildFirmQuotePreview(nextDraft, pricingConfig, roomTypeConfig)
+                                const before = formatPriceRange(preview.adjustedLow, preview.adjustedHigh)
+                                const after = formatPriceRange(nextPreview.adjustedLow, nextPreview.adjustedHigh)
+                                if (!window.confirm(`Separate vacuuming and mopping for ${room.label}?\nWorking quote before: ${before}\nAfter: ${after}\nVacuuming stays separate; the selected mopping rate replaces combined pricing. Any final client price override is retained. This changes the draft only until you save.`)) return
+                              }
+                              updateRoom(room.id, converted)
                             }}
                             className="mt-1 block w-full rounded-lg border border-gray-300 bg-white px-3 py-2"
                           >
-                            <option value="" disabled>Existing task pricing (choose to separate mopping)</option>
+                            <option value="" disabled>Legacy combined pricing - select a rate to review conversion</option>
                             {selectedMoppingCode && !getMoppingRate(roomTypeConfig, selectedMoppingCode).available ? <option aria-label="Mopping rate for this area"
                             value={selectedMoppingCode}>Unavailable source - saved rate retained</option> : null}
                             {getMoppingRateOptions(roomTypeConfig).map((rate) => <option key={rate.code} value={rate.code}>{rate.label} - {rate.minutesPerSqm} min / sqm</option>)}
@@ -1640,7 +1656,8 @@ export default function QuoteWorkflowEditor({
                                 <label className="text-xs text-gray-500">Frequency<select value={field.cadence ?? 'every_clean'} onChange={(event) => updateCustomMetricField(room, field.id, { cadence: event.target.value as RoomTaskCadence })} className="mt-1 w-full rounded-md border border-gray-300 bg-white px-2 py-1.5">{ROOM_TASK_CADENCE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                               </div>
                             }
-                            <span className="mt-1 block text-xs text-gray-500">{field.helpText?.trim() && !isCustom ? field.helpText : describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
+                            {field.helpText?.trim() ? <span className="mt-1 block text-xs text-gray-500">{field.helpText}</span> : null}
+                            <span className="mt-1 block text-xs text-gray-500">{describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
                           </div>
                         )})}
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}

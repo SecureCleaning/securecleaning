@@ -5,7 +5,7 @@ process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test'
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role'
 const { DEFAULT_GLOBAL_ROOM_TASK_RATES, splitRoomMoppingTasks, getMoppingRate } = await import('../src/lib/roomTypeConfig.ts')
 const { DEFAULT_QUOTE_PRICING_CONFIG } = await import('../src/lib/pricing.ts')
-const { createRoomItem, selectWorkflowRoomMoppingRate, createDefaultFirmQuoteDraft, parseFirmQuoteDraft, buildFirmQuotePreview, getRoomMoppingExtraTotal, getRoomPricingBreakdown } = await import('../src/lib/quoteWorkflow.ts')
+const { createRoomItem, selectWorkflowRoomMoppingRate, createDefaultFirmQuoteDraft, parseFirmQuoteDraft, buildFirmQuotePreview, getRoomMoppingExtraTotal, getRoomMoppingContribution, getRoomPricingBreakdown } = await import('../src/lib/quoteWorkflow.ts')
 const { buildClientScopeReport } = await import('../src/lib/scopeOfWorks.ts')
 const { duplicateQuoteRoom } = await import('../src/lib/quoteRoomEditing.ts')
 const heavy = 'global_task_123_heavy'
@@ -96,4 +96,35 @@ test('settings JSON normalization and storage retain the chosen source and saved
   assert.equal(room.moppingMinutesPerSqm,0.35)
   assert.ok(!room.scopeTasks.includes('Vacuum and Mop floors'))
  }
+})
+
+ test('mopping display contribution follows selected rate, quantity, schedule and adjustment without vacuum',()=>{
+ const f=fixture()
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config).toFixed(2),'2.92')
+ f.room.moppingRateCode='mopping';f.room.moppingMinutesPerSqm=0.24
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config),2)
+ f.room.quantity=2;f.draft.pricingAdjustmentPercent=10
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config),4.4)
+ f.config.roomTypes[0].moppingCadence='weekly';f.draft.revisedInputs.frequency='daily'
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config).toFixed(2),'0.88')
+ f.room.moppingEnabled=false
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config),0)
+ f.room.moppingEnabled=true;delete f.room.moppingRateCode
+ assert.equal(getRoomMoppingContribution(f.room,f.draft,f.pricing,f.config),null)
+ })
+test('new quotes separate floor tasks while saved legacy drafts retain combined pricing until conversion',()=>{
+ const f=fixture()
+ const fresh=createDefaultFirmQuoteDraft(inputs,f.config)
+ assert.ok(fresh.roomItems.every(room=>room.moppingRateCode==='mopping'))
+ delete f.room.moppingRateCode
+ f.room.quoteTasks=[{id:'floor-task',label:'Vacuum and Mop floors',pricingMode:'area',minutesPerSqm:0.5,price:0,cadence:'weekly',defaultSelected:true}]
+ const stored=JSON.parse(JSON.stringify(f.draft))
+ const parsed=parseFirmQuoteDraft(stored,inputs,f.config)
+ assert.equal(parsed.roomItems[0].moppingRateCode,undefined)
+ assert.equal(parsed.roomItems[0].quoteTasks[0].minutesPerSqm,0.5)
+ const converted=selectWorkflowRoomMoppingRate(parsed.roomItems[0],f.config,'mopping')
+ assert.equal(converted.quoteTasks[0].label,'Vacuum accessible floor areas')
+ assert.equal(converted.quoteTasks[0].cadence,'weekly')
+ assert.equal(parsed.roomItems[0].quoteTasks[0].label,'Vacuum and Mop floors')
+ assert.equal(converted.moppingRateCode,'mopping')
 })
