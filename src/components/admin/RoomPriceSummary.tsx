@@ -8,11 +8,12 @@ type Props = {
   quoteRef: string
   rooms: WorkflowRoomItem[]
   prices: RoomPricingBreakdown
+  moppingPrices: Record<string, number | null>
   workingLow: number
   workingHigh: number
 }
 
-export default function RoomPriceSummary({ quoteRef, rooms, prices, workingLow, workingHigh }: Props) {
+export default function RoomPriceSummary({ quoteRef, rooms, prices, moppingPrices, workingLow, workingHigh }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null)
   const total = rooms.reduce((sum, room) => ({
     low: sum.low + (prices[room.id]?.low ?? 0),
@@ -32,7 +33,7 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, workingLow, 
         ref={dialogRef}
         aria-labelledby="room-price-summary-title"
         aria-describedby="room-price-summary-note"
-        className="m-auto max-h-[94dvh] w-[calc(100%-2rem)] max-w-4xl overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-gray-900 shadow-2xl backdrop:bg-gray-950/60"
+        className="m-auto max-h-[94dvh] w-[calc(100%-2rem)] max-w-5xl overflow-hidden rounded-2xl border border-gray-200 bg-white p-0 text-gray-900 shadow-2xl backdrop:bg-gray-950/60"
       >
         <div className="flex max-h-[94dvh] flex-col">
           <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-5 py-3">
@@ -45,7 +46,7 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, workingLow, 
             </button>
           </div>
           <p id="room-price-summary-note" className="bg-teal-50 px-5 py-2 text-xs text-teal-950">
-            Current editor values, including unsaved changes. All amounts are per visit, excluding GST, and include the quantity shown. Not included in client quotes or emails.
+            Current editor values, including unsaved changes. All amounts are per visit, excluding GST, and include the quantity shown. Mopping is already included in Value / visit, not an extra charge. Not included in client quotes or emails.
           </p>
           <div className="min-h-0 overflow-auto px-5">
             <table className="w-full text-left text-sm">
@@ -56,6 +57,7 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, workingLow, 
                   <th scope="col" className="py-2 pr-3">Room / area</th>
                   <th scope="col" className="py-2 px-2 text-right">Qty</th>
                   <th scope="col" className="py-2 px-2 text-right">sqm each</th>
+                  <th scope="col" className="whitespace-nowrap py-2 px-2 text-right">Mopping / visit</th>
                   <th scope="col" className="py-2 pl-3 text-right">Value / visit</th>
                 </tr>
               </thead>
@@ -66,12 +68,15 @@ export default function RoomPriceSummary({ quoteRef, rooms, prices, workingLow, 
                     <th scope="row" className="py-0.5 pr-3 font-medium">{room.label || room.type}</th>
                     <td className="py-0.5 px-2 text-right tabular-nums">{room.quantity}</td>
                     <td className="py-0.5 px-2 text-right tabular-nums">{room.size}</td>
+                    <td className="whitespace-nowrap py-0.5 px-2 text-right tabular-nums">
+                      {moppingPrices[room.id] == null ? <span title="Select a separate mopping rate in this room to see its contribution">Not separated</span> : `$${moppingPrices[room.id]!.toFixed(2)}`}
+                    </td>
                     <td className="whitespace-nowrap py-0.5 pl-3 text-right font-semibold tabular-nums">
                       {prices[room.id] ? formatPriceRange(prices[room.id].low, prices[room.id].high) : 'Unavailable'}
                     </td>
                   </tr>
                 ))}
-                {rooms.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-gray-500">No rooms added yet.</td></tr> : null}
+                {rooms.length === 0 ? <tr><td colSpan={6} className="py-6 text-center text-gray-500">No rooms added yet.</td></tr> : null}
               </tbody>
             </table>
           </div>

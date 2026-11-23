@@ -1131,6 +1131,7 @@ export default function QuoteWorkflowEditor({
                     quoteRef={quote.quoteRef}
                     rooms={firmQuoteDraft.roomItems}
                     prices={roomPricingBreakdown}
+                    moppingPrices={Object.fromEntries(firmQuoteDraft.roomItems.map(room => [room.id, getRoomMoppingContribution(room, firmQuoteDraft, pricingConfig, roomTypeConfig)]))}
                     workingLow={preview.adjustedLow}
                     workingHigh={preview.adjustedHigh}
                   />
