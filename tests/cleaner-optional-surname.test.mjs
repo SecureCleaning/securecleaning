@@ -9,7 +9,7 @@ import { csvCell } from '../src/lib/csvCell.ts'
 
 const source = readFileSync(new URL('../src/lib/cleaners.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText
-function harness(existing = []) {
+function harness(existing = [], saveError = null) {
   const writes = []
   let emails = 0
   const db = { from: () => {
@@ -18,7 +18,7 @@ function harness(existing = []) {
       insert(row) { saved = row; operation = 'insert'; writes.push({ operation, row }); return query },
       update(row) { saved = row; operation = 'update'; writes.push({ operation, row }); return query },
       eq() { return query }, select() { return query }, in() { return query }, order() { return query }, limit() { return query },
-      async single() { return { data: { id: 'cleaner-1', ...saved }, error: null } },
+      async single() { return { data: { id: 'cleaner-1', ...saved }, error: saveError } },
       then(resolve, reject) { return Promise.resolve({ data: operation ? null : existing, error: null }).then(resolve, reject) },
     }
     return query
@@ -150,4 +150,29 @@ test('CSV exports attribution with CSV quoting and spreadsheet-formula protectio
   assert.match(csv, /gumtree/)
   assert.match(csv, /'=HYPERLINK/)
   assert.equal(api.emailCount(), 0)
+})
+
+
+test('duplicate cleaner email gives actionable guidance on creation and edit', async () => {
+  const duplicate = { code: '23505', message: 'duplicate key value violates unique constraint "idx_cleaners_email_unique"', details: 'Private database details' }
+  const api = harness([], duplicate)
+  for (const save of [() => api.createCleaner({ ...payload, email: 'Cleaner@Example.com' }, actor), () => api.updateCleaner('cleaner-1', { email: payload.email }, actor)]) {
+    await assert.rejects(save(), error => {
+      assert.ok(error instanceof Error)
+      assert.match(error.message, /email address is already on file/)
+      assert.match(error.message, /Search the Cleaner Database by email/)
+      assert.match(error.message, /edit the existing record/)
+      assert.doesNotMatch(error.message, /idx_cleaners|Private database/)
+      return true
+    })
+  }
+  assert.equal(api.emailCount(), 0)
+})
+
+test('other database failures are not misreported as duplicate email', async () => {
+  for (const failure of [{ code: '23505', message: 'duplicate key violates cleaners_pkey' }, { code: '23514', message: 'check constraint' }]) {
+    const api = harness([], failure)
+    await assert.rejects(api.createCleaner(payload, actor), error => error === failure)
+    await assert.rejects(api.updateCleaner('cleaner-1', { email: payload.email }, actor), error => error === failure)
+  }
 })

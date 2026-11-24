@@ -755,6 +755,13 @@ export async function importCleaners(
   return result
 }
 
+function throwCleanerSaveError(error: { code?: string; message?: string }): never {
+  if (error.code === '23505' && error.message?.includes('idx_cleaners_email_unique')) {
+    throw new Error('A cleaner with this email address is already on file. Search the Cleaner Database by email and edit the existing record instead of creating another. Email addresses are matched regardless of capital letters.')
+  }
+  throw error
+}
+
 export async function createCleaner(payload: CleanerPayload, actor: CleanerAuditActor) {
   assertCleanerPayload(payload)
   const db = getAdminSupabase()
@@ -771,7 +778,7 @@ export async function createCleaner(payload: CleanerPayload, actor: CleanerAudit
     .select(CLEANER_SELECT)
     .single()
 
-  if (error) throw error
+  if (error) throwCleanerSaveError(error)
   await writeAuditLog('cleaner', data.id, 'cleaner.created', withActorDetails(actor, { email: data.email }))
   return data as CleanerRecord
 }
@@ -787,7 +794,7 @@ export async function updateCleaner(cleanerId: string, payload: Partial<CleanerP
     .select(CLEANER_SELECT)
     .single()
 
-  if (error) throw error
+  if (error) throwCleanerSaveError(error)
   await writeAuditLog('cleaner', cleanerId, 'cleaner.updated', withActorDetails(actor, {
     fields: Object.keys(updatePayload).filter((key) => updatePayload[key as keyof typeof updatePayload] !== undefined),
   }))
