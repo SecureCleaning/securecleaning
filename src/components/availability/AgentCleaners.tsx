@@ -1,5 +1,7 @@
 'use client'
 
+import CleanerDuplicateReview from '@/components/cleaners/CleanerDuplicateReview'
+import type { CleanerMatch } from '@/lib/cleanerDuplicateReview'
 import CleanerSourceFields from '@/components/cleaners/CleanerSourceFields'
 import CleanerMachineryFields from '@/components/cleaners/CleanerMachineryFields'
 import type { CleanerMachinery } from '@/lib/cleanerMachinery'
@@ -52,6 +54,7 @@ export default function AgentCleaners({ assigneeId, agentName, state, initialCle
   const [appliedQuery, setAppliedQuery] = useState('')
   const [selected, setSelected] = useState<AgentCleanerDetail | null>(null)
   const [creating, setCreating] = useState(false)
+  const [duplicateReview, setDuplicateReview] = useState<{ matches: CleanerMatch[]; incoming: CleanerForm } | null>(null)
   const [form, setForm] = useState<CleanerForm>(() => blankForm(state))
   const [tab, setTab] = useState<Tab>('details')
   const [comment, setComment] = useState('')
@@ -86,18 +89,24 @@ export default function AgentCleaners({ assigneeId, agentName, state, initialCle
   }
   async function search(event: React.FormEvent) { event.preventDefault(); setAppliedQuery(query); await loadPage(1, query) }
   function startCreate() { setCreating(true); setSelected(null); setForm(blankForm(state)); setTab('details'); setNotice(null) }
-  async function openCleaner(cleanerId: string) {
+  async function openCleaner(cleanerId: string, prepared?: CleanerForm, expectedVersion?: string | null) {
     setBusy(true); setNotice(null)
     try {
       const response = await fetch(`${apiBase}/${cleanerId}`); const result = await response.json()
       if (!response.ok) throw new Error(result.error || 'Unable to load cleaner.')
-      const detail = result as AgentCleanerDetail; setSelected(detail); setCreating(false); setForm(formOf(detail.cleaner)); setTab('details'); chooseTemplate(initialTemplates[0]?.id ?? '')
-    } catch (error) { setNotice({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load cleaner.' }) } finally { setBusy(false) }
+      const detail = result as AgentCleanerDetail; if (prepared && detail.cleaner.updated_at !== expectedVersion) throw new Error('This cleaner changed during review. Go back and select the match again.'); setSelected(detail); setCreating(false); setForm(prepared ?? formOf(detail.cleaner)); setTab('details'); chooseTemplate(initialTemplates[0]?.id ?? '')
+    } catch (error) { if (prepared) throw error; setNotice({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load cleaner.' }) } finally { setBusy(false) }
   }
-  async function saveCleaner(event: React.FormEvent) {
+  async function saveCleaner(event: Pick<React.FormEvent, 'preventDefault'>, skipReview = false) {
     event.preventDefault(); setBusy(true); setNotice(null)
     const payload = { ...form, contactName: [form.firstName, form.lastName].filter(Boolean).join(' '), services: list(form.services), serviceAreas: list(form.serviceAreas), insuranceExpiry: form.insuranceExpiry || null, policeCheckExpiry: form.policeCheckExpiry || null, inductionExpiry: form.inductionExpiry || null, rating: form.rating ? Number(form.rating) : null }
     try {
+      if (creating && !skipReview) {
+        const check = await fetch(`${apiBase}/matches`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+        const review = await check.json()
+        if (!check.ok) throw new Error(review.error || 'Unable to check existing cleaners.')
+        if (review.matches.length) { setDuplicateReview({ matches: review.matches, incoming: { ...form } }); return }
+      }
       const response = await fetch(creating ? apiBase : `${apiBase}/${selected?.cleaner.id}`, { method: creating ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Unable to save cleaner.')
       const cleaner = result.cleaner as AgentCleanerRecord
@@ -150,6 +159,8 @@ export default function AgentCleaners({ assigneeId, agentName, state, initialCle
   }
 
   return <div className="space-y-6">
+    {duplicateReview ? <CleanerDuplicateReview matches={duplicateReview.matches} incoming={duplicateReview.incoming} apiBase={apiBase} toForm={formOf} onCancel={() => setDuplicateReview(null)} onSeparate={() => { setDuplicateReview(null); void saveCleaner({ preventDefault() {} }, true) }} onPrepared={async (id, prepared, version) => { await openCleaner(id, prepared, version); setDuplicateReview(null); setNotice({ type: 'success', message: 'Review the prepared details, then Save cleaner to update the existing record.' }) }} /> : null}
+
     <div className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-3xl font-bold text-[#1a2744]">{state} Cleaner Database</h1><p className="mt-2 text-gray-600">{agentName} can create and manage all cleaner record details for {state}. Access is enforced to this region.</p></div><button type="button" onClick={startCreate} className="rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white">Add cleaner</button></div>
     <form onSubmit={search} className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row"><label className="sr-only" htmlFor="agent-cleaner-search">Search cleaners</label><input id="agent-cleaner-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name, business, phone, suburb, postcode or email" className="min-w-0 flex-1 rounded-lg border border-gray-300 px-4 py-3" /><button disabled={busy} className="rounded-lg bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-60">Search</button></form>
     {!modalOpen ? noticeBox : null}

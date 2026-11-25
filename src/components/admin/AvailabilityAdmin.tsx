@@ -232,7 +232,7 @@ export default function AvailabilityAdmin({
               </div>
             </div>
             <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Recurring slots</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Available windows</div>
               <div className="mt-2 text-3xl font-bold" style={{ color: '#1a2744' }}>
                 {config.weeklySlots.length}
               </div>
@@ -407,7 +407,7 @@ export default function AvailabilityAdmin({
                           </div>
                           <div>
                             <span className="font-semibold text-gray-900">Availability:</span>{' '}
-                            {slotCount} recurring slot{slotCount === 1 ? '' : 's'} and {blockCount} block-out
+                            {slotCount} inspection window{slotCount === 1 ? '' : 's'} and {blockCount} block-out
                             {blockCount === 1 ? '' : 's'}
                           </div>
                           <div>

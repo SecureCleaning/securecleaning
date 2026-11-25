@@ -1,3 +1,4 @@
+import { validOneOffWindow, oneOffWeekday } from '@/lib/oneOffAvailability'
 import { toBrowserAssignee } from '@/lib/availability'
 import { NextRequest, NextResponse } from 'next/server'
 import {
@@ -31,12 +32,14 @@ function sanitizeAgentSlots(
     if (unknownZoneIds.length > 0) {
       throw new AgentAvailabilityValidationError('One or more inspection zones have changed. Reload the page and select the zones again.')
     }
+    if (source.date !== undefined && !validOneOffWindow(source)) throw new AgentAvailabilityValidationError('One-off availability needs a valid date and an end time after its start on the same day.')
     return {
+      ...(source.date !== undefined ? { date: source.date } : {}),
       id: String(source.id ?? `slot-${assigneeId}-${index + 1}`),
-      city: source.city === 'brisbane' ? 'brisbane' : source.city === 'sydney' ? 'sydney' : fallbackCity,
+      city: source.date !== undefined ? fallbackCity : source.city === 'brisbane' ? 'brisbane' : source.city === 'sydney' ? 'sydney' : fallbackCity,
       assigneeId,
       label: String(source.label ?? `Slot ${index + 1}`),
-      day: (source.day ?? 'monday') as WeeklyAvailabilitySlot['day'],
+      day: (source.date ? oneOffWeekday(source.date) : source.day ?? 'monday') as WeeklyAvailabilitySlot['day'],
       startTime: String(source.startTime ?? '09:00'),
       endTime: String(source.endTime ?? '10:00'),
       zoneIds: submittedZoneIds,

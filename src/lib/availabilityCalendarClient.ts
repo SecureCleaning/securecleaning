@@ -1,3 +1,6 @@
+import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
+import { validOneOffWindow } from './oneOffAvailability'
+import type { WeeklyAvailabilitySlot } from './availability'
 import type { OneOffAvailabilityBlock } from '@/lib/availability'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
 
@@ -50,4 +53,14 @@ export function calendarFortnight(now: Date, timeZone: string, offset: number) {
     date.setUTCDate(start.getUTCDate() + week * 7 + day)
     return date
   }))
+}
+
+export function replaceOneOffAvailabilityEvents(events: AgentCalendarEvent[], slots: WeeklyAvailabilitySlot[], city: WeeklyAvailabilitySlot['city']): AgentCalendarEvent[] {
+  const windows = slots.filter(slot => slot.active && slot.date !== undefined && validOneOffWindow(slot)).map(slot => ({
+    id: `one-off-availability-${slot.id}`, kind: 'availability' as const, title: slot.label || 'One-off availability',
+    startsAt: getDateTimeInTimeZone(slot.date!, slot.startTime, getCityTimeZone(city)).toISOString(),
+    endsAt: getDateTimeInTimeZone(slot.date!, slot.endTime, getCityTimeZone(city)).toISOString(),
+    description: slot.notes || 'One-off inspection availability window.',
+  }))
+  return [...events.filter(event => !event.id.startsWith('one-off-availability-')), ...windows].sort((a,b) => a.startsAt.localeCompare(b.startsAt))
 }

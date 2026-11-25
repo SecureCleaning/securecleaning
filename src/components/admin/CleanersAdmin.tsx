@@ -1,5 +1,7 @@
 'use client'
 
+import CleanerDuplicateReview from '@/components/cleaners/CleanerDuplicateReview'
+import type { CleanerMatch } from '@/lib/cleanerDuplicateReview'
 import CleanerSourceFields from '@/components/cleaners/CleanerSourceFields'
 import CleanerMachineryFields from '@/components/cleaners/CleanerMachineryFields'
 import type { CleanerMachinery } from '@/lib/cleanerMachinery'
@@ -573,6 +575,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
   const [templates, setTemplates] = useState(initialTemplates)
   const [selectedDetail, setSelectedDetail] = useState<CleanerDetail | null>(initialSelected)
   const [editingId, setEditingId] = useState<string | null>(initialSelected?.cleaner.id ?? null)
+  const [duplicateReview, setDuplicateReview] = useState<{ matches: CleanerMatch[]; incoming: CleanerFormState } | null>(null)
   const [form, setForm] = useState<CleanerFormState>(toFormState(initialSelected?.cleaner))
   const [filters, setFilters] = useState({
     query: '',
@@ -661,7 +664,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
     setIsModalOpen(true)
   }
 
-  async function loadCleaner(cleanerId: string) {
+  async function loadCleaner(cleanerId: string, prepared?: CleanerFormState, expectedVersion?: string | null) {
     setIsLoading(true)
     setStatus({ type: 'idle', message: '' })
 
@@ -680,9 +683,10 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
         emails: result.emails as CleanerEmail[],
         documents: result.documents as CleanerDocument[],
       }
+      if (prepared && detail.cleaner.updated_at !== expectedVersion) throw new Error('This cleaner changed during review. Go back and select the match again.')
       setSelectedDetail(detail)
       setEditingId(detail.cleaner.id)
-      setForm(toFormState(detail.cleaner))
+      setForm(prepared ?? toFormState(detail.cleaner))
       setEmailDraft(buildEmailDraft(templates[0] ?? null))
       setEmailEditorKey((current) => current + 1)
       setEmailPreview(null)
@@ -692,6 +696,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
       setModalTab('details')
       setIsModalOpen(true)
     } catch (error) {
+      if (prepared) throw error
       setStatus({ type: 'error', message: error instanceof Error ? error.message : 'Unable to load cleaner.' })
     } finally {
       setIsLoading(false)
@@ -850,7 +855,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
     }
   }
 
-  async function saveCleaner(event: React.FormEvent<HTMLFormElement>) {
+  async function saveCleaner(event: Pick<React.FormEvent, 'preventDefault'>, skipReview = false) {
     event.preventDefault()
     if (isDeleting || isSaving) return
     setIsSaving(true)
@@ -887,6 +892,13 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
         internalOwner: form.internalOwner,
         rating: form.rating ? Number(form.rating) : null,
         notes: form.notes,
+      }
+
+      if (!editingId && !skipReview) {
+        const check = await fetch('/api/admin/cleaners/matches', { method: 'POST', headers: { 'Content-Type': 'application/json', ...getAdminHeaders() }, body: JSON.stringify(payload) })
+        const review = await check.json()
+        if (!check.ok) throw new Error(review.error || 'Unable to check existing cleaners.')
+        if (review.matches.length) { setDuplicateReview({ matches: review.matches, incoming: { ...form } }); return }
       }
 
       const response = await fetch(editingId ? `/api/admin/cleaners/${editingId}` : '/api/admin/cleaners', {
@@ -1138,6 +1150,7 @@ export default function CleanersAdmin({ canDelete = false, canEmail = false, ini
 
   return (
     <div className="space-y-5">
+      {duplicateReview ? <CleanerDuplicateReview matches={duplicateReview.matches} incoming={duplicateReview.incoming} apiBase="/api/admin/cleaners" headers={getAdminHeaders()} toForm={toFormState} onCancel={() => setDuplicateReview(null)} onSeparate={() => { setDuplicateReview(null); void saveCleaner({ preventDefault() {} }, true) }} onPrepared={async (id, prepared, version) => { await loadCleaner(id, prepared, version); setDuplicateReview(null); setStatus({ type: 'success', message: 'Review the prepared details, then Save Changes to update the existing cleaner.' }) }} /> : null}
       <section className="flex flex-col gap-4 border-b border-gray-200 pb-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-end gap-3">

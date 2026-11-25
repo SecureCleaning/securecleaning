@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { defaultBlockoutEnd } from '@/lib/blockoutTime'
 import type {
   AvailabilityAssignee,
   OneOffAvailabilityBlock,
@@ -8,7 +9,7 @@ import type {
   Weekday,
 } from '@/lib/availability'
 import type { AgentCalendarEvent } from '@/lib/availabilityCalendar'
-import { replaceCalendarBlockoutEvents } from '@/lib/availabilityCalendarClient'
+import { replaceCalendarBlockoutEvents, replaceOneOffAvailabilityEvents } from '@/lib/availabilityCalendarClient'
 import { getCalendarSubscriptionUrl, getCalendarViewUrl } from '@/lib/calendarLinks'
 import AgentCalendarPanel from './AgentCalendarPanel'
 import AvailabilityAgentNav from './AvailabilityAgentNav'
@@ -123,6 +124,14 @@ export default function AssigneeAvailabilityEditor({
     ])
   }
 
+  function addOneOffSlot() {
+    setWeeklySlots(current => [...current, {
+      id: `one-off-${assignee.id}-${Date.now()}`, assigneeId: assignee.id, city: assignee.city,
+      date: '', day: 'monday', startTime: '09:00', endTime: '10:00', label: 'One-off availability', active: true,
+      zoneIds: [...new Set(current.filter(slot => slot.active).flatMap(slot => slot.zoneIds))], notes: '',
+    }])
+  }
+
   function removeSlot(slotId: string) {
     setWeeklySlots((current) => current.filter((slot) => slot.id !== slotId))
   }
@@ -187,7 +196,7 @@ export default function AssigneeAvailabilityEditor({
       }
       setWeeklySlots(savedWeeklySlots)
       setOneOffBlocks(savedOneOffBlocks)
-      setCalendarEvents((current) => replaceCalendarBlockoutEvents(current, savedOneOffBlocks))
+      setCalendarEvents((current) => replaceOneOffAvailabilityEvents(replaceCalendarBlockoutEvents(current, savedOneOffBlocks), savedWeeklySlots, assignee.city))
       setStatus({ type: 'success', message: 'Availability saved successfully.' })
     } catch (error) {
       setStatus({
@@ -197,6 +206,118 @@ export default function AssigneeAvailabilityEditor({
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  function renderSlot(slot: WeeklyAvailabilitySlot) {
+    return (
+                <div key={slot.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
+                      <input
+                        value={slot.label}
+                        onChange={(event) => updateSlot(slot.id, { label: event.target.value })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">{slot.date !== undefined ? 'Date (one-off)' : 'Day'}</label>
+                      {slot.date !== undefined ? <input required type="date" value={slot.date} onChange={event => updateSlot(slot.id, { date: event.target.value })} className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm" /> : (                      <select
+                        value={slot.day}
+                        onChange={(event) => updateSlot(slot.id, { day: event.target.value as Weekday })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white"
+                      >
+                        {DAY_OPTIONS.map((day) => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </select>)}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
+                      <input
+                        type="time"
+                        value={slot.startTime}
+                        onChange={(event) => {
+                          const startTime = event.target.value
+                          const hour = Number(startTime.slice(0, 2))
+                          updateSlot(slot.id, { startTime, ...(slot.date !== undefined && startTime ? { endTime: hour < 23 ? `${String(hour + 1).padStart(2, '0')}:${startTime.slice(3)}` : '23:59' } : {}) })
+                        }}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
+                      <input
+                        type="time"
+                        value={slot.endTime}
+                        onChange={(event) => updateSlot(slot.id, { endTime: event.target.value })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {allowZoneEditing ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Inspection zones</label>
+                      <p className="mb-2 text-sm text-gray-600">Select the areas you can cover during this inspection slot. Unchecked zones will be removed when you save.</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-gray-200 p-4">
+                        {zones.length > 0 ? zones.map((zone) => {
+                            const checked = slot.zoneIds.includes(zone.id)
+                            return (
+                              <label key={zone.id} className="flex items-start gap-2 text-sm text-gray-700">
+                                <input
+                                  type="checkbox"
+                                  name={slotZoneFieldName(slot.id)}
+                                  value={zone.id}
+                                  checked={checked}
+                                  onChange={(event) => updateSlotZone(slot.id, zone.id, event.target.checked)}
+                                />
+                                <span>{zone.name}</span>
+                              </label>
+                            )
+                          }) : (
+                            <p className="text-sm text-gray-500">No inspection zones are configured for this city yet.</p>
+                          )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-600">
+                      Zones: {slot.zoneIds.map((zoneId) => zones.find((zone) => zone.id === zoneId)?.name ?? zoneId).join(', ') || 'No zones assigned'}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                      <textarea
+                        rows={2}
+                        value={slot.notes ?? ''}
+                        onChange={(event) => updateSlot(slot.id, { notes: event.target.value })}
+                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-4 md:justify-end">
+                      <label className="inline-flex items-center gap-2 text-sm text-gray-700 mt-7 md:mt-0">
+                        <input
+                          type="checkbox"
+                          checked={slot.active}
+                          onChange={(event) => updateSlot(slot.id, { active: event.target.checked })}
+                        />
+                        Active slot
+                      </label>
+                      {allowDeleteSlot || slot.date !== undefined ? (
+                        <button
+                          type="button"
+                          onClick={() => removeSlot(slot.id)}
+                          className="text-sm font-semibold text-red-600 hover:text-red-700 mt-7 md:mt-0"
+                        >
+                          Delete slot
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+    )
   }
 
   return (
@@ -297,116 +418,12 @@ export default function AssigneeAvailabilityEditor({
             </div>
 
             <div className="space-y-4">
-              {weeklySlots.length === 0 ? (
+              {weeklySlots.filter(slot => slot.date === undefined).length === 0 ? (
                 <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500">
                   No recurring slots are set yet for this agent.
                 </div>
               ) : null}
-              {weeklySlots.map((slot) => (
-                <div key={slot.id} className="rounded-xl border border-gray-200 p-4 space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div className="lg:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
-                      <input
-                        value={slot.label}
-                        onChange={(event) => updateSlot(slot.id, { label: event.target.value })}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
-                      <select
-                        value={slot.day}
-                        onChange={(event) => updateSlot(slot.id, { day: event.target.value as Weekday })}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm bg-white"
-                      >
-                        {DAY_OPTIONS.map((day) => (
-                          <option key={day} value={day}>{day}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Start</label>
-                      <input
-                        type="time"
-                        value={slot.startTime}
-                        onChange={(event) => updateSlot(slot.id, { startTime: event.target.value })}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">End</label>
-                      <input
-                        type="time"
-                        value={slot.endTime}
-                        onChange={(event) => updateSlot(slot.id, { endTime: event.target.value })}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {allowZoneEditing ? (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Inspection zones</label>
-                      <p className="mb-2 text-sm text-gray-600">Select the areas you can cover during this inspection slot. Unchecked zones will be removed when you save.</p>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 rounded-lg border border-gray-200 p-4">
-                        {zones.length > 0 ? zones.map((zone) => {
-                            const checked = slot.zoneIds.includes(zone.id)
-                            return (
-                              <label key={zone.id} className="flex items-start gap-2 text-sm text-gray-700">
-                                <input
-                                  type="checkbox"
-                                  name={slotZoneFieldName(slot.id)}
-                                  value={zone.id}
-                                  checked={checked}
-                                  onChange={(event) => updateSlotZone(slot.id, zone.id, event.target.checked)}
-                                />
-                                <span>{zone.name}</span>
-                              </label>
-                            )
-                          }) : (
-                            <p className="text-sm text-gray-500">No inspection zones are configured for this city yet.</p>
-                          )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-600">
-                      Zones: {slot.zoneIds.map((zoneId) => zones.find((zone) => zone.id === zoneId)?.name ?? zoneId).join(', ') || 'No zones assigned'}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                      <textarea
-                        rows={2}
-                        value={slot.notes ?? ''}
-                        onChange={(event) => updateSlot(slot.id, { notes: event.target.value })}
-                        className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between gap-4 md:justify-end">
-                      <label className="inline-flex items-center gap-2 text-sm text-gray-700 mt-7 md:mt-0">
-                        <input
-                          type="checkbox"
-                          checked={slot.active}
-                          onChange={(event) => updateSlot(slot.id, { active: event.target.checked })}
-                        />
-                        Active slot
-                      </label>
-                      {allowDeleteSlot ? (
-                        <button
-                          type="button"
-                          onClick={() => removeSlot(slot.id)}
-                          className="text-sm font-semibold text-red-600 hover:text-red-700 mt-7 md:mt-0"
-                        >
-                          Delete slot
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {weeklySlots.filter(slot => slot.date === undefined).map(renderSlot)}
             </div>
           </section>
 
@@ -467,6 +484,11 @@ export default function AssigneeAvailabilityEditor({
             )}
           </section>
 
+          <section className="rounded-2xl border border-teal-100 bg-white p-6 shadow-sm">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-4"><div><h2 className="text-xl font-bold text-slate-900">One-off availability</h2><p className="text-sm text-gray-600">Open an inspection window for one date only. Times use the agent&apos;s service-region timezone. Existing bookings and block-outs still apply.</p></div><button type="button" onClick={addOneOffSlot} className="rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white">Add one-off availability</button></div>
+            <div className="space-y-4">{weeklySlots.filter(slot => slot.date !== undefined).map(renderSlot)}{!weeklySlots.some(slot => slot.date !== undefined) ? <p className="text-sm text-gray-500">No one-off available windows added yet.</p> : null}</div>
+          </section>
+
           <section className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-center justify-between gap-4 mb-5">
               <div>
@@ -497,7 +519,10 @@ export default function AssigneeAvailabilityEditor({
                       <input
                         type="datetime-local"
                         value={toLocalDateTimeInput(block.startsAt)}
-                        onChange={(event) => updateBlock(block.id, { startsAt: fromLocalDateTimeInput(event.target.value) })}
+                        onChange={(event) => {
+                          const startsAt = fromLocalDateTimeInput(event.target.value)
+                          updateBlock(block.id, { startsAt, endsAt: defaultBlockoutEnd(startsAt) })
+                        }}
                         className="block w-full rounded-lg border border-gray-300 px-4 py-3 text-sm"
                       />
                     </div>

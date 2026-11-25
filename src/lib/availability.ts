@@ -1,3 +1,4 @@
+import { validOneOffWindow, oneOffWeekday } from './oneOffAvailability'
 import { usesMelbournePriority, prioritizeAppointmentSuggestions, compareBookingPriority } from './availabilityPriority'
 import { getAdminSupabase } from '@/lib/supabase'
 import { getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
@@ -38,6 +39,8 @@ export type ServiceZoneAnchor = {
 export type AvailabilityMatchMethod = 'postcode' | 'suburb' | 'radius' | 'none'
 
 export type WeeklyAvailabilitySlot = {
+  /** When set, this window occurs only on this local calendar date. */
+  date?: string
   id: string
   city: City
   assigneeId: string
@@ -350,10 +353,11 @@ export function mergeAvailabilityConfig(candidate: unknown): AvailabilityConfig 
           day: DAY_ORDER.includes(String(slot?.day) as Weekday)
             ? (String(slot?.day) as Weekday)
             : 'monday',
+          ...(slot?.date !== undefined ? { date: String(slot.date) } : {}),
           startTime: String(slot?.startTime ?? '09:00'),
           endTime: String(slot?.endTime ?? '10:00'),
           zoneIds: sanitizeList(slot?.zoneIds),
-          active: Boolean(slot?.active ?? true),
+          active: Boolean(slot?.active ?? true) && (slot?.date === undefined || validOneOffWindow(slot)),
           notes: typeof slot?.notes === 'string' ? slot.notes : '',
         }))
       : fallback.weeklySlots,
@@ -448,7 +452,7 @@ export function matchServiceZones(
 export function getAssigneeServiceZones(config: AvailabilityConfig, assigneeId: string) {
   const zoneIds = new Set(
     config.weeklySlots
-      .filter((slot) => slot.assigneeId === assigneeId && slot.active)
+      .filter((slot) => slot.assigneeId === assigneeId && slot.active && slot.date === undefined)
       .flatMap((slot) => slot.zoneIds),
   )
 
@@ -558,6 +562,7 @@ function getAvailableAppointments(
   blocks: OneOffAvailabilityBlock[],
 ): Array<{ startTime: string; endTime: string }> {
   return getInspectionAppointmentWindows(slot.startTime, slot.endTime).filter((appointment) => {
+    if (slot.date !== undefined && minutesFromTime(appointment.endTime) > minutesFromTime(slot.endTime)) return false
     const start = getDateTimeInTimeZone(dateString, appointment.startTime, getCityTimeZone(city))
     const end = getDateTimeInTimeZone(dateString, appointment.endTime, getCityTimeZone(city))
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
@@ -571,7 +576,9 @@ function getAvailableAppointments(
 
     return !blocks.some((block) => {
       if (!block.active || block.assigneeId !== slot.assigneeId) return false
-      return appointmentStartConflictsWithBlock(start, new Date(block.startsAt), new Date(block.endsAt))
+      const blockStart = new Date(block.startsAt), blockEnd = new Date(block.endsAt)
+      if (slot.date !== undefined && start < blockEnd && end > blockStart) return true
+      return appointmentStartConflictsWithBlock(start, blockStart, blockEnd)
     })
   })
 }
@@ -638,7 +645,9 @@ export function getAvailabilitySuggestionsForConfig(
       if (!slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId))) return false
       const assignee = assigneeMap.get(slot.assigneeId)
       if (!assignee || !assignee.active || assignee.city !== city) return false
-      if (targetDay && slot.day !== targetDay) return false
+      if (slot.date !== undefined) {
+        if (!validOneOffWindow(slot) || slot.date !== preferredDate) return false
+      } else if (targetDay && slot.day !== targetDay) return false
       return true
     })
     .sort((a, b) => DAY_ORDER.indexOf(a.day) - DAY_ORDER.indexOf(b.day) || a.startTime.localeCompare(b.startTime))
@@ -651,9 +660,9 @@ export function getAvailabilitySuggestionsForConfig(
       return appointments.map((appointment) => ({
           // Include the start time so each hourly appointment is independently selectable.
           slotId: `${slot.id}:${appointment.startTime}`,
-          label: `${formatWeekdayForLabel(slot.day)} ${formatTimeForLabel(appointment.startTime)}`,
+          label: `${formatWeekdayForLabel(slot.date ? oneOffWeekday(slot.date) as Weekday : slot.day)} ${formatTimeForLabel(appointment.startTime)}`,
           windowLabel: slot.label,
-          day: slot.day,
+          day: slot.date ? oneOffWeekday(slot.date) as Weekday : slot.day,
           startTime: appointment.startTime,
           endTime: appointment.endTime,
           zoneNames: priorityMode ? matchingZones.map(zone => zone.name) : slot.zoneIds.map((zoneId) => zoneMap.get(zoneId)).filter(Boolean) as string[],
@@ -662,7 +671,14 @@ export function getAvailabilitySuggestionsForConfig(
           calendarId: assignee?.calendarId || undefined,
         }))
     })
-  return (priorityMode ? prioritizeAppointmentSuggestions(config, suggestions) : suggestions).slice(0, city === 'melbourne' ? config.settings.melbourneMaxSlotsToShow ?? config.settings.maxSlotsToShow : config.settings.maxSlotsToShow)
+  const seenAppointments = new Set<string>()
+  const distinctSuggestions = suggestions.filter(suggestion => {
+    const key = `${suggestion.assigneeId}:${suggestion.day}:${suggestion.startTime}`
+    if (seenAppointments.has(key)) return false
+    seenAppointments.add(key)
+    return true
+  })
+  return (priorityMode ? prioritizeAppointmentSuggestions(config, distinctSuggestions) : distinctSuggestions).slice(0, city === 'melbourne' ? config.settings.melbourneMaxSlotsToShow ?? config.settings.maxSlotsToShow : config.settings.maxSlotsToShow)
 }
 
 function getCalendarStartDate(): Date {
@@ -765,6 +781,7 @@ export async function getAvailabilityAssigneesForLocation(
       .filter(
         (slot) =>
           slot.active &&
+          slot.date === undefined &&
           slot.city === city &&
           slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId)),
       )

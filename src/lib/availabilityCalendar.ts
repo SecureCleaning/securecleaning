@@ -1,3 +1,4 @@
+import { validOneOffWindow } from './oneOffAvailability'
 import { getBookingEventWindow, getCityTimeZone, getDateTimeInTimeZone } from '@/lib/calendarInvite'
 import { getAdminSupabase } from '@/lib/supabase'
 import type { BookingInputs } from '@/lib/types'
@@ -119,22 +120,25 @@ function buildAvailabilityEvents(
   const timeZone = getCityTimeZone(city)
 
   for (const slot of slots) {
-    let occurrence = getNextDateForWeekday(rangeStart, slot.day)
+    if (slot.date !== undefined && !validOneOffWindow(slot)) continue
+    let occurrence = slot.date ? new Date(`${slot.date}T00:00:00Z`) : getNextDateForWeekday(rangeStart, slot.day)
+    if (occurrence < startOfCalendarDay(rangeStart)) continue
 
     while (occurrence <= rangeEnd) {
       const startsAt = localDateTimeToIso(occurrence, slot.startTime, timeZone)
       const endsAt = localDateTimeToIso(occurrence, slot.endTime, timeZone)
 
       events.push({
-        id: `availability-${slot.id}-${startsAt}`,
+        id: slot.date ? `one-off-availability-${slot.id}` : `availability-${slot.id}-${startsAt}`,
         kind: 'availability',
         title: slot.label || 'Available inspection window',
         startsAt,
         endsAt,
         subtitle: formatZoneNames(slot.zoneIds, zones) || 'No zones assigned',
-        description: slot.notes || 'Recurring inspection availability window.',
+        description: slot.notes || (slot.date ? 'One-off inspection availability window.' : 'Recurring inspection availability window.'),
       })
 
+      if (slot.date) break
       occurrence = addCalendarDays(occurrence, 7)
     }
   }

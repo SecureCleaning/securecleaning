@@ -225,7 +225,7 @@ export async function getCrmAssignmentCandidates(input: {
   const matchingZoneIds = new Set(findMatchingZones(searchText, input.city, config).map((zone) => zone.id))
   const priorityMode = usesMelbournePriority(config, input.city)
   const assigneeIds = new Set(config.weeklySlots
-    .filter((slot) => slot.active && slot.city === input.city && slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId)))
+    .filter((slot) => slot.active && slot.date === undefined && slot.city === input.city && slot.zoneIds.some((zoneId) => matchingZoneIds.has(zoneId)))
     .map((slot) => slot.assigneeId))
   const eligibleProfiles = config.assignees.filter(a => a.active && a.city === input.city)
   return staff
