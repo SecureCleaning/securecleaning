@@ -6,6 +6,7 @@ import { QUOTE_TERMS_PDF_PATH } from '@/lib/quoteTerms'
 
 import { appendSavedQuoteField, overrideIncludedQuoteField, getSavedQuoteOptions, appendGlobalQuoteTask } from '@/lib/savedQuoteFields'
 import EmailPreviewModal from '@/components/admin/EmailPreviewModal'
+import CleaningMultiplierReview from '@/components/admin/CleaningMultiplierReview'
 import RoomPriceSummary from '@/components/admin/RoomPriceSummary'
 import RefreshQuotePricesDialog from '@/components/admin/RefreshQuotePricesDialog'
 
@@ -30,6 +31,7 @@ import {
   getRoomAreaAllocationTotal,
   getRoomAreaAllocations,
   getRoomTaskContribution,
+  getCleaningSubtotalMultiplier,
   getRoomMoppingContribution,
   getRoomTaskQuantity,
   getRoomMetricFieldExtra,
@@ -116,7 +118,7 @@ function originalSummary(result: QuoteResult) {
   return formatPriceRange(result.totalLow, result.totalHigh)
 }
 
-function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomItem, frequency: QuoteInputs['frequency']) {
+function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomItem, frequency: QuoteInputs['frequency'], multiplier = 1) {
   const rate = Number(field.pricePerUnit ?? 0)
   if (!Number.isFinite(rate) || rate === 0) {
     return `Current contribution ${formatTaskCurrency(0)} per clean · No additional charge`
@@ -127,7 +129,7 @@ function describeFieldPricing(field: RoomMetricFieldConfig, room: WorkflowRoomIt
   const rateLabel = field.inputType === 'boolean'
     ? `${formatTaskCurrency(rate)} when included`
     : `${formatTaskCurrency(rate)} per ${included > 0 ? 'additional ' : ''}unit`
-  return `${allowance}${rateLabel} · Current contribution ${formatTaskCurrency(getRoomMetricFieldExtra(room, field, frequency))} per clean`
+  return `${allowance}${rateLabel} · Current contribution ${formatTaskCurrency(getRoomMetricFieldExtra(room, field, frequency) * multiplier)} per clean`
 }
 
 function formatTaskCurrency(amount: number) {
@@ -1417,7 +1419,7 @@ export default function QuoteWorkflowEditor({
                               taskDefaultPrices: { ...room.taskDefaultPrices, [task.id]: patch.price !== undefined || patch.minutesPerSqm !== undefined || patch.pricingMode !== undefined ? false : room.taskDefaultPrices?.[task.id] ?? !room.quoteTasks?.some(existing => existing.id === task.id) },
                               quoteTasks: [...(room.quoteTasks ?? []).filter(existing => existing.id !== task.id), { ...task, ...patch }],
                             })
-                            const contribution = getRoomTaskContribution(room, typeConfig, index, firmQuoteDraft.revisedInputs.frequency, pricingConfig.settings.hourlyRate, roomAreas.get(room.id) ?? 0) * (1 + (firmQuoteDraft.pricingAdjustmentPercent || 0) / 100)
+                            const contribution = getRoomTaskContribution(room, typeConfig, index, firmQuoteDraft.revisedInputs.frequency, pricingConfig.settings.hourlyRate, roomAreas.get(room.id) ?? 0) * getCleaningSubtotalMultiplier(firmQuoteDraft) * (1 + (firmQuoteDraft.pricingAdjustmentPercent || 0) / 100)
                             const selected = isMoppingPricedRoomTask(task.label, getRoomScopeTaskGlobalRateCode(typeConfig, index))
                               ? Boolean(room.moppingEnabled)
                               : room.scopeTaskSelections?.[task.id] ?? task.defaultSelected
@@ -1658,7 +1660,7 @@ export default function QuoteWorkflowEditor({
                               </div>
                             }
                             {field.helpText?.trim() ? <span className="mt-1 block text-xs text-gray-500">{field.helpText}</span> : null}
-                            <span className="mt-1 block text-xs text-gray-500">{describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency)} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
+                            <span className="mt-1 block text-xs text-gray-500">{describeFieldPricing(field, room, firmQuoteDraft.revisedInputs.frequency, getCleaningSubtotalMultiplier(firmQuoteDraft) * (1 + (firmQuoteDraft.pricingAdjustmentPercent || 0) / 100))} · {getRoomTaskCadenceLabel(field.cadence ?? 'every_clean')}</span>
                           </div>
                         )})}
                         {getWorkflowRoomMetricFields(room, roomTypeConfig).length === 0 ? <div className="text-xs text-gray-500">No extra fields selected.</div> : null}
@@ -1738,26 +1740,7 @@ export default function QuoteWorkflowEditor({
                 </div>
               </div>
 
-              <section className="mt-5 rounded-xl border border-indigo-200 bg-white p-4" aria-label="Internal multiplier breakdown">
-                <h3 className="font-semibold text-indigo-950">Pricing multipliers <span className="text-xs font-normal">Internal only</span></h3>
-                <p className="mt-1 text-sm text-gray-600">Applies to general area-based labour. Separately priced tasks, room extras and mopping are not increased by these multipliers.</p>
-                <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-                  {[
-                    [`Premises: ${labelForPremises(firmQuoteDraft.revisedInputs.premisesType)}`, preview.calculated.breakdown.premisesMultiplier],
-                    ['Floors', preview.calculated.breakdown.floorsMultiplier],
-                    [`Time: ${labelForTime(firmQuoteDraft.revisedInputs.timePreference)}`, preview.calculated.breakdown.timeMultiplier],
-                    ['Cleaning frequency', preview.calculated.breakdown.frequencyMultiplier],
-                    ['Region', preview.calculated.breakdown.cityMultiplier],
-                  ].map(([label, value]) => <div key={label}><dt className="text-gray-600">{label}</dt><dd className="font-semibold">×{value} ({Number(value) === 1 ? 'no change' : `${Number(value) > 1 ? '+' : ''}${Math.round((Number(value) - 1) * 10000) / 100}%`})</dd></div>)}
-                </dl>
-                <div className="mt-4 grid gap-3 border-t pt-3 sm:grid-cols-3 text-sm">
-                  <div>Labour before multipliers<div className="font-bold">${preview.multiplierLabourBefore.toFixed(2)}</div></div>
-                  <div>Labour after multipliers<div className="font-bold">${preview.multiplierLabourAfter.toFixed(2)}</div></div>
-                  <div>Multiplier difference<div className="font-bold">${(preview.multiplierLabourAfter - preview.multiplierLabourBefore).toFixed(2)}</div></div>
-                </div>
-                {preview.multiplierLabourBefore === 0 && <p className="mt-3 text-sm text-indigo-900">No general area-based labour is charged in this draft, so these multipliers do not increase its labour cost.</p>}
-                <p className="mt-2 text-xs text-gray-500">Per visit, excluding GST. Before the estimate range, room pricing rules, quote adjustment, minimum call-out and final client price override. Cleaning frequency can also change the minimum call-out.</p>
-              </section>
+              <CleaningMultiplierReview draft={firmQuoteDraft} pricingConfig={pricingConfig} roomTypeConfig={roomTypeConfig} buildingLabel={labelForPremises(firmQuoteDraft.revisedInputs.premisesType)} frequencyLabel={firmQuoteDraft.revisedInputs.frequency === 'once_off' ? 'Once-off' : labelForFrequency(firmQuoteDraft.revisedInputs.frequency)} disabled={saveState.saving || acceptedEditingLocked || (finalPublished && !canReviseFinal)} onApply={setFirmQuoteDraft} />
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">

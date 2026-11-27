@@ -2,9 +2,57 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { buildContractSaleChecklistPdf } from '../src/lib/contractSaleChecklistPdf.ts'
+import { renderContractSaleInspectionEmail } from '../src/lib/contractSaleInspectionEmail.ts'
 
 const projectRoot = new URL('..', import.meta.url).pathname
 const source = (path) => readFileSync(`${projectRoot}/${path}`, 'utf8')
+
+test('both inspection confirmations brand the existing draft and show appointment details once', () => {
+  const values = {
+    client_first_name: 'Alex', cleaner_first_name: 'Casey', site_name: 'Office & Warehouse',
+    inspection_date: '27 November 2026', inspection_time: '12:30 pm', inspection_duration: '60 minutes',
+    inspection_location: '1 Example Street, <Sydney>', sender_name: 'Sam Agent',
+  }
+  const inductionHtml = '<p>Hi &lt;&lt;cleaner_first_name&gt;&gt;,</p><p>The client has confirmed the site induction for &lt;&lt;site_name&gt;&gt;.</p><p><strong>Date:</strong> &lt;&lt;inspection_date&gt;&gt;<br><strong>Time:</strong> &lt;&lt;inspection_time&gt;&gt;<br><strong>Duration:</strong> &lt;&lt;inspection_duration&gt;&gt;<br><strong>Location:</strong> &lt;&lt;inspection_location&gt;&gt;</p><p>A calendar invitation is attached.</p><p>Kind regards,<br>&lt;&lt;sender_name&gt;&gt;</p>'
+
+  for (const kind of ['client', 'cleaner']) {
+    const recipientField = `<<${kind}_first_name>>`
+    const draft = {
+      subject: 'Site induction - <<site_name>>',
+      bodyText: `Hi ${recipientField},\n\nThe site induction is confirmed.\n\nDate: <<inspection_date>>\nTime: <<inspection_time>>\nDuration: <<inspection_duration>>\nLocation: <<inspection_location>>\n\nA calendar invitation is attached.\n\nKind regards,\n<<sender_name>>`,
+      bodyHtml: kind === 'client' ? '' : inductionHtml,
+      bodyDocument: { type: 'doc' },
+    }
+    const result = renderContractSaleInspectionEmail(kind, draft, values)
+    assert.equal(result.subject, 'Site induction - Office & Warehouse')
+    assert.equal(result.bodyDocument, draft.bodyDocument)
+    assert.match(result.html, /<title>Site induction - Office &amp; Warehouse<\/title>/)
+    assert.match(result.html, /#1a2744[\s\S]*Site visit confirmed/)
+    assert.match(result.html, /Secure Cleaning website/)
+    assert.match(result.bodyHtml, /role="presentation"[^>]+#f0fdf4[\s\S]*12:30 pm[\s\S]*60 minutes[\s\S]*&lt;Sydney&gt;/)
+    for (const item of ['Hi ', '27 November 2026', '1 Example Street', 'Sam Agent', 'A calendar invitation is attached.']) {
+      assert.equal(result.html.split(item).length, 2)
+      assert.equal(result.bodyText.split(item).length, 2)
+    }
+    assert.match(result.bodyText, new RegExp(`^Hi ${kind === 'client' ? 'Alex' : 'Casey'},`))
+  }
+})
+
+test('inspection branding preserves custom message structure and availability wording', () => {
+  const draft = {
+    subject: 'Proposed timing',
+    bodyText: 'Could we meet around 12:30 pm?',
+    bodyHtml: '<h1>Proposed timing</h1><p>Could we meet around <em>{{inspection_time}}</em>?</p>',
+    bodyDocument: null,
+  }
+  const values = { inspection_time: '12:30 pm' }
+  const availability = renderContractSaleInspectionEmail('availability', draft, values)
+  assert.match(availability.html, /Arrange a site visit/)
+  assert.equal((availability.html.match(/<h1>/g) ?? []).length, 1)
+  const confirmation = renderContractSaleInspectionEmail('cleaner', draft, values)
+  assert.equal(confirmation.bodyHtml, '<h1>Proposed timing</h1><p>Could we meet around <em>12:30 pm</em>?</p>')
+  assert.doesNotMatch(confirmation.html, /#f0fdf4/)
+})
 
 test('inspection communications require previews and retain distinct client and cleaner records', () => {
   const domain = source('src/lib/contractSales.ts')

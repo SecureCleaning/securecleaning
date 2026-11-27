@@ -166,6 +166,8 @@ export type FirmQuoteDraft = {
   sectionTitles?: QuoteSectionTitle[]
   moppingMinutesPerSqm: number
   pricingAdjustmentPercent: number
+  // Explicitly reviewed snapshot. Missing on legacy drafts: retain their pricing.
+  cleaningMultipliers?: CleaningMultiplierSnapshot
   targetPrice: string
   finalPerVisit: string
   scopeSummary: string
@@ -179,6 +181,7 @@ export type FirmQuotePreview = {
   calculated: QuoteResult
   multiplierLabourBefore: number
   multiplierLabourAfter: number
+  cleaningMultiplierBreakdown?: { beforeLow: number; beforeHigh: number; afterLow: number; afterHigh: number; building: number; frequency: number }
   calculatedLow: number
   calculatedHigh: number
   adjustedLow: number
@@ -189,6 +192,55 @@ export type FirmQuotePreview = {
   moppingExtraTotal: number
   roomPricingExtraLow: number
   roomPricingExtraHigh: number
+}
+
+export type CleaningMultiplierSnapshot = {
+  version: 1
+  premisesType: PremisesType
+  frequency: CleaningFrequency
+  building: number
+  frequencyFactor: number
+}
+
+const validMultiplier = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0.01 && value <= 100
+
+export function parseCleaningMultipliers(value: unknown): CleaningMultiplierSnapshot | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Partial<CleaningMultiplierSnapshot>
+  if (source.version !== 1 || !validMultiplier(source.building) || !validMultiplier(source.frequencyFactor)
+    || !['office', 'medical', 'industrial', 'childcare', 'retail', 'gym', 'warehouse', 'function_centre', 'sports_facility', 'other'].includes(source.premisesType ?? '')
+    || !['daily', '7x_week', '3x_week', '2x_week', 'weekly', 'fortnightly', 'monthly', 'once_off'].includes(source.frequency ?? '')) return undefined
+  return { version: 1, premisesType: source.premisesType!, frequency: source.frequency!, building: source.building, frequencyFactor: source.frequencyFactor }
+}
+
+export function reviewCleaningMultipliers(draft: FirmQuoteDraft, config: QuotePricingConfig): FirmQuoteDraft {
+  const premisesType = draft.revisedInputs.premisesType
+  const frequency = draft.revisedInputs.frequency
+  const snapshot = parseCleaningMultipliers({ version: 1, premisesType, frequency,
+    building: config.multipliers.premisesType[premisesType], frequencyFactor: config.multipliers.frequency[frequency] })
+  if (!snapshot) throw new Error('Building and frequency multipliers must be between 0.01 and 100.')
+  return { ...draft, cleaningMultipliers: snapshot }
+}
+
+export function getCleaningSubtotalMultiplier(draft: FirmQuoteDraft): number {
+  const snapshot = parseCleaningMultipliers(draft.cleaningMultipliers)
+  return snapshot ? snapshot.building * snapshot.frequencyFactor : 1
+}
+
+// Reviewed quotes apply building/frequency once to the complete service subtotal,
+// not once to general labour and again to the subtotal.
+function calculateWorkflowBase(draft: FirmQuoteDraft, config: QuotePricingConfig, rooms: QuoteRoomTypeConfig) {
+  const inputs = getDetailedPricingInputs(draft, rooms)
+  if (!parseCleaningMultipliers(draft.cleaningMultipliers)) return calculateQuote(inputs, config)
+  const result = calculateQuote(inputs, { ...config, multipliers: { ...config.multipliers,
+    premisesType: { ...config.multipliers.premisesType, [inputs.premisesType]: 1 },
+    frequency: { ...config.multipliers.frequency, [inputs.frequency]: 1 },
+  } })
+  const labour = result.breakdown.baseLabour * result.breakdown.floorsMultiplier * result.breakdown.timeMultiplier * result.breakdown.cityMultiplier
+  return { ...result,
+    baseLow: labour * (result.isSpringClean ? config.settings.springCleanLow : config.settings.rangeLow),
+    baseHigh: labour * (result.isSpringClean ? config.settings.springCleanHigh : config.settings.rangeHigh),
+  }
 }
 
 export type FirmQuoteDisplayPrice = {
@@ -662,6 +714,7 @@ export function parseFirmQuoteDraft(
     exclusions: typeof source.exclusions === 'string' ? source.exclusions : fallback.exclusions,
     serviceCommentary: typeof source.serviceCommentary === 'string' ? source.serviceCommentary : fallback.serviceCommentary,
     includeConsumablesCatalogue: source.includeConsumablesCatalogue === true,
+    ...(parseCleaningMultipliers(source.cleaningMultipliers) ? { cleaningMultipliers: parseCleaningMultipliers(source.cleaningMultipliers) } : {}),
   }
 }
 
@@ -813,7 +866,7 @@ export function getRoomMoppingContribution(
   if (index < 0) return null
   return getRoomTaskContribution(room, roomType, index, draft.revisedInputs.frequency,
     pricingConfig.settings.hourlyRate, Math.max(0, room.size) * Math.max(0, room.quantity)) *
-    (1 + (draft.pricingAdjustmentPercent || 0) / 100)
+    (1 + (draft.pricingAdjustmentPercent || 0) / 100) * getCleaningSubtotalMultiplier(draft)
 }
 
 export function getRoomScheduledTaskExtraTotal(
@@ -914,7 +967,7 @@ export function getRoomPricingBreakdown(
   pricingConfig: QuotePricingConfig,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ): RoomPricingBreakdown {
-  const calculated = calculateQuote(getDetailedPricingInputs(draft, roomTypeConfig), pricingConfig)
+  const calculated = calculateWorkflowBase(draft, pricingConfig, roomTypeConfig)
   const roomAreas = getRoomAreaAllocations(draft, roomTypeConfig)
   const genericLabourAreas = getRoomGenericLabourAllocations(draft, roomTypeConfig)
   const totalRoomArea = [...roomAreas.values()].reduce((sum, roomArea) => sum + roomArea, 0)
@@ -956,8 +1009,8 @@ export function getRoomPricingBreakdown(
     return [room.id, {
       // Allocate base labour to rooms; add only charges that belong to this room.
       // Global add-ons and minimum call-out remain in the overall working range.
-      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * factor),
-      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * factor),
+      low: roundCurrency((calculated.baseLow * roomShare + roomAdjustmentLow + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * getCleaningSubtotalMultiplier(draft) * factor),
+      high: roundCurrency((calculated.baseHigh * roomShare + roomAdjustmentHigh + roomFixed + roomMetricExtra + roomScheduledTaskExtra + roomMoppingExtra) * getCleaningSubtotalMultiplier(draft) * factor),
     }]
   }))
 }
@@ -967,7 +1020,7 @@ export function buildFirmQuotePreview(
   pricingConfig: QuotePricingConfig,
   roomTypeConfig: QuoteRoomTypeConfig = DEFAULT_QUOTE_ROOM_TYPE_CONFIG
 ): FirmQuotePreview {
-  const calculated = calculateQuote(getDetailedPricingInputs(draft, roomTypeConfig), pricingConfig)
+  const calculated = calculateWorkflowBase(draft, pricingConfig, roomTypeConfig)
   const roomFieldExtra = getRoomMetricExtraTotal(draft, roomTypeConfig)
   const scheduledTaskExtra = getRoomScheduledTaskExtraTotal(draft, roomTypeConfig, pricingConfig.settings.hourlyRate)
   const moppingExtra = getRoomMoppingExtraTotal(draft, pricingConfig, roomTypeConfig)
@@ -989,16 +1042,24 @@ export function buildFirmQuotePreview(
     calculated.breakdown.frequencyMultiplier *
     calculated.breakdown.cityMultiplier *
     genericLabourFactor
-  const rawLow = roundCurrency(
+  const subtotalLow = roundCurrency(
     (baseLabourAdjusted + calculated.addOnsTotal) * rangeLow + roomFieldExtra + scheduledTaskExtra + moppingExtra + roomPricingExtra.low
   )
-  const rawHigh = roundCurrency(
+  const subtotalHigh = roundCurrency(
     (baseLabourAdjusted + calculated.addOnsTotal) * rangeHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra + roomPricingExtra.high
   )
+  const snapshot = parseCleaningMultipliers(draft.cleaningMultipliers)
+  const multiplier = getCleaningSubtotalMultiplier(draft)
+  const suppliesLow = calculated.breakdown.addOnsDetail.consumablesTotal * rangeLow
+  const suppliesHigh = calculated.breakdown.addOnsDetail.consumablesTotal * rangeHigh
+  const cleaningLow = subtotalLow - suppliesLow
+  const cleaningHigh = subtotalHigh - suppliesHigh
+  const rawLow = snapshot ? roundCurrency(cleaningLow * multiplier + suppliesLow) : subtotalLow
+  const rawHigh = snapshot ? roundCurrency(cleaningHigh * multiplier + suppliesHigh) : subtotalHigh
   // Assess the complete job against the minimum only after every charge is included.
   const calculatedLow = roundCurrency(rawLow * factor)
   const calculatedHigh = roundCurrency(rawHigh * factor)
-  const frequencyAdjustedMinimum = pricingConfig.settings.minimumInvoice * calculated.breakdown.frequencyMultiplier
+  const frequencyAdjustedMinimum = pricingConfig.settings.minimumInvoice * (snapshot?.frequencyFactor ?? calculated.breakdown.frequencyMultiplier)
   const adjustedLow = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedLow))
   const adjustedHigh = roundCurrency(Math.max(frequencyAdjustedMinimum, calculatedHigh))
   const finalPerVisit = Number(draft.finalPerVisit)
@@ -1006,7 +1067,8 @@ export function buildFirmQuotePreview(
 
   return {
     multiplierLabourBefore: roundCurrency(calculated.breakdown.baseLabour * genericLabourFactor),
-    multiplierLabourAfter: roundCurrency(baseLabourAdjusted),
+    multiplierLabourAfter: roundCurrency(baseLabourAdjusted * multiplier),
+    ...(snapshot ? { cleaningMultiplierBreakdown: { beforeLow: roundCurrency(cleaningLow), beforeHigh: roundCurrency(cleaningHigh), afterLow: roundCurrency(cleaningLow * multiplier), afterHigh: roundCurrency(cleaningHigh * multiplier), building: snapshot.building, frequency: snapshot.frequencyFactor } } : {}),
     calculated: {
       ...calculated,
       addOnsTotal: roundCurrency(calculated.addOnsTotal + roomFieldExtra + scheduledTaskExtra + moppingExtra),
@@ -1014,16 +1076,18 @@ export function buildFirmQuotePreview(
       totalHigh: roundCurrency(calculated.totalHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra),
       perVisitLow: roundCurrency(calculated.perVisitLow + roomFieldExtra + scheduledTaskExtra + moppingExtra),
       perVisitHigh: roundCurrency(calculated.perVisitHigh + roomFieldExtra + scheduledTaskExtra + moppingExtra),
+      ...(snapshot ? { totalLow: adjustedLow, totalHigh: adjustedHigh, perVisitLow: adjustedLow, perVisitHigh: adjustedHigh,
+        addOnsTotal: roundCurrency(calculated.breakdown.addOnsDetail.consumablesTotal + (calculated.addOnsTotal - calculated.breakdown.addOnsDetail.consumablesTotal + roomFieldExtra + scheduledTaskExtra + moppingExtra) * multiplier) } : {}),
     },
     calculatedLow,
     calculatedHigh,
     adjustedLow,
     adjustedHigh,
-    roomFieldExtraTotal: roundCurrency(roomFieldExtra),
-    scheduledTaskExtraTotal: roundCurrency(scheduledTaskExtra),
-    moppingExtraTotal: roundCurrency(moppingExtra),
-    roomPricingExtraLow: roundCurrency(roomPricingExtra.low),
-    roomPricingExtraHigh: roundCurrency(roomPricingExtra.high),
+    roomFieldExtraTotal: roundCurrency(roomFieldExtra * multiplier),
+    scheduledTaskExtraTotal: roundCurrency(scheduledTaskExtra * multiplier),
+    moppingExtraTotal: roundCurrency(moppingExtra * multiplier),
+    roomPricingExtraLow: roundCurrency(roomPricingExtra.low * multiplier),
+    roomPricingExtraHigh: roundCurrency(roomPricingExtra.high * multiplier),
     suggestedPrice: Number.isFinite(finalPerVisit) && finalPerVisit > 0
       ? finalPerVisit
       : Number.isFinite(targetPrice) && targetPrice > 0

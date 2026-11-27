@@ -24,6 +24,7 @@ import { DEFAULT_CONTRACT_SALE_HANDOVER_EMAIL_TEMPLATES, HANDOVER_EMAIL_MERGE_FI
 import type { FollowupAudience } from '@/lib/contractSaleFollowupTemplates'
 import { createCleanerPortalLink } from '@/lib/cleanerPortal'
 import { buildContractSaleChecklistPdf, type ContractSaleChecklistData } from '@/lib/contractSaleChecklistPdf'
+import { renderContractSaleInspectionEmail, type InspectionEmailKind } from '@/lib/contractSaleInspectionEmail'
 import {
   buildContractSaleTaxInvoicePdf,
   renderContractSaleInvoiceTemplateText,
@@ -420,8 +421,6 @@ async function loadInspectionTemplate() {
   return mapInspectionTemplate(data as Row | null)
 }
 
-type InspectionEmailKind = 'availability' | 'client' | 'cleaner'
-
 function parseInspectionEmailDraft(input: Record<string, unknown>, prefix: InspectionEmailKind) {
   const subject = clean(input[`${prefix}Subject`], 200)
   if (subject.length < 3) throw new ContractProductError('Enter an email subject.')
@@ -440,16 +439,6 @@ function inspectionEmailFingerprint(value: unknown) {
 
 function firstName(value: unknown) {
   return clean(value, 160).split(/\s+/)[0] || 'there'
-}
-
-function renderInspectionEmail(draft: ReturnType<typeof parseInspectionEmailDraft>, values: Record<string, string>) {
-  const subject = applyEmailMergeFields(draft.subject, values)
-  const bodyText = applyEmailMergeFields(draft.bodyText, values)
-  const safeValues = Object.fromEntries(Object.entries(values).map(([key, value]) => [key, escapeHtml(value)]))
-  const sourceHtml = draft.bodyHtml.trim() ? sanitizeRichEmailHtml(draft.bodyHtml) : plainTextToEmailHtml(draft.bodyText)
-  const bodyHtml = sanitizeRichEmailHtml(applyEmailMergeFields(sourceHtml, safeValues))
-  const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:auto;color:#1f2937"><div style="border-bottom:4px solid #0c766e;padding:18px 0"><strong style="font-size:24px;color:#0c766e">Secure Cleaning</strong></div><div style="padding:22px 0">${bodyHtml}</div></div>`
-  return { subject, bodyText, bodyHtml, bodyDocument: draft.bodyDocument, html }
 }
 
 const CHECKLIST_KEYS: Array<keyof ContractSaleChecklistData> = [
@@ -1359,7 +1348,7 @@ export async function previewContractSaleInspectionEmail(actor: ContractProductA
   if (!['availability', 'client', 'cleaner'].includes(kind)) throw new ContractProductError('Select an inspection email to preview.')
   const { sale, context, values } = await inspectionEmailContext(actor, input)
   const draft = parseInspectionEmailDraft(input, kind)
-  const rendered = renderInspectionEmail(draft, values)
+  const rendered = renderContractSaleInspectionEmail(kind, draft, values)
   const to = kind === 'cleaner' ? normalizeInvoiceEmail(context.cleaner.email) : normalizeInvoiceEmail(context.client?.email)
   if (!to) throw new ContractProductError(`${kind === 'cleaner' ? 'Cleaner' : 'Client'} email is missing or invalid.`, 409)
   const fingerprint = inspectionEmailFingerprint({ saleId: sale.id, kind, to, senderId: actor.id, rendered, appointment: [input.date, input.time, input.durationMinutes, input.location] })
@@ -1393,7 +1382,7 @@ export async function sendContractSaleInspectionAvailabilityRequest(actor: Contr
   let deliveryStatus: 'sent' | 'failed' | 'unknown' = 'unknown'
   let deliveryError = ''
   try {
-    const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: preview.to, replyTo: actor.email, subject: preview.subject, html: preview.html }) as { id?: string } | null
+    const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: preview.to, replyTo: actor.email, subject: preview.subject, html: preview.html, text: preview.bodyText }) as { id?: string } | null
     providerMessageId = result?.id ?? ''; deliveryStatus = 'sent'
   } catch (error) {
     deliveryStatus = error instanceof EmailProviderRejectedError ? 'failed' : 'unknown'
@@ -1570,7 +1559,7 @@ export async function scheduleContractSaleInspection(actor: ContractProductActor
     const { error: claimError } = await db.from('contract_sale_inspections').update({ provider_message_ids: outcomes }).eq('id', inspection.id)
     if (claimError) throw claimError
     try {
-      const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: target.email, replyTo: staffEmail, subject: target.subject, html: target.html, attachments: [{ filename: `inspection-${sale.sale_code}.ics`, content: Buffer.from(ics).toString('base64') }] }) as { id?: string } | null
+      const result = await sendEmailOrThrow({ from: process.env.FROM_EMAIL ?? 'quotes@securecleaning.com.au', to: target.email, replyTo: staffEmail, subject: target.subject, html: target.html, ...(target.recipient === 'staff' ? {} : { text: target.bodyText }), attachments: [{ filename: `inspection-${sale.sale_code}.ics`, content: Buffer.from(ics).toString('base64') }] }) as { id?: string } | null
       if (target.recipient === 'client') await recordInspectionEmailSms({
         entityType: 'sale_inspection', entityRef: String(inspection.id), kind: 'confirmation',
         phone: String(context.client?.phone || ''), email: target.email, providerMessageId: result?.id,
