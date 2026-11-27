@@ -270,7 +270,7 @@ function finalRouteFixture(kind, options = {}) {
   const { QuoteAgentEmailError } = recipientFixture()
   class EmailProviderRejectedError extends Error {}
   const finalDocument = { inputs, version: 2, displayPrice: { low: 100, high: 100 }, firmQuoteDraft: {} }
-  const quote = { id: 'quote-id', quoteRef: 'SC-TEST', inputs, workflowColumnsAvailable: true, finalDocument, firmQuoteDraft: {} }
+  const quote = { id: 'quote-id', quoteRef: 'SC-TEST', inputs, workflowColumnsAvailable: true, finalDocument, firmQuoteDraft: { status: options.acceptedQuote ? 'accepted' : 'reviewed' }, status: options.acceptedQuote ? 'accepted' : 'pending', sentAt: options.alreadySent ? '2026-11-27' : null }
   const config = { assignees: [{ id: 'regional', name: 'Sample Agent', active: true }] }
   const exports = loadTs(kind === 'admin'
     ? 'src/app/api/admin/quotes/[ref]/send/route.ts'
@@ -310,7 +310,7 @@ function finalRouteFixture(kind, options = {}) {
       recordFinalQuoteSendFailure: async (...args) => { calls.push(['failed', ...args]) },
     },
   })
-  const request = { json: async () => ({ to: options.recipient ?? inputs.email, previewOnly: options.previewOnly, quoteRequestConfirmed: options.confirmed, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
+  const request = { json: async () => ({ to: options.recipient ?? inputs.email, previewOnly: options.previewOnly, expectedDocumentVersion: options.version, quoteRequestConfirmed: options.confirmed, cc: 'attacker@example.com', agentCc: ['attacker@example.com'] }) }
   return { calls, run: () => exports.POST(request, { params: Promise.resolve({ assigneeId: 'regional', ref: 'SC-TEST' }) }) }
 }
 
@@ -663,3 +663,24 @@ test('quote validity displays a saved expiry without renewing it on resend', () 
   assert.equal(quoteTerms.quoteValidityLabel(null), 'Valid for 30 days from the quote issue date.')
   assert.equal(quoteTerms.quoteValidityLabel('bad'), quoteTerms.quoteValidityLabel(null))
 })
+
+for (const kind of ['admin', 'agent']) {
+  test(`${kind} accepted revision preview is read-only and version-bound`, async () => {
+    const fixture = finalRouteFixture(kind, { acceptedQuote: true, version: 2, previewOnly: true })
+    assert.equal((await fixture.run()).status, 200)
+    assert.equal(fixture.calls.includes('claim'), false)
+    assert.equal(fixture.calls.some(c => Array.isArray(c) && ['send', 'permission'].includes(c[0])), false)
+  })
+  test(`${kind} accepted revision send keeps accepted status`, async () => {
+    const fixture = finalRouteFixture(kind, { acceptedQuote: true, version: 2 })
+    assert.equal((await fixture.run()).body.status, 'accepted')
+    assert.equal(fixture.calls.includes('complete'), true)
+  })
+  test(`${kind} accepted revision rejects stale/missing versions, already sent and unresolved deliveries`, async () => {
+    for (const options of [{ version: 1 }, {}, { version: 2, alreadySent: true }, { version: 2, claimed: false }]) {
+      const fixture = finalRouteFixture(kind, { acceptedQuote: true, ...options })
+      assert.equal((await fixture.run()).status, 409)
+      assert.equal(fixture.calls.some(c => Array.isArray(c) && c[0] === 'send'), false)
+    }
+  })
+}

@@ -25,11 +25,19 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
   try {
     const quote = await getQuoteWorkflowByRef(params.ref)
     if (!quote) return NextResponse.json({ success: false, error: 'Quote not found.' }, { status: 404 })
-    const readiness = getFinalQuoteReadiness(quote.firmQuoteDraft)
+    const accepted = quote.status === 'accepted' || quote.firmQuoteDraft.status === 'accepted'
+    const readiness = getFinalQuoteReadiness(accepted && quote.finalDocument
+      ? { ...quote.finalDocument.firmQuoteDraft, status: 'reviewed' } : quote.firmQuoteDraft)
     if (!quote.workflowColumnsAvailable || !quote.finalDocument || !readiness.ready) {
       return NextResponse.json({ success: false, error: readiness.errors[0] ?? 'The final document is not ready.' }, { status: 409 })
     }
-    const body = await request.json().catch(() => ({})) as { previewOnly?: unknown; quoteRequestConfirmed?: unknown; to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
+    const body = await request.json().catch(() => ({})) as { expectedDocumentVersion?: unknown; previewOnly?: unknown; quoteRequestConfirmed?: unknown; to?: unknown; subject?: unknown; message?: unknown; messageHtml?: unknown; messageDocument?: unknown }
+    if ((accepted || body.expectedDocumentVersion !== undefined) && body.expectedDocumentVersion !== quote.finalDocument.version) {
+      return NextResponse.json({ success: false, error: 'The saved quote has changed. Reopen and preview the latest saved correction before sending.' }, { status: 409 })
+    }
+    if (accepted && quote.sentAt) {
+      return NextResponse.json({ success: false, error: 'This accepted version has already been emailed. Save a new correction before emailing again.' }, { status: 409 })
+    }
     const recipient = resolveFinalQuoteRecipient(quote.finalDocument.inputs.email, body.to)
     if (!recipient.matches) {
       return NextResponse.json({ success: false, error: 'The recipient must match the reviewed final document.' }, { status: 400 })
@@ -70,7 +78,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ ref:
     await recordFinalQuoteProviderAccepted(attemptId, typeof providerResult?.id === 'string' ? providerResult.id : null)
     const completed = await completeFinalQuoteSend(params.ref, attemptId, quote.finalDocument.version)
     attemptId = null
-    return NextResponse.json({ success: true, status: 'sent', sentAt: completed.sentAt, recipient: to, documentVariant: 'final' })
+    return NextResponse.json({ success: true, status: accepted ? 'accepted' : 'sent', sentAt: completed.sentAt, recipient: to, documentVariant: 'final' })
   } catch (error) {
     const disposition = getSendFailureDisposition(providerCallStarted, providerAccepted, error instanceof EmailProviderRejectedError)
     if (attemptId && disposition.markFailed && disposition.failureStage) await recordFinalQuoteSendFailure(attemptId, disposition.failureStage)
