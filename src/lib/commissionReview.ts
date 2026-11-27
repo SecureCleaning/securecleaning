@@ -6,6 +6,7 @@ export type CommissionReviewRow = {
   sale_code: string
   status: string
   reason: string
+  sourceName?: string
   suggestedWinAgentId: string | null
   suggestedSaleAgentId: string | null
 }
@@ -22,7 +23,7 @@ export async function getCommissionReviewRows(authorizedSaleIds?: string[]): Pro
   for (const ids of groups) {
     for (let offset = 0; ; offset += 500) {
       let query = db.from('contract_commission_attribution_status')
-        .select('sale_id,sale_code,status,win_agent_id,sale_agent_id,review_reason')
+        .select('sale_id,sale_code,status,win_agent_id,sale_agent_id,review_reason,source_snapshot')
         .eq('has_assignment', false).neq('status', 'cancelled')
       if (ids) query = query.in('sale_id', ids)
       const { data, error } = await query.order('sale_id').range(offset, offset + 499)
@@ -30,6 +31,7 @@ export async function getCommissionReviewRows(authorizedSaleIds?: string[]): Pro
       for (const row of data ?? []) rows.push({
         id: String(row.sale_id), sale_code: String(row.sale_code), status: String(row.status),
         reason: String(row.review_reason),
+        sourceName: row.source_snapshot?.name || undefined,
         suggestedWinAgentId: row.win_agent_id ? String(row.win_agent_id) : null,
         suggestedSaleAgentId: row.sale_agent_id ? String(row.sale_agent_id) : null,
       })

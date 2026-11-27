@@ -1,3 +1,4 @@
+import { getCrmCommissionSources, resolveCrmCommissionSource } from '@/lib/commissionSources'
 import { usesMelbournePriority, compareBookingPriority } from '@/lib/availabilityPriority'
 import { crmCleaningFrequency, crmCleaningTime, resolveCrmCleaningPreferences } from '@/lib/crmCleaningPreferences'
 import { getPremisesCatalog, validatePremisesSelection } from '@/lib/premisesCatalogServer'
@@ -653,7 +654,7 @@ export async function getClientCrmWorkspace(actor: ClientCrmActor, followUpsOnly
 
   const availabilityConfig = await getAvailabilityConfig()
   const defaultCity = getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
-  return { opportunities, templates, templateDocuments, agents, senders, actor, defaultCity, premisesOptions: await getPremisesCatalog() }
+  return { opportunities, templates, templateDocuments, agents, senders, actor, defaultCity, premisesOptions: await getPremisesCatalog(), commissionSources: await getCrmCommissionSources(actor) }
 }
 
 export async function updateCrmProfile(actor: ClientCrmActor, input: Record<string, unknown>) {
@@ -826,8 +827,10 @@ export async function prepareManualCrmOpportunity(actor: ClientCrmActor, input: 
     ? getCrmAgentRegion(actor.availabilityAssigneeId, availabilityConfig.assignees)
     : cityFromInput(input.city)
   const sourceType = normalizeCrmSourceType(input.sourceType) ?? 'manual'
+  if (typeof input.sourceType === 'string' && input.sourceType.startsWith('referral:') && sourceType === 'manual') throw new ClientCrmError('Select a valid enquiry source.')
+  const commissionSource = await resolveCrmCommissionSource(actor, sourceType)
   const contactBasis = normalizeCrmContactBasis(input.contactBasis)
-  const sourceProvider = clean(input.sourceProvider, 200)
+  const sourceProvider = commissionSource?.name ?? clean(input.sourceProvider, 200)
   const sourceReference = clean(input.sourceReference, 200)
   const customExplanation = clean(input.sourceExplanation, 500)
   const notes = clean(input.notes, 5000)
@@ -835,7 +838,7 @@ export async function prepareManualCrmOpportunity(actor: ClientCrmActor, input: 
   const timePreference = crmCleaningTime(input.cleaningTimePreference) ?? 'after_hours'
   if (input.cleaningFrequency && !frequency) throw new ClientCrmError('Select a valid cleaning frequency.')
   if (input.cleaningTimePreference && !crmCleaningTime(input.cleaningTimePreference)) throw new ClientCrmError('Select a valid cleaning time preference.')
-  const requestedAssigneeId = clean(input.assignedStaffId, 100)
+  const requestedAssigneeId = commissionSource?.agent_id ?? clean(input.assignedStaffId, 100)
 
   if (!firstName || !contactName || !isValidCrmEmail(email) || !city || !postcode || !contactBasis) {
     throw new ClientCrmError('Provide the first name, valid email, service region, postcode, and contact basis.')
@@ -901,6 +904,7 @@ export async function createManualCrmOpportunity(actor: ClientCrmActor, input: R
   const { data: opportunityId, error: opportunityError } = await getAdminSupabase().rpc(
     'save_crm_record_with_premises', { p_operation: 'create', p_values: prepared.values, p_premises_type: prepared.selection.type, p_premises_other: prepared.selection.other, p_import_key: importKey ?? null })
   if (opportunityError) {
+    if (prepared.values.p_source.startsWith('referral:') && opportunityError.code === '23514') throw new ClientCrmError('The enquiry source or linked agent is unavailable. Refresh and review Team Access.', 409)
     if (opportunityError.code === '23505') throw new ClientCrmError('An active opportunity already exists for this customer and site. Add future quotes to that opportunity, or close it before starting a new sales cycle.', 409)
     if (opportunityError.code === '42501') throw new ClientCrmError('This contact belongs to another agent. Ask an owner or manager to reconcile it.', 409)
     if (opportunityError.code === '23514') throw new ClientCrmError('The saved contact details differ from this entry. Reconcile the contact before starting another opportunity.', 409)
@@ -978,7 +982,7 @@ export async function updateCrmOpportunity(actor: ClientCrmActor, input: Record<
       ? normalizeCrmContactBasis(intake.data?.contact_basis)
       : normalizeCrmContactBasis(input.contactBasis)
     const sourceType = normalizeCrmSourceType(intake.data?.source) ?? 'manual'
-    const sourceProvider = input.sourceProvider === undefined
+    const sourceProvider = sourceType.startsWith('referral:') || input.sourceProvider === undefined
       ? clean(intake.data?.source_provider, 200)
       : clean(input.sourceProvider, 200)
     const customExplanation = input.sourceExplanation === undefined

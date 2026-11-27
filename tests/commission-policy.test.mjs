@@ -38,7 +38,7 @@ test('commission reads limit agents to their own balances and component rates wi
     const u=new URL(url),table=u.pathname.split('/').pop()
     if(table==='contract_product_sales') {
       assert.equal(u.searchParams.get('id'),'in.(sale)')
-      assert.equal(u.searchParams.get('select'),'id,opportunity_id,business_name:client_snapshot->>business_name')
+      assert.equal(u.searchParams.get('select'),'id,opportunity_id,commission_source_snapshot,business_name:client_snapshot->>business_name')
       return json([{id:'sale',opportunity_id:'opportunity',business_name:null}])
     }
     if(table==='crm_opportunities') {

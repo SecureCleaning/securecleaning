@@ -1,3 +1,4 @@
+import { commissionSourceId } from '@/lib/commissionSourcePolicy'
 import type { AdminRole, StaffAccount } from '@/lib/staffAccounts'
 import { applyEmailMergeFields } from '@/lib/emailMergeFields'
 
@@ -9,7 +10,7 @@ export const CRM_SOURCE_TYPES = ['manual', 'online_quote', 'purchased_lead', 'co
 export type CrmRole = (typeof CRM_ROLES)[number]
 export type CrmOpportunityStage = (typeof CRM_OPPORTUNITY_STAGES)[number]
 export type CrmContactBasis = (typeof CRM_CONTACT_BASES)[number]
-export type CrmSourceType = (typeof CRM_SOURCE_TYPES)[number]
+export type CrmSourceType = (typeof CRM_SOURCE_TYPES)[number] | `referral:${string}`
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -86,7 +87,8 @@ export function normalizeCrmContactBasis(value: unknown): CrmContactBasis | null
 }
 
 export function normalizeCrmSourceType(value: unknown): CrmSourceType | null {
-  return typeof value === 'string' && CRM_SOURCE_TYPES.includes(value as CrmSourceType)
+  if (commissionSourceId(value)) return `referral:${commissionSourceId(value)}`
+  return typeof value === 'string' && CRM_SOURCE_TYPES.includes(value as (typeof CRM_SOURCE_TYPES)[number])
     ? value as CrmSourceType
     : null
 }
@@ -105,6 +107,7 @@ export function buildContactSourceExplanation(input: {
 
   const provider = input.sourceProvider?.trim()
   if (input.sourceType === 'telemarketing_partner' && provider) return `you discussed your cleaning requirements with ${provider}, our telemarketing partner`
+  if (commissionSourceId(input.sourceType) && provider) return `your cleaning enquiry was referred to Secure Cleaning by ${provider}`
   if (input.sourceType === 'online_quote') return 'you requested information or a quote through the Secure Cleaning website'
   if (input.sourceType === 'direct_booking') return 'you requested a site inspection through the Secure Cleaning website'
   if (input.sourceType === 'purchased_lead' && provider) return `we received your contact information from ${provider} in relation to commercial cleaning services`

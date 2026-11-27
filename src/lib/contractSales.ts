@@ -100,6 +100,7 @@ export type ContractSale = {
   id: string
   saleCode: string
   commissionReviewReason?: string
+  commissionSource?: { name: string; agentPercent: number }
   productId: string
   productCode: string
   opportunityId: string
@@ -240,7 +241,7 @@ export type ContractSaleCleanerProfileTemplate = {
   updatedAt: string | null
 }
 
-const SALE_SELECT = 'id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, created_by_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
+const SALE_SELECT = 'commission_source_snapshot, id, sale_code, product_id, cleaner_id, opportunity_id, source_quote_id, deleted_source_quote_ref, site_id, assigned_staff_id, created_by_staff_id, status, agreed_purchase_price_inc_gst_cents, deposit_inc_gst_cents, price_finalised_at, product_snapshot, cleaner_snapshot, client_snapshot, site_snapshot, commencement_date, internal_notes, handover_at, created_at, updated_at'
 const INVOICE_SELECT = 'id, revision_number, invoice_number, sale_id, invoice_type, status, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, delivery_status, issued_at'
 const INVOICE_DOCUMENT_SELECT = 'id, revision_number, invoice_number, invoice_type, recipient_email_snapshot, recipient_business_snapshot, recipient_name_snapshot, recipient_address_snapshot, recipient_abn_snapshot, supplier_name_snapshot, supplier_abn_snapshot, supplier_email_snapshot, invoice_title_snapshot, email_subject_template_snapshot, email_intro_template_snapshot, email_intro_html_snapshot, footer_note_snapshot, description_snapshot, total_inc_gst_cents, gst_component_cents, deposit_required_inc_gst_cents, due_on, payment_terms_snapshot, bank_account_name_snapshot, bank_name_snapshot, bank_bsb_snapshot, bank_account_number_snapshot, payment_reference_template_snapshot, sender_name_snapshot, sender_title_snapshot, sender_email_snapshot, issued_at, status, delivery_status, provider_message_id'
 const PAYMENT_SELECT = 'id, sale_id, intended_invoice_id, amount_cents, received_on, payment_method, payment_reference, evidence_note, status, created_at'
@@ -619,6 +620,8 @@ export async function getContractSaleWorkspace(actor: ContractProductActor) {
       cleanerAddress: [cleanerSnapshot.address ?? cleaner?.address, cleanerSnapshot.suburb ?? cleaner?.suburb, cleanerSnapshot.state ?? cleaner?.state, cleanerSnapshot.postcode ?? cleaner?.postcode].filter(Boolean).join(', '),
       cleanerStatus: String(cleaner?.status ?? ''), assignedStaffId: typeof sale.assigned_staff_id === 'string' ? sale.assigned_staff_id : null,
       commissionReviewReason: commissionReviewById.get(String(sale.id)),
+      commissionSource: sale.commission_source_snapshot && (actor.role === 'owner' || (sale.commission_source_snapshot as Row).agentId === actor.id)
+        ? { name: String((sale.commission_source_snapshot as Row).name), agentPercent: Number((sale.commission_source_snapshot as Row).agentBps) / 100 } : undefined,
       status: String(sale.status) as ContractSaleStatus, state: String(productSnapshot.state ?? product?.state ?? ''), suburb: String(productSnapshot.suburb ?? product?.suburb ?? ''),
       siteId: typeof sale.site_id === 'string' ? sale.site_id : null, siteName: String(siteSnapshot.site_name ?? site?.site_name ?? ''),
       siteAddress: [siteSnapshot.address ?? site?.address, siteSnapshot.suburb ?? site?.suburb, siteSnapshot.postcode ?? site?.postcode].filter(Boolean).join(', '),

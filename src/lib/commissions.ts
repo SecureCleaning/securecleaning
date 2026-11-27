@@ -1,4 +1,6 @@
 import 'server-only'
+import { getCommissionSourceRules, saveCommissionSourceRule } from '@/lib/commissionSources'
+import type { CommissionSourceSnapshot } from '@/lib/commissionSourcePolicy'
 import { getCommissionReviewRows } from '@/lib/commissionReview'
 import { validateCommissionRevision, type CommissionRevisionPreview } from '@/lib/commissionRevision'
 import { getAdminSupabase } from '@/lib/supabase'
@@ -49,10 +51,12 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
     assignments.push(...(data ?? []))
   }
   const businessBySale = new Map<string, string>()
+  const sourceBySale = new Map<string, CommissionSourceSnapshot>()
   for (let i = 0; i < ids.length; i += 100) {
-    const saleResult = await db.from('contract_product_sales').select('id,opportunity_id,business_name:client_snapshot->>business_name').in('id', ids.slice(i, i + 100))
+    const saleResult = await db.from('contract_product_sales').select('id,opportunity_id,commission_source_snapshot,business_name:client_snapshot->>business_name').in('id', ids.slice(i, i + 100))
     if (saleResult.error) throw saleResult.error
     const saleRows = saleResult.data ?? []
+    for (const sale of saleRows) if (sale.commission_source_snapshot) sourceBySale.set(sale.id, sale.commission_source_snapshot as CommissionSourceSnapshot)
     const opportunityIds = Array.from(new Set(saleRows.filter(row => !row.business_name?.trim()).map(row => row.opportunity_id).filter(Boolean)))
     const opportunities = opportunityIds.length ? await db.from('crm_opportunities').select('id,primary_contact_id').in('id', opportunityIds) : { data: [], error: null }
     if (opportunities.error) throw opportunities.error
@@ -63,11 +67,14 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
     const businessByOpportunity = new Map((opportunities.data ?? []).map(row => [row.id, contactsById.get(row.primary_contact_id)]))
     for (const sale of saleRows) businessBySale.set(sale.id, sale.business_name?.trim() || businessByOpportunity.get(sale.opportunity_id)?.trim() || '')
   }
-  for (const balance of balances) balance.client_business = businessBySale.get(String(balance.sale_id)) || ''
+  for (const balance of balances) {
+    balance.client_business = businessBySale.get(String(balance.sale_id)) || ''
+    balance.commission_source_name = sourceBySale.get(String(balance.sale_id))?.name || ''
+  }
   const components = assignments.flatMap(row => [
-    { saleId: row.sale_id, agentId: row.win_agent_id, component: 'Site won', rateBps: row.win_bps },
+    { saleId: row.sale_id, agentId: row.win_agent_id, component: sourceBySale.has(String(row.sale_id)) ? 'Source referral' : 'Site won', rateBps: row.win_bps },
     { saleId: row.sale_id, agentId: row.sale_agent_id, component: 'Sale', rateBps: row.sale_bps },
-  ]).filter(row => actor.role === 'owner' || row.agentId === actor.id)
+  ]).filter(row => (actor.role === 'owner' || row.agentId === actor.id) && Number(row.rateBps) !== 0)
   const [settings, agents, sales] = actor.role === 'owner' ? await Promise.all([
     db.from('contract_commission_settings').select('win_bps,sale_bps').eq('id', true).single(),
     db.from('admin_staff_accounts').select('id,display_name').eq('role', 'agent').eq('active', true).order('display_name'),
@@ -84,11 +91,19 @@ export async function getCommissionWorkspace(actor: ClientCrmActor) {
     sale_code: String(balances.find(balance => balance.sale_id === row.sale_id)?.sale_code ?? row.sale_id),
     can_correct: !claims.some(claim => claim.sale_id === row.sale_id) && !payouts.some(payout => payout.sale_id === row.sale_id),
   })) : []
-  return { receivedInvoices: receivedInvoices.map(row => ({ id: String(row.id), agent_id: String(row.agent_id), invoice_reference: String(row.invoice_reference), invoice_date: String(row.invoice_date), amount_cents: Number(row.amount_cents), created_at: String(row.created_at), hasAttachment: Boolean(row.storage_path) })), revisions, role: actor.role, balances, claims, payouts, components, assignments: assignedSales, settings: settings.data, agents: agents.data, sales: sales.data ?? [] }
+  const sourceRules = actor.role === 'owner' ? await getCommissionSourceRules() : []
+  return { sourceRules, receivedInvoices: receivedInvoices.map(row => ({ id: String(row.id), agent_id: String(row.agent_id), invoice_reference: String(row.invoice_reference), invoice_date: String(row.invoice_date), amount_cents: Number(row.amount_cents), created_at: String(row.created_at), hasAttachment: Boolean(row.storage_path) })), revisions, role: actor.role, balances, claims, payouts, components, assignments: assignedSales, settings: settings.data, agents: agents.data, sales: sales.data ?? [] }
 }
 
 export async function manageCommission(actor: ClientCrmActor, input: Record<string, unknown>) {
   const action = input.action
+  if (action === 'source_rule.save') return saveCommissionSourceRule(actor, input)
+  if (action === 'source_rule.retry') {
+    if (actor.role !== 'owner') throw new ContractProductError('Only the owner can retry source commissions.', 403)
+    const { error } = await getAdminSupabase().rpc('retry_source_commission', { p_actor_id: actor.id, p_sale_id: input.saleId })
+    if (error) throw new ContractProductError('The saved source recipient is unavailable. Review Team Access before retrying.', 409)
+    return
+  }
   if (action === 'preview_revision' || action === 'revise') {
     if (actor.role !== 'owner') throw new ContractProductError('Only the owner can revise commissions.', 403)
     let validated
